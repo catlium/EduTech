@@ -4,7 +4,7 @@
 
 **Status:** In Progress — Checkpoint Saved
 
-**Last Checkpoint:** `4d99b4b` — `feat(core): add phase 1 foundation checkpoint`
+**Last Checkpoint:** `pending` — `docs: add task tracking and continuity rules`
 
 ---
 
@@ -70,6 +70,11 @@ Background job management in `apps/api/src/jobs/`:
 
 - `.env.example` with all service variables (API, JWT, cookies, DB, Redis, RabbitMQ, OCR, workers)
 - ESLint configured with `.d.ts` ignore rule
+
+### Process & Continuity
+
+- **Checkpoint and continuity rules** added to `AGENTS.md` — defines session startup, recovery, checkpoint, and commit conventions for multi-device/multi-session development
+- **Task tracking** — `docs/tasks.md` tracks Phase 1 goals and tasks with status markers
 
 ---
 
