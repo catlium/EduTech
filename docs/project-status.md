@@ -4,7 +4,7 @@
 
 **Status:** In Progress — Checkpoint Saved
 
-**Last Checkpoint:** `pending` — `docs: add task tracking and continuity rules`
+**Last Checkpoint:** `ee0cae6` — `docs: add task tracking and continuity rules`
 
 ---
 
