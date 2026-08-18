@@ -2,6 +2,7 @@
   "name": "@catlium/auth",
   "version": "0.0.1",
   "private": true,
+  "type": "module",
   "description": "Authentication and authorization utilities",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
