@@ -1,0 +1,32 @@
+{
+  "name": "@catlium/api",
+  "version": "0.0.1",
+  "private": true,
+  "description": "CatLium EduTech - Main API (Modular Monolith)",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main",
+    "start:prod": "node dist/main",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.3",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.3",
+    "@nestjs/platform-express": "^11.1.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.7",
+    "@nestjs/schematics": "^11.0.4",
+    "@nestjs/testing": "^11.1.3",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  }
+}
