@@ -1,10 +1,10 @@
 # Project Status
 
-## Current Phase: Phase 2 — Material Retry / Reprocessing Semantics
+## Current Phase: Phase 2 — AI Generation Foundation
 
-**Status:** In Progress — Material Retry / Reprocessing Semantics Checkpoint Complete
+**Status:** In Progress — Implementing AI Generation Pipeline (Goal 7)
 
-**Last Checkpoint:** Retry semantics for failed material processing (`POST /materials/:id/retry`) — see git log
+**Last Checkpoint:** Material Retry / Reprocessing Semantics Checkpoint Complete
 
 ## Priority Revision (2026-08-19)
 
@@ -30,6 +30,26 @@ NOT introduced (confirms AGENTS.md Rule #4). Rich content uses JSONB.
 Documented in `docs/architecture/content.md`.
 
 ---
+
+## Phase 2 — AI Generation Foundation
+
+### Goal 7: AI Generation Foundation [~]
+**Status:** In Progress
+**Started:** 2026-08-19
+
+Establishing a reusable pipeline for AI-driven content creation.
+
+**Completed:**
+- [x] Defined AI_GENERATE_NOTE operation contract and internal persistence schemas in `@catlium/contracts`.
+- [x] Implemented `POST /api/v1/content/generate` in NestJS API.
+- [x] Implemented internal persistence endpoint in NestJS API.
+- [x] Implemented AI worker logic in `apps/workers`.
+- [x] Implemented AI provider integration (OpenRouter).
+- [x] Updated worker consumer to handle `AI_GENERATE_NOTE`.
+- [x] Validated and linted implementation.
+
+**In Progress:**
+- [ ] Perform end-to-end AI generation pipeline validation.
 
 ## Completed Work
 

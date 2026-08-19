@@ -127,6 +127,19 @@ System priority order:
 - [x] Run pnpm checks + Python ruff/mypy
 - [x] Update docs and create checkpoint
 
+## Phase 2 — AI Generation Foundation
+
+### Goal: AI Generation Foundation (Goal 7) [~]
+
+- [x] Define AI_GENERATE_NOTE operation contract in `packages/contracts`
+- [x] Implement `POST /api/v1/content/generate` in NestJS API
+- [x] Implement internal persistence endpoint in NestJS API
+- [x] Implement AI worker logic in `apps/workers`
+- [x] Implement AI provider integration (OpenRouter)
+- [x] Update worker consumer to handle `AI_GENERATE_NOTE`
+- [x] Validate and lint implementation
+- [~] Perform end-to-end AI generation pipeline validation
+
 ## Phase 1 — Core Platform Foundation
 
 ### Goal: Database Foundation
