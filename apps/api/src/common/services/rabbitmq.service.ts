@@ -16,6 +16,7 @@ export class RabbitMQService implements OnModuleDestroy {
 
   async publish(queue: string, message: object): Promise<void> {
     if (!this.channel) await this.connect();
+    await this.channel!.assertQueue(queue, { durable: true });
     const content = Buffer.from(JSON.stringify(message));
     this.channel!.sendToQueue(queue, content, { persistent: true });
   }

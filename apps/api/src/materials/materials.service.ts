@@ -1,4 +1,10 @@
-import { Inject, Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { eq, and, desc } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +13,8 @@ import { basename } from 'node:path';
 import { materials, subjects, chapters, topics } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { JobsService } from '../jobs/jobs.service.js';
+import type { Job } from '../jobs/jobs.service.js';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface.js';
 import type { StorageProvider } from './storage/storage-provider.interface.js';
 import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from './materials.constants.js';
@@ -46,15 +54,12 @@ export class MaterialsService {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly jobsService: JobsService,
   ) {}
 
   // ── Create ────────────────────────────────
 
-  async createTextMaterial(
-    instituteId: string,
-    createdBy: string,
-    input: CreateTextMaterialInput,
-  ) {
+  async createTextMaterial(instituteId: string, createdBy: string, input: CreateTextMaterialInput) {
     const scope = this.resolveScope(input);
     await this.assertScopeInInstitute(instituteId, scope.kind, scope.id);
 
@@ -197,6 +202,82 @@ export class MaterialsService {
     }
 
     return updated;
+  }
+
+  // ── Processing ────────────────────────────
+
+  async processMaterial(instituteId: string, materialId: string) {
+    await this.db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(materials)
+        .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
+        .for('update')
+        .limit(1);
+
+      if (!locked) {
+        throw new NotFoundException('Material not found');
+      }
+
+      if (locked.status === 'ARCHIVED') {
+        throw new ConflictException('Archived materials cannot be processed');
+      }
+
+      if (locked.sourceType === 'TEXT') {
+        throw new ConflictException('Text materials are already READY and need no processing');
+      }
+
+      if (locked.processingStatus === 'QUEUED' || locked.processingStatus === 'PROCESSING') {
+        throw new ConflictException('Material is already being processed');
+      }
+
+      if (locked.processingStatus !== 'UPLOADED') {
+        throw new ConflictException(
+          `Material cannot be processed from state ${locked.processingStatus}`,
+        );
+      }
+
+      await tx
+        .update(materials)
+        .set({ processingStatus: 'QUEUED', updatedAt: new Date() })
+        .where(eq(materials.id, materialId));
+    });
+
+    let job: Job | null = null;
+
+    try {
+      job = await this.jobsService.insertJob(instituteId, 'MATERIAL_PROCESS', { materialId });
+      await this.jobsService.publishJob(job);
+    } catch (error) {
+      if (job) {
+        try {
+          await this.jobsService.updateJobStatus(job.id, 'failed', undefined, {
+            message: 'Failed to enqueue material processing',
+          });
+        } catch {
+          // Best-effort cleanup; the material revert below is the source of truth.
+        }
+      }
+
+      await this.db
+        .update(materials)
+        .set({ processingStatus: 'UPLOADED', updatedAt: new Date() })
+        .where(
+          and(
+            eq(materials.id, materialId),
+            eq(materials.instituteId, instituteId),
+            eq(materials.processingStatus, 'QUEUED'),
+          ),
+        );
+
+      throw error;
+    }
+
+    return {
+      materialId,
+      jobId: job.id,
+      processingStatus: 'QUEUED',
+    } as const;
   }
 
   // ── Helpers ───────────────────────────────

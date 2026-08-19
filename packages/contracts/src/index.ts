@@ -407,3 +407,10 @@ export const MaterialResponseSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 export type MaterialResponse = z.infer<typeof MaterialResponseSchema>;
+
+export const MaterialProcessResponseSchema = z.object({
+  materialId: z.string().uuid(),
+  jobId: z.string().uuid(),
+  processingStatus: z.literal('QUEUED'),
+});
+export type MaterialProcessResponse = z.infer<typeof MaterialProcessResponseSchema>;

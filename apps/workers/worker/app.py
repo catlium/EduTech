@@ -1,20 +1,20 @@
-from celery import Celery
+"""CatLium async worker entrypoint.
 
-from worker.config import settings
+Consumes plain-JSON job messages from the RabbitMQ `jobs` queue (published by
+the NestJS API) and orchestrates material processing. See consumer.py for the
+message contract.
+"""
 
-celery_app = Celery(
-    "catlium_workers",
-    broker=settings.celery_broker_url,
-    backend=settings.celery_result_backend,
-)
+import logging
 
-celery_app.conf.update(
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
-    task_track_started=True,
-)
+from worker.consumer import start_consumer
 
-celery_app.autodiscover_tasks(["worker.tasks"])
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
+def main() -> None:
+    start_consumer()
+
+
+if __name__ == "__main__":
+    main()

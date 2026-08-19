@@ -22,6 +22,23 @@ Development infrastructure runs via Docker Compose.
 - **User**: catlium
 - **Purpose**: Async task distribution between API and workers
 
+The API publishes plain-JSON job messages to the durable `jobs` queue. The
+Python worker (`apps/workers`) is a direct RabbitMQ consumer of that queue
+(`pika`) — it is not a Celery worker (Celery's task protocol is incompatible
+with the API's publish contract). See `docs/architecture/materials.md`.
+
+## Development Workers
+
+```bash
+# OCR service (FastAPI)
+cd apps/ocr
+.venv/bin/python -m app.main            # or: .venv/bin/uvicorn app.main:app
+
+# Python worker (RabbitMQ consumer)
+cd apps/workers
+.venv/bin/python -m worker.app
+```
+
 ## Starting Infrastructure
 
 ```bash

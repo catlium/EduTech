@@ -31,6 +31,16 @@ export class JobsService {
     type: string,
     payload?: Record<string, unknown>,
   ): Promise<Job> {
+    const job = await this.insertJob(instituteId, type, payload);
+    await this.publishJob(job);
+    return job;
+  }
+
+  async insertJob(
+    instituteId: string,
+    type: string,
+    payload?: Record<string, unknown>,
+  ): Promise<Job> {
     const [job] = await this.db
       .insert(jobs)
       .values({
@@ -41,14 +51,16 @@ export class JobsService {
       })
       .returning();
 
-    await this.rabbitmq.publish('jobs', {
-      jobId: job!.id,
-      instituteId: job!.instituteId,
-      type: job!.type,
-      payload: job!.payload,
-    });
-
     return this.toJob(job!);
+  }
+
+  async publishJob(job: Job): Promise<void> {
+    await this.rabbitmq.publish('jobs', {
+      jobId: job.id,
+      instituteId: job.instituteId,
+      type: job.type,
+      payload: job.payload ?? undefined,
+    });
   }
 
   async getJob(jobId: string, instituteId: string): Promise<Job> {

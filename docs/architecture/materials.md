@@ -6,9 +6,9 @@ and future OCR/AI integration.
 
 ## Material vs Content distinction
 
-A **Learning Material** is a *source asset* — the raw input (a PDF, a document,
-an image, or direct plain text). A **Content item** is *generated study
-content* (notes, flashcards, Cornell notes) produced from materials.
+A **Learning Material** is a _source asset_ — the raw input (a PDF, a document,
+an image, or direct plain text). A **Content item** is _generated study
+content_ (notes, flashcards, Cornell notes) produced from materials.
 
 ```
 Learning Material (source asset)
@@ -27,12 +27,12 @@ Generated content continues to live in `content_items` / `content_versions`.
 Materials live in their own `materials` table. The two domains are **not**
 merged:
 
-| Aspect          | Material (`materials`)                     | Content (`content_items` / `content_versions`) |
-| --------------- | ------------------------------------------ | ---------------------------------------------- |
-| Role            | Source asset / input                       | Generated / authored study content             |
-| Mutability      | Fixed metadata; file/text immutable        | Append-only version history                    |
-| Processing      | Has its own `processing_status` lifecycle  | Status is lifecycle only (DRAFT/ACTIVE/ARCHIVED) |
-| Storage         | File on local disk (via provider) + metadata in DB | Structured JSONB `payload` in DB         |
+| Aspect     | Material (`materials`)                             | Content (`content_items` / `content_versions`)   |
+| ---------- | -------------------------------------------------- | ------------------------------------------------ |
+| Role       | Source asset / input                               | Generated / authored study content               |
+| Mutability | Fixed metadata; file/text immutable                | Append-only version history                      |
+| Processing | Has its own `processing_status` lifecycle          | Status is lifecycle only (DRAFT/ACTIVE/ARCHIVED) |
+| Storage    | File on local disk (via provider) + metadata in DB | Structured JSONB `payload` in DB                 |
 
 ## Material academic scope (decision)
 
@@ -85,15 +85,16 @@ UPLOADED → QUEUED → PROCESSING → READY
 ```
 
 - `TEXT` materials are created `READY` (nothing to process).
-- `UPLOAD` materials are created `UPLOADED`; they stay there until the OCR/AI
-  pipeline is implemented.
-- `QUEUED`, `PROCESSING`, and `FAILED` are reserved for that pipeline. This
-  checkpoint does **not** implement OCR, document parsing, or AI processing,
-  and no jobs are created on material creation.
+- `UPLOAD` materials are created `UPLOADED`; `POST /materials/:id/process`
+  moves them `UPLOADED → QUEUED` and creates a `MATERIAL_PROCESS` job.
+- The worker moves the material `QUEUED → PROCESSING`, then to `READY` on
+  success or `FAILED` on any failure.
+- No other transitions are allowed: `READY`/`FAILED` materials cannot re-enter
+  processing (no reprocessing mechanism yet), `UPLOADED → READY` is not
+  possible for uploaded files, and TEXT materials never enter OCR.
 
 `status` (`ACTIVE` | `ARCHIVED`) is the **material lifecycle** (visibility),
-distinct from `processing_status`. This mirrors the archive/activate
-convention used by academic entities and content items.
+distinct from `processing_status`. Archived materials cannot be processed.
 
 ## Relationship between materials and jobs
 
@@ -109,26 +110,112 @@ Material
 Job(s)  (jobs table: type, status, payload, result, error)
 ```
 
-- A processing job's `payload` will reference the material by UUID (e.g.
-  `{ materialId }`) — materials are addressable by stable UUID, so this is
-  schema-free metadata.
+- A processing job's `payload` references the material by UUID — e.g.
+  `{ "materialId": "uuid" }` for `type: "MATERIAL_PROCESS"`.
 - A material may have **multiple** jobs over its lifetime (initial extraction,
   reprocessing, future AI generation). Each is an independent `jobs` row.
-- `processing_status` on the material mirrors the *current* processing
+- `processing_status` on the material mirrors the _current_ processing
   outcome (derived from the latest job); the `jobs` table holds the per-job
-  execution detail. The two are intentionally not identical.
+  execution detail (status, `started_at`, `completed_at`, `result`, `error`).
+  The two are intentionally not identical.
+- The worker writes both sides directly against PostgreSQL (no API hop), so a
+  running worker is not dependent on the API being up.
 
-## Planned relationship between materials and OCR output
+## Async pipeline (implemented)
 
 ```
-Material → backend creates async job → OCR service processes
-   → OCR returns extracted text → backend stores normalized text on the material
+POST /materials/:id/process (202)
+        ↓  material UPLOADED → QUEUED
+Job created (MATERIAL_PROCESS, payload { materialId })
+        ↓
+RabbitMQ 'jobs' queue (plain JSON)
+        ↓
+Python worker (pika consumer)
+        ↓  job → processing, material → PROCESSING
+File resolved from local storage (storage_key)
+        ↓
+OCR service POST /extract (multipart)
+        ↓  { text, metadata: { pages } }
+materials.text_content = extracted text
+        ↓  material → READY, job → completed
 ```
 
-No OCR service call, extraction, parsing, or OCR dependencies exist in this
-checkpoint. The OCR service remains an independent application responsible
-only for text extraction — it will not contain business logic for notes,
-flashcards, questions, examinations, or answer checking.
+Failure (worker or OCR error, missing file, unsupported type, empty text):
+
+```
+job → failed (error: { message })
+material → FAILED
+```
+
+### Atomicity / enqueue safety
+
+The API performs the state check and `UPLOADED → QUEUED` transition inside a
+transaction that locks the material row (`SELECT ... FOR UPDATE`), so two
+simultaneous process requests cannot create two active jobs for the same
+material — the second sees `QUEUED` and returns `409`.
+
+The job row is inserted and the RabbitMQ publish happens after the
+transaction commits. If the publish (or insert) fails, the API marks the job
+`failed` (best-effort), reverts the material back to `UPLOADED`, and returns
+an error. There is a tiny crash window between commit and publish that could
+leave a `QUEUED` material without a delivered message; for the MVP this is
+accepted (documented gap) and a future outbox is noted as the enterprise
+solution. The `RabbitMQService.publish` now asserts the durable `jobs` queue
+before sending, removing the previous "no consumer ⇒ channel error" hazard.
+
+## Worker architecture (decision)
+
+The Python worker is a **direct RabbitMQ consumer** (`pika`) of the `jobs`
+queue, not a Celery worker. The API publishes plain-JSON messages
+(`{ jobId, instituteId, type, payload }`); Celery's task protocol is
+incompatible with that existing contract, and retrofitting it would couple the
+API to Celery internals. The worker uses `psycopg` for PostgreSQL access and
+`httpx` to call the OCR service. Worker responsibilities are strictly
+orchestration: resolve material → drive state → send file to OCR → persist
+text. It contains no extraction logic and no study/examination business logic.
+
+### Local storage access decision
+
+Local development runs the API and worker on the same host, so the worker
+resolves `materials.text_content`'s sibling `storage_key` against the same
+`STORAGE_LOCAL_DIR` (`WORKER_STORAGE_DIR`, default `./storage`) — a **shared
+filesystem** is the chosen approach. Documented alternatives: when
+containerized, mount a shared volume (option A); a future S3-backed provider
+would make the worker use the storage provider client instead of the
+filesystem (the `storage_key` abstraction is unchanged).
+
+## OCR service contract
+
+Internal HTTP contract between the worker and the OCR service
+(`http://localhost:8000`, `WORKER_OCR_URL`):
+
+- `GET /health` → `{ "status": "ok", "service": "catlium-ocr" }`
+- `POST /extract` — `multipart/form-data` with a `file` field.
+
+  Success (`200`):
+
+  ```json
+  { "text": "Extracted plaintext...", "metadata": { "pages": 5 } }
+  ```
+
+  Failure (`422`): `{ "detail": "..." }` for unsupported content type or
+  empty extraction (never silent empty success).
+
+The OCR service is a generic extraction service with **no knowledge** of
+materials, notes, question papers, examinations, OMR/OSM, or AI generation.
+
+### Supported extraction formats (this checkpoint)
+
+| Content type                                 | Behavior                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------- |
+| `application/pdf`                            | Embedded text extracted via `pypdf` (`metadata.pages` = page count) |
+| `text/plain`, `text/markdown`                | File bytes decoded as UTF-8 (replacement for invalid bytes)         |
+| Images (`image/*`)                           | **Unsupported** — no OCR engine installed; processing fails clearly |
+| Office documents (`doc`/`docx`/`xls`/`xlsx`) | **Unsupported** — processing fails clearly                          |
+
+Empty extraction is treated as failure (`422`), never returned as success.
+Deferred OCR capabilities: image OCR (tesseract), scanned-PDF OCR, layout
+blocks/lines/confidence, document intelligence.
 
 ## Planned relationship between materials and generated content
 

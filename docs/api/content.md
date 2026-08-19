@@ -100,9 +100,7 @@ one type is rejected for another. The Zod schemas in `@catlium/contracts`
 {
   "title": "optional",
   "description": "optional",
-  "cards": [
-    { "id": "c1", "front": "...", "back": "..." }
-  ]
+  "cards": [{ "id": "c1", "front": "...", "back": "..." }]
 }
 ```
 
@@ -113,9 +111,7 @@ one type is rejected for another. The Zod schemas in `@catlium/contracts`
 ```json
 {
   "title": "optional",
-  "sections": [
-    { "id": "s1", "cue": "...", "notes": "..." }
-  ],
+  "sections": [{ "id": "s1", "cue": "...", "notes": "..." }],
   "summary": "optional"
 }
 ```

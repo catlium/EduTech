@@ -13,6 +13,7 @@ export const jobs = pgTable('jobs', {
   result: jsonb('result'),
   error: jsonb('error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
 });

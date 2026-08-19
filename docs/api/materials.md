@@ -102,31 +102,31 @@ learning material using `multipart/form-data`.
 
 Form fields:
 
-| Field         | Required | Notes                                    |
-| ------------- | -------- | ---------------------------------------- |
-| `file`        | yes      | The binary file                          |
-| `title`       | yes      | Material title (max 255)                 |
-| `description` | no       | Optional description (max 1000)          |
-| `subjectId` / `chapterId` / `topicId` | exactly one | Academic scope |
+| Field                                 | Required    | Notes                           |
+| ------------------------------------- | ----------- | ------------------------------- |
+| `file`                                | yes         | The binary file                 |
+| `title`                               | yes         | Material title (max 255)        |
+| `description`                         | no          | Optional description (max 1000) |
+| `subjectId` / `chapterId` / `topicId` | exactly one | Academic scope                  |
 
 Rules:
 
 - Maximum file size: **20 MB**. Larger files are rejected (`413`).
 - Allowed file types (validated by MIME type and extension consistency):
 
-  | MIME type                          | materialType | Extensions          |
-  | ---------------------------------- | ------------ | ------------------- |
-  | `application/pdf`                  | `PDF`        | `pdf`               |
-  | `image/png`                        | `IMAGE`      | `png`               |
-  | `image/jpeg`                       | `IMAGE`      | `jpg`, `jpeg`       |
-  | `image/webp`                       | `IMAGE`      | `webp`              |
-  | `image/gif`                        | `IMAGE`      | `gif`               |
-  | `text/plain`                       | `DOCUMENT`   | `txt`, `md`, `text` |
-  | `application/rtf`                  | `DOCUMENT`   | `rtf`               |
-  | `application/msword`               | `DOCUMENT`   | `doc`               |
-  | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `DOCUMENT` | `docx` |
-  | `application/vnd.ms-excel`         | `DOCUMENT`   | `xls`               |
-  | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `DOCUMENT` | `xlsx` |
+  | MIME type                                                                 | materialType | Extensions          |
+  | ------------------------------------------------------------------------- | ------------ | ------------------- |
+  | `application/pdf`                                                         | `PDF`        | `pdf`               |
+  | `image/png`                                                               | `IMAGE`      | `png`               |
+  | `image/jpeg`                                                              | `IMAGE`      | `jpg`, `jpeg`       |
+  | `image/webp`                                                              | `IMAGE`      | `webp`              |
+  | `image/gif`                                                               | `IMAGE`      | `gif`               |
+  | `text/plain`                                                              | `DOCUMENT`   | `txt`, `md`, `text` |
+  | `application/rtf`                                                         | `DOCUMENT`   | `rtf`               |
+  | `application/msword`                                                      | `DOCUMENT`   | `doc`               |
+  | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `DOCUMENT`   | `docx`              |
+  | `application/vnd.ms-excel`                                                | `DOCUMENT`   | `xls`               |
+  | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`       | `DOCUMENT`   | `xlsx`              |
 
 - Unsupported MIME types are rejected with `400`.
 - An extension that contradicts the declared MIME type is rejected with `400`.
@@ -200,10 +200,62 @@ archived material).
 
 Response: `{ "material": Material }`
 
+## Process material (async extraction)
+
+```
+POST /materials/:materialId/process
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `202 Accepted`. Requests
+asynchronous text extraction for an uploaded material. The response returns
+immediately with tracking information — extracted text is never returned
+synchronously.
+
+Behavior:
+
+- Only `UPLOAD` materials may enter processing. Text materials are already
+  `READY` and are rejected (`409`).
+- The material must be in `UPLOADED` state. `QUEUED` / `PROCESSING` return
+  `409 Conflict` (processing already active). `READY` / `FAILED` return
+  `409 Conflict` (no reprocessing mechanism in this checkpoint). Archived
+  materials return `409 Conflict`.
+- On success the material is moved to `QUEUED`, a job is created
+  (`type: "MATERIAL_PROCESS"`, `payload: { "materialId": ... }`), and the job
+  message is published to RabbitMQ for the Python worker.
+- Two simultaneous processing requests cannot create two active jobs (the
+  material row is locked with `FOR UPDATE` during the state check).
+
+Response (`202`):
+
+```json
+{
+  "materialId": "uuid",
+  "jobId": "uuid",
+  "processingStatus": "QUEUED"
+}
+```
+
+Errors: `404` if the material is not in the active institute; `403` for
+insufficient role; `409` if the material cannot be processed from its current
+state.
+
+### Polling processing status
+
+The frontend never talks to the OCR service or the worker. It polls the API:
+
+```
+GET /jobs/:jobId        → job status (queued | processing | completed | failed)
+GET /materials/:materialId → material.processingStatus (UPLOADED | QUEUED | PROCESSING | READY | FAILED)
+```
+
+until `processingStatus = READY` (or `FAILED`).
+
 ## Notes
 
-- No OCR, document parsing, or AI processing endpoints exist in this
-  checkpoint. Uploaded materials remain `UPLOADED` until the OCR/AI pipeline
-  is implemented.
-- No file download endpoint is provided yet; it will be added with the
-  processing/OCR checkpoint.
+- Extraction is limited to PDF (`application/pdf`) and plain text
+  (`text/plain`) files in this checkpoint. Other uploaded types (images,
+  office documents) fail processing with `processingStatus = FAILED` and a
+  safe error message on the job (`GET /jobs/:jobId`).
+- The OCR service is internal infrastructure; it has no business logic for
+  study/examination features and is never called by the frontend.
+- No file download endpoint is provided yet.

@@ -3,8 +3,10 @@ import { MaterialsController } from './materials.controller.js';
 import { MaterialsService } from './materials.service.js';
 import { LocalStorageProvider } from './storage/local-storage.provider.js';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface.js';
+import { JobsModule } from '../jobs/jobs.module.js';
 
 @Module({
+  imports: [JobsModule],
   controllers: [MaterialsController],
   providers: [
     MaterialsService,

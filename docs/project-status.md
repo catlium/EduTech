@@ -1,10 +1,10 @@
 # Project Status
 
-## Current Phase: Phase 2 — Academic & Content Foundation
+## Current Phase: Phase 2 — Material Processing & OCR Integration
 
-**Status:** In Progress — Learning Materials & Source Foundation Checkpoint Complete
+**Status:** In Progress — Material Processing & OCR Integration Checkpoint Complete
 
-**Last Checkpoint:** Learning materials foundation (materials schema, uploads, storage abstraction) — see git log
+**Last Checkpoint:** Async material processing pipeline (process endpoint, RabbitMQ worker, OCR `/extract`) — see git log
 
 ## Priority Revision (2026-08-19)
 
@@ -192,6 +192,52 @@ Source-asset foundation in `apps/api/src/materials/` (see
   rejection (404), and no jobs created (OCR/AI not triggered).
 - `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check` all pass.
 
+### Material Processing & OCR Integration (Phase 2 Goal 5)
+
+Async source-material extraction pipeline in `apps/api/src/materials/`,
+`apps/workers/`, and `apps/ocr/` (see `docs/architecture/materials.md`,
+`docs/api/materials.md`, `docs/api/jobs.md`):
+
+- **Process endpoint**: `POST /materials/:id/process` (`202`) — moves
+  `UPLOADED → QUEUED` and creates a `MATERIAL_PROCESS` job. `409` for
+  `QUEUED`/`PROCESSING`/`READY`/`FAILED`/`ARCHIVED` and for TEXT materials.
+  The state check + transition run inside a `SELECT ... FOR UPDATE` row lock
+  (concurrent requests cannot double-enqueue).
+- **Enqueue safety**: job row inserted, then message published to the durable
+  RabbitMQ `jobs` queue. If publish fails the job is marked failed and the
+  material is reverted to `UPLOADED`. `RabbitMQService.publish` now asserts the
+  queue first (no "no consumer ⇒ channel error" hazard).
+- **Worker** (`apps/workers/`): a **direct RabbitMQ consumer** (`pika`) of the
+  `jobs` queue — not Celery (Celery's task protocol is incompatible with the
+  API's plain-JSON contract). Orchestrates: resolve material → `PROCESSING` →
+  send file to OCR → write `text_content` → material `READY` / job
+  `completed`. Uses `psycopg` for PostgreSQL and `httpx` for the OCR call.
+  Safe one-line error messages are stored on the job; full tracebacks stay in
+  the worker log.
+- **OCR service** (`apps/ocr/`): `POST /extract` (multipart) → `200
+{ text, metadata: { pages } }`. Supports `application/pdf` (pypdf) and
+  `text/plain` / `text/markdown`. `422` for unsupported content type, corrupt
+  PDFs, or empty extraction. Image OCR (tesseract) and office documents are
+  **not** supported yet and fail clearly. `/health` retained.
+- **Storage-access decision**: local dev shares one filesystem — the worker
+  resolves `storage_key` against the same root as the API
+  (`WORKER_STORAGE_DIR`, default = repo `./storage`); a containerized
+  deployment would use a shared mounted volume.
+- **DB changes**: `jobs.updated_at` column added (worker status updates now
+  work); migration `0004_confused_jack_power.sql` applied.
+- **Validated** end-to-end (17 cases): 202 async response; transitions
+  `UPLOADED → QUEUED → PROCESSING → READY`; job
+  `queued → processing → completed`; `text_content` populated for PDF and plain
+  text; TEXT material process → 409; duplicate process (queued and after
+  ready) → 409; student → 403; cross-tenant → 404; image material →
+  `FAILED` ("Unsupported content type"); missing file → `FAILED` ("Material
+  file not found"); OCR down → `FAILED` ("OCR service unreachable"); API has
+  no `/extract` endpoint (404); recovery after OCR restart (fresh PDF + text
+  → READY). `pnpm build/typecheck/lint/format:check` and Python
+  `ruff check`/`mypy` all pass.
+- Worker settings fix: `WORKER_STORAGE_DIR` defaults to the repo-root
+  `./storage` (resolved from file location, not process cwd).
+
 ### Shared Packages
 
 - **@catlium/contracts**: Zod schemas for auth, jobs, error responses, role/status enums, content payloads, materials
@@ -287,16 +333,19 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ### Items Requiring Architectural Review
 
-- [ ] **RabbitMQ worker pipeline validation**: JobsService publishes to RabbitMQ but no worker consumes yet
 - [ ] **Remaining Phase 1 tests**: No unit or integration tests written for any module
 
 ### Items Not Yet Implemented
 
 - **Study/type-specific features**: notes rendering, flashcard practice, Cornell
   workflows (payload contracts now enforced; features not built)
-- **OCR/AI material processing**: materials store files/text but no extraction,
-  parsing, or AI generation pipeline (jobs not triggered; `processing_status`
-  stays `UPLOADED`)
+- **OCR/AI material processing**: PDF and plain-text extraction are implemented
+  (Goal 5); image OCR (tesseract), scanned-PDF OCR, and office documents are
+  not, and AI generation has not started
+- **Material reprocessing**: `READY`/`FAILED` materials return 409 — no
+  re-process trigger yet
+- **Download endpoint**: material binaries can be read via the storage
+  provider but no API endpoint exposes them yet
 - **Institute CRUD controller** (deferred — see priority revision)
 - **User profile management / password change** (deferred)
 - **Structured logging**: Only console.log in bootstrap
@@ -307,49 +356,56 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 ## Not Yet Started (ordered by system priority)
 
 1. Study features on the content foundation (notes, flashcards, Cornell, AI context)
-2. OCR processing and AI generation pipelines
-3. Question bank and examination
-4. Practice mode
-5. Checking system (FORM, OMR, OSM)
-6. Worker task definitions
+2. AI generation pipeline and advanced OCR (image OCR / scanned PDFs / office documents)
+3. Material reprocessing + download endpoint
+4. Question bank and examination
+5. Practice mode
+6. Checking system (FORM, OMR, OSM)
 7. SaaS management (deferred)
 
 ---
 
 ## Current Architecture Decisions
 
-| Decision           | Choice                                               | Notes                                                   |
-| ------------------ | ---------------------------------------------------- | ------------------------------------------------------- |
-| Auth pattern       | Cookie-based JWT                                     | Access + refresh tokens in httpOnly cookies             |
-| CSRF               | Double-submit cookie                                 | csrf_token cookie + x-csrf-token header                 |
-| Tenant resolution  | x-institute-id header (UUID)                         | Guard resolves membership + roles per request           |
-| Job distribution   | RabbitMQ                                             | JobsService publishes; workers consume (not yet built)  |
-| Database           | PostgreSQL + Drizzle ORM                             | Schema in packages/database, migrations via drizzle-kit |
-| Validation         | class-validator (API) + Zod (contracts)              | API DTOs use class-validator; shared contracts use Zod  |
-| JWT secret         | registerAsync + fail-fast in production              | No silent fallback; dev-only default outside production |
-| Rate limiting      | @nestjs/throttler (in-memory)                        | Auth endpoints 5/min; global default 100/min            |
-| Content storage    | PostgreSQL + JSONB                                   | Single DB; no MongoDB; rich content in JSONB            |
-| Academic model     | subjects → chapters → topics                         | Tenant-scoped tree; service-layer isolation             |
-| Content versioning | content_items + content_versions                     | Monotonic version, JSONB payload, regeneration-aware    |
-| Content attachment | Exactly one academic scope                           | CHECK constraint; subject/chapter/topic nullable FKs    |
-| Current version    | Integer pointer on content_items                     | Avoids circular FK; append-only history cannot dangle   |
-| Update safety      | Row lock (FOR UPDATE) + unique (content_id, version) | Concurrent updates cannot collide version numbers       |
-| Content contracts  | Zod canonical payload, dispatch by type              | NOTE/FLASHCARD_SET/CORNELL_NOTE enforced on create+update |
-| Payload vs HTML    | Payload JSONB is canonical; rendered_html derived    | Backend not coupled to any frontend editor             |
-| Material model     | Source assets in `materials`, distinct from content  | Files on local disk (provider), metadata in PostgreSQL  |
-| Material scope     | Exactly one academic scope (CHECK constraint)        | Same model as content_items; no duplication            |
-| File storage       | Local filesystem via StorageProvider abstraction     | Replaceable with S3 later; binaries never in PostgreSQL |
-| Processing state   | `processing_status` on material; jobs track jobs     | Material and job lifecycles deliberately distinct      |
+| Decision           | Choice                                               | Notes                                                               |
+| ------------------ | ---------------------------------------------------- | ------------------------------------------------------------------- |
+| Auth pattern       | Cookie-based JWT                                     | Access + refresh tokens in httpOnly cookies                         |
+| CSRF               | Double-submit cookie                                 | csrf_token cookie + x-csrf-token header                             |
+| Tenant resolution  | x-institute-id header (UUID)                         | Guard resolves membership + roles per request                       |
+| Job distribution   | RabbitMQ                                             | API publishes plain JSON to `jobs`; worker consumes directly (pika) |
+| Worker model       | Direct RabbitMQ consumer                             | Not Celery; API publish contract is plain JSON (incompatible)       |
+| OCR extraction     | FastAPI `/extract`, PDF + plain text                 | pypdf; images/office/scanned-PDF deferred                           |
+| OCR role           | Text extraction only                                 | No materials/notes/questions/exam business logic in the OCR service |
+| Database           | PostgreSQL + Drizzle ORM                             | Schema in packages/database, migrations via drizzle-kit             |
+| Validation         | class-validator (API) + Zod (contracts)              | API DTOs use class-validator; shared contracts use Zod              |
+| JWT secret         | registerAsync + fail-fast in production              | No silent fallback; dev-only default outside production             |
+| Rate limiting      | @nestjs/throttler (in-memory)                        | Auth endpoints 5/min; global default 100/min                        |
+| Content storage    | PostgreSQL + JSONB                                   | Single DB; no MongoDB; rich content in JSONB                        |
+| Academic model     | subjects → chapters → topics                         | Tenant-scoped tree; service-layer isolation                         |
+| Content versioning | content_items + content_versions                     | Monotonic version, JSONB payload, regeneration-aware                |
+| Content attachment | Exactly one academic scope                           | CHECK constraint; subject/chapter/topic nullable FKs                |
+| Current version    | Integer pointer on content_items                     | Avoids circular FK; append-only history cannot dangle               |
+| Update safety      | Row lock (FOR UPDATE) + unique (content_id, version) | Concurrent updates cannot collide version numbers                   |
+| Content contracts  | Zod canonical payload, dispatch by type              | NOTE/FLASHCARD_SET/CORNELL_NOTE enforced on create+update           |
+| Payload vs HTML    | Payload JSONB is canonical; rendered_html derived    | Backend not coupled to any frontend editor                          |
+| Material model     | Source assets in `materials`, distinct from content  | Files on local disk (provider), metadata in PostgreSQL              |
+| Material scope     | Exactly one academic scope (CHECK constraint)        | Same model as content_items; no duplication                         |
+| File storage       | Local filesystem via StorageProvider abstraction     | Replaceable with S3 later; binaries never in PostgreSQL             |
+| Processing state   | `processing_status` on material; jobs track jobs     | Material and job lifecycles deliberately distinct                   |
+| Processing safety  | Row lock (FOR UPDATE) + insert-then-publish          | Duplicate enqueue → 409; publish failure reverts material           |
+| Worker storage     | Shared filesystem (repo `./storage`)                 | Shared volume when containerized; S3 provider later                 |
 
 ---
 
 ## Infrastructure
 
 - **API**: http://localhost:3000 (NestJS)
-- **OCR**: http://localhost:8000 (FastAPI — not started)
+- **OCR**: http://localhost:8000 (FastAPI — running during validation)
+- **Worker**: local process consuming RabbitMQ `jobs` queue (started during validation)
 - **PostgreSQL**: localhost:5432 (Docker)
 - **Redis**: localhost:6379 (occupied by a pre-existing `saher-redis-dev`
-  container; compose `catlium-redis` remains `Created`)
+  container; compose `catlium-redis` remains `Created` — Redis is not required
+  by the API or worker)
 - **RabbitMQ**: localhost:5672 (Docker), management at :15672
 
 ---
@@ -359,26 +415,32 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 1. **No tests**: Zero test coverage across all modules.
 2. **Redis port conflict**: `saher-redis-dev` (Redis Stack) already binds
    host port 6379, so compose's `catlium-redis` does not start. Non-blocking
-   for the API (Redis is not required by the API yet). Resolve by stopping the
-   other container or remapping ports before starting the workers.
+   for the API and worker (neither requires Redis).
+3. **Crash window between commit and publish**: a process crash between the
+   job insert commit and the RabbitMQ publish could leave a `QUEUED` material
+   without a delivered message. Accepted for MVP; an outbox pattern is the
+   documented enterprise solution (see `docs/architecture/materials.md`).
+4. **No reprocessing**: `READY`/`FAILED` materials cannot be reprocessed yet
+   (409); a retry/requeue mechanism is pending.
+5. **Unsupported OCR formats**: image, scanned-PDF, and office-document
+   materials fail cleanly with `FAILED` but have no fallback path yet.
 
 ---
 
 ## Recommended Next Task
 
-**Material processing foundation (OCR/AI pipeline groundwork):**
+**Material reprocessing + download, then AI generation groundwork:**
 
-1. Define the extraction job semantics: backend creates a `jobs` row whose
-   payload references the material (`{ materialId }`), publishes to RabbitMQ,
-   and drives `processing_status` `UPLOADED → QUEUED → PROCESSING → READY |
-   FAILED`; workers/OCR service return normalized text into
-   `materials.text_content`.
-2. Implement the OCR service contract (`/health` exists) so it extracts text
-   only — no notes/flashcards/questions/examination business logic.
-3. Add a material download endpoint (file read via `StorageProvider.read`).
-4. Link generated content provenance: `content_versions.source_reference`
-   carrying `{ materialId }` when AI/OCR content is generated from a material.
-5. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, update
-   docs, commit, and push.
+1. Add a material **download endpoint** (`StorageProvider.read`) so processed
+   materials are retrievable.
+2. Add reprocessing/retry semantics for `FAILED` materials (and an explicit
+   re-process trigger for `READY`), replacing the current blanket 409.
+3. Decide AI-generation semantics: new job type + `content_versions`
+   `source_reference` carrying `{ materialId }` provenance.
+4. Extend OCR capabilities when required: image OCR (tesseract), scanned-PDF
+   OCR, and office-document extraction.
+5. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check` + Python
+   `ruff check`/`mypy`, update docs, commit, and push.
 
-See `docs/architecture/content.md` and `docs/api/content.md`.
+See `docs/architecture/materials.md`, `docs/api/materials.md`,
+`docs/api/jobs.md`.

@@ -39,8 +39,8 @@ System priority order:
 ### Goal: Content & Study Foundation (Designed, Next Checkpoint)
 
 - [x] Design `content_items` + `content_versions` schema — designed (see
-  `docs/architecture/content.md`); foundation implemented in the Generic
-  Content Domain goal below
+      `docs/architecture/content.md`); foundation implemented in the Generic
+      Content Domain goal below
 - [x] Notes / flashcards / Cornell JSONB payload shapes — canonical Zod
       contracts implemented in the Study Content Contracts goal below
 - [x] Versioning + regeneration/update semantics — versioning implemented;
@@ -94,6 +94,22 @@ System priority order:
 - [x] Enforce authorization and tenant isolation
 - [x] Document processing lifecycle and jobs/material relationship
 - [x] Validate against live database (19 validation cases)
+- [x] Update docs and create checkpoint
+
+## Phase 2 — Material Processing & OCR Integration
+
+### Goal: Material Processing & OCR Integration (Fifth Checkpoint) ✅
+
+- [x] Document processing API + OCR contract before implementation
+- [x] Add `updated_at` to `jobs` schema + migration (fixes worker status updates)
+- [x] Make `RabbitMQService.publish` assert the queue (safe publish)
+- [x] Add `insertJob`/`publishJob` to JobsService (atomicity-friendly)
+- [x] Implement `POST /materials/:id/process` (202, state transitions, 409 idempotency)
+- [x] Implement worker as direct RabbitMQ consumer (pika + psycopg + httpx)
+- [x] Implement minimal OCR `/extract` endpoint (PDF + plain text)
+- [x] Document worker architecture + storage-access decision
+- [x] Validate end-to-end pipeline (17 cases)
+- [x] Run pnpm checks + Python ruff/mypy
 - [x] Update docs and create checkpoint
 
 ## Phase 1 — Core Platform Foundation

@@ -89,7 +89,10 @@ export class MaterialsController {
   @Get()
   async list(
     @Tenant() tenant: TenantContext,
-    @Query('materialType', new ParseEnumPipe(['DOCUMENT', 'PDF', 'IMAGE', 'TEXT'], { optional: true }))
+    @Query(
+      'materialType',
+      new ParseEnumPipe(['DOCUMENT', 'PDF', 'IMAGE', 'TEXT'], { optional: true }),
+    )
     materialType?: string,
     @Query('sourceType', new ParseEnumPipe(['UPLOAD', 'TEXT', 'IMPORTED'], { optional: true }))
     sourceType?: string,
@@ -119,7 +122,10 @@ export class MaterialsController {
   }
 
   @Get(':materialId')
-  async get(@Tenant() tenant: TenantContext, @Param('materialId', ParseUUIDPipe) materialId: string) {
+  async get(
+    @Tenant() tenant: TenantContext,
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+  ) {
     const material = await this.materialsService.getMaterial(tenant.instituteId, materialId);
     return { material };
   }
@@ -141,13 +147,27 @@ export class MaterialsController {
     return { material };
   }
 
+  @Post(':materialId/process')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async process(
+    @Tenant() tenant: TenantContext,
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+  ) {
+    return this.materialsService.processMaterial(tenant.instituteId, materialId);
+  }
+
   @Post(':materialId/archive')
   @RequiredRoles(...WRITE_ROLES)
   async archive(
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
   ) {
-    const material = await this.materialsService.setStatus(tenant.instituteId, materialId, 'ARCHIVED');
+    const material = await this.materialsService.setStatus(
+      tenant.instituteId,
+      materialId,
+      'ARCHIVED',
+    );
     return { material };
   }
 
@@ -157,7 +177,11 @@ export class MaterialsController {
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
   ) {
-    const material = await this.materialsService.setStatus(tenant.instituteId, materialId, 'ACTIVE');
+    const material = await this.materialsService.setStatus(
+      tenant.instituteId,
+      materialId,
+      'ACTIVE',
+    );
     return { material };
   }
 }
