@@ -2,6 +2,7 @@
   "name": "catlium-edutech",
   "private": true,
   "description": "CatLium EduTech - Multi-tenant EdTech SaaS Platform",
+  "type": "module",
   "scripts": {
     "dev": "turbo run dev",
     "dev:api": "turbo run dev --filter=@catlium/api",

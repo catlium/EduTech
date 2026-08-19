@@ -4,6 +4,12 @@ import type { Request } from 'express';
 import type { AuthenticatedUser } from '../decorators/current-user.decorator.js';
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
+}
+
 @Injectable()
 export class TenantGuard implements CanActivate {
   constructor(private readonly tenancyService: TenancyService) {}
@@ -21,6 +27,10 @@ export class TenantGuard implements CanActivate {
 
     if (!instituteId) {
       throw new ForbiddenException('Institute context required');
+    }
+
+    if (!isUuid(instituteId)) {
+      throw new ForbiddenException('Invalid institute context');
     }
 
     const membership = await this.tenancyService.getMembership(user.userId, instituteId);

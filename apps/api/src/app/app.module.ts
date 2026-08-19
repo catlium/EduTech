@@ -1,6 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { HealthModule } from '../health/health.module.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { TenancyModule } from '../tenancy/tenancy.module.js';
@@ -16,6 +17,15 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          name: 'default',
+          ttl: parseInt(process.env['RATE_LIMIT_TTL_MS'] ?? '60000', 10),
+          limit: parseInt(process.env['RATE_LIMIT_LIMIT'] ?? '100', 10),
+        },
+      ],
+    }),
     DatabaseModule,
     HealthModule,
     IdentityModule,
@@ -26,6 +36,10 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     {
       provide: APP_FILTER,
       useClass: GlobalExceptionFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
     RabbitMQService,
   ],

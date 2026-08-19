@@ -40,7 +40,7 @@ export function setRefreshCookie(response: Response, token: string, options: Coo
     secure: options.secure,
     sameSite: options.sameSite,
     domain: options.domain,
-    path: '/api/v1/auth/refresh',
+    path: '/api/v1/auth',
     maxAge: options.refreshExpiresMs,
   });
 }
@@ -69,7 +69,7 @@ export function clearAuthCookies(response: Response, options: CookieOptions) {
     secure: options.secure,
     sameSite: options.sameSite,
     domain: options.domain,
-    path: '/api/v1/auth/refresh',
+    path: '/api/v1/auth',
   });
   response.clearCookie('csrf_token', {
     httpOnly: false,

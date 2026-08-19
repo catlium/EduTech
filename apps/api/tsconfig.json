@@ -6,10 +6,10 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {
-      "@catlium/contracts": ["../../packages/contracts/src"],
-      "@catlium/database": ["../../packages/database/src"],
-      "@catlium/auth": ["../../packages/auth/src"],
-      "@catlium/shared": ["../../packages/shared/src"]
+      "@catlium/contracts": ["../../packages/contracts/src/index.ts"],
+      "@catlium/database": ["../../packages/database/src/index.ts"],
+      "@catlium/auth": ["../../packages/auth/src/index.ts"],
+      "@catlium/shared": ["../../packages/shared/src/index.ts"]
     }
   },
   "include": ["src/**/*"],

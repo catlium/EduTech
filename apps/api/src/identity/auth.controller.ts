@@ -9,6 +9,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 
 import { AuthService } from './auth.service.js';
@@ -26,12 +27,20 @@ import {
 } from '../common/utils/cookie.util.js';
 import { generateCsrfToken } from '../common/utils/crypto.util.js';
 
+const AUTH_THROTTLE = {
+  default: {
+    limit: parseInt(process.env['AUTH_RATE_LIMIT_LIMIT'] ?? '5', 10),
+    ttl: parseInt(process.env['AUTH_RATE_LIMIT_TTL_MS'] ?? '60000', 10),
+  },
+} as const;
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
+  @Throttle(AUTH_THROTTLE)
   async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) response: Response) {
     const user = await this.authService.register(dto.email, dto.name, dto.password);
     const tokens = await this.authService.login(dto.email, dto.password);
@@ -48,6 +57,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle(AUTH_THROTTLE)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) response: Response) {
     const result = await this.authService.login(dto.email, dto.password);
     const options = getCookieOptions();
@@ -63,6 +73,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Throttle(AUTH_THROTTLE)
   @UseGuards(CsrfGuard)
   async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
     const refreshToken = request.cookies?.['refresh_token'] as string | undefined;

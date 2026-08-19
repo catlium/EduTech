@@ -9,8 +9,8 @@
 - [x] Generate migration SQL
 - [x] Create DatabaseModule (NestJS global provider)
 - [x] Configure drizzle.config.ts
-- [ ] Apply migration to PostgreSQL
-- [ ] Validate constraints and relationships against live database
+- [x] Apply migration to PostgreSQL
+- [x] Validate constraints and relationships against live database
 
 ### Goal: Authentication
 
@@ -24,8 +24,8 @@
 - [x] Implement session rotation on refresh
 - [x] Implement AccessTokenGuard (JWT verification from cookie)
 - [x] Implement CsrfGuard (double-submit cookie pattern)
-- [ ] Review CSRF implementation against attack scenarios
-- [ ] Perform end-to-end authentication validation with running database
+- [x] Review CSRF implementation against attack scenarios
+- [x] Perform end-to-end authentication validation with running database
 
 ### Goal: Tenancy
 
@@ -72,11 +72,60 @@
 
 ### Goal: Validation & Testing
 
-- [ ] Run pnpm typecheck — all packages pass
-- [ ] Run pnpm lint — all packages pass
+- [x] Run pnpm typecheck — all packages pass
+- [x] Run pnpm lint — all packages pass
 - [ ] Write unit tests for AuthService
 - [ ] Write unit tests for TenancyService
 - [ ] Write unit tests for JobsService
 - [ ] Write integration tests for AuthController
 - [ ] Write integration tests for JobsController
-- [ ] Perform full end-to-end auth flow test against running DB
+- [x] Perform full end-to-end auth flow test against running DB
+
+## Phase 1 — Foundation Validation & Security Hardening
+
+### Goal: Security Configuration Review
+
+- [x] Inspect JWT configuration for unsafe hardcoded fallbacks
+- [x] Determine safest configuration approach for development environment
+- [x] Document configuration behavior changes if any
+
+### Goal: Database Validation
+
+- [x] Start existing infrastructure (Docker Compose)
+- [x] Apply Drizzle migration to clean PostgreSQL database
+- [x] Validate migration applies successfully
+- [x] Validate expected tables exist
+- [x] Validate foreign keys work
+- [x] Validate unique constraints work
+- [x] Validate database connection from API
+
+### Goal: Authentication Validation
+
+- [x] Validate register flow
+- [x] Validate login flow
+- [x] Validate authenticated /me endpoint
+- [x] Validate refresh token/session rotation
+- [x] Validate logout flow
+- [x] Verify cookie behavior
+
+### Goal: CSRF Validation
+
+- [x] Inspect how frontend obtains CSRF token
+- [x] Verify which cookies are HttpOnly
+- [x] Verify how token is submitted
+- [x] Verify protected state-changing requests require valid CSRF protection
+- [x] Document final request flow
+- [x] Fix implementation defects if discovered
+
+### Goal: Tenancy/Authorization Validation
+
+- [x] Validate membership lookup
+- [x] Validate tenant context resolution
+- [x] Validate tenant isolation
+- [x] Validate role authorization
+
+### Goal: Auth Rate Limiting
+
+- [x] Evaluate practical baseline rate limiting mechanism
+- [x] Implement rate limiting for authentication endpoints
+- [x] Keep implementation simple (no complex distributed system)
