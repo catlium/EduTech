@@ -1,10 +1,33 @@
 # Project Status
 
-## Current Phase: Phase 1
+## Current Phase: Phase 2 — Academic & Content Foundation
 
-**Status:** In Progress — Foundation Validation & Security Hardening Complete
+**Status:** In Progress — Academic Hierarchy Checkpoint Complete
 
-**Last Checkpoint:** `c592771` — docs: fix last checkpoint hash (before validation goal)
+**Last Checkpoint:** Academic hierarchy (subjects/chapters/topics) — see git log
+
+## Priority Revision (2026-08-19)
+
+Development priority shifted to the **AI-Assisted Learning and Examination
+Management System**. The multi-tenant foundation remains, but SaaS management
+features are **deferred** until the main system foundation is functional.
+
+System priority order:
+
+1. Academic Structure
+2. Content / Study Foundation
+3. OCR Pipeline
+4. AI Processing
+5. Question Bank
+6. Examination
+7. Checking System: FORM, OMR, OSM
+
+**Deferred:** Institute CRUD, institute onboarding, billing, subscriptions,
+invitations, advanced institute management, user profile management.
+
+**Storage decision:** PostgreSQL is the single primary database. MongoDB is
+NOT introduced (confirms AGENTS.md Rule #4). Rich content uses JSONB.
+Documented in `docs/architecture/content.md`.
 
 ---
 
@@ -59,6 +82,23 @@ Background job management in `apps/api/src/jobs/`:
 
 - `POST /api/v1/jobs` — Create job, publish to RabbitMQ (tenant-scoped)
 - `GET /api/v1/jobs/:jobId` — Get job status (tenant-scoped)
+
+### Academic Module
+
+Tenant-scoped academic hierarchy in `apps/api/src/academic/`:
+
+- Schema: `subjects`, `chapters`, `topics` in
+  `packages/database/src/schema/academic.ts` (migration `0001_quiet_firedrake.sql`)
+- Subjects belong to an institute; chapters to a subject; topics to a chapter.
+  Parent deletion cascades to children. Slugs unique within the parent scope.
+- `GET`/`PATCH` endpoints under `/api/v1/academic` — see
+  `docs/api/academic.md` for the full endpoint reference.
+- Writes guarded by `@RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')`; reads open to
+  any authenticated member of the institute.
+- Tenant isolation enforced at service level (joins through parents to the
+  institute); cross-institute access → 404/403.
+- Zod contracts for academic entities added to `@catlium/contracts`.
+- Lifecycle: `status` `active` | `archived` (set via PATCH).
 
 ### Shared Packages
 
@@ -157,44 +197,44 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 - [ ] **RabbitMQ worker pipeline validation**: JobsService publishes to RabbitMQ but no worker consumes yet
 - [ ] **Remaining Phase 1 tests**: No unit or integration tests written for any module
-- [ ] **RolesGuard end-to-end exercise**: Guard is wired and reviewed but no endpoint uses `@RequiredRoles()` yet
 
 ### Items Not Yet Implemented
 
-- **Institute CRUD controller**: TenancyService exists but no API endpoints to create/list/update institutes
-- **User profile management**: Only `/me` endpoint exists; no update profile, change password
-- **Password change endpoint**: Users cannot change passwords after registration
+- **Content model**: content_items/content_versions + notes/flashcards/Cornell JSONB (designed in `docs/architecture/content.md`)
+- **Institute CRUD controller** (deferred — see priority revision)
+- **User profile management / password change** (deferred)
 - **Structured logging**: Only console.log in bootstrap
 - **Distributed rate limiting**: In-memory throttler is sufficient for a single API instance; Redis-backed limiter deferred until multi-instance deployment
 
 ---
 
-## Not Yet Started (Phase 2+)
+## Not Yet Started (ordered by system priority)
 
-Per AGENTS.md — do NOT implement until Phase 1 is validated:
-
-- Academic structure (departments, courses, classes, semesters)
-- Content management (file uploads, storage, versioning)
-- Study features (flashcards, notes, Cornell notes)
-- Question bank and examination
-- Practice mode
-- OCR processing and AI generation
-- Worker task definitions
+1. Content management (study notes, flashcards, Cornell) — designed, next checkpoint
+2. OCR processing and AI generation pipelines
+3. Question bank and examination
+4. Practice mode
+5. Checking system (FORM, OMR, OSM)
+6. Worker task definitions
+7. SaaS management (deferred)
 
 ---
 
 ## Current Architecture Decisions
 
-| Decision          | Choice                                  | Notes                                                   |
-| ----------------- | --------------------------------------- | ------------------------------------------------------- |
-| Auth pattern      | Cookie-based JWT                        | Access + refresh tokens in httpOnly cookies             |
-| CSRF              | Double-submit cookie                    | csrf_token cookie + x-csrf-token header                 |
-| Tenant resolution | x-institute-id header (UUID)            | Guard resolves membership + roles per request           |
-| Job distribution  | RabbitMQ                                | JobsService publishes; workers consume (not yet built)  |
-| Database          | PostgreSQL + Drizzle ORM                | Schema in packages/database, migrations via drizzle-kit |
-| Validation        | class-validator (API) + Zod (contracts) | API DTOs use class-validator; shared contracts use Zod  |
-| JWT secret        | registerAsync + fail-fast in production | No silent fallback; dev-only default outside production |
-| Rate limiting     | @nestjs/throttler (in-memory)           | Auth endpoints 5/min; global default 100/min            |
+| Decision           | Choice                                  | Notes                                                   |
+| ------------------ | --------------------------------------- | ------------------------------------------------------- |
+| Auth pattern       | Cookie-based JWT                        | Access + refresh tokens in httpOnly cookies             |
+| CSRF               | Double-submit cookie                    | csrf_token cookie + x-csrf-token header                 |
+| Tenant resolution  | x-institute-id header (UUID)            | Guard resolves membership + roles per request           |
+| Job distribution   | RabbitMQ                                | JobsService publishes; workers consume (not yet built)  |
+| Database           | PostgreSQL + Drizzle ORM                | Schema in packages/database, migrations via drizzle-kit |
+| Validation         | class-validator (API) + Zod (contracts) | API DTOs use class-validator; shared contracts use Zod  |
+| JWT secret         | registerAsync + fail-fast in production | No silent fallback; dev-only default outside production |
+| Rate limiting      | @nestjs/throttler (in-memory)           | Auth endpoints 5/min; global default 100/min            |
+| Content storage    | PostgreSQL + JSONB                      | Single DB; no MongoDB; rich content in JSONB            |
+| Academic model     | subjects → chapters → topics            | Tenant-scoped tree; service-layer isolation             |
+| Content versioning | content_items + content_versions        | Monotonic version, JSONB payload, regeneration-aware    |
 
 ---
 
@@ -216,23 +256,20 @@ Per AGENTS.md — do NOT implement until Phase 1 is validated:
    host port 6379, so compose's `catlium-redis` does not start. Non-blocking
    for the API (Redis is not required by the API yet). Resolve by stopping the
    other container or remapping ports before starting the workers.
-3. **No institute onboarding flow**: Users can register and login but cannot
-   create institutes or be assigned to them without direct DB access.
-4. **No password change endpoint**: Users cannot change passwords after
-   registration.
 
 ---
 
 ## Recommended Next Task
 
-**Institute CRUD controller** to complete the Phase 1 core identity/tenancy
-layer:
+**Content & Study Foundation (designed, next checkpoint):**
 
-1. Add `institutes` controller (create, list, get by slug/id) in the tenancy
-   module.
-2. On institute creation, auto-enroll the creator as `INSTITUTE_ADMIN`
-   membership.
-3. Wire `@RequiredRoles('INSTITUTE_ADMIN')` on a first protected handler to
-   exercise RolesGuard end-to-end.
-4. Update `docs/tasks.md`, `docs/project-status.md`, run validation
-   (`pnpm typecheck`, `pnpm lint`, `pnpm format:check`), commit, and push.
+1. Add `content_items` + `content_versions` Drizzle schema per
+   `docs/architecture/content.md` (attaches to exactly one scope: Subject,
+   Chapter, or Topic; JSONB payload; monotonic versioning).
+2. Add Zod contracts for content payload shapes (notes, flashcards, Cornell).
+3. Implement the content module (list by scope, version history, update).
+4. Define OCR-extracted and AI-generated content ingestion semantics.
+5. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, update
+   docs, commit, and push.
+
+See `docs/architecture/content.md` for the full content model design.

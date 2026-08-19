@@ -1,5 +1,50 @@
 # Task Tracker
 
+## Priority Revision (2026-08-19)
+
+Development priority shifted to the **AI-Assisted Learning and Examination
+Management System**. The multi-tenant foundation remains, but SaaS management
+features are **deferred** until the main system foundation is functional.
+
+System priority order:
+
+1. Academic Structure
+2. Content / Study Foundation
+3. OCR Pipeline
+4. AI Processing
+5. Question Bank
+6. Examination
+7. Checking System: FORM (online), OMR (answer sheets), OSM (on-screen marking)
+
+### Deferred (SaaS Management)
+
+- [-] Implement Institute CRUD controller (create, list, update)
+- [-] Institute onboarding flow
+- [-] Billing, subscriptions, invitations
+- [-] Advanced institute management
+- [-] User profile management / password change endpoint
+
+## Phase 2 — Academic & Content Foundation
+
+### Goal: Academic Hierarchy (First Checkpoint) ✅
+
+- [x] Document PostgreSQL + JSONB storage decision in architecture docs
+- [x] Create `subjects`, `chapters`, `topics` schema (tenant-scoped)
+- [x] Generate and apply Drizzle migration
+- [x] Add Zod contracts for academic entities
+- [x] Implement `academic` NestJS module (CRUD, tenant-scoped)
+- [x] Validate endpoints against running database
+- [x] Update docs and create checkpoint
+
+### Goal: Content & Study Foundation (Designed, Next Checkpoint)
+
+- [ ] Design `content_items` + `content_versions` schema
+- [ ] Notes / flashcards / Cornell JSONB payload shapes
+- [ ] Versioning + regeneration/update semantics
+- [ ] OCR-extracted and AI-generated content ingestion
+- [ ] Content API (list by topic, version history, update)
+- [ ] Validation and checkpoint
+
 ## Phase 1 — Core Platform Foundation
 
 ### Goal: Database Foundation
@@ -36,7 +81,7 @@
 - [x] Implement TenantGuard (resolve membership from x-institute-id header)
 - [x] Implement @Tenant() decorator
 - [x] Implement @RequiredRoles() decorator and RolesGuard
-- [ ] Implement Institute CRUD controller (create, list, update)
+- [-] Implement Institute CRUD controller (create, list, update) — deferred
 - [ ] Validate tenant isolation across all endpoints
 - [ ] Add integration tests for tenant authorization
 

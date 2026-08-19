@@ -6,6 +6,7 @@ import { HealthModule } from '../health/health.module.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { TenancyModule } from '../tenancy/tenancy.module.js';
 import { JobsModule } from '../jobs/jobs.module.js';
+import { AcademicModule } from '../academic/academic.module.js';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { RabbitMQService } from '../common/services/rabbitmq.service.js';
@@ -31,6 +32,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     IdentityModule,
     TenancyModule,
     JobsModule,
+    AcademicModule,
   ],
   providers: [
     {

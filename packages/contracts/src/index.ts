@@ -75,3 +75,98 @@ export const JobMessageSchema = z.object({
   payload: z.record(z.string(), z.unknown()).optional(),
 });
 export type JobMessage = z.infer<typeof JobMessageSchema>;
+
+// ── Academic Contracts ──────────────────────
+
+export const AcademicStatusEnum = z.enum(['active', 'archived']);
+export type AcademicStatus = z.infer<typeof AcademicStatusEnum>;
+
+export const CreateSubjectRequestSchema = z.object({
+  name: z.string().min(1).max(255),
+  slug: z
+    .string()
+    .min(1)
+    .max(255)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be kebab-case'),
+  description: z.string().max(1000).optional(),
+  sortOrder: z.number().int().optional(),
+});
+export type CreateSubjectRequest = z.infer<typeof CreateSubjectRequestSchema>;
+
+export const UpdateSubjectRequestSchema = CreateSubjectRequestSchema.partial().extend({
+  status: AcademicStatusEnum.optional(),
+});
+export type UpdateSubjectRequest = z.infer<typeof UpdateSubjectRequestSchema>;
+
+export const SubjectResponseSchema = z.object({
+  id: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  description: z.string().nullable(),
+  sortOrder: z.number(),
+  status: AcademicStatusEnum,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type SubjectResponse = z.infer<typeof SubjectResponseSchema>;
+
+export const CreateChapterRequestSchema = z.object({
+  name: z.string().min(1).max(255),
+  slug: z
+    .string()
+    .min(1)
+    .max(255)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be kebab-case'),
+  description: z.string().max(1000).optional(),
+  sortOrder: z.number().int().optional(),
+});
+export type CreateChapterRequest = z.infer<typeof CreateChapterRequestSchema>;
+
+export const UpdateChapterRequestSchema = CreateChapterRequestSchema.partial().extend({
+  status: AcademicStatusEnum.optional(),
+});
+export type UpdateChapterRequest = z.infer<typeof UpdateChapterRequestSchema>;
+
+export const ChapterResponseSchema = z.object({
+  id: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  description: z.string().nullable(),
+  sortOrder: z.number(),
+  status: AcademicStatusEnum,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type ChapterResponse = z.infer<typeof ChapterResponseSchema>;
+
+export const CreateTopicRequestSchema = z.object({
+  name: z.string().min(1).max(255),
+  slug: z
+    .string()
+    .min(1)
+    .max(255)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be kebab-case'),
+  description: z.string().max(1000).optional(),
+  sortOrder: z.number().int().optional(),
+});
+export type CreateTopicRequest = z.infer<typeof CreateTopicRequestSchema>;
+
+export const UpdateTopicRequestSchema = CreateTopicRequestSchema.partial().extend({
+  status: AcademicStatusEnum.optional(),
+});
+export type UpdateTopicRequest = z.infer<typeof UpdateTopicRequestSchema>;
+
+export const TopicResponseSchema = z.object({
+  id: z.string().uuid(),
+  chapterId: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  description: z.string().nullable(),
+  sortOrder: z.number(),
+  status: AcademicStatusEnum,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type TopicResponse = z.infer<typeof TopicResponseSchema>;
