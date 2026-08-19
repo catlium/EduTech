@@ -57,15 +57,6 @@ export const JobResponseSchema = z.object({
 });
 export type JobResponse = z.infer<typeof JobResponseSchema>;
 
-// ── Error Contracts ─────────────────────────
-
-export const ErrorResponseSchema = z.object({
-  statusCode: z.number(),
-  message: z.string(),
-  error: z.string().optional(),
-});
-export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
-
 // ── Job Message Contract (RabbitMQ) ─────────
 
 export const JobMessageSchema = z.object({
@@ -75,6 +66,15 @@ export const JobMessageSchema = z.object({
   payload: z.record(z.string(), z.unknown()).optional(),
 });
 export type JobMessage = z.infer<typeof JobMessageSchema>;
+
+// ── Error Contracts ─────────────────────────
+
+export const ErrorResponseSchema = z.object({
+  statusCode: z.number(),
+  message: z.string(),
+  error: z.string().optional(),
+});
+export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
 // ── Academic Contracts ──────────────────────
 
@@ -186,14 +186,8 @@ export const ContentChangeTypeEnum = z.enum(['CREATION', 'EDIT', 'REGENERATION',
 export type ContentChangeType = z.infer<typeof ContentChangeTypeEnum>;
 
 // ── Content Payload Contracts ──────────────
-//
-// These are the canonical structured payloads stored in
-// `content_versions.payload`. `payload` JSONB is the canonical editable
-// content representation; `rendered_html` is derived/rendering output only.
 
 const PayloadId = z.string().min(1).max(128);
-
-// NOTE — block-based structure (extensible for future block types).
 
 export const NoteBlockSchema = z.discriminatedUnion('type', [
   z.object({
@@ -220,8 +214,6 @@ export const NotePayloadSchema = z.object({
 });
 export type NotePayload = z.infer<typeof NotePayloadSchema>;
 
-// FLASHCARD_SET — a set of front/back cards.
-
 export const FlashcardSchema = z.object({
   id: PayloadId,
   front: z.string().min(1).max(5000),
@@ -235,8 +227,6 @@ export const FlashcardSetPayloadSchema = z.object({
   cards: z.array(FlashcardSchema).min(1),
 });
 export type FlashcardSetPayload = z.infer<typeof FlashcardSetPayloadSchema>;
-
-// CORNELL_NOTE — section-based (cue + notes) with a summary.
 
 export const CornellSectionSchema = z.object({
   id: PayloadId,
@@ -344,6 +334,27 @@ export const ArchiveContentRequestSchema = z.object({
   status: ContentStatusEnum,
 });
 export type ArchiveContentRequest = z.infer<typeof ArchiveContentRequestSchema>;
+
+// ── AI Contracts ─────────────────────────────
+
+export const AIGenerateNotePayloadSchema = z.object({
+  materialId: z.string().uuid(),
+  title: z.string().optional(),
+});
+export type AIGenerateNotePayload = z.infer<typeof AIGenerateNotePayloadSchema>;
+
+export const AIInternalPersistNoteRequestSchema = z.object({
+  jobId: z.string().uuid(),
+  materialId: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  subjectId: z.string().uuid().optional(),
+  chapterId: z.string().uuid().optional(),
+  topicId: z.string().uuid().optional(),
+  title: z.string().min(1).max(255),
+  payload: NotePayloadSchema,
+  aiContext: z.record(z.string(), z.unknown()),
+});
+export type AIInternalPersistNoteRequest = z.infer<typeof AIInternalPersistNoteRequestSchema>;
 
 // ── Material Contracts ──────────────────────
 

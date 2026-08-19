@@ -15,7 +15,9 @@ import {
 } from '@nestjs/common';
 
 import { ContentService } from './content.service.js';
+import { ContentGenerationService } from './content-generation.service.js';
 import { CreateContentDto, UpdateContentDto } from './dto/content.dto.js';
+import { AIGenerateNoteDto } from './dto/ai-generate-note.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -30,7 +32,23 @@ const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
 @Controller('content')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
 export class ContentController {
-  constructor(private readonly contentService: ContentService) {}
+  constructor(
+    private readonly contentService: ContentService,
+    private readonly contentGenerationService: ContentGenerationService,
+  ) {}
+
+  @Post('generate')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async generateNote(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: AIGenerateNoteDto,
+  ) {
+    return await this.contentGenerationService.generateNote(
+      tenant.instituteId,
+      dto,
+    );
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

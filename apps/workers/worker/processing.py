@@ -10,7 +10,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from worker import db
+import httpx
+
+from worker import ai_client, db
 from worker.config import settings
 from worker.ocr import OcrError, extract_text
 
@@ -38,6 +40,45 @@ def process_material(job_id: str, institute_id: str, material_id: str) -> None:
         db.update_material_status(material_id, "FAILED")
         db.update_job_status(job_id, "failed", error={"message": _safe_message(exc)})
         logger.exception("Material %s processing failed", material_id)
+
+
+def process_ai_generate_note(
+    job_id: str, institute_id: str, prompt: str, subject_id: str, chapter_id: str, topic_id: str
+) -> None:
+    db.update_job_status(job_id, "processing")
+
+    try:
+        content = ai_client.generate_note(prompt)
+        _persist_ai_note(
+            institute_id,
+            {
+                "title": "AI Generated Note",
+                "subjectId": subject_id,
+                "chapterId": chapter_id,
+                "topicId": topic_id,
+                "payload": {"blocks": [{"type": "paragraph", "text": content}]},
+                "aiContext": {"prompt": prompt},
+            },
+        )
+        db.update_job_status(job_id, "completed", result={"success": True})
+    except Exception as exc:
+        db.update_job_status(job_id, "failed", error={"message": _safe_message(exc)})
+        logger.exception("AI generation for job %s failed", job_id)
+
+
+def _persist_ai_note(institute_id: str, data: dict[str, Any]) -> None:
+    with httpx.Client() as client:
+        response = client.post(
+            f"{settings.internal_api_url}/internal/v1/content/ai-persist",
+            headers={
+                "x-internal-api-key": settings.internal_api_key,
+                "x-institute-id": institute_id,
+                "Content-Type": "application/json",
+            },
+            json=data,
+            timeout=30.0,
+        )
+        response.raise_for_status()
 
 
 def _run_extraction(material: dict[str, Any]) -> tuple[str, int]:

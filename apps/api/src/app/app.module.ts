@@ -5,6 +5,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { HealthModule } from '../health/health.module.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { TenancyModule } from '../tenancy/tenancy.module.js';
+import { InternalModule } from '../internal/internal.module.js';
 import { JobsModule } from '../jobs/jobs.module.js';
 import { AcademicModule } from '../academic/academic.module.js';
 import { ContentModule } from '../content/content.module.js';
@@ -34,6 +35,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     IdentityModule,
     TenancyModule,
     JobsModule,
+    InternalModule,
     AcademicModule,
     ContentModule,
     MaterialsModule,
