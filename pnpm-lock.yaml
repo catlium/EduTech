@@ -32,6 +32,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@catlium/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@catlium/database':
         specifier: workspace:*
         version: link:../../packages/database

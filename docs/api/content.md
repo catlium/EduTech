@@ -66,9 +66,62 @@ queries.
 }
 ```
 
-`payload` is the canonical structured JSON. Its shape depends on `type` and is
-defined by future features (notes, flashcard sets, Cornell notes, OCR/AI
-output). The API treats it as an opaque JSON object.
+`payload` is the **canonical structured JSON** representation of the study
+content and is validated against a type-specific schema on create and update.
+`renderedHtml` (if provided) is optional derived/rendering output — never the
+source of truth.
+
+### Payload contracts
+
+`payload` must match the schema for the content item's `type`. A payload for
+one type is rejected for another. The Zod schemas in `@catlium/contracts`
+(`NotePayloadSchema`, `FlashcardSetPayloadSchema`,
+`CornellNotePayloadSchema`) are canonical.
+
+#### NOTE
+
+```json
+{
+  "title": "optional",
+  "blocks": [
+    { "id": "b1", "type": "heading", "content": "..." },
+    { "id": "b2", "type": "paragraph", "content": "..." },
+    { "id": "b3", "type": "list", "items": ["...", "..."] }
+  ]
+}
+```
+
+`blocks` requires at least one block. Block `type` is one of `heading`,
+`paragraph`, `list` and is extensible for future block types.
+
+#### FLASHCARD_SET
+
+```json
+{
+  "title": "optional",
+  "description": "optional",
+  "cards": [
+    { "id": "c1", "front": "...", "back": "..." }
+  ]
+}
+```
+
+`cards` requires at least one card. Each card has an `id`, `front`, and `back`.
+
+#### CORNELL_NOTE
+
+```json
+{
+  "title": "optional",
+  "sections": [
+    { "id": "s1", "cue": "...", "notes": "..." }
+  ],
+  "summary": "optional"
+}
+```
+
+`sections` requires at least one section; each has an `id`, `cue`, and `notes`.
+`summary` is optional.
 
 ## Current version strategy
 
@@ -99,9 +152,10 @@ Body:
 }
 ```
 
-`400` if zero or more than one academic scope is provided, or if the payload is
-not an object. `404` if the referenced academic scope is not in the active
-institute.
+`400` if zero or more than one academic scope is provided, if the payload is
+not an object, or if the payload does not match the schema for the given
+`type` (e.g. a flashcard payload submitted with `type: "NOTE"`). `404` if the
+referenced academic scope is not in the active institute.
 
 Response: `{ "content": ContentItem + currentVersion }`
 
@@ -151,8 +205,10 @@ Body:
 }
 ```
 
-`changeType` defaults to `EDIT`. `400` if payload is not an object. `404` if
-not found.
+`changeType` defaults to `EDIT`. The new `payload` must match the schema for
+the item's `type` (the type is fixed at creation and cannot change). `400` if
+the payload is not an object or fails the type-specific schema. `404` if not
+found.
 
 Response: `{ "content": ContentItem + currentVersion }`
 

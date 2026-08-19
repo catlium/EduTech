@@ -3,6 +3,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { contentItems, contentVersions, subjects, chapters, topics } from '@catlium/database';
 import type { Database } from '@catlium/database';
+import { ContentPayloadSchemas } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 
 type ScopeKind = 'subject' | 'chapter' | 'topic';
@@ -49,6 +50,8 @@ export class ContentService {
   // ── Create ────────────────────────────────
 
   async createContent(instituteId: string, createdBy: string, input: CreateContentInput) {
+    this.validatePayload(input.type, input.payload);
+
     const scope = this.resolveScope(input);
 
     await this.assertScopeInInstitute(instituteId, scope.kind, scope.id);
@@ -144,6 +147,8 @@ export class ContentService {
         throw new NotFoundException('Content not found');
       }
 
+      this.validatePayload(locked.type as ContentType, input.payload);
+
       const nextVersion = locked.currentVersion + 1;
 
       const [current] = await tx
@@ -216,6 +221,19 @@ export class ContentService {
   }
 
   // ── Helpers ───────────────────────────────
+
+  private validatePayload(type: ContentType, payload: Record<string, unknown>): void {
+    const schema = ContentPayloadSchemas[type];
+    const result = schema.safeParse(payload);
+
+    if (!result.success) {
+      const issue = result.error.issues[0];
+      const path = issue?.path.length ? issue.path.join('.') : 'root';
+      throw new BadRequestException(
+        `Invalid ${type} payload: ${path} — ${issue?.message ?? 'does not match schema'}`,
+      );
+    }
+  }
 
   private resolveScope(input: CreateContentInput): { kind: ScopeKind; id: string } {
     const provided = [

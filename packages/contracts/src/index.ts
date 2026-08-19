@@ -185,6 +185,80 @@ export type ContentSource = z.infer<typeof ContentSourceEnum>;
 export const ContentChangeTypeEnum = z.enum(['CREATION', 'EDIT', 'REGENERATION', 'CORRECTION']);
 export type ContentChangeType = z.infer<typeof ContentChangeTypeEnum>;
 
+// ── Content Payload Contracts ──────────────
+//
+// These are the canonical structured payloads stored in
+// `content_versions.payload`. `payload` JSONB is the canonical editable
+// content representation; `rendered_html` is derived/rendering output only.
+
+const PayloadId = z.string().min(1).max(128);
+
+// NOTE — block-based structure (extensible for future block types).
+
+export const NoteBlockSchema = z.discriminatedUnion('type', [
+  z.object({
+    id: PayloadId,
+    type: z.literal('heading'),
+    content: z.string().min(1),
+  }),
+  z.object({
+    id: PayloadId,
+    type: z.literal('paragraph'),
+    content: z.string().min(1),
+  }),
+  z.object({
+    id: PayloadId,
+    type: z.literal('list'),
+    items: z.array(z.string()).min(1),
+  }),
+]);
+export type NoteBlock = z.infer<typeof NoteBlockSchema>;
+
+export const NotePayloadSchema = z.object({
+  title: z.string().max(255).optional(),
+  blocks: z.array(NoteBlockSchema).min(1),
+});
+export type NotePayload = z.infer<typeof NotePayloadSchema>;
+
+// FLASHCARD_SET — a set of front/back cards.
+
+export const FlashcardSchema = z.object({
+  id: PayloadId,
+  front: z.string().min(1).max(5000),
+  back: z.string().min(1).max(5000),
+});
+export type Flashcard = z.infer<typeof FlashcardSchema>;
+
+export const FlashcardSetPayloadSchema = z.object({
+  title: z.string().max(255).optional(),
+  description: z.string().max(2000).optional(),
+  cards: z.array(FlashcardSchema).min(1),
+});
+export type FlashcardSetPayload = z.infer<typeof FlashcardSetPayloadSchema>;
+
+// CORNELL_NOTE — section-based (cue + notes) with a summary.
+
+export const CornellSectionSchema = z.object({
+  id: PayloadId,
+  cue: z.string().max(5000),
+  notes: z.string().max(20000),
+});
+export type CornellSection = z.infer<typeof CornellSectionSchema>;
+
+export const CornellNotePayloadSchema = z.object({
+  title: z.string().max(255).optional(),
+  sections: z.array(CornellSectionSchema).min(1),
+  summary: z.string().max(20000).optional(),
+});
+export type CornellNotePayload = z.infer<typeof CornellNotePayloadSchema>;
+
+export const ContentPayloadSchemas = {
+  NOTE: NotePayloadSchema,
+  FLASHCARD_SET: FlashcardSetPayloadSchema,
+  CORNELL_NOTE: CornellNotePayloadSchema,
+} as const;
+export type ContentPayload = NotePayload | FlashcardSetPayload | CornellNotePayload;
+
 const AcademicScopeFields = {
   subjectId: z.string().uuid().optional(),
   chapterId: z.string().uuid().optional(),
@@ -202,6 +276,16 @@ export const CreateContentRequestSchema = z
     sourceReference: z.record(z.string(), z.unknown()).optional(),
     changeReason: z.string().max(500).optional(),
     ...AcademicScopeFields,
+  })
+  .superRefine((value, ctx) => {
+    const result = ContentPayloadSchemas[value.type].safeParse(value.payload);
+    if (!result.success) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['payload'],
+        message: `payload does not match ${value.type} schema: ${result.error.issues[0]?.message ?? 'invalid'}`,
+      });
+    }
   })
   .refine(
     (v) => [v.subjectId, v.chapterId, v.topicId].filter((x) => x !== undefined).length === 1,

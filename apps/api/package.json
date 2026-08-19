@@ -15,6 +15,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@catlium/contracts": "workspace:*",
     "@catlium/database": "workspace:*",
     "@catlium/shared": "workspace:*",
     "@nestjs/common": "^11.1.3",

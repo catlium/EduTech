@@ -2,9 +2,9 @@
 
 ## Current Phase: Phase 2 — Academic & Content Foundation
 
-**Status:** In Progress — Content Domain Foundation Checkpoint Complete
+**Status:** In Progress — Study Content Contracts Checkpoint Complete
 
-**Last Checkpoint:** Content domain (content_items/content_versions + API) — see git log
+**Last Checkpoint:** Study content contracts (canonical NOTE/FLASHCARD_SET/CORNELL_NOTE payloads) — see git log
 
 ## Priority Revision (2026-08-19)
 
@@ -122,6 +122,34 @@ Generic content domain in `apps/api/src/content/`:
 - Writes guarded by `@RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')`; reads open
   to members; tenant isolation at service layer (cross-institute → 404).
 
+### Content Module — Payload Contracts (Phase 2 Goal 3)
+
+Canonical type-specific JSONB payload contracts implemented on the content
+domain (see `docs/architecture/content.md`):
+
+- **Zod canonical schemas** in `@catlium/contracts`:
+  - `NotePayloadSchema` — block-based (`heading` | `paragraph` | `list`
+    discriminated union; `blocks` min 1)
+  - `FlashcardSetPayloadSchema` — `cards` with `id`/`front`/`back` (min 1)
+  - `CornellNotePayloadSchema` — `sections` with `cue`/`notes` (min 1) +
+    optional `summary`
+  - `CreateContentRequestSchema.superRefine` dispatches payload validation by
+    declared `type`
+- **Service-level enforcement** in `content.service.ts` (`validatePayload`)
+  applied on create and on every update, using the **stored** item type (not
+  the request), so a payload can never be written under the wrong contract.
+  Rejected with 400 `Invalid <TYPE> payload: <path> — <message>`.
+- `rendered_html` remains optional derived output; payload is canonical and
+  not coupled to any frontend editor.
+- `@catlium/contracts` is now a runtime dependency of `apps/api`; build path
+  mappings unchanged from the working directory form.
+- **Validated** against live Postgres: 14 cases — valid NOTE/FLASHCARD_SET/
+  CORNELL_NOTE (201), malformed payloads (400), type mismatch on create and
+  update (400), version append still monotonic (v2 with v1 preserved), current
+  version, version history, tenant isolation (404 cross-institute),
+  authorization (401 no cookie / 403 student write), archive/activate.
+- `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check` all pass.
+
 ### Shared Packages
 
 - **@catlium/contracts**: Zod schemas for auth, jobs, error responses, role/status enums
@@ -223,7 +251,7 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 ### Items Not Yet Implemented
 
 - **Study/type-specific features**: notes rendering, flashcard practice, Cornell
-  workflows (payload shapes designed, not enforced yet)
+  workflows (payload contracts now enforced; features not built)
 - **OCR/AI ingestion pipelines**: sources modeled; no processing implemented
 - **Institute CRUD controller** (deferred — see priority revision)
 - **User profile management / password change** (deferred)
@@ -262,6 +290,8 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 | Content attachment | Exactly one academic scope                           | CHECK constraint; subject/chapter/topic nullable FKs    |
 | Current version    | Integer pointer on content_items                     | Avoids circular FK; append-only history cannot dangle   |
 | Update safety      | Row lock (FOR UPDATE) + unique (content_id, version) | Concurrent updates cannot collide version numbers       |
+| Content contracts  | Zod canonical payload, dispatch by type              | NOTE/FLASHCARD_SET/CORNELL_NOTE enforced on create+update |
+| Payload vs HTML    | Payload JSONB is canonical; rendered_html derived    | Backend not coupled to any frontend editor             |
 
 ---
 
@@ -288,17 +318,17 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Recommended Next Task
 
-**Study foundation on the content domain:**
+**Study APIs on top of the enforced content contracts:**
 
-1. Define and enforce the type-specific JSONB payload contracts for `NOTE`,
-   `FLASHCARD_SET`, and `CORNELL_NOTE` (shapes designed in
-   `docs/architecture/content.md`).
-2. Implement study APIs on top of `content_items`/`content_versions` (e.g.
-   flashcard practice reading versions, notes rendering from payload blocks).
-3. Define OCR/AI ingestion semantics: how OCR service output and AI-generated
+1. Implement study-facing read APIs on `content_items`/`content_versions`
+   (e.g. flashcard practice reading current versions, notes rendering from
+   NOTE payload blocks, Cornell section workflows) — payload contracts are now
+   canonical and enforced.
+2. Define OCR/AI ingestion semantics: how OCR service output and AI-generated
    content become `content_versions` with `source`/`source_reference`/
-   `ai_context`, and how regeneration creates new versions.
-4. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, update
+   `ai_context`, and how regeneration creates new versions (and new payload
+   contracts for `ocr_document`/`ai_generated`).
+3. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, update
    docs, commit, and push.
 
 See `docs/architecture/content.md` and `docs/api/content.md`.

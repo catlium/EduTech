@@ -165,20 +165,71 @@ same content item are impossible.
 - **PDF export** is generated on demand from the canonical structured
   payload; PDF is never the canonical stored format.
 
-### Content type payload shapes
+### Content type payload contracts (canonical, implemented)
 
-Each type uses its own JSON shape inside `content_versions.payload` (no
-single unified shape is required):
+`payload` JSONB is the **canonical** structured representation of study
+content. `rendered_html` is optional derived/rendering output only — never the
+source of truth. The rendering pipeline is:
 
-- **note** — blocks or rich text structure (e.g. `{ blocks: [...] }`)
-- **flashcard** — array of `{ front, back }`
-- **cornell** — `{ cue, notes, summary }`
-- **ocr_document** — OCR service output (pages/blocks/lines/confidence)
-- **ai_generated** — whatever the AI pipeline emits (structured output)
+```
+Structured payload  →  Rendering  →  HTML  →  Frontend / PDF export
+```
 
-These type-specific payload shapes are **not yet enforced**; the content API
-currently treats `payload` as an opaque JSON object. The shapes above are the
-target contracts for the Study/Content features.
+The backend is not coupled to any specific frontend editor. The canonical
+schemas are defined as Zod contracts in `@catlium/contracts`
+(`NotePayloadSchema`, `FlashcardSetPayloadSchema`, `CornellNotePayloadSchema`)
+and are enforced on every create and update, dispatched by the content item's
+`type`. A payload for one type is rejected for another.
+
+#### NOTE — `NotePayloadSchema`
+
+Block-based structure, extensible for future block types:
+
+```json
+{
+  "title": "optional",
+  "blocks": [
+    { "id": "b1", "type": "heading", "content": "..." },
+    { "id": "b2", "type": "paragraph", "content": "..." },
+    { "id": "b3", "type": "list", "items": ["...", "..."] }
+  ]
+}
+```
+
+`blocks` requires at least one block; block `type` is a discriminated union of
+`heading`, `paragraph`, `list`.
+
+#### FLASHCARD_SET — `FlashcardSetPayloadSchema`
+
+```json
+{
+  "title": "optional",
+  "description": "optional",
+  "cards": [{ "id": "c1", "front": "...", "back": "..." }]
+}
+```
+
+`cards` requires at least one card. No spaced-repetition, grading, or practice
+data in this checkpoint.
+
+#### CORNELL_NOTE — `CornellNotePayloadSchema`
+
+Section-based, easy to render/edit/export and to generate via AI:
+
+```json
+{
+  "title": "optional",
+  "sections": [{ "id": "s1", "cue": "...", "notes": "..." }],
+  "summary": "optional"
+}
+```
+
+`sections` requires at least one section (`id`, `cue`, `notes`); `summary` is
+optional.
+
+> **OCR/AI payloads** (`ocr_document`, `ai_generated`) are not yet defined as
+> contracts; their sources are modeled and will be defined in the OCR/AI
+> ingestion checkpoint.
 
 ---
 
@@ -199,10 +250,11 @@ Writes require `INSTITUTE_ADMIN` or `TEACHER`; reads require an active
 membership. All queries are tenant-scoped. `AI_GENERATED`, `OCR_EXTRACTED`,
 and `IMPORTED` sources are modeled but no AI/OCR pipeline exists yet.
 
-> **Status:** The content schema and API are **implemented** in the Content
-> Domain Foundation checkpoint. Type-specific features (notes, flashcard
-> practice, Cornell workflows, OCR/AI ingestion, PDF export) are future work
-> that build on this foundation.
+> **Status:** The content schema, API, and type-specific payload contracts
+> (NOTE, FLASHCARD_SET, CORNELL_NOTE) are **implemented** in the Content
+> Domain Foundation and Study Content Contracts checkpoints. OCR/AI
+> ingestion, flashcard practice, and PDF export are future work that build
+> on this foundation.
 
 ---
 

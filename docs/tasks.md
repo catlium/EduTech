@@ -38,14 +38,15 @@ System priority order:
 
 ### Goal: Content & Study Foundation (Designed, Next Checkpoint)
 
-- [~] Design `content_items` + `content_versions` schema — designed (see
+- [x] Design `content_items` + `content_versions` schema — designed (see
   `docs/architecture/content.md`); foundation implemented in the Generic
   Content Domain goal below
-- [ ] Notes / flashcards / Cornell JSONB payload shapes
-- [ ] Versioning + regeneration/update semantics — versioning implemented;
+- [x] Notes / flashcards / Cornell JSONB payload shapes — canonical Zod
+      contracts implemented in the Study Content Contracts goal below
+- [x] Versioning + regeneration/update semantics — versioning implemented;
       AI regeneration semantics pending
 - [ ] OCR-extracted and AI-generated content ingestion
-- [ ] Content API (list by topic, version history, update) — core API
+- [x] Content API (list by topic, version history, update) — core API
       implemented; study feature APIs pending
 - [ ] Validation and checkpoint
 
@@ -63,6 +64,19 @@ System priority order:
       version history, archive, activate)
 - [x] Implement concurrent-safe versioning (row lock + unique constraint)
 - [x] Validate endpoints against running database (17 validation cases + concurrency)
+- [x] Update docs and create checkpoint
+
+## Phase 2 — Study Content Contracts
+
+### Goal: Type-Specific Payload Contracts (Third Checkpoint) ✅
+
+- [x] Define canonical NOTE payload (block-based: heading, paragraph, list)
+- [x] Define canonical FLASHCARD_SET payload (cards with id, front, back)
+- [x] Define canonical CORNELL_NOTE payload (sections: cue + notes, summary)
+- [x] Dispatch create/update payload validation by content type (Zod canonical)
+- [x] Reject payload/type mismatch and malformed structures (service level)
+- [x] Keep versioning, tenant isolation, and authorization unchanged
+- [x] Validate against live database (14 validation cases)
 - [x] Update docs and create checkpoint
 
 ## Phase 1 — Core Platform Foundation
