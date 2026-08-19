@@ -22,8 +22,17 @@ semesters, and academic calendars.
 
 ### content
 
-Content management for educational materials. File uploads, storage,
-versioning, and content organization.
+Generated study content: notes, flashcards, Cornell notes. Managed via
+`content_items` / `content_versions` with append-only version history and
+type-specific JSONB payload contracts.
+
+### materials
+
+Learning material **source assets** (PDFs, documents, images, plain text)
+used as input for study content, OCR/AI processing, and future question
+generation. Files live on local disk via the storage provider abstraction;
+metadata and lifecycle live in the `materials` table. Distinct from the
+`content` module — materials are inputs, content is generated output.
 
 ### study
 

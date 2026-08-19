@@ -8,6 +8,9 @@ build/
 .turbo/
 *.tsbuildinfo
 
+# Local file storage (learning materials)
+storage/
+
 # Environment
 .env
 .env.local

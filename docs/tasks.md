@@ -79,6 +79,23 @@ System priority order:
 - [x] Validate against live database (14 validation cases)
 - [x] Update docs and create checkpoint
 
+## Phase 2 — Learning Materials & Source Foundation
+
+### Goal: Learning Materials & Source Foundation (Fourth Checkpoint) ✅
+
+- [x] Document material vs content distinction and scope model decision
+- [x] Create `materials` schema (tenant-scoped, exactly-one academic scope)
+- [x] Generate and apply Drizzle migration (`0003_powerful_leech.sql`)
+- [x] Add Zod contracts for material entities
+- [x] Implement local storage abstraction (isolated, replaceable)
+- [x] Document material API contract in `docs/api/materials.md`
+- [x] Implement `materials` NestJS module (upload, text create, list, get, update, archive, activate)
+- [x] Enforce file size (20 MB) and allowed file type validation
+- [x] Enforce authorization and tenant isolation
+- [x] Document processing lifecycle and jobs/material relationship
+- [x] Validate against live database (19 validation cases)
+- [x] Update docs and create checkpoint
+
 ## Phase 1 — Core Platform Foundation
 
 ### Goal: Database Foundation

@@ -2,9 +2,9 @@
 
 ## Current Phase: Phase 2 — Academic & Content Foundation
 
-**Status:** In Progress — Study Content Contracts Checkpoint Complete
+**Status:** In Progress — Learning Materials & Source Foundation Checkpoint Complete
 
-**Last Checkpoint:** Study content contracts (canonical NOTE/FLASHCARD_SET/CORNELL_NOTE payloads) — see git log
+**Last Checkpoint:** Learning materials foundation (materials schema, uploads, storage abstraction) — see git log
 
 ## Priority Revision (2026-08-19)
 
@@ -150,9 +150,51 @@ domain (see `docs/architecture/content.md`):
   authorization (401 no cookie / 403 student write), archive/activate.
 - `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check` all pass.
 
+### Learning Materials Module (Phase 2 Goal 4)
+
+Source-asset foundation in `apps/api/src/materials/` (see
+`docs/architecture/materials.md` and `docs/api/materials.md`):
+
+- Schema: `materials` in `packages/database/src/schema/materials.ts`
+  (migration `0003_powerful_leech.sql`).
+- A material is a **source asset** (file or plain text) — distinct from
+  generated study content (`content_items`/`content_versions`). The two
+  domains are not merged.
+- Exactly-one academic scope (Subject/Chapter/Topic) enforced by the
+  `materials_exactly_one_scope` CHECK constraint; source consistency enforced
+  by `materials_source_consistency` (UPLOAD ⇒ file+storage key, TEXT ⇒ text).
+- Material types: `DOCUMENT`, `PDF`, `IMAGE`, `TEXT` (derived from MIME for
+  uploads). Source types: `UPLOAD`, `TEXT` (+ reserved `IMPORTED`).
+- Processing lifecycle: `processing_status`
+  `UPLOADED → QUEUED → PROCESSING → READY | FAILED`. TEXT materials are created
+  `READY`; UPLOAD materials stay `UPLOADED` (no OCR/AI yet). Lifecycle
+  `status`: `ACTIVE | ARCHIVED` (archive/activate endpoints).
+- **Local storage only**, isolated behind a small `StorageProvider` interface
+  (`STORAGE_PROVIDER` token); `LocalStorageProvider` writes to
+  `STORAGE_LOCAL_DIR` (default `./storage`, gitignored). Metadata in
+  PostgreSQL, binaries on disk, generated storage keys (client filename never
+  trusted). Future S3 replacement needs only a new provider.
+- Uploads: `multipart/form-data`, 20 MB limit, allowed MIME allow-list +
+  extension/MIME consistency; unsupported type → 400, oversized → 413.
+- No OCR/AI parsing or job creation in this checkpoint (`jobs` table
+  untouched). Future jobs will reference materials by `materialId` in their
+  payload; `content_versions.source_reference` will carry
+  `{ materialId }` for generated-content provenance.
+- `text_content` column is the canonical normalized plaintext location: used by
+  TEXT materials now; OCR-extracted text will populate it later (decision in
+  `docs/architecture/materials.md`).
+- **Validated** against live Postgres: 19 cases — scope attachment to
+  subject/chapter/topic, multiple/missing scope rejection, text material
+  (READY), PDF upload + on-disk verification, oversized (413), unsupported
+  type (400), MIME/extension mismatch (400), retrieval (404 miss), listing +
+  filters, metadata update (+ whitelist 400), archive/activate + filter,
+  tenant isolation (404), authorization (401/403/200), cross-tenant scope
+  rejection (404), and no jobs created (OCR/AI not triggered).
+- `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check` all pass.
+
 ### Shared Packages
 
-- **@catlium/contracts**: Zod schemas for auth, jobs, error responses, role/status enums
+- **@catlium/contracts**: Zod schemas for auth, jobs, error responses, role/status enums, content payloads, materials
 - **@catlium/shared**: `normalizeEmail()` utility
 - **@catlium/database**: Drizzle schema, `createDatabase()` factory, table re-exports
 
@@ -252,7 +294,9 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 - **Study/type-specific features**: notes rendering, flashcard practice, Cornell
   workflows (payload contracts now enforced; features not built)
-- **OCR/AI ingestion pipelines**: sources modeled; no processing implemented
+- **OCR/AI material processing**: materials store files/text but no extraction,
+  parsing, or AI generation pipeline (jobs not triggered; `processing_status`
+  stays `UPLOADED`)
 - **Institute CRUD controller** (deferred — see priority revision)
 - **User profile management / password change** (deferred)
 - **Structured logging**: Only console.log in bootstrap
@@ -292,6 +336,10 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 | Update safety      | Row lock (FOR UPDATE) + unique (content_id, version) | Concurrent updates cannot collide version numbers       |
 | Content contracts  | Zod canonical payload, dispatch by type              | NOTE/FLASHCARD_SET/CORNELL_NOTE enforced on create+update |
 | Payload vs HTML    | Payload JSONB is canonical; rendered_html derived    | Backend not coupled to any frontend editor             |
+| Material model     | Source assets in `materials`, distinct from content  | Files on local disk (provider), metadata in PostgreSQL  |
+| Material scope     | Exactly one academic scope (CHECK constraint)        | Same model as content_items; no duplication            |
+| File storage       | Local filesystem via StorageProvider abstraction     | Replaceable with S3 later; binaries never in PostgreSQL |
+| Processing state   | `processing_status` on material; jobs track jobs     | Material and job lifecycles deliberately distinct      |
 
 ---
 
@@ -318,17 +366,19 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Recommended Next Task
 
-**Study APIs on top of the enforced content contracts:**
+**Material processing foundation (OCR/AI pipeline groundwork):**
 
-1. Implement study-facing read APIs on `content_items`/`content_versions`
-   (e.g. flashcard practice reading current versions, notes rendering from
-   NOTE payload blocks, Cornell section workflows) — payload contracts are now
-   canonical and enforced.
-2. Define OCR/AI ingestion semantics: how OCR service output and AI-generated
-   content become `content_versions` with `source`/`source_reference`/
-   `ai_context`, and how regeneration creates new versions (and new payload
-   contracts for `ocr_document`/`ai_generated`).
-3. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, update
+1. Define the extraction job semantics: backend creates a `jobs` row whose
+   payload references the material (`{ materialId }`), publishes to RabbitMQ,
+   and drives `processing_status` `UPLOADED → QUEUED → PROCESSING → READY |
+   FAILED`; workers/OCR service return normalized text into
+   `materials.text_content`.
+2. Implement the OCR service contract (`/health` exists) so it extracts text
+   only — no notes/flashcards/questions/examination business logic.
+3. Add a material download endpoint (file read via `StorageProvider.read`).
+4. Link generated content provenance: `content_versions.source_reference`
+   carrying `{ materialId }` when AI/OCR content is generated from a material.
+5. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, update
    docs, commit, and push.
 
 See `docs/architecture/content.md` and `docs/api/content.md`.

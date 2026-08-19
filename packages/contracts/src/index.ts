@@ -344,3 +344,66 @@ export const ArchiveContentRequestSchema = z.object({
   status: ContentStatusEnum,
 });
 export type ArchiveContentRequest = z.infer<typeof ArchiveContentRequestSchema>;
+
+// ── Material Contracts ──────────────────────
+
+export const MaterialTypeEnum = z.enum(['DOCUMENT', 'PDF', 'IMAGE', 'TEXT']);
+export type MaterialType = z.infer<typeof MaterialTypeEnum>;
+
+export const MaterialSourceTypeEnum = z.enum(['UPLOAD', 'TEXT', 'IMPORTED']);
+export type MaterialSourceType = z.infer<typeof MaterialSourceTypeEnum>;
+
+export const MaterialProcessingStatusEnum = z.enum([
+  'UPLOADED',
+  'QUEUED',
+  'PROCESSING',
+  'READY',
+  'FAILED',
+]);
+export type MaterialProcessingStatus = z.infer<typeof MaterialProcessingStatusEnum>;
+
+export const MaterialStatusEnum = z.enum(['ACTIVE', 'ARCHIVED']);
+export type MaterialStatus = z.infer<typeof MaterialStatusEnum>;
+
+export const CreateTextMaterialRequestSchema = z
+  .object({
+    title: z.string().min(1).max(255),
+    description: z.string().max(1000).optional(),
+    text: z.string().min(1).max(1_000_000),
+    ...AcademicScopeFields,
+  })
+  .refine(
+    (v) => [v.subjectId, v.chapterId, v.topicId].filter((x) => x !== undefined).length === 1,
+    { message: 'Exactly one of subjectId, chapterId, topicId must be provided', path: ['scope'] },
+  );
+export type CreateTextMaterialRequest = z.infer<typeof CreateTextMaterialRequestSchema>;
+
+export const UpdateMaterialRequestSchema = z.object({
+  title: z.string().min(1).max(255).optional(),
+  description: z.string().max(1000).optional(),
+});
+export type UpdateMaterialRequest = z.infer<typeof UpdateMaterialRequestSchema>;
+
+export const MaterialResponseSchema = z.object({
+  id: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  subjectId: z.string().uuid().nullable(),
+  chapterId: z.string().uuid().nullable(),
+  topicId: z.string().uuid().nullable(),
+  title: z.string(),
+  description: z.string().nullable(),
+  materialType: MaterialTypeEnum,
+  sourceType: MaterialSourceTypeEnum,
+  fileName: z.string().nullable(),
+  mimeType: z.string().nullable(),
+  fileSize: z.number().nullable(),
+  storageProvider: z.string(),
+  storageKey: z.string().nullable(),
+  processingStatus: MaterialProcessingStatusEnum,
+  status: MaterialStatusEnum,
+  createdBy: z.string().uuid(),
+  updatedBy: z.string().uuid().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type MaterialResponse = z.infer<typeof MaterialResponseSchema>;
