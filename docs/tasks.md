@@ -112,6 +112,21 @@ System priority order:
 - [x] Run pnpm checks + Python ruff/mypy
 - [x] Update docs and create checkpoint
 
+## Phase 2 — Material Retry / Reprocessing Semantics
+
+### Goal: Material Retry / Reprocessing Semantics (Sixth Checkpoint) ✅
+
+- [x] Document retry semantics + failed-job immutability decision
+- [x] Refactor enqueue into a shared locked-transaction helper (process + retry)
+- [x] Implement `POST /materials/:id/retry` (202, FAILED → QUEUED, new job only)
+- [x] Reject invalid retry states (TEXT/UPLOADED/QUEUED/PROCESSING/READY/ARCHIVED → 409)
+- [x] Enforce row-lock concurrency protection (one retry wins)
+- [x] Reuse publish-failure revert strategy (no QUEUED-forever material)
+- [x] Document retry API + lifecycle in docs
+- [x] Validate end-to-end (retry success, failure, re-retry, concurrency, auth, isolation, publish failure)
+- [x] Run pnpm checks + Python ruff/mypy
+- [x] Update docs and create checkpoint
+
 ## Phase 1 — Core Platform Foundation
 
 ### Goal: Database Foundation

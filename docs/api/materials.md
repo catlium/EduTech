@@ -250,6 +250,45 @@ GET /materials/:materialId → material.processingStatus (UPLOADED | QUEUED | PR
 
 until `processingStatus = READY` (or `FAILED`).
 
+## Retry failed material processing
+
+```
+POST /materials/:materialId/retry
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `202 Accepted`. Retries a failed
+uploaded material: moves `processingStatus` `FAILED → QUEUED` and creates a
+**new** processing job. This is the only way to re-run a failed material.
+
+Behavior:
+
+- Only `UPLOAD` materials with `processingStatus = FAILED` and lifecycle
+  `status = ACTIVE` are retryable.
+- `TEXT` (already `READY`), `UPLOADED`, `QUEUED`, `PROCESSING`, `READY`, and
+  `ARCHIVED` materials are rejected with `409 Conflict`.
+- A retry never mutates existing jobs: a job that has reached `failed` stays
+  `failed` forever. Every retry appends a new job row, so job history
+  preserves every processing attempt.
+- Two simultaneous retries cannot create two jobs — the material row is locked
+  with `FOR UPDATE` during the state check; one retry wins, the other returns
+  `409`.
+- If the RabbitMQ publish fails after the material was moved to `QUEUED`, the
+  material is reverted to `FAILED` (it can never be left `QUEUED` without a
+  deliverable job). The attempted job is marked `failed`.
+
+Response (`202`) — identical shape to the process endpoint:
+
+```json
+{
+  "materialId": "uuid",
+  "jobId": "uuid",
+  "processingStatus": "QUEUED"
+}
+```
+
+Errors: `404` if the material is not in the active institute; `403` for
+insufficient role; `409` if the material is not in a retryable state.
+
 ## Notes
 
 - Extraction is limited to PDF (`application/pdf`) and plain text

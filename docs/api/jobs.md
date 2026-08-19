@@ -56,6 +56,15 @@ Response: `{ "job": Job }`
 
 This is the endpoint the frontend polls to track material processing.
 
+## Job history on retry
+
+Retrying a failed material (`POST /materials/:id/retry`) creates a **new** job
+row rather than mutating the failed one. A material that failed once and then
+succeeded has two jobs (`failed`, then `completed`); repeated failures append
+more rows. Failed jobs are never changed back to `queued`/`processing`/
+`completed`. There is currently no material-filtered job-history endpoint —
+query the `jobs` table by `payload->>'materialId'` for the full history.
+
 ## RabbitMQ message contract
 
 The API publishes plain JSON to the durable `jobs` queue:

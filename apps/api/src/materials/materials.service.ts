@@ -207,6 +207,24 @@ export class MaterialsService {
   // ── Processing ────────────────────────────
 
   async processMaterial(instituteId: string, materialId: string) {
+    return this.enqueueProcessing(instituteId, materialId, 'UPLOADED', 'process');
+  }
+
+  async retryMaterial(instituteId: string, materialId: string) {
+    return this.enqueueProcessing(instituteId, materialId, 'FAILED', 'retry');
+  }
+
+  /**
+   * Single enqueue path for both initial processing and retries. One job row
+   * equals one processing attempt, so a retry always creates a NEW job — a
+   * FAILED job is never mutated back to queued/processing/completed.
+   */
+  private async enqueueProcessing(
+    instituteId: string,
+    materialId: string,
+    from: 'UPLOADED' | 'FAILED',
+    action: 'process' | 'retry',
+  ) {
     await this.db.transaction(async (tx) => {
       const [locked] = await tx
         .select()
@@ -219,8 +237,10 @@ export class MaterialsService {
         throw new NotFoundException('Material not found');
       }
 
+      const verb = action === 'retry' ? 'retried' : 'processed';
+
       if (locked.status === 'ARCHIVED') {
-        throw new ConflictException('Archived materials cannot be processed');
+        throw new ConflictException(`Archived materials cannot be ${verb}`);
       }
 
       if (locked.sourceType === 'TEXT') {
@@ -231,7 +251,10 @@ export class MaterialsService {
         throw new ConflictException('Material is already being processed');
       }
 
-      if (locked.processingStatus !== 'UPLOADED') {
+      if (locked.processingStatus !== from) {
+        if (action === 'retry') {
+          throw new ConflictException('Only failed uploaded materials can be retried');
+        }
         throw new ConflictException(
           `Material cannot be processed from state ${locked.processingStatus}`,
         );
@@ -261,7 +284,7 @@ export class MaterialsService {
 
       await this.db
         .update(materials)
-        .set({ processingStatus: 'UPLOADED', updatedAt: new Date() })
+        .set({ processingStatus: from, updatedAt: new Date() })
         .where(
           and(
             eq(materials.id, materialId),

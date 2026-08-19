@@ -157,6 +157,16 @@ export class MaterialsController {
     return this.materialsService.processMaterial(tenant.instituteId, materialId);
   }
 
+  @Post(':materialId/retry')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async retry(
+    @Tenant() tenant: TenantContext,
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+  ) {
+    return this.materialsService.retryMaterial(tenant.instituteId, materialId);
+  }
+
   @Post(':materialId/archive')
   @RequiredRoles(...WRITE_ROLES)
   async archive(

@@ -80,21 +80,35 @@ Each material carries `processing_status` reflecting its **source-material
 processing** state:
 
 ```
-UPLOADED → QUEUED → PROCESSING → READY
-                         ↘ FAILED
+UPLOADED
+   │  POST /materials/:id/process
+   ▼
+QUEUED
+   ▼
+PROCESSING
+   ├──────────────────────────────► READY (terminal for MVP)
+   ▼
+FAILED
+   │  POST /materials/:id/retry (explicit, user-triggered)
+   ▼
+QUEUED
 ```
 
 - `TEXT` materials are created `READY` (nothing to process).
 - `UPLOAD` materials are created `UPLOADED`; `POST /materials/:id/process`
-  moves them `UPLOADED → QUEUED` and creates a `MATERIAL_PROCESS` job.
+  moves them `UPLOADED → QUEUED` and creates a processing job.
 - The worker moves the material `QUEUED → PROCESSING`, then to `READY` on
   success or `FAILED` on any failure.
-- No other transitions are allowed: `READY`/`FAILED` materials cannot re-enter
-  processing (no reprocessing mechanism yet), `UPLOADED → READY` is not
-  possible for uploaded files, and TEXT materials never enter OCR.
+- A **failed** uploaded material can be retried via `POST /materials/:id/retry`
+  (`FAILED → QUEUED`), which always creates a new job (one job = one attempt).
+  `READY` is terminal for this MVP — there is no re-process trigger yet.
+- No arbitrary transitions are allowed: `UPLOADED → READY` is impossible for
+  uploaded files, `FAILED`/`READY`/`QUEUED`/`PROCESSING` materials cannot be
+  (re)processed via `/process`, and TEXT materials never enter OCR.
 
 `status` (`ACTIVE` | `ARCHIVED`) is the **material lifecycle** (visibility),
-distinct from `processing_status`. Archived materials cannot be processed.
+distinct from `processing_status`. Archived materials cannot be processed or
+retried.
 
 ## Relationship between materials and jobs
 
@@ -113,7 +127,7 @@ Job(s)  (jobs table: type, status, payload, result, error)
 - A processing job's `payload` references the material by UUID — e.g.
   `{ "materialId": "uuid" }` for `type: "MATERIAL_PROCESS"`.
 - A material may have **multiple** jobs over its lifetime (initial extraction,
-  reprocessing, future AI generation). Each is an independent `jobs` row.
+  retries, future AI generation). Each is an independent `jobs` row.
 - `processing_status` on the material mirrors the _current_ processing
   outcome (derived from the latest job); the `jobs` table holds the per-job
   execution detail (status, `started_at`, `completed_at`, `result`, `error`).
@@ -121,11 +135,70 @@ Job(s)  (jobs table: type, status, payload, result, error)
 - The worker writes both sides directly against PostgreSQL (no API hop), so a
   running worker is not dependent on the API being up.
 
+## Retry / reprocessing semantics
+
+### One job = one processing attempt
+
+A job row represents a single processing attempt. Therefore a job that has
+reached `failed` is **immutable** — it is never changed back to
+`queued`/`processing`/`completed`. Retrying a failed material creates a **new**
+job row; the previous failed rows are left untouched. This preserves the full
+processing history of a material.
+
+Example: a material fails once, is retried, and succeeds:
+
+```
+material:   UPLOADED → QUEUED → PROCESSING → FAILED → QUEUED → PROCESSING → READY
+job A:      queued  → processing → failed
+job B:                                      queued  → processing → completed
+```
+
+If the retry also fails, `job B` becomes `failed` and a later retry creates
+`job C` (`queued`). Historical jobs are never deleted or overwritten.
+
+### Difference between processing and retry
+
+- `POST /materials/:id/process` — **initial** extraction. Valid only from
+  `UPLOADED`. Returns `409` for `FAILED` (use retry instead) and for
+  `QUEUED`/`PROCESSING`/`READY`/`ARCHIVED`/`TEXT`.
+- `POST /materials/:id/retry` — **re-attempt** of a failed uploaded material.
+  Valid only from `FAILED` with lifecycle `ACTIVE`. Returns `409` for
+  `TEXT`, `UPLOADED`, `QUEUED`, `PROCESSING`, `READY`, and `ARCHIVED`.
+
+Both create a `MATERIAL_PROCESS` job (`payload: { materialId }`) — the same
+worker path — so a retry is just a new attempt of the same operation.
+
+### Retry authorization
+
+Retry requires an authenticated, tenant-resolved membership with the
+`INSTITUTE_ADMIN` or `TEACHER` role (`403` for students, `401` without a
+session). Tenant isolation is enforced at the service layer: a retry of a
+material in another institute returns `404` (no existence leak).
+
+### Concurrency
+
+Retry uses the same pattern as `/process`: the state check and the
+`FAILED → QUEUED` transition run inside a transaction that locks the material
+row (`SELECT ... FOR UPDATE`). Two simultaneous retries cannot create two jobs
+— the second request observes `QUEUED` and returns `409`. No distributed
+locking is introduced.
+
+### RabbitMQ publish failure
+
+Retry reuses the process endpoint's consistency strategy: the state transition
+is committed, then the job is inserted and the message published. If the
+publish fails, the API marks the attempted job `failed` (best-effort) and
+reverts the material back to `FAILED` (guarded by the `QUEUED` condition), so
+a material is never left `QUEUED` without a deliverable job. The same
+documented crash window between the commit and the publish applies (an outbox
+would remove it; accepted for MVP).
+
 ## Async pipeline (implemented)
 
 ```
-POST /materials/:id/process (202)
-        ↓  material UPLOADED → QUEUED
+POST /materials/:id/process (202)   ← initial extraction (UPLOADED)
+POST /materials/:id/retry (202)     ← explicit retry (FAILED → QUEUED)
+        ↓  material → QUEUED
 Job created (MATERIAL_PROCESS, payload { materialId })
         ↓
 RabbitMQ 'jobs' queue (plain JSON)
@@ -156,8 +229,9 @@ material — the second sees `QUEUED` and returns `409`.
 
 The job row is inserted and the RabbitMQ publish happens after the
 transaction commits. If the publish (or insert) fails, the API marks the job
-`failed` (best-effort), reverts the material back to `UPLOADED`, and returns
-an error. There is a tiny crash window between commit and publish that could
+`failed` (best-effort), reverts the material back to its previous state
+(`UPLOADED` for `/process`, `FAILED` for `/retry`), and returns an error.
+There is a tiny crash window between commit and publish that could
 leave a `QUEUED` material without a delivered message; for the MVP this is
 accepted (documented gap) and a future outbox is noted as the enterprise
 solution. The `RabbitMQService.publish` now asserts the durable `jobs` queue

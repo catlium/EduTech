@@ -1,10 +1,10 @@
 # Project Status
 
-## Current Phase: Phase 2 — Material Processing & OCR Integration
+## Current Phase: Phase 2 — Material Retry / Reprocessing Semantics
 
-**Status:** In Progress — Material Processing & OCR Integration Checkpoint Complete
+**Status:** In Progress — Material Retry / Reprocessing Semantics Checkpoint Complete
 
-**Last Checkpoint:** Async material processing pipeline (process endpoint, RabbitMQ worker, OCR `/extract`) — see git log
+**Last Checkpoint:** Retry semantics for failed material processing (`POST /materials/:id/retry`) — see git log
 
 ## Priority Revision (2026-08-19)
 
@@ -238,6 +238,42 @@ Async source-material extraction pipeline in `apps/api/src/materials/`,
 - Worker settings fix: `WORKER_STORAGE_DIR` defaults to the repo-root
   `./storage` (resolved from file location, not process cwd).
 
+### Material Retry / Reprocessing Semantics (Phase 2 Goal 6)
+
+Explicit retry of failed material processing (see `docs/architecture/materials.md`,
+`docs/api/materials.md`):
+
+- **Retry endpoint**: `POST /materials/:id/retry` (`202`) — moves
+  `FAILED → QUEUED` for `UPLOAD` materials with lifecycle `ACTIVE` and creates
+  a **new** `MATERIAL_PROCESS` job. `409` for `TEXT`, `UPLOADED`, `QUEUED`,
+  `PROCESSING`, `READY`, and `ARCHIVED`. `403` student, `401` no session,
+  `404` cross-tenant / nonexistent.
+- **One job = one attempt**: a `failed` job is immutable and is never changed
+  back to `queued`/`processing`/`completed`. Every retry appends a new job row,
+  preserving full processing history (e.g. `failed → failed → completed` for a
+  material that failed twice then succeeded).
+- **Shared enqueue path**: `processMaterial`/`retryMaterial` delegate to a
+  single private `enqueueProcessing` helper — same row-locked transaction
+  (`FOR UPDATE`) for the state check + transition, same insert-then-publish
+  ordering, same publish-failure revert (material returns to its previous
+  state: `UPLOADED` for process, `FAILED` for retry — never left `QUEUED`).
+- **Concurrency**: two simultaneous retries cannot create two jobs — the loser
+  observes `QUEUED` and gets `409`.
+- **No schema changes**: the `jobs` table already supports multiple jobs per
+  material; `payload.materialId` and timestamps are sufficient. No
+  `retry_count` added (job history represents attempts).
+- **Worker unchanged**: a retry is just a new attempt of the same
+  `MATERIAL_PROCESS` job type.
+- **Validated** end-to-end: retry success (new job, job1 unchanged,
+  `FAILED → QUEUED → PROCESSING → READY`, `text_content` populated), repeated
+  failure + re-retry (`failed → failed → completed`, material `FAILED` then
+  `READY`), concurrent retries (one `202` + one `409`, exactly one active
+  job), publish failure with RabbitMQ down (500, material stays `FAILED`,
+  attempted job marked failed), recovery after RabbitMQ/API/worker restart,
+  and the full rejection matrix (TEXT/UPLOADED/QUEUED/PROCESSING/READY/
+  ARCHIVED → 409, student 403, cross-tenant 404, anon 401, missing 404).
+  `pnpm build/typecheck/lint/format:check` all pass.
+
 ### Shared Packages
 
 - **@catlium/contracts**: Zod schemas for auth, jobs, error responses, role/status enums, content payloads, materials
@@ -342,8 +378,8 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 - **OCR/AI material processing**: PDF and plain-text extraction are implemented
   (Goal 5); image OCR (tesseract), scanned-PDF OCR, and office documents are
   not, and AI generation has not started
-- **Material reprocessing**: `READY`/`FAILED` materials return 409 — no
-  re-process trigger yet
+- **Reprocessing of READY materials**: `READY` is terminal — failed materials
+  can be retried (Goal 6), but there is no re-run trigger for successful ones
 - **Download endpoint**: material binaries can be read via the storage
   provider but no API endpoint exposes them yet
 - **Institute CRUD controller** (deferred — see priority revision)
@@ -357,7 +393,7 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 1. Study features on the content foundation (notes, flashcards, Cornell, AI context)
 2. AI generation pipeline and advanced OCR (image OCR / scanned PDFs / office documents)
-3. Material reprocessing + download endpoint
+3. Reprocessing of READY materials + download endpoint
 4. Question bank and examination
 5. Practice mode
 6. Checking system (FORM, OMR, OSM)
@@ -393,6 +429,8 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 | File storage       | Local filesystem via StorageProvider abstraction     | Replaceable with S3 later; binaries never in PostgreSQL             |
 | Processing state   | `processing_status` on material; jobs track jobs     | Material and job lifecycles deliberately distinct                   |
 | Processing safety  | Row lock (FOR UPDATE) + insert-then-publish          | Duplicate enqueue → 409; publish failure reverts material           |
+| Job = one attempt  | Retry creates a new job; failed jobs immutable       | Full attempt history preserved; no job status rewinds               |
+| Retry trigger      | `POST /materials/:id/retry`, FAILED → QUEUED         | Explicit, user-triggered; READY is terminal for MVP                 |
 | Worker storage     | Shared filesystem (repo `./storage`)                 | Shared volume when containerized; S3 provider later                 |
 
 ---
@@ -420,8 +458,8 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
    job insert commit and the RabbitMQ publish could leave a `QUEUED` material
    without a delivered message. Accepted for MVP; an outbox pattern is the
    documented enterprise solution (see `docs/architecture/materials.md`).
-4. **No reprocessing**: `READY`/`FAILED` materials cannot be reprocessed yet
-   (409); a retry/requeue mechanism is pending.
+4. **READY is terminal**: successful materials have no re-run trigger yet
+   (failed materials can be retried; successful ones cannot).
 5. **Unsupported OCR formats**: image, scanned-PDF, and office-document
    materials fail cleanly with `FAILED` but have no fallback path yet.
 
@@ -429,12 +467,12 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Recommended Next Task
 
-**Material reprocessing + download, then AI generation groundwork:**
+**Material download + READY reprocessing, then AI generation groundwork:**
 
 1. Add a material **download endpoint** (`StorageProvider.read`) so processed
    materials are retrievable.
-2. Add reprocessing/retry semantics for `FAILED` materials (and an explicit
-   re-process trigger for `READY`), replacing the current blanket 409.
+2. Add an explicit **re-run trigger for READY materials** (the failure-retry
+   path already exists from Goal 6), completing the reprocessing story.
 3. Decide AI-generation semantics: new job type + `content_versions`
    `source_reference` carrying `{ materialId }` provenance.
 4. Extend OCR capabilities when required: image OCR (tesseract), scanned-PDF
