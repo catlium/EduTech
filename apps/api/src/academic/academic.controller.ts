@@ -45,10 +45,7 @@ export class AcademicController {
   @Post('subjects')
   @HttpCode(HttpStatus.CREATED)
   @RequiredRoles(...WRITE_ROLES)
-  async createSubject(
-    @Tenant() tenant: TenantContext,
-    @Body() dto: CreateSubjectDto,
-  ) {
+  async createSubject(@Tenant() tenant: TenantContext, @Body() dto: CreateSubjectDto) {
     const subject = await this.academicService.createSubject(tenant.instituteId, dto);
     return { subject };
   }
@@ -92,11 +89,7 @@ export class AcademicController {
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
     @Body() dto: CreateChapterDto,
   ) {
-    const chapter = await this.academicService.createChapter(
-      tenant.instituteId,
-      subjectId,
-      dto,
-    );
+    const chapter = await this.academicService.createChapter(tenant.instituteId, subjectId, dto);
     return { chapter };
   }
 

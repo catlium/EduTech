@@ -38,12 +38,32 @@ System priority order:
 
 ### Goal: Content & Study Foundation (Designed, Next Checkpoint)
 
-- [ ] Design `content_items` + `content_versions` schema
+- [~] Design `content_items` + `content_versions` schema — designed (see
+  `docs/architecture/content.md`); foundation implemented in the Generic
+  Content Domain goal below
 - [ ] Notes / flashcards / Cornell JSONB payload shapes
-- [ ] Versioning + regeneration/update semantics
+- [ ] Versioning + regeneration/update semantics — versioning implemented;
+      AI regeneration semantics pending
 - [ ] OCR-extracted and AI-generated content ingestion
-- [ ] Content API (list by topic, version history, update)
+- [ ] Content API (list by topic, version history, update) — core API
+      implemented; study feature APIs pending
 - [ ] Validation and checkpoint
+
+## Phase 2 — Content Domain Foundation
+
+### Goal: Generic Content Domain (Second Checkpoint) ✅
+
+- [x] Create `content_items` + `content_versions` schema with exactly-one
+      academic scope CHECK constraint
+- [x] Decide and document current-version strategy (integer pointer, no circular FK)
+- [x] Generate and apply Drizzle migration (`0002_certain_carlie_cooper.sql`)
+- [x] Add Zod contracts for content entities (types, sources, status, versions)
+- [x] Document content API contract in `docs/api/content.md`
+- [x] Implement `content` NestJS module (create, list, get, update→new version,
+      version history, archive, activate)
+- [x] Implement concurrent-safe versioning (row lock + unique constraint)
+- [x] Validate endpoints against running database (17 validation cases + concurrency)
+- [x] Update docs and create checkpoint
 
 ## Phase 1 — Core Platform Foundation
 

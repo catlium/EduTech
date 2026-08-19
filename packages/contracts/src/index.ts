@@ -170,3 +170,93 @@ export const TopicResponseSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 export type TopicResponse = z.infer<typeof TopicResponseSchema>;
+
+// ── Content Contracts ──────────────────────
+
+export const ContentTypeEnum = z.enum(['NOTE', 'FLASHCARD_SET', 'CORNELL_NOTE']);
+export type ContentType = z.infer<typeof ContentTypeEnum>;
+
+export const ContentStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']);
+export type ContentStatus = z.infer<typeof ContentStatusEnum>;
+
+export const ContentSourceEnum = z.enum(['MANUAL', 'AI_GENERATED', 'OCR_EXTRACTED', 'IMPORTED']);
+export type ContentSource = z.infer<typeof ContentSourceEnum>;
+
+export const ContentChangeTypeEnum = z.enum(['CREATION', 'EDIT', 'REGENERATION', 'CORRECTION']);
+export type ContentChangeType = z.infer<typeof ContentChangeTypeEnum>;
+
+const AcademicScopeFields = {
+  subjectId: z.string().uuid().optional(),
+  chapterId: z.string().uuid().optional(),
+  topicId: z.string().uuid().optional(),
+} as const;
+
+export const CreateContentRequestSchema = z
+  .object({
+    title: z.string().min(1).max(255),
+    type: ContentTypeEnum,
+    source: ContentSourceEnum,
+    payload: z.record(z.string(), z.unknown()),
+    renderedHtml: z.string().optional(),
+    aiContext: z.record(z.string(), z.unknown()).optional(),
+    sourceReference: z.record(z.string(), z.unknown()).optional(),
+    changeReason: z.string().max(500).optional(),
+    ...AcademicScopeFields,
+  })
+  .refine(
+    (v) => [v.subjectId, v.chapterId, v.topicId].filter((x) => x !== undefined).length === 1,
+    { message: 'Exactly one of subjectId, chapterId, topicId must be provided', path: ['scope'] },
+  );
+export type CreateContentRequest = z.infer<typeof CreateContentRequestSchema>;
+
+export const UpdateContentRequestSchema = z.object({
+  payload: z.record(z.string(), z.unknown()),
+  renderedHtml: z.string().optional(),
+  aiContext: z.record(z.string(), z.unknown()).optional(),
+  sourceReference: z.record(z.string(), z.unknown()).optional(),
+  changeType: ContentChangeTypeEnum.optional(),
+  changeReason: z.string().max(500).optional(),
+});
+export type UpdateContentRequest = z.infer<typeof UpdateContentRequestSchema>;
+
+export const ContentVersionResponseSchema = z.object({
+  id: z.string().uuid(),
+  contentId: z.string().uuid(),
+  version: z.number(),
+  payload: z.record(z.string(), z.unknown()),
+  renderedHtml: z.string().nullable(),
+  aiContext: z.record(z.string(), z.unknown()).nullable(),
+  sourceReference: z.record(z.string(), z.unknown()).nullable(),
+  changeType: ContentChangeTypeEnum,
+  changeReason: z.string().nullable(),
+  createdBy: z.string().uuid(),
+  createdAt: z.string().datetime(),
+});
+export type ContentVersionResponse = z.infer<typeof ContentVersionResponseSchema>;
+
+export const ContentResponseSchema = z.object({
+  id: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  subjectId: z.string().uuid().nullable(),
+  chapterId: z.string().uuid().nullable(),
+  topicId: z.string().uuid().nullable(),
+  type: ContentTypeEnum,
+  title: z.string(),
+  status: ContentStatusEnum,
+  source: ContentSourceEnum,
+  currentVersion: z.number(),
+  createdBy: z.string().uuid(),
+  updatedBy: z.string().uuid().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  current: ContentVersionResponseSchema,
+});
+export type ContentResponse = z.infer<typeof ContentResponseSchema>;
+
+export const ContentListItemSchema = ContentResponseSchema.omit({ current: true });
+export type ContentListItem = z.infer<typeof ContentListItemSchema>;
+
+export const ArchiveContentRequestSchema = z.object({
+  status: ContentStatusEnum,
+});
+export type ArchiveContentRequest = z.infer<typeof ArchiveContentRequestSchema>;

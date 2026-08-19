@@ -20,3 +20,4 @@ export { institutes } from './schema/institutes.js';
 export { memberships, membershipRoles } from './schema/memberships.js';
 export { jobs } from './schema/jobs.js';
 export { subjects, chapters, topics } from './schema/academic.js';
+export { contentItems, contentVersions } from './schema/content.js';

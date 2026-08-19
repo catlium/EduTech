@@ -75,32 +75,37 @@ Conceptually, a content record supports:
 - source information
 - timestamps
 
-### content_items (metadata, relational)
+### content_items (metadata, relational) — implemented
 
-| Column                    | Notes                                                      |
-| ------------------------- | ---------------------------------------------------------- |
-| `id`                      | uuid PK                                                    |
-| `institute_id`            | tenant scope                                               |
-| `subject_id` / `chapter_id` / `topic_id` | academic scope — exactly ONE is set (nullable columns + check constraint) |
-| `type`                    | note, flashcard, cornell, ocr_document, ai_generated, etc. |
-| `title`                   | display title                                              |
-| `source`                  | manual, ai, ocr                                            |
-| `source_ref`              | jsonb — reference to source material (e.g. file id)        |
-| `status`                  | draft / published / archived                               |
-| `current_version`         | points to latest `content_versions.version`                |
-| `created_by` / `updated_by` | uuid refs to users                                       |
-| timestamps                | created/updated                                            |
+| Column                                   | Notes                                                                                                       |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `id`                                     | uuid PK                                                                                                     |
+| `institute_id`                           | tenant scope                                                                                                |
+| `subject_id` / `chapter_id` / `topic_id` | academic scope — exactly ONE is set (nullable columns + CHECK constraint `content_items_exactly_one_scope`) |
+| `type`                                   | `NOTE` \| `FLASHCARD_SET` \| `CORNELL_NOTE` (varchar, extensible)                                           |
+| `title`                                  | display title                                                                                               |
+| `source`                                 | `MANUAL` \| `AI_GENERATED` \| `OCR_EXTRACTED` \| `IMPORTED`                                                 |
+| `status`                                 | `DRAFT` \| `ACTIVE` \| `ARCHIVED` (content lifecycle only; processing state lives on `jobs`)                |
+| `current_version`                        | int — the monotonic version number of the current version                                                   |
+| `created_by` / `updated_by`              | uuid refs to users                                                                                          |
+| timestamps                               | created/updated                                                                                             |
+
+> **Current-version decision (implemented):** `content_items.current_version`
+> stores the version **number** (integer) rather than a FK to
+> `content_versions.id`. `content_versions` rows are append-only (never
+> deleted), so the pointer cannot dangle. This avoids the circular foreign key
+> that a `current_version_id` FK would require between the two tables.
 
 ### Content attachment scopes (decision)
 
 A content item attaches to **exactly one academic scope**: a Subject, a
 Chapter, or a Topic. It is NOT permanently locked to `topic_id`.
 
-| Scope   | Example content                                          |
-| ------- | -------------------------------------------------------- |
-| Subject | Subject overview, complete subject notes                  |
-| Chapter | Chapter notes, chapter summary                           |
-| Topic   | Detailed notes, flashcards, Cornell notes                 |
+| Scope   | Example content                           |
+| ------- | ----------------------------------------- |
+| Subject | Subject overview, complete subject notes  |
+| Chapter | Chapter notes, chapter summary            |
+| Topic   | Detailed notes, flashcards, Cornell notes |
 
 The `content_items` table models this with three nullable FK columns
 (`subject_id`, `chapter_id`, `topic_id`) plus a check constraint ensuring
@@ -121,32 +126,42 @@ is computed by query:
 This keeps a single source of truth per content record and preserves
 lifecycle/versioning semantics without copy drift.
 
-### content_versions (history, relational + JSONB)
+### content_versions (history, relational + JSONB) — implemented
 
-| Column          | Notes                                                           |
-| --------------- | --------------------------------------------------------------- |
-| `id`            | uuid PK                                                         |
-| `content_id`    | FK to content_items                                             |
-| `version`       | monotonic int per content item                                  |
-| `payload`       | jsonb — canonical structured content (shape depends on type)    |
-| `rendered_html` | text, nullable — generated export                               |
-| `ai_context`    | jsonb, nullable — AI reference/summary/context for regeneration |
-| `changelog`     | varchar — reason for this version                               |
-| `created_by`    | uuid ref to user                                                |
-| `created_at`    | timestamp                                                       |
+| Column             | Notes                                                                 |
+| ------------------ | --------------------------------------------------------------------- |
+| `id`               | uuid PK                                                               |
+| `content_id`       | FK to content_items (cascade)                                         |
+| `version`          | monotonic int per content item                                        |
+| `payload`          | jsonb NOT NULL — canonical structured content (shape depends on type) |
+| `rendered_html`    | text, nullable — generated export                                     |
+| `ai_context`       | jsonb, nullable — AI reference/summary/context for regeneration       |
+| `source_reference` | jsonb, nullable — source material reference (e.g. file id)            |
+| `change_type`      | `CREATION` \| `EDIT` \| `REGENERATION` \| `CORRECTION`                |
+| `change_reason`    | varchar(500), nullable — why this version exists                      |
+| `created_by`       | uuid ref to user                                                      |
+| `created_at`       | timestamp                                                             |
 
-Unique constraint: `(content_id, version)`.
+Unique constraint: `(content_id, version)` — duplicate version numbers for the
+same content item are impossible.
 
 ### Versioning and regeneration semantics
 
 - **Update** creates a new `content_versions` row
   (`version = current_version + 1`), then bumps
   `content_items.current_version`. History is preserved.
+- **Concurrency safety (implemented):** updates run inside a transaction that
+  first locks the `content_items` row (`SELECT ... FOR UPDATE`). Concurrent
+  updates to the same item serialize on that lock, so each computes a distinct
+  `current_version + 1`. The unique `(content_id, version)` constraint is the
+  database-level backstop. Verified: two parallel updates produced versions 3
+  and 4 (never a collision).
 - **Regeneration** (when source material changes) is an update whose
-  `changelog` records the trigger; the previous version remains recoverable.
+  `change_type` records the trigger (`REGENERATION`); the previous version
+  remains recoverable.
 - **Correction** (manual edit of AI/OCR output) is likewise a new version —
   the correction is the canonical payload; original AI/OCR output can be
-  retained in the payload or `source_ref`.
+  retained in the payload or `source_reference`.
 - **PDF export** is generated on demand from the canonical structured
   payload; PDF is never the canonical stored format.
 
@@ -160,6 +175,34 @@ single unified shape is required):
 - **cornell** — `{ cue, notes, summary }`
 - **ocr_document** — OCR service output (pages/blocks/lines/confidence)
 - **ai_generated** — whatever the AI pipeline emits (structured output)
+
+These type-specific payload shapes are **not yet enforced**; the content API
+currently treats `payload` as an opaque JSON object. The shapes above are the
+target contracts for the Study/Content features.
+
+---
+
+## Content API
+
+The generic content domain is implemented in `apps/api/src/content/` and
+documented in `docs/api/content.md`:
+
+- `POST /content` — create item + version 1
+- `GET /content` — list (optional `type`, `status`, `subjectId`, `chapterId`, `topicId` filters)
+- `GET /content/:id` — item + current version
+- `PATCH /content/:id` — append a new version (never overwrites)
+- `GET /content/:id/versions` — version history (newest first)
+- `GET /content/:id/versions/:v` — specific version
+- `POST /content/:id/archive` / `POST /content/:id/activate` — lifecycle
+
+Writes require `INSTITUTE_ADMIN` or `TEACHER`; reads require an active
+membership. All queries are tenant-scoped. `AI_GENERATED`, `OCR_EXTRACTED`,
+and `IMPORTED` sources are modeled but no AI/OCR pipeline exists yet.
+
+> **Status:** The content schema and API are **implemented** in the Content
+> Domain Foundation checkpoint. Type-specific features (notes, flashcard
+> practice, Cornell workflows, OCR/AI ingestion, PDF export) are future work
+> that build on this foundation.
 
 ---
 
@@ -178,3 +221,6 @@ single unified shape is required):
 > **Note:** The content schema (content_items/content_versions) is designed
 > above but intentionally NOT implemented in the Academic Hierarchy
 > checkpoint. It is the next Academic & Content checkpoint.
+
+_(This note is historical — the content schema and API are now implemented in
+the Content Domain Foundation checkpoint.)_

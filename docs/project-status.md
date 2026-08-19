@@ -2,9 +2,9 @@
 
 ## Current Phase: Phase 2 — Academic & Content Foundation
 
-**Status:** In Progress — Academic Hierarchy Checkpoint Complete
+**Status:** In Progress — Content Domain Foundation Checkpoint Complete
 
-**Last Checkpoint:** Academic hierarchy (subjects/chapters/topics) — see git log
+**Last Checkpoint:** Content domain (content_items/content_versions + API) — see git log
 
 ## Priority Revision (2026-08-19)
 
@@ -99,6 +99,28 @@ Tenant-scoped academic hierarchy in `apps/api/src/academic/`:
   institute); cross-institute access → 404/403.
 - Zod contracts for academic entities added to `@catlium/contracts`.
 - Lifecycle: `status` `active` | `archived` (set via PATCH).
+
+### Content Module
+
+Generic content domain in `apps/api/src/content/`:
+
+- Schema: `content_items` + `content_versions` in
+  `packages/database/src/schema/content.ts` (migration `0002_certain_carlie_cooper.sql`)
+- A content item attaches to **exactly one** academic scope (Subject, Chapter,
+  or Topic) enforced by the `content_items_exactly_one_scope` CHECK constraint.
+- Content types: `NOTE`, `FLASHCARD_SET`, `CORNELL_NOTE` (extensible varchar).
+  Sources: `MANUAL`, `AI_GENERATED`, `OCR_EXTRACTED`, `IMPORTED`.
+  Lifecycle: `DRAFT` → `ACTIVE` → `ARCHIVED` (processing state stays on `jobs`).
+- Every meaningful change appends a new immutable `content_versions` row
+  (`(content_id, version)` unique). Current version tracked as an integer on
+  `content_items.current_version` — avoids a circular FK.
+- Concurrent updates serialized via `SELECT ... FOR UPDATE` on the content item;
+  unique constraint is the backstop (verified: parallel updates → distinct
+  versions).
+- API under `/api/v1/content` — create, list (filters), get, update→new version,
+  version history, archive/activate. See `docs/api/content.md`.
+- Writes guarded by `@RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')`; reads open
+  to members; tenant isolation at service layer (cross-institute → 404).
 
 ### Shared Packages
 
@@ -200,7 +222,9 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ### Items Not Yet Implemented
 
-- **Content model**: content_items/content_versions + notes/flashcards/Cornell JSONB (designed in `docs/architecture/content.md`)
+- **Study/type-specific features**: notes rendering, flashcard practice, Cornell
+  workflows (payload shapes designed, not enforced yet)
+- **OCR/AI ingestion pipelines**: sources modeled; no processing implemented
 - **Institute CRUD controller** (deferred — see priority revision)
 - **User profile management / password change** (deferred)
 - **Structured logging**: Only console.log in bootstrap
@@ -210,7 +234,7 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Not Yet Started (ordered by system priority)
 
-1. Content management (study notes, flashcards, Cornell) — designed, next checkpoint
+1. Study features on the content foundation (notes, flashcards, Cornell, AI context)
 2. OCR processing and AI generation pipelines
 3. Question bank and examination
 4. Practice mode
@@ -222,19 +246,22 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Current Architecture Decisions
 
-| Decision           | Choice                                  | Notes                                                   |
-| ------------------ | --------------------------------------- | ------------------------------------------------------- |
-| Auth pattern       | Cookie-based JWT                        | Access + refresh tokens in httpOnly cookies             |
-| CSRF               | Double-submit cookie                    | csrf_token cookie + x-csrf-token header                 |
-| Tenant resolution  | x-institute-id header (UUID)            | Guard resolves membership + roles per request           |
-| Job distribution   | RabbitMQ                                | JobsService publishes; workers consume (not yet built)  |
-| Database           | PostgreSQL + Drizzle ORM                | Schema in packages/database, migrations via drizzle-kit |
-| Validation         | class-validator (API) + Zod (contracts) | API DTOs use class-validator; shared contracts use Zod  |
-| JWT secret         | registerAsync + fail-fast in production | No silent fallback; dev-only default outside production |
-| Rate limiting      | @nestjs/throttler (in-memory)           | Auth endpoints 5/min; global default 100/min            |
-| Content storage    | PostgreSQL + JSONB                      | Single DB; no MongoDB; rich content in JSONB            |
-| Academic model     | subjects → chapters → topics            | Tenant-scoped tree; service-layer isolation             |
-| Content versioning | content_items + content_versions        | Monotonic version, JSONB payload, regeneration-aware    |
+| Decision           | Choice                                               | Notes                                                   |
+| ------------------ | ---------------------------------------------------- | ------------------------------------------------------- |
+| Auth pattern       | Cookie-based JWT                                     | Access + refresh tokens in httpOnly cookies             |
+| CSRF               | Double-submit cookie                                 | csrf_token cookie + x-csrf-token header                 |
+| Tenant resolution  | x-institute-id header (UUID)                         | Guard resolves membership + roles per request           |
+| Job distribution   | RabbitMQ                                             | JobsService publishes; workers consume (not yet built)  |
+| Database           | PostgreSQL + Drizzle ORM                             | Schema in packages/database, migrations via drizzle-kit |
+| Validation         | class-validator (API) + Zod (contracts)              | API DTOs use class-validator; shared contracts use Zod  |
+| JWT secret         | registerAsync + fail-fast in production              | No silent fallback; dev-only default outside production |
+| Rate limiting      | @nestjs/throttler (in-memory)                        | Auth endpoints 5/min; global default 100/min            |
+| Content storage    | PostgreSQL + JSONB                                   | Single DB; no MongoDB; rich content in JSONB            |
+| Academic model     | subjects → chapters → topics                         | Tenant-scoped tree; service-layer isolation             |
+| Content versioning | content_items + content_versions                     | Monotonic version, JSONB payload, regeneration-aware    |
+| Content attachment | Exactly one academic scope                           | CHECK constraint; subject/chapter/topic nullable FKs    |
+| Current version    | Integer pointer on content_items                     | Avoids circular FK; append-only history cannot dangle   |
+| Update safety      | Row lock (FOR UPDATE) + unique (content_id, version) | Concurrent updates cannot collide version numbers       |
 
 ---
 
@@ -261,15 +288,17 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Recommended Next Task
 
-**Content & Study Foundation (designed, next checkpoint):**
+**Study foundation on the content domain:**
 
-1. Add `content_items` + `content_versions` Drizzle schema per
-   `docs/architecture/content.md` (attaches to exactly one scope: Subject,
-   Chapter, or Topic; JSONB payload; monotonic versioning).
-2. Add Zod contracts for content payload shapes (notes, flashcards, Cornell).
-3. Implement the content module (list by scope, version history, update).
-4. Define OCR-extracted and AI-generated content ingestion semantics.
-5. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, update
+1. Define and enforce the type-specific JSONB payload contracts for `NOTE`,
+   `FLASHCARD_SET`, and `CORNELL_NOTE` (shapes designed in
+   `docs/architecture/content.md`).
+2. Implement study APIs on top of `content_items`/`content_versions` (e.g.
+   flashcard practice reading versions, notes rendering from payload blocks).
+3. Define OCR/AI ingestion semantics: how OCR service output and AI-generated
+   content become `content_versions` with `source`/`source_reference`/
+   `ai_context`, and how regeneration creates new versions.
+4. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, update
    docs, commit, and push.
 
-See `docs/architecture/content.md` for the full content model design.
+See `docs/architecture/content.md` and `docs/api/content.md`.
