@@ -6,7 +6,7 @@ does not stall the pipeline.
 """
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -21,13 +21,10 @@ def _now() -> datetime:
 
 def get_material(material_id: str, institute_id: str) -> dict[str, Any] | None:
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-        return cast(
-            "dict[str, Any] | None",
-            conn.execute(
-                "SELECT * FROM materials WHERE id = %s AND institute_id = %s",
-                (material_id, institute_id),
-            ).fetchone(),
-        )
+        return conn.execute(
+            "SELECT * FROM materials WHERE id = %s AND institute_id = %s",
+            (material_id, institute_id),
+        ).fetchone()
 
 
 def update_material_status(material_id: str, status: str) -> None:
