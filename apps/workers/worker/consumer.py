@@ -21,12 +21,11 @@ from pika.spec import Basic, BasicProperties
 
 from worker import db
 from worker.config import settings
-from worker.processing import process_ai_generate_note, process_material
+from worker.processing import process_material
 
 logger = logging.getLogger(__name__)
 
 MATERIAL_PROCESS = "MATERIAL_PROCESS"
-AI_GENERATE_NOTE = "AI_GENERATE_NOTE"
 
 
 def _is_uuid(value: object) -> bool:
@@ -64,73 +63,30 @@ def on_message(
     raw_payload = message.get("payload")
     payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
 
-    if job_type == MATERIAL_PROCESS:
-        material_id = payload.get("materialId")
-
-        if not (_is_uuid(job_id) and _is_uuid(institute_id) and _is_uuid(material_id)):
-            logger.warning("Invalid MATERIAL_PROCESS payload: %s", message)
-            if _is_uuid(job_id):
-                db.update_job_status(
-                    str(job_id), "failed", error={"message": "Invalid job payload"}
-                )
-            channel.basic_ack(delivery_tag=delivery_tag)
-            return
-
-        try:
-            process_material(str(job_id), str(institute_id), str(material_id))
-        except Exception:
-            logger.exception("Unexpected error processing MATERIAL_PROCESS job %s", job_id)
-            if _is_uuid(job_id):
-                db.update_job_status(
-                    str(job_id), "failed", error={"message": "Unexpected processing failure"}
-                )
-        finally:
-            channel.basic_ack(delivery_tag=delivery_tag)
+    if job_type != MATERIAL_PROCESS:
+        logger.info("Skipping unsupported job type: %s", job_type)
+        channel.basic_ack(delivery_tag=delivery_tag)
         return
 
-    if job_type == AI_GENERATE_NOTE:
-        prompt = payload.get("prompt")
-        subject_id = payload.get("subjectId")
-        chapter_id = payload.get("chapterId")
-        topic_id = payload.get("topicId")
+    material_id = payload.get("materialId")
 
-        if not (
-            _is_uuid(job_id)
-            and _is_uuid(institute_id)
-            and isinstance(prompt, str)
-            and _is_uuid(subject_id)
-            and _is_uuid(chapter_id)
-            and _is_uuid(topic_id)
-        ):
-            logger.warning("Invalid AI_GENERATE_NOTE payload: %s", message)
-            if _is_uuid(job_id):
-                db.update_job_status(
-                    str(job_id), "failed", error={"message": "Invalid job payload"}
-                )
-            channel.basic_ack(delivery_tag=delivery_tag)
-            return
+    if not (_is_uuid(job_id) and _is_uuid(institute_id) and _is_uuid(material_id)):
+        logger.warning("Invalid MATERIAL_PROCESS payload: %s", message)
+        if _is_uuid(job_id):
+            db.update_job_status(str(job_id), "failed", error={"message": "Invalid job payload"})
+        channel.basic_ack(delivery_tag=delivery_tag)
+        return
 
-        try:
-            process_ai_generate_note(
-                str(job_id),
-                str(institute_id),
-                prompt,
-                str(subject_id),
-                str(chapter_id),
-                str(topic_id),
+    try:
+        process_material(str(job_id), str(institute_id), str(material_id))
+    except Exception:
+        logger.exception("Unexpected error processing MATERIAL_PROCESS job %s", job_id)
+        if _is_uuid(job_id):
+            db.update_job_status(
+                str(job_id), "failed", error={"message": "Unexpected processing failure"}
             )
-        except Exception:
-            logger.exception("Unexpected error processing AI_GENERATE_NOTE job %s", job_id)
-            if _is_uuid(job_id):
-                db.update_job_status(
-                    str(job_id), "failed", error={"message": "Unexpected processing failure"}
-                )
-        finally:
-            channel.basic_ack(delivery_tag=delivery_tag)
-        return
-
-    logger.info("Skipping unsupported job type: %s", job_type)
-    channel.basic_ack(delivery_tag=delivery_tag)
+    finally:
+        channel.basic_ack(delivery_tag=delivery_tag)
 
 
 def start_consumer() -> None:

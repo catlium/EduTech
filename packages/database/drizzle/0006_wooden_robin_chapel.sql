@@ -1,0 +1,2 @@
+DROP INDEX "jobs_active_generation_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "jobs_active_generation_unique" ON "jobs" USING btree ("institute_id",((payload -> 'operation')),((payload -> 'source' ->> 'type')),((payload -> 'source' ->> 'id'))) WHERE type IN ('AI_GENERATE_NOTE', 'AI_GENERATE_SUMMARY', 'AI_GENERATE_FLASHCARDS', 'AI_GENERATE_CONCEPTS') AND status IN ('queued', 'processing');

@@ -49,11 +49,11 @@
 
 - [x] **AI-01**: AI provider logic behind an internal service/interface (isolated from controllers/DB)
 - [x] **AI-02**: Job flow (API request → create AI job → queue → AI processing → store result → COMPLETED/FAILED)
-- [ ] **AI-05**: Generate **Summary** (summary, key concepts, important points)
-- [ ] **AI-06**: Generate **Flashcards** (question, answer, difficulty)
-- [ ] **AI-07**: Generate **Important Concepts** (concept name, description)
-- [ ] **AI-08**: AI content can be requested, processed asynchronously, stored, retrieved, updated per API contract
-- [ ] **AI-09**: Reconcile existing `AI_GENERATE_NOTE` worker with Phase 5 Summary/Flashcards/Concepts scope + authoritative `docs/api/` contract
+- [x] **AI-05**: Generate **Summary** (summary, key concepts, important points)
+- [x] **AI-06**: Generate **Flashcards** (question, answer, difficulty)
+- [x] **AI-07**: Generate **Important Concepts** (concept name, description)
+- [x] **AI-08**: AI content can be requested, processed asynchronously, stored, retrieved, updated per API contract
+- [x] **AI-09**: Reconcile existing `AI_GENERATE_NOTE` worker with Phase 5 Summary/Flashcards/Concepts scope + authoritative `docs/api/` contract
 
 ### Phase 6 — Question Bank (NOT STARTED)
 
@@ -229,7 +229,7 @@
 | PROC-01..05 | 4 | ✓ complete |
 | PROC-06..07 | 4 | [ ] not started |
 | AI-01..02 | 5 | ✓ complete |
-| AI-05..09 | 5 | [ ] in progress |
+| AI-05..09 | 5 | ✓ complete (E2E validation pending infrastructure) |
 | QBN-01..07 | 6 | [ ] not started |
 | AIGQ-01..08 | 7 | [ ] not started |
 | EXAM-01..08 | 8 | [ ] not started |

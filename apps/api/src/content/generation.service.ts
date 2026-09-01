@@ -8,12 +8,10 @@ import {
 import { eq, and } from 'drizzle-orm';
 import { materials, topics, chapters, subjects } from '@catlium/database';
 import type { Database } from '@catlium/database';
-import type { GenerateNoteResponse } from '@catlium/contracts';
+import type { GenerateContentResponse, GenerationOperation } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
-
-const AI_GENERATE_NOTE = 'AI_GENERATE_NOTE';
 
 function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
@@ -27,12 +25,13 @@ export class GenerationService {
     private readonly jobs: JobsService,
   ) {}
 
-  async requestNoteGeneration(
+  async requestGeneration(
+    operation: GenerationOperation,
     instituteId: string,
     userId: string,
     sourceType: 'MATERIAL' | 'TOPIC',
     sourceId: string,
-  ): Promise<GenerateNoteResponse> {
+  ): Promise<GenerateContentResponse> {
     if (sourceType === 'MATERIAL') {
       await this.assertGeneratableMaterial(instituteId, sourceId);
     } else {
@@ -40,17 +39,17 @@ export class GenerationService {
     }
 
     const payload = {
-      operation: AI_GENERATE_NOTE,
+      operation,
       source: { type: sourceType, id: sourceId },
       requestedBy: userId,
     };
 
-    // The partial unique index on jobs (active AI_GENERATE_NOTE per source)
+    // The partial unique index on jobs (active generation per source + operation)
     // guarantees a single active generation job; a concurrent duplicate
     // insert violates it and maps to a 409, consistent with material processing.
     let job: Job;
     try {
-      job = await this.jobs.insertJob(instituteId, AI_GENERATE_NOTE, payload);
+      job = await this.jobs.insertJob(instituteId, operation, payload);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('A generation is already in progress for this source');
@@ -69,7 +68,7 @@ export class GenerationService {
 
     return {
       jobId: job.id,
-      operation: AI_GENERATE_NOTE,
+      operation,
       sourceType,
       sourceId,
       status: 'QUEUED',

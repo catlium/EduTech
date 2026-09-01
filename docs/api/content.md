@@ -31,7 +31,7 @@ Errors follow the global format:
   "subjectId": "uuid | null",
   "chapterId": "uuid | null",
   "topicId": "uuid | null",
-  "type": "NOTE | FLASHCARD_SET | CORNELL_NOTE",
+  "type": "NOTE | FLASHCARD_SET | CORNELL_NOTE | SUMMARY | IMPORTANT_CONCEPTS",
   "title": "string",
   "status": "DRAFT | ACTIVE | ARCHIVED",
   "source": "MANUAL | AI_GENERATED | OCR_EXTRACTED | IMPORTED",
@@ -76,7 +76,8 @@ source of truth.
 `payload` must match the schema for the content item's `type`. A payload for
 one type is rejected for another. The Zod schemas in `@catlium/contracts`
 (`NotePayloadSchema`, `FlashcardSetPayloadSchema`,
-`CornellNotePayloadSchema`) are canonical.
+`CornellNotePayloadSchema`, `SummaryPayloadSchema`,
+`ImportantConceptsPayloadSchema`) are canonical.
 
 #### NOTE
 
@@ -100,11 +101,12 @@ one type is rejected for another. The Zod schemas in `@catlium/contracts`
 {
   "title": "optional",
   "description": "optional",
-  "cards": [{ "id": "c1", "front": "...", "back": "..." }]
+  "cards": [{ "id": "c1", "front": "...", "back": "...", "difficulty": "MEDIUM" }]
 }
 ```
 
-`cards` requires at least one card. Each card has an `id`, `front`, and `back`.
+`cards` requires at least one card. Each card has an `id`, `front`, and `back`;
+`difficulty` is optional (`EASY` | `MEDIUM` | `HARD`).
 
 #### CORNELL_NOTE
 
@@ -118,6 +120,34 @@ one type is rejected for another. The Zod schemas in `@catlium/contracts`
 
 `sections` requires at least one section; each has an `id`, `cue`, and `notes`.
 `summary` is optional.
+
+#### SUMMARY
+
+```json
+{
+  "title": "optional",
+  "summary": "...",
+  "keyConcepts": ["...", "..."],
+  "importantPoints": ["...", "..."]
+}
+```
+
+`summary` is a non-empty string (the condensed summary). `keyConcepts` and
+`importantPoints` each require at least one non-empty string.
+
+#### IMPORTANT_CONCEPTS
+
+```json
+{
+  "title": "optional",
+  "concepts": [
+    { "name": "...", "description": "..." },
+    { "name": "...", "description": "..." }
+  ]
+}
+```
+
+`concepts` requires at least one concept; each has a `name` and `description`.
 
 ## Current version strategy
 

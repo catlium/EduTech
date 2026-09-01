@@ -173,7 +173,13 @@ export type TopicResponse = z.infer<typeof TopicResponseSchema>;
 
 // ── Content Contracts ──────────────────────
 
-export const ContentTypeEnum = z.enum(['NOTE', 'FLASHCARD_SET', 'CORNELL_NOTE']);
+export const ContentTypeEnum = z.enum([
+  'NOTE',
+  'FLASHCARD_SET',
+  'CORNELL_NOTE',
+  'SUMMARY',
+  'IMPORTANT_CONCEPTS',
+]);
 export type ContentType = z.infer<typeof ContentTypeEnum>;
 
 export const ContentStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']);
@@ -214,10 +220,16 @@ export const NotePayloadSchema = z.object({
 });
 export type NotePayload = z.infer<typeof NotePayloadSchema>;
 
+// FLASHCARD_SET — a set of front/back cards.
+
+export const FlashcardDifficultyEnum = z.enum(['EASY', 'MEDIUM', 'HARD']);
+export type FlashcardDifficulty = z.infer<typeof FlashcardDifficultyEnum>;
+
 export const FlashcardSchema = z.object({
   id: PayloadId,
   front: z.string().min(1).max(5000),
   back: z.string().min(1).max(5000),
+  difficulty: FlashcardDifficultyEnum.optional(),
 });
 export type Flashcard = z.infer<typeof FlashcardSchema>;
 
@@ -242,12 +254,43 @@ export const CornellNotePayloadSchema = z.object({
 });
 export type CornellNotePayload = z.infer<typeof CornellNotePayloadSchema>;
 
+// SUMMARY — condensed summary with key concepts and important points.
+
+export const SummaryPayloadSchema = z.object({
+  title: z.string().max(255).optional(),
+  summary: z.string().min(1).max(20000),
+  keyConcepts: z.array(z.string().min(1).max(1000)).min(1),
+  importantPoints: z.array(z.string().min(1).max(2000)).min(1),
+});
+export type SummaryPayload = z.infer<typeof SummaryPayloadSchema>;
+
+// IMPORTANT_CONCEPTS — a set of concept name/description pairs.
+
+export const ConceptSchema = z.object({
+  name: z.string().min(1).max(500),
+  description: z.string().min(1).max(5000),
+});
+export type Concept = z.infer<typeof ConceptSchema>;
+
+export const ImportantConceptsPayloadSchema = z.object({
+  title: z.string().max(255).optional(),
+  concepts: z.array(ConceptSchema).min(1),
+});
+export type ImportantConceptsPayload = z.infer<typeof ImportantConceptsPayloadSchema>;
+
 export const ContentPayloadSchemas = {
   NOTE: NotePayloadSchema,
   FLASHCARD_SET: FlashcardSetPayloadSchema,
   CORNELL_NOTE: CornellNotePayloadSchema,
+  SUMMARY: SummaryPayloadSchema,
+  IMPORTANT_CONCEPTS: ImportantConceptsPayloadSchema,
 } as const;
-export type ContentPayload = NotePayload | FlashcardSetPayload | CornellNotePayload;
+export type ContentPayload =
+  | NotePayload
+  | FlashcardSetPayload
+  | CornellNotePayload
+  | SummaryPayload
+  | ImportantConceptsPayload;
 
 const AcademicScopeFields = {
   subjectId: z.string().uuid().optional(),
@@ -335,27 +378,6 @@ export const ArchiveContentRequestSchema = z.object({
 });
 export type ArchiveContentRequest = z.infer<typeof ArchiveContentRequestSchema>;
 
-// ── AI Contracts ─────────────────────────────
-
-export const AIGenerateNotePayloadSchema = z.object({
-  materialId: z.string().uuid(),
-  title: z.string().optional(),
-});
-export type AIGenerateNotePayload = z.infer<typeof AIGenerateNotePayloadSchema>;
-
-export const AIInternalPersistNoteRequestSchema = z.object({
-  jobId: z.string().uuid(),
-  materialId: z.string().uuid(),
-  instituteId: z.string().uuid(),
-  subjectId: z.string().uuid().optional(),
-  chapterId: z.string().uuid().optional(),
-  topicId: z.string().uuid().optional(),
-  title: z.string().min(1).max(255),
-  payload: NotePayloadSchema,
-  aiContext: z.record(z.string(), z.unknown()),
-});
-export type AIInternalPersistNoteRequest = z.infer<typeof AIInternalPersistNoteRequestSchema>;
-
 // ── Material Contracts ──────────────────────
 
 export const MaterialTypeEnum = z.enum(['DOCUMENT', 'PDF', 'IMAGE', 'TEXT']);
@@ -429,23 +451,32 @@ export type MaterialProcessResponse = z.infer<typeof MaterialProcessResponseSche
 // ── AI Generation Contracts ────────────────
 //
 // The worker receives a minimal job payload:
-//   { "operation": "AI_GENERATE_NOTE", "source": { "type": "MATERIAL"|"TOPIC", "id": "uuid" }, "requestedBy": "uuid" }
+//   { "operation": "AI_GENERATE_NOTE"|..., "source": { "type": "MATERIAL"|"TOPIC", "id": "uuid" }, "requestedBy": "uuid" }
 // and resolves the source text itself (no content embedded in the message).
 
 export const GenerationSourceTypeEnum = z.enum(['MATERIAL', 'TOPIC']);
 export type GenerationSourceType = z.infer<typeof GenerationSourceTypeEnum>;
 
-export const GenerateNoteRequestSchema = z.object({
+export const GenerationOperationEnum = z.enum([
+  'AI_GENERATE_NOTE',
+  'AI_GENERATE_SUMMARY',
+  'AI_GENERATE_FLASHCARDS',
+  'AI_GENERATE_CONCEPTS',
+]);
+export type GenerationOperation = z.infer<typeof GenerationOperationEnum>;
+
+export const GenerateContentRequestSchema = z.object({
+  operation: GenerationOperationEnum,
   sourceType: GenerationSourceTypeEnum,
   sourceId: z.string().uuid(),
 });
-export type GenerateNoteRequest = z.infer<typeof GenerateNoteRequestSchema>;
+export type GenerateContentRequest = z.infer<typeof GenerateContentRequestSchema>;
 
-export const GenerateNoteResponseSchema = z.object({
+export const GenerateContentResponseSchema = z.object({
   jobId: z.string().uuid(),
-  operation: z.literal('AI_GENERATE_NOTE'),
+  operation: GenerationOperationEnum,
   sourceType: GenerationSourceTypeEnum,
   sourceId: z.string().uuid(),
   status: z.literal('QUEUED'),
 });
-export type GenerateNoteResponse = z.infer<typeof GenerateNoteResponseSchema>;
+export type GenerateContentResponse = z.infer<typeof GenerateContentResponseSchema>;

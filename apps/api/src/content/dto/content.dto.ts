@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsObject, IsIn, MaxLength, IsUUID } from 'class-validator';
 
-type ContentType = 'NOTE' | 'FLASHCARD_SET' | 'CORNELL_NOTE';
+type ContentType = 'NOTE' | 'FLASHCARD_SET' | 'CORNELL_NOTE' | 'SUMMARY' | 'IMPORTANT_CONCEPTS';
 type ContentSource = 'MANUAL' | 'AI_GENERATED' | 'OCR_EXTRACTED' | 'IMPORTED';
 type ContentChangeType = 'CREATION' | 'EDIT' | 'REGENERATION' | 'CORRECTION';
 type ContentStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
@@ -10,7 +10,7 @@ export class CreateContentDto {
   @MaxLength(255)
   title!: string;
 
-  @IsIn(['NOTE', 'FLASHCARD_SET', 'CORNELL_NOTE'])
+  @IsIn(['NOTE', 'FLASHCARD_SET', 'CORNELL_NOTE', 'SUMMARY', 'IMPORTANT_CONCEPTS'])
   type!: ContentType;
 
   @IsIn(['MANUAL', 'AI_GENERATED', 'OCR_EXTRACTED', 'IMPORTED'])

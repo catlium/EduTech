@@ -129,27 +129,28 @@ System priority order:
 
 ## Phase 2 — AI Processing Foundation
 
-### Goal: AI Processing Foundation + AI_GENERATE_NOTE (Seventh Checkpoint)
+### Goal: AI Processing Foundation + AI Generation (Seventh Checkpoint)
 
 - [x] Document AI architecture decisions (provider abstraction, queue separation, worker layout) — see `docs/architecture/ai.md`
-- [x] Add Zod contracts for generation request/response
-- [x] Add partial unique index on `jobs` for active-generation dedup (migration `0005_fuzzy_runaways.sql`)
-- [x] Route `AI_GENERATE_NOTE` jobs to a dedicated `ai_generation` queue (JobsService)
-- [x] Implement `POST /content/generate/note` (202, source validation, 409 dedup, publish)
+- [x] Add Zod contracts for generation request/response (all four operations)
+- [x] Add partial unique index on `jobs` for active-generation dedup (migration `0005_fuzzy_runaways.sql`, generalized per-operation in `0006_wooden_robin_chapel.sql`)
+- [x] Route AI generation jobs to a dedicated `ai_generation` queue (JobsService, all four operations)
+- [x] Implement `POST /content/generate` (202, source validation, 409 dedup, publish)
 - [x] Add `WORKER_AI_*` settings + role dispatch in worker entrypoint (`WORKER_ROLE=ai`)
 - [x] Implement `AIProvider` abstraction + one OpenAI-compatible provider (httpx)
-- [x] Implement Pydantic mirror of `NotePayloadSchema` (canonical validation in worker)
-- [x] Implement NOTE prompt builder + robust JSON parsing (deterministic context prep)
-- [x] Implement AI generation service (resolve sources, call provider, validate, persist content)
-- [x] Implement `ai_generation` queue consumer
+- [x] Add Pydantic mirrors of the payload schemas (`NotePayloadSchema`, `SummaryPayloadSchema`, `FlashcardSetPayloadSchema`, `ImportantConceptsPayloadSchema`)
+- [x] Implement NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS prompt builders + robust JSON parsing (shared parse + prompt helpers)
+- [x] Implement AI generation service (dispatch table, resolve sources, call provider, validate, persist content)
+- [x] Implement `ai_generation` queue consumer (all four operations)
 - [x] Persist generated content as `AI_GENERATED` + `DRAFT` with `ai_context`/`source_reference` provenance
 - [x] Update `.env.example` with AI provider variables (`WORKER_AI_*`)
 - [x] Fix undefined `GenerationFailure` → `GenerationError` naming bug (worker)
 - [x] Fix per-source dedup index to read nested `payload -> 'source' -> 'type'` / `-> 'id'` (was `sourceType`/`sourceId` → always NULL)
-- [ ] Update docs (`docs/api/ai.md` generation contract + content/infrastructure/api docs)
+- [x] Generalize dedup index to per-operation + source (migration `0006_wooden_robin_chapel.sql`)
+- [x] Document AI generation contract in `docs/api/ai.md`; update `docs/api/content.md` for new content types
 - [ ] Validate end-to-end (20-item checklist against running infrastructure)
 - [x] Run pnpm checks + Python ruff/mypy (all pass)
-- [ ] Update docs and create checkpoint
+- [ ] Create checkpoint
 
 ## Phase 2 — Dockerization (Infrastructure)
 
@@ -162,6 +163,7 @@ System priority order:
 - [x] Add `infrastructure/compose/.env.example` (compose/container-host URL defaults)
 - [x] Wire root `.env` via `env_file` + container-hostname overrides (postgres/rabbitmq/redis/ocr)
 - [x] Add shared `storage_data` volume for API + workers
+- [x] Bump API image to Node 24 (pnpm 11 requires Node ≥22.13 + `node:sqlite`; Node 20 build was failing)
 - [ ] Build + boot the full stack (`docker compose up --build`) to validate container networking
 - [ ] Validate compose against `.env` and document in `docs/project-status.md`
 

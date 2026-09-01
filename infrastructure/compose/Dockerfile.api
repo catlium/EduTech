@@ -11,7 +11,9 @@
 # ─────────────────────────────────────────────────────────────
 
 # ── Build stage: install + compile the full workspace ──
-FROM node:20-alpine AS build
+# Node 24 (LTS): the repo pins pnpm 11.1.2 (needs Node >=22.13) and
+# `node:sqlite` (Node >=22.5).
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # Pin pnpm to the repo's packageManager version.
@@ -26,7 +28,7 @@ RUN pnpm build
 # ── Runtime stage ──
 # ponytail: ships the full workspace (dev deps included) to avoid fragile
 # dependency-pruning; fine for dev, revisit when image size matters.
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 

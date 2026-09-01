@@ -24,6 +24,9 @@ export interface Job {
 // routed to a dedicated queue so the AI worker can run (and scale) independently.
 const JOB_QUEUE_BY_TYPE: Record<string, string> = {
   AI_GENERATE_NOTE: 'ai_generation',
+  AI_GENERATE_SUMMARY: 'ai_generation',
+  AI_GENERATE_FLASHCARDS: 'ai_generation',
+  AI_GENERATE_CONCEPTS: 'ai_generation',
 };
 
 @Injectable()

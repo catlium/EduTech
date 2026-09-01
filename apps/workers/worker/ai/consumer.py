@@ -5,9 +5,10 @@ Message shape (matches the API RabbitMQService publish contract):
     {
       "jobId": "uuid",
       "instituteId": "uuid",
-      "type": "AI_GENERATE_NOTE",
+      "type": "AI_GENERATE_NOTE" | "AI_GENERATE_SUMMARY"
+            | "AI_GENERATE_FLASHCARDS" | "AI_GENERATE_CONCEPTS",
       "payload": {
-        "operation": "AI_GENERATE_NOTE",
+        "operation": "<same type>",
         "source": { "type": "MATERIAL" | "TOPIC", "id": "uuid" },
         "requestedBy": "uuid"
       }
@@ -27,12 +28,10 @@ from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 
 from worker import db
-from worker.ai.service import generate_note
+from worker.ai import service
 from worker.config import settings
 
 logger = logging.getLogger(__name__)
-
-AI_GENERATE_NOTE = "AI_GENERATE_NOTE"
 
 
 def _is_uuid(value: object) -> bool:
@@ -70,20 +69,20 @@ def on_message(
     raw_payload = message.get("payload")
     payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
 
-    if job_type != AI_GENERATE_NOTE:
+    if job_type not in service.OPERATIONS:
         logger.info("Skipping unsupported job type: %s", job_type)
         channel.basic_ack(delivery_tag=delivery_tag)
         return
 
     if not (_is_uuid(job_id) and _is_uuid(institute_id)):
-        logger.warning("Invalid AI_GENERATE_NOTE message: %s", message)
+        logger.warning("Invalid AI generation message: %s", message)
         channel.basic_ack(delivery_tag=delivery_tag)
         return
 
     try:
-        generate_note(str(job_id), str(institute_id), payload)
+        service.generate(str(job_id), str(institute_id), payload)
     except Exception:
-        logger.exception("Unexpected error processing AI_GENERATE_NOTE job %s", job_id)
+        logger.exception("Unexpected error processing %s job %s", job_type, job_id)
         db.update_job_status(
             str(job_id), "failed", error={"message": "Unexpected processing failure"}
         )

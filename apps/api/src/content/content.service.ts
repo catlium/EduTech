@@ -7,7 +7,7 @@ import { ContentPayloadSchemas } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 
 type ScopeKind = 'subject' | 'chapter' | 'topic';
-type ContentType = 'NOTE' | 'FLASHCARD_SET' | 'CORNELL_NOTE';
+type ContentType = 'NOTE' | 'FLASHCARD_SET' | 'CORNELL_NOTE' | 'SUMMARY' | 'IMPORTANT_CONCEPTS';
 type ContentSource = 'MANUAL' | 'AI_GENERATED' | 'OCR_EXTRACTED' | 'IMPORTED';
 type ContentChangeType = 'CREATION' | 'EDIT' | 'REGENERATION' | 'CORRECTION';
 type ContentStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';

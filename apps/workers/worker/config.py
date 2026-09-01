@@ -12,9 +12,6 @@ class Settings(BaseSettings):
     rabbitmq_url: str = "amqp://catlium:catlium_dev_secret@localhost:5672"
     database_url: str = "postgresql://catlium:catlium_dev_secret@localhost:5432/catlium_dev"
     ocr_url: str = "http://localhost:8000"
-    internal_api_url: str = "http://localhost:3000"
-    internal_api_key: str = "internal_secret_key"
-    openrouter_api_key: str = "sk-openrouter-key"
     storage_dir: str = str(_REPO_ROOT / "storage")
     queue: str = "jobs"
     role: str = "material"

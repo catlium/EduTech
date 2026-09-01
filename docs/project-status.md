@@ -1,21 +1,25 @@
 # Project Status
 
-## Current Phase: Phase 2 — AI Processing Foundation
+## Current Phase: Phase 5 — AI Learning Content Generation
 
-**Status:** In Progress — AI Processing Foundation + `AI_GENERATE_NOTE` (Seventh
-Checkpoint). Implementation complete and statically validated; runtime
-end-to-end validation vs a live stack still pending.
+**Status:** IN PROGRESS — implementation complete for all four generation
+operations (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS); static
+validation green; runtime end-to-end validation vs a live stack still pending
+(blocked by sandbox network — Docker Hub/Ollama unreachable).
 
-**Also completed:** Full-stack Dockerization (API, OCR, both workers, one-shot
-DB migrations) so the whole system runs via `docker compose`.
+**Also completed:**
+- Generalized AI generation: `POST /content/generate` (single endpoint,
+  `operation` in body), dispatch table in the worker, shared parse/prompt
+  helpers, Pydantic mirrors of all payload schemas.
+- Per-operation active-generation dedup (migration `0006_wooden_robin_chapel.sql`).
+- `docs/api/ai.md` generation contract + `docs/api/content.md` updated for the
+  new content types.
+- Docker API image bumped to Node 24 (pnpm 11 requires Node ≥22.13 + `node:sqlite`).
 
-**Last Checkpoint:** Material Retry / Reprocessing Semantics Checkpoint Complete
+**Last Checkpoint:** `7dbe573` — `feat(ai): complete AI generation foundation and dockerize stack`
 
-**Current goal:** Establish the generic AI processing foundation and implement the
-first generation operation (`AI_GENERATE_NOTE`): an `AIProvider` abstraction, a
-logically separated AI worker inside `apps/workers/`, a `POST /content/generate/note`
-API (202 + jobId), and persistence of validated output as `AI_GENERATED` + `DRAFT`
-content with `ai_context`/`source_reference` provenance.
+**Current goal:** Close Phase 5 by running the E2E generation validation
+against a live stack, then plan Phase 6 (Question Bank) without implementing it.
 
 ## Priority Revision (2026-08-19)
 
@@ -307,44 +311,48 @@ Explicit retry of failed material processing (see `docs/architecture/materials.m
 
 ### AI Processing Foundation (Phase 2 Goal 7)
 
-AI-assisted study-content generation foundation (`AI_GENERATE_NOTE`) across
-the monolith API, the AI worker, and shared contracts (see
-`docs/architecture/ai.md`, `docs/api/ai.md` when authored):
+AI-assisted study-content generation across the monolith API, the AI worker,
+and shared contracts (see `docs/architecture/ai.md`, `docs/api/ai.md`):
 
-- **API**: `POST /content/generate/note` (`202` + `jobId`). Accepts
-  `{ sourceType: MATERIAL|TOPIC, sourceId }`, validates, inserts a queued
-  `AI_GENERATE_NOTE` job and publishes it to the dedicated `ai_generation`
-  queue. A second active generation for the same source returns `409`.
+- **API**: `POST /content/generate` (`202` + `jobId`). Accepts
+  `{ operation, sourceType: MATERIAL|TOPIC, sourceId }`, validates, inserts a
+  queued job and publishes it to the dedicated `ai_generation` queue. A second
+  active generation job for the same operation on the same source returns
+  `409`. `operation` is one of `AI_GENERATE_NOTE`, `AI_GENERATE_SUMMARY`,
+  `AI_GENERATE_FLASHCARDS`, `AI_GENERATE_CONCEPTS`.
 - **Dedup**: partial unique index `jobs_active_generation_unique` on
-  `jobs (institute_id, (payload->'source'->>'type'), (payload->'source'->>'id'))`
-  WHERE `type = 'AI_GENERATE_NOTE' AND status IN ('queued','processing')`
-  (migration `0005_fuzzy_runaways.sql`). **Fix (this checkpoint):** the index
-  originally read flat `payload->>'sourceType'` / `->>'sourceId'`, which are
-  always NULL for the nested `source: { type, id }` payload shape — that would
-  have collapsed dedup to one active job per institute. Expressions updated to
-  the nested path in schema, migration, and snapshot.
-- **JobsService**: `AI_GENERATE_NOTE` → `ai_generation` queue (dedicated,
+  `jobs (institute_id, (payload->'operation'), (payload->'source'->>'type'),
+  (payload->'source'->>'id'))` WHERE `type IN (four operations) AND status IN
+  ('queued','processing')`. **Fixes:** originally read flat
+  `payload->>'sourceType'` (always NULL for the nested `source: { type, id }`
+  shape — collapsed dedup to one job per institute), and was scoped only to
+  `type = 'AI_GENERATE_NOTE'`. Both corrected (migration `0005_fuzzy_runaways.sql`
+  → nested path; migration `0006_wooden_robin_chapel.sql` → per-operation scope).
+- **JobsService**: four AI operation types → `ai_generation` queue (dedicated,
   independently scalable); others default to `jobs`.
 - **Worker** (`apps/workers/worker/ai/`): `WORKER_ROLE=ai` selects the AI
   consumer (`app.py`); `config.py` adds `WORKER_AI_*` settings with
   OpenAI-compatible defaults (local Ollama base URL, model, timeouts, context
   budget). `provider.py` = `AIProvider` ABC + `OpenAICompatibleProvider`
-  (httpx `/chat/completions`). `schemas.py` = Pydantic mirror of the Zod
-  `NotePayloadSchema`. `generation/note.py` = deterministic context prep +
-  prompt builder + robust JSON extraction. `service.py` orchestrates
-  source resolution → provider call → validation → persistence.
+  (httpx `/chat/completions`). `schemas.py` = Pydantic mirrors of the Zod
+  payload schemas (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS).
+  `generation/` = `parse.py` (tolerant JSON extraction), `prompt.py` (shared
+  user-prompt framing), and one prompt builder per operation. `service.py`
+  dispatches by operation over a table: source resolution → bounded context →
+  provider call → output validation → persistence.
 - **Persistence**: worker writes directly to PostgreSQL — a `content_items`
-  row (`NOTE`, `DRAFT`, `AI_GENERATED`, exactly-one scope) + a
+  row (produced type, `DRAFT`, `AI_GENERATED`, exactly-one scope) + a
   `content_versions` v1 row with `payload`, `ai_context`, and
   `source_reference` provenance (matches the API's manual-create path).
   Job transitions `queued → processing → completed|failed` with result/error.
-- **Fix (this checkpoint):** undefined `GenerationFailure` renamed to the
-  defined `GenerationError` (three raise sites) — invalid payloads, invalid
-  AI JSON, and failed validation now record the intended safe error message on
+- **Fix (earlier checkpoint):** undefined `GenerationFailure` renamed to the
+  defined `GenerationError` (three raise sites) — invalid payloads, invalid AI
+  JSON, and failed validation now record the intended safe error message on
   the job instead of a generic unexpected failure.
 - **Validation**: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`,
-  Python `ruff check`, `ruff format`, and `mypy` all pass. Full 20-item
-  runtime E2E checklist against a live stack is still pending.
+  Python `ruff check`, `ruff format`, and `mypy` all pass; compose config
+  validates. Full runtime E2E checklist against a live stack is still pending
+  (blocked by sandbox network).
 
 ### Dockerization (Infrastructure)
 
@@ -353,8 +361,11 @@ Containerized runtime for the whole system (see
 `docker-compose.yml`):
 
 - `Dockerfile.api` — pnpm workspace multi-stage build (turbo build → all
-  `@catlium/*` dists) then a `node:20-alpine` runtime. The same image serves
-  the `api` service and the one-shot `migrate` service (`pnpm db:migrate`).
+  `@catlium/*` dists) then a `node:24-alpine` runtime (**bumped from Node 20**:
+  pnpm 11 pinned in `package.json` requires Node ≥22.13 + `node:sqlite`; the
+  Node 20 build failed with `ERR_UNKNOWN_BUILTIN_MODULE`). The same image
+  serves the `api` service and the one-shot `migrate` service
+  (`pnpm db:migrate`).
 - `Dockerfile.python` — `python:3.12-slim` with both Python apps installed
   (`pip install ./ocr ./worker`). One image serves `ocr` (uvicorn
   `app.main:app`), `worker-material`, and `worker-ai` (select via

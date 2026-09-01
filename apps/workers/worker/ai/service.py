@@ -1,11 +1,11 @@
 """AI generation orchestration for the worker.
 
-``generate_note`` resolves the source (a single READY material or a topic's
-eligible materials), builds a deterministic bounded context, calls the
-configured AI provider, validates the output against the canonical
-``NotePayloadSchema`` mirror, and persists it as an ``AI_GENERATED`` ``DRAFT``
-content item with provenance. Every path terminates the job
-(``completed`` or ``failed``) — a job is never left ``processing``.
+Each operation (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS) resolves the
+source (a single READY material or a topic's eligible materials), builds a
+deterministic bounded context, calls the configured AI provider, validates the
+output against the canonical Pydantic payload mirror, and persists it as an
+``AI_GENERATED`` ``DRAFT`` content item with provenance. Every path terminates
+the job (``completed`` or ``failed``) — a job is never left ``processing``.
 
 Safe one-line error messages are stored on the job; full tracebacks stay in
 the worker log (same policy as material processing).
@@ -14,50 +14,105 @@ the worker log (same policy as material processing).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from worker import db
-from worker.ai.generation.note import build_messages, parse_note_json
+from worker.ai import generation, schemas
 from worker.ai.provider import create_provider
-from worker.ai.schemas import NotePayload
 from worker.config import settings
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
-AI_GENERATE_NOTE = "AI_GENERATE_NOTE"
 VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC"}
-DEFAULT_NOTE_TITLE = "AI-generated note"
 
 
 class GenerationError(Exception):
     """Carries a safe, user-facing error message for the failed job."""
 
 
-def generate_note(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
+@dataclass(frozen=True)
+class Operation:
+    operation: str
+    content_type: str
+    build_messages: Callable[[str, str], list[dict[str, str]]]
+    parse: Callable[[str], dict[str, Any]]
+    model: type[BaseModel]
+    default_title: str
+
+
+OPERATIONS: dict[str, Operation] = {
+    "AI_GENERATE_NOTE": Operation(
+        operation="AI_GENERATE_NOTE",
+        content_type="NOTE",
+        build_messages=generation.note.build_messages,
+        parse=generation.note.parse_note_json,
+        model=schemas.NotePayload,
+        default_title="AI-generated note",
+    ),
+    "AI_GENERATE_SUMMARY": Operation(
+        operation="AI_GENERATE_SUMMARY",
+        content_type="SUMMARY",
+        build_messages=generation.summary.build_messages,
+        parse=generation.summary.parse_summary_json,
+        model=schemas.SummaryPayload,
+        default_title="AI-generated summary",
+    ),
+    "AI_GENERATE_FLASHCARDS": Operation(
+        operation="AI_GENERATE_FLASHCARDS",
+        content_type="FLASHCARD_SET",
+        build_messages=generation.flashcards.build_messages,
+        parse=generation.flashcards.parse_flashcards_json,
+        model=schemas.FlashcardSetPayload,
+        default_title="AI-generated flashcards",
+    ),
+    "AI_GENERATE_CONCEPTS": Operation(
+        operation="AI_GENERATE_CONCEPTS",
+        content_type="IMPORTANT_CONCEPTS",
+        build_messages=generation.concepts.build_messages,
+        parse=generation.concepts.parse_concepts_json,
+        model=schemas.ImportantConceptsPayload,
+        default_title="AI-generated important concepts",
+    ),
+}
+
+
+def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
     db.update_job_status(job_id, "processing")
     try:
-        source = _validate_payload(payload)
+        operation, source = _validate_payload(payload)
         materials = _resolve_materials(institute_id, source)
         context, context_meta = _build_context(materials)
         provider = create_provider()
-        raw = provider.complete(build_messages(context, _source_label(source, materials)))
-        note_dict = _validate_note_output(raw)
-        content_id = _persist_note(institute_id, job_id, source, materials, context_meta, note_dict)
+        raw = provider.complete(operation.build_messages(context, _source_label(source, materials)))
+        output = _validate_output(operation, raw)
+        content_id = _persist(
+            institute_id, job_id, operation, source, materials, context_meta, output
+        )
         db.update_job_status(
             job_id,
             "completed",
             result={
                 "contentId": content_id,
+                "contentType": operation.content_type,
                 "sourceType": source["type"],
                 "sourceId": source["id"],
                 "materialIds": [m["id"] for m in materials],
             },
         )
-        logger.info("AI note generated: job=%s content=%s", job_id, content_id)
+        logger.info(
+            "AI %s generated: job=%s content=%s",
+            operation.content_type,
+            job_id,
+            content_id,
+        )
     except Exception as exc:
         _fail(job_id, exc)
 
@@ -82,8 +137,9 @@ def _is_uuid(value: object) -> bool:
         return False
 
 
-def _validate_payload(payload: dict[str, Any]) -> dict[str, str]:
-    if payload.get("operation") != AI_GENERATE_NOTE:
+def _validate_payload(payload: dict[str, Any]) -> tuple[Operation, dict[str, str]]:
+    operation = OPERATIONS.get(payload.get("operation", ""))
+    if operation is None:
         raise GenerationError("Invalid job payload")
 
     source = payload.get("source")
@@ -103,7 +159,7 @@ def _validate_payload(payload: dict[str, Any]) -> dict[str, str]:
     ):
         raise GenerationError("Invalid job payload")
 
-    return {"type": source_type, "id": source_id, "requestedBy": requested_by}
+    return operation, {"type": source_type, "id": source_id, "requestedBy": requested_by}
 
 
 def _resolve_materials(institute_id: str, source: dict[str, str]) -> list[dict[str, Any]]:
@@ -163,19 +219,19 @@ def _source_label(source: dict[str, str], materials: list[dict[str, Any]]) -> st
     return f"topic ({source['id']})"
 
 
-def _validate_note_output(raw: str) -> dict[str, Any]:
+def _validate_output(operation: Operation, raw: str) -> dict[str, Any]:
     try:
-        note_json = parse_note_json(raw)
+        parsed = operation.parse(raw)
     except ValueError as exc:
         raise GenerationError("AI returned an invalid response") from exc
 
     try:
-        note = NotePayload.model_validate(note_json)
+        model = operation.model.model_validate(parsed)
     except ValidationError as exc:
-        logger.warning("AI note output failed validation: %s", exc)
+        logger.warning("AI %s output failed validation: %s", operation.content_type, exc)
         raise GenerationError("AI output failed validation") from exc
 
-    return note.model_dump()
+    return model.model_dump()
 
 
 def _resolve_scope(
@@ -191,17 +247,18 @@ def _resolve_scope(
     }
 
 
-def _persist_note(
+def _persist(
     institute_id: str,
     job_id: str,
+    operation: Operation,
     source: dict[str, str],
     materials: list[dict[str, Any]],
     context_meta: dict[str, Any],
-    note_dict: dict[str, Any],
+    output: dict[str, Any],
 ) -> str:
     scope = _resolve_scope(source, materials)
 
-    title = note_dict.get("title") or DEFAULT_NOTE_TITLE
+    title = output.get("title") or operation.default_title
     if len(title) > 255:
         title = title[:255]
 
@@ -212,7 +269,7 @@ def _persist_note(
     }
 
     ai_context = {
-        "operation": AI_GENERATE_NOTE,
+        "operation": operation.operation,
         "jobId": job_id,
         "provider": "openai-compatible",
         "model": settings.ai_model,
@@ -226,11 +283,12 @@ def _persist_note(
 
     return db.insert_ai_content(
         institute_id,
+        content_type=operation.content_type,
         subject_id=scope["subjectId"],
         chapter_id=scope["chapterId"],
         topic_id=scope["topicId"],
         title=title,
-        payload=note_dict,
+        payload=output,
         ai_context=ai_context,
         source_reference=source_reference,
         change_reason="Generated by AI from source materials",

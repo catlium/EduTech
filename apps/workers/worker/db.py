@@ -88,6 +88,7 @@ def get_topic_materials(topic_id: str, institute_id: str) -> list[dict[str, Any]
 def insert_ai_content(
     institute_id: str,
     *,
+    content_type: str,
     subject_id: str | None,
     chapter_id: str | None,
     topic_id: str | None,
@@ -101,19 +102,29 @@ def insert_ai_content(
     """Persist a generated content item + its first version (version 1).
 
     Mirrors the API's `ContentService.createContent` creation path for
-    AI-generated content: type NOTE, status DRAFT, source AI_GENERATED, with
-    provenance in `ai_context` / `source_reference`. The worker writes directly
-    to PostgreSQL (same decision as material processing); the Pydantic
-    `NotePayloadSchema` mirror in `worker.ai.schemas` is the validation gate.
+    AI-generated content: a specific content type, status DRAFT, source
+    AI_GENERATED, with provenance in `ai_context` / `source_reference`. The
+    worker writes directly to PostgreSQL (same decision as material processing);
+    the corresponding Pydantic mirror in `worker.ai.schemas` is the validation
+    gate.
     """
     with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
         cur.execute(
             "INSERT INTO content_items"
             " (institute_id, subject_id, chapter_id, topic_id, type, title, status, source,"
             "  current_version, created_by, updated_by)"
-            " VALUES (%s, %s, %s, %s, 'NOTE', %s, 'DRAFT', 'AI_GENERATED', 1, %s, %s)"
+            " VALUES (%s, %s, %s, %s, %s, %s, 'DRAFT', 'AI_GENERATED', 1, %s, %s)"
             " RETURNING id",
-            (institute_id, subject_id, chapter_id, topic_id, title, created_by, created_by),
+            (
+                institute_id,
+                subject_id,
+                chapter_id,
+                topic_id,
+                content_type,
+                title,
+                created_by,
+                created_by,
+            ),
         )
         row = cur.fetchone()
         if row is None:

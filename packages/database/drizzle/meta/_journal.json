@@ -43,6 +43,13 @@
       "when": 1787120360247,
       "tag": "0005_fuzzy_runaways",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788251559403,
+      "tag": "0006_wooden_robin_chapel",
+      "breakpoints": true
     }
   ]
 }

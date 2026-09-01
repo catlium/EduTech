@@ -22,18 +22,21 @@ export const jobs = pgTable(
   },
   (table) => [
     // Prevents two active (queued/processing) AI generation jobs for the same
-    // source within an institute. The payload stores the source as a nested
-    // object `source: { type, id }`, so the expressions must reach into it via
-    // `-> 'source' ->> 'key'` (a flat `->> 'sourceType'` would always be NULL and
-    // collapse uniqueness to one active job per institute). The unique constraint
-    // only covers active jobs, so a finished generation can be re-requested
-    // later. The API maps the unique violation to a 409 Conflict.
+    // operation on the same source within an institute. The payload stores the
+    // operation as a flat key and the source as a nested object
+    // `source: { type, id }`, so the expression must reach into it via
+    // `-> 'source' ->> 'key'`. The unique constraint only covers active jobs,
+    // so a finished generation can be re-requested later. The API maps the
+    // unique violation to a 409 Conflict.
     uniqueIndex('jobs_active_generation_unique')
       .on(
         table.instituteId,
+        sql`((payload -> 'operation'))`,
         sql`((payload -> 'source' ->> 'type'))`,
         sql`((payload -> 'source' ->> 'id'))`,
       )
-      .where(sql`type = 'AI_GENERATE_NOTE' AND status IN ('queued', 'processing')`),
+      .where(
+        sql`type IN ('AI_GENERATE_NOTE', 'AI_GENERATE_SUMMARY', 'AI_GENERATE_FLASHCARDS', 'AI_GENERATE_CONCEPTS') AND status IN ('queued', 'processing')`,
+      ),
   ],
 );

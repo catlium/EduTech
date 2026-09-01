@@ -5,10 +5,11 @@
 ## Tech Debt
 
 **Uncommitted work violating checkpoint rules (HIGH priority):**
-- Issue: A large functional subsystem is present in the working tree but **not committed**: the entire AI generation worker (`apps/workers/worker/ai/` including `consumer.py`, `provider.py`, `schemas.py`, `service.py`, `generation/note.py`), the API generation module (`apps/api/src/content/generation.controller.ts`, `generation.service.ts`, `dto/generate-note.dto.ts`), the `0005` database migration (`packages/database/drizzle/0005_fuzzy_runaways.sql`, `meta/0005_snapshot.json`), plus modifications to `apps/workers/worker/app.py`, `config.py`, `db.py`, `apps/api/src/jobs/jobs.service.ts`, `content.module.ts`, `packages/contracts/src/index.ts`, and `packages/database/src/schema/jobs.ts`.
-- Files: `apps/workers/worker/ai/**`, `apps/api/src/content/generation.*`, `packages/database/drizzle/0005_*`
+- Issue: A large functional subsystem is present in the working tree but **not committed**: the entire AI generation worker (`apps/workers/worker/ai/` including `consumer.py`, `provider.py`, `schemas.py`, `service.py`, `generation/`), the API generation module (`apps/api/src/content/generation.controller.ts`, `generation.service.ts`, `dto/generate-content.dto.ts`), the `0005`/`0006` database migrations, plus modifications to `apps/workers/worker/app.py`, `config.py`, `db.py`, `apps/api/src/jobs/jobs.service.ts`, `content.module.ts`, `packages/contracts/src/index.ts`, and `packages/database/src/schema/jobs.ts`.
+- Files: `apps/workers/worker/ai/**`, `apps/api/src/content/generation.*`, `packages/database/drizzle/0005_*`, `packages/database/drizzle/0006_*`
 - Impact: If the working tree is lost or the machine switches, all AI-processing work is unrecoverable; `docs/project-status.md` references this work as a checkpoint but no commit exists. Violates AGENTS.md Rules 1–3, 8 (incremental checkpoints).
-- Fix approach: Run `git add` of the intended files, `git commit` as a checkpoint (e.g. `feat(materials): ai note generation`), and push. Do NOT commit `.env` or `storage/`.
+- Fix approach: Run `git add` of the intended files, `git commit` as a checkpoint, and push. Do NOT commit `.env` or `storage/`.
+- **Status: RESOLVED** — committed as `7dbe573` (`feat(ai): complete AI generation foundation and dockerize stack`); the newer Phase 5 completion work (post-`7dbe573`) is in the working tree and is the next checkpoint.
 
 **Duplicated constructor wiring (LOW):**
 - Issue: Every NestJS service injects `DATABASE_TOKEN` with an identical `@Inject(DATABASE_TOKEN) private readonly db` constructor pattern, and validates tenant scope with near-identical join helper methods.
@@ -34,12 +35,14 @@
 - Trigger: Sending an AI_GENERATE_NOTE job with a malformed `source` payload, or the model returning output that fails `NotePayload`/JSON validation.
 - Workaround: None at runtime (message is misleading but job is still marked failed). Note: `mypy --strict` and `ruff` would flag the undefined name — that this is uncommitted means it likely never passed the project's own Python validation.
 - Fix approach: Rename `GenerationFailure` → `GenerationError` in all three `raise` sites.
+- **Status: FIXED** (checked in with the initial AI foundation checkpoint). All three raise sites now raise `GenerationError`. `ruff`/`mypy` pass on the worker.
 
 **Jobs unique index never dedups per-source (MEDIUM):**
 - Symptoms: The partial unique index `jobs_active_generation_unique` in `packages/database/src/schema/jobs.ts` is keyed on `((payload ->> 'sourceType'))` and `((payload ->> 'sourceId'))`, but `GenerationService.requestNoteGeneration` stores the source as a nested object `source: { type, id }` (`apps/api/src/content/generation.service.ts`). Therefore `payload->>'sourceType'` and `payload->>'sourceId'` are always `NULL`.
 - Impact: Uniqueness collapses to `(institute_id, NULL, NULL)` for every active `AI_GENERATE_NOTE`, i.e. effectively one active generation **per institute** instead of per source. The comment in `jobs.ts` claims per-source dedup; the DB no longer enforces it, so two concurrent generations for the same material are not prevented at the DB layer.
 - Trigger: Two concurrent `POST /content/generate/note` calls for the same material/topic within an institute — the 409 dedup the design intends will not reliably fire at the DB level.
 - Fix approach: Either store source at the top level (`sourceType`, `sourceId` keys in the payload) or change the index expressions to `payload -> 'source' ->> 'type'` / `payload -> 'source' ->> 'id'` and regenerate migration `0005`.
+- **Status: FIXED** — index reads the nested `source` path (migration `0005_fuzzy_runaways.sql`) and was further generalized to per-operation dedup (migration `0006_wooden_robin_chapel.sql`). `drizzle-kit generate` reports no schema drift.
 
 ## Security Considerations
 

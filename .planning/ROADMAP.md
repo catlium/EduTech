@@ -52,7 +52,7 @@ Completion summary (verified against codebase):
 ## Phase 5 — AI Learning Content Generation ◆
 **Goal:** AI-assisted generation of Summary (summary, key concepts, important points), Flashcards (question, answer, difficulty), and Important Concepts (name, description). AI provider isolated behind an internal service/interface; job flow API → job → queue → AI → store → COMPLETED/FAILED.
 **Success Criteria:** AI content can be requested, processed asynchronously, stored, retrieved, and updated through the API.
-**Status:** IN PROGRESS. `AIProvider` abstraction + `AI_GENERATE_NOTE` job flow exist (AI-01, AI-02 ✓) and are in the uncommitted working tree; Summary/Flashcards/Concepts generation and reconciliation with `docs/api/` remain. Reqs: AI-01..02 ✓, AI-05..09 ○.
+**Status:** IN PROGRESS. All generation operations implemented (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS) with generalized dispatch, per-operation dedup index, `POST /content/generate`, and `docs/api/ai.md`. Reqs: AI-01..02 ✓, AI-05..09 ✓ (E2E validation against running infrastructure pending — blocked by sandbox network).
 
 ## Phase 6 — Question Bank ○
 **Goal:** Complete question management — CRUD, filtering (difficulty, type, subject/chapter/topic), manual creation, explanations, source (MANUAL|AI_GENERATED), approval (PENDING|APPROVED|REJECTED). Manual questions auto-approved; AI-generated begin PENDING.
@@ -176,8 +176,8 @@ Completion summary (verified against codebase):
 
 ## Recommended Next Task
 
-**Close out Phase 5 (in-flight AI work), then start Phase 6:**
+**Close out Phase 5 (AI generation), then plan Phase 6:**
 
-1. Checkpoint the uncommitted AI worker (`apps/workers/worker/ai/`, generation controller/service, migration `0005`) — fix open CONCERNS items (`GenerationFailure` → `GenerationError`; per-source dedup index), run `pnpm typecheck`/`lint`/`format:check` + `ruff`/`mypy`, commit.
-2. Reconcile Phase 5 with `docs/api/` contract (Summary/Flashcards/Concepts scope).
-3. Plan Phase 6 (Question Bank) for the first major greenfield backend module.
+1. Commit the Phase 5 completion checkpoint: generalized AI generation (NOTE/SUMMARY/FLASHCARDS/CONCEPTS), `POST /content/generate`, per-operation dedup migration `0006`, `docs/api/ai.md`, Docker Node 24 fix.
+2. Run the E2E validation checklist against running infrastructure (`docker compose up --build` + generation flow against Ollama) where network is available; update `docs/project-status.md` validation status.
+3. Plan Phase 6 (Question Bank — QBN-01..07) for the first major greenfield backend module.

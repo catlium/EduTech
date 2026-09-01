@@ -15,9 +15,7 @@ import {
 } from '@nestjs/common';
 
 import { ContentService } from './content.service.js';
-import { ContentGenerationService } from './content-generation.service.js';
 import { CreateContentDto, UpdateContentDto } from './dto/content.dto.js';
-import { AIGenerateNoteDto } from './dto/ai-generate-note.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -32,23 +30,7 @@ const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
 @Controller('content')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
 export class ContentController {
-  constructor(
-    private readonly contentService: ContentService,
-    private readonly contentGenerationService: ContentGenerationService,
-  ) {}
-
-  @Post('generate')
-  @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
-  async generateNote(
-    @Tenant() tenant: TenantContext,
-    @Body() dto: AIGenerateNoteDto,
-  ) {
-    return await this.contentGenerationService.generateNote(
-      tenant.instituteId,
-      dto,
-    );
-  }
+  constructor(private readonly contentService: ContentService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -69,8 +51,14 @@ export class ContentController {
   @Get()
   async list(
     @Tenant() tenant: TenantContext,
-    @Query('type', new ParseEnumPipe(['NOTE', 'FLASHCARD_SET', 'CORNELL_NOTE'], { optional: true }))
-    type?: 'NOTE' | 'FLASHCARD_SET' | 'CORNELL_NOTE',
+    @Query(
+      'type',
+      new ParseEnumPipe(
+        ['NOTE', 'FLASHCARD_SET', 'CORNELL_NOTE', 'SUMMARY', 'IMPORTANT_CONCEPTS'],
+        { optional: true },
+      ),
+    )
+    type?: 'NOTE' | 'FLASHCARD_SET' | 'CORNELL_NOTE' | 'SUMMARY' | 'IMPORTANT_CONCEPTS',
     @Query('status', new ParseEnumPipe(['DRAFT', 'ACTIVE', 'ARCHIVED'], { optional: true }))
     status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED',
     @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,

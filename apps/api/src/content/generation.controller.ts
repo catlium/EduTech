@@ -1,7 +1,7 @@
 import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 
 import { GenerationService } from './generation.service.js';
-import { GenerateNoteDto } from './dto/generate-note.dto.js';
+import { GenerateContentDto } from './dto/generate-content.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -18,15 +18,16 @@ const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
 export class GenerationController {
   constructor(private readonly generationService: GenerationService) {}
 
-  @Post('note')
+  @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @RequiredRoles(...WRITE_ROLES)
-  async generateNote(
+  async generate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: GenerateNoteDto,
+    @Body() dto: GenerateContentDto,
   ) {
-    const generation = await this.generationService.requestNoteGeneration(
+    const generation = await this.generationService.requestGeneration(
+      dto.operation,
       tenant.instituteId,
       user.userId,
       dto.sourceType,
