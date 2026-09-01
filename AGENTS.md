@@ -323,9 +323,10 @@ Before starting new work, OpenCode must:
 1. Read `AGENTS.md`
 2. Read `docs/project-status.md`
 3. Read `docs/tasks.md`
-4. Inspect relevant architecture documentation
-5. Inspect the current Git state
-6. Identify the exact feature or goal being implemented
+4. Read `docs/user-validation.md`
+5. Inspect relevant architecture documentation
+6. Inspect the current Git state
+7. Identify the exact feature or goal being implemented
 
 ### Rule 7: Session Recovery Protocol
 
@@ -334,11 +335,12 @@ If a session is unexpectedly interrupted, recovery must follow:
 1. Read `AGENTS.md`
 2. Read `docs/project-status.md`
 3. Read `docs/tasks.md`
-4. Inspect recent Git commits
-5. Run `git status`
-6. Inspect uncommitted changes
-7. Determine completed, partial, and unstarted work
-8. Run relevant validation if necessary
+4. Read `docs/user-validation.md`
+5. Inspect recent Git commits
+6. Run `git status`
+7. Inspect uncommitted changes
+8. Determine completed, partial, and unstarted work
+9. Run relevant validation if necessary
 
 Do not restart the entire phase or duplicate completed work.
 
@@ -397,6 +399,22 @@ Each meaningful checkpoint report should contain:
 - Deferred items
 - Exact recommended next task
 
+### Rule 12: User Validation Checklist
+
+At every checkpoint that involves testable behavior, record how to test it in
+`docs/user-validation.md` before the work is considered closed. Every entry
+must include:
+
+- Status marker (`[ ]` not run / `[~]` in progress / `[x]` passed / `[!]` failed)
+- **Setup required** — services, env vars, seed data, credentials
+- **Endpoint** — exact HTTP method + route
+- **Payload** — the exact request body to send
+- **Expected output** — response body / DB state / observable behavior
+
+A milestone is only "closed" when every item in `docs/user-validation.md` is
+`[x]` or explicitly deferred with a reason. Update this file whenever a
+feature/phase reaches implementation-complete.
+
 ### Core Principle
 
 The repository itself must be sufficient to understand the current
@@ -407,7 +425,8 @@ checkpoint. A new developer or OpenCode session should be able to:
 2. Read `AGENTS.md`
 3. Read `docs/project-status.md`
 4. Read `docs/tasks.md`
-5. Read relevant architecture documentation
-6. Inspect Git history
-7. Understand the current state
-8. Continue safely from the latest checkpoint
+5. Read `docs/user-validation.md`
+6. Read relevant architecture documentation
+7. Inspect Git history
+8. Understand the current state
+9. Continue safely from the latest checkpoint

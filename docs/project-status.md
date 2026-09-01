@@ -5,7 +5,8 @@
 **Status:** IN PROGRESS — implementation complete for all four generation
 operations (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS); static
 validation green; runtime end-to-end validation vs a live stack still pending
-(blocked by sandbox network — Docker Hub/Ollama unreachable).
+(blocked by sandbox network — Docker Hub/Ollama unreachable). The exact tests
+to run are recorded in `docs/user-validation.md` (Phase 5 E2E section).
 
 **Divergence resolved (2026-09-01):** `origin/main` had 2 older divergent
 commits (`1997340`, `c43e215`) re-implementing parts of the AI feature with a
