@@ -4,59 +4,81 @@
 
 See: .planning/PROJECT.md (updated 2026-09-01)
 
-**Core value:** Teachers upload source material and, after OCR/AI processing, get structured, provably-grounded study content — every generated content item traced to its source.
-**Current focus:** Phase 2 — AI Processing Foundation + `AI_GENERATE_NOTE` (in-flight, checkpoints 1–6 complete).
+**Core value:** A teacher takes a source material through upload → async OCR/AI processing → AI-generated, reviewable content/questions → a published, approved-question-only examination, and a student takes it and receives an automatically-computed, reproducible result.
+**Current focus:** Roadmap Phase 5 — AI Learning Content Generation (in-flight; Phases 1–4 complete).
 
 ## Project State
 
-**Sequence:** Phase 2 (in progress)
-**Phase:** 2 — AI Processing Foundation
-**Status:** In progress. Checkpoints 1–6 complete and validated; Checkpoint 7 (`AI_GENERATE_NOTE`) in-flight and uncommitted.
+**Sequence:** Phase 5 (in progress), backend-first full-stack monorepo
+**Phase:** 5 — AI Learning Content Generation
+**Status:** In progress. Backend Phases 1–4 complete and validated; Phase 5 partial (`AIProvider` + `AI_GENERATE_NOTE` in the uncommitted working tree). Backend Phases 6–17 not started. Frontend Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 
 ## Phase State
 
-**Current:** Phase 2 — AI Processing Foundation
-**Status:** In progress
-- Completed: Academic hierarchy, generic content domain, type-specific payload contracts, materials foundation, material processing + OCR integration, material retry semantics (Checkpoints 1–6)
-- In progress: AI Processing Foundation + `AI_GENERATE_NOTE` (Checkpoint 7) — uncommitted working tree
-- Pending: question bank, examination, checking system; SaaS management deferred
+**Current:** Phase 5 — AI Learning Content Generation
+**Status:** In progress (reconcile with `docs/api/` contract: Summary / Flashcards / Important Concepts)
+
+**Completed (verified against codebase):**
+- Phase 1 — Backend Foundation & Authentication (identity, tenancy, jobs, roles)
+- Phase 2 — Academic Structure (subject → chapter → topic)
+- Phase 3 — Learning Materials (upload, validation, metadata, processing status)
+- Phase 4 — Async Processing & Text Extraction (RabbitMQ + pika worker + OCR, PDF + plain text, retry)
+- Phase 5 — AI provider behind an internal service/interface; `AI_GENERATE_NOTE` job flow
+
+**In progress / not started:**
+- Phase 5 remaining: Summary / Flashcards / Important Concepts generation + contract reconciliation
+- Phases 6–17 (question bank, AI question generation, examination, attempts, evaluation, results, analytics, practice, cross-module security, contract verification, testing, backend-complete checkpoint): not started
+- Phases 18–25 (frontend + integration + polish): gated behind Phase 17
 
 ## Phase Plans
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | Core Platform Foundation | ✓ completed |
-| 2 | Academic & Content & Materials & AI | ◆ in progress |
-| 3 | Study / Content Features | ○ pending |
-| 4 | Question Bank & Examination | ○ pending |
-| 5 | Checking System (FORM/OMR/OSM) | ○ pending |
-| 6 | SaaS Management | ○ deferred |
+| 1 | Backend Foundation & Authentication | ✓ completed |
+| 2 | Academic Structure | ✓ completed |
+| 3 | Learning Materials | ✓ completed |
+| 4 | Async Processing & Text Extraction | ✓ completed |
+| 5 | AI Learning Content Generation | ◆ in progress |
+| 6 | Question Bank | ○ pending |
+| 7 | AI Question Generation & Review | ○ pending |
+| 8 | Quiz & Examination Management | ○ pending |
+| 9 | Student Examination Attempts | ○ pending |
+| 10 | Automatic Evaluation | ○ pending |
+| 11 | Results | ○ pending |
+| 12 | Examination Analytics | ○ pending |
+| 13 | Practice System | ○ pending |
+| 14 | Cross-Module Validation & Security | ○ pending |
+| 15 | API Contract Verification | ○ pending |
+| 16 | Testing & Demonstration Readiness | ○ pending |
+| 17 | Backend-Complete Checkpoint | ○ pending |
+| 18–25 | Frontend + Integration + Polish | ◆(gated) ○ pending |
 
 ## Current Task
 
-**Phase 2 — AI Processing Foundation + `AI_GENERATE_NOTE` (Checkpoint 7):**
+**Phase 5 — AI Learning Content Generation:**
 
-The working tree contains uncommitted AI work spanning:
-- `apps/workers/worker/ai/` (consumer, provider, schemas, service, generation/note)
-- `apps/api/src/content/generation.controller.ts`, `generation.service.ts`, `dto/generate-note.dto.ts`
-- `packages/database/drizzle/0005_fuzzy_runaways.sql` + snapshot
-- Modified: `jobs.service.ts` (queue routing), `content.module.ts`, `packages/contracts`, `schema/jobs.ts`, worker `app.py`/`config.py`/`db.py`
+The working tree contains uncommitted AI work: `apps/workers/worker/ai/`
+(consumer, provider, schemas, service, generation/note), API generation
+controller/service/dto, migration `0005`, and routing changes.
 
-**Next action:** Verify/fix the two open items from `.planning/codebase/CONCERNS.md` (undefined `GenerationFailure`, jobs unique-index per-source dedup), run `pnpm typecheck`/`lint`/`format:check` + `ruff check`/`mypy`, then commit as the Checkpoint 7 checkpoint (e.g. `feat(content): AI note generation`) and push.
+**Next action:** Checkpoint the AI work (fix open CONCERNS items:
+`GenerationFailure` → `GenerationError`; per-source dedup index), run
+`pnpm typecheck`/`lint`/`format:check` + `ruff check`/`mypy`, commit and push.
+Then reconcile Phase 5 with `docs/api/` (Summary/Flashcards/Concepts) and plan
+Phase 6 (Question Bank) — the first major greenfield backend module.
 
 ## Verification
 
-- Phase 1: validated against live PostgreSQL + running API (auth, tenancy, CSRF, rate limiting)
-- Phase 2 Checkpoints 1–6: validated against live Postgres + RabbitMQ + worker + OCR (see `docs/project-status.md`)
+- Phases 1–4: validated against live PostgreSQL + RabbitMQ + worker + OCR (see `docs/project-status.md`)
 - Known: zero test coverage across the codebase
 
 ## Decisions
 
-- Modular monolith; RabbitMQ async; direct pika consumers; workers write DB via psycopg
-- Content payloads canonical in JSONB; `rendered_html` derived
-- Priority: learning/exam system over SaaS management (revision 2026-08-19)
-- AI generation defaults to local Ollama (OpenAI-compatible)
+- Backend-first, full-stack monorepo; frontend gated behind backend-complete checkpoint
+- `docs/api/` is the canonical contract between backend and frontend
+- Modular monolith; RabbitMQ async; direct pika workers; deterministic objective evaluation (no AI); AI questions → PENDING, never auto-approve
 
 ## Blocked
 
-- None blocking current work. (Uncommitted AI work is at risk per AGENTS.md R1–3 — checkpoint it soon.)
+- Nothing blocks current work. (Uncommitted AI work is at risk per AGENTS.md R1–3 — checkpoint it soon.)
+- Frontend phases blocked by design until the Phase 17 backend-complete checkpoint.
