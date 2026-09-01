@@ -425,3 +425,27 @@ export const MaterialProcessResponseSchema = z.object({
   processingStatus: z.literal('QUEUED'),
 });
 export type MaterialProcessResponse = z.infer<typeof MaterialProcessResponseSchema>;
+
+// ── AI Generation Contracts ────────────────
+//
+// The worker receives a minimal job payload:
+//   { "operation": "AI_GENERATE_NOTE", "source": { "type": "MATERIAL"|"TOPIC", "id": "uuid" }, "requestedBy": "uuid" }
+// and resolves the source text itself (no content embedded in the message).
+
+export const GenerationSourceTypeEnum = z.enum(['MATERIAL', 'TOPIC']);
+export type GenerationSourceType = z.infer<typeof GenerationSourceTypeEnum>;
+
+export const GenerateNoteRequestSchema = z.object({
+  sourceType: GenerationSourceTypeEnum,
+  sourceId: z.string().uuid(),
+});
+export type GenerateNoteRequest = z.infer<typeof GenerateNoteRequestSchema>;
+
+export const GenerateNoteResponseSchema = z.object({
+  jobId: z.string().uuid(),
+  operation: z.literal('AI_GENERATE_NOTE'),
+  sourceType: GenerationSourceTypeEnum,
+  sourceId: z.string().uuid(),
+  status: z.literal('QUEUED'),
+});
+export type GenerateNoteResponse = z.infer<typeof GenerateNoteResponseSchema>;

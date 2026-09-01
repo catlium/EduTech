@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech — API image (NestJS modular monolith)
+#
+# The API imports the `@catlium/*` workspace packages, which are
+# TypeScript ESM packages that resolve to their built `dist/`. So the
+# image builds the whole pnpm workspace (turbo build → all package
+# dists) and copies that into a runtime stage.
+#
+# The same image serves the `api` service and the one-shot `migrate`
+# service (which just overrides the command to run Drizzle migrations).
+# ─────────────────────────────────────────────────────────────
+
+# ── Build stage: install + compile the full workspace ──
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Pin pnpm to the repo's packageManager version.
+RUN corepack enable
+
+# Copy the whole repo (respecting .dockerignore), then install and build.
+COPY . .
+
+RUN pnpm install --frozen-lockfile
+RUN pnpm build
+
+# ── Runtime stage ──
+# ponytail: ships the full workspace (dev deps included) to avoid fragile
+# dependency-pruning; fine for dev, revisit when image size matters.
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=build /app /app
+
+# The API start script is `node dist/main` (relative to apps/api).
+CMD ["node", "apps/api/dist/main.js"]

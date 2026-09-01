@@ -1,10 +1,21 @@
 # Project Status
 
-## Current Phase: Phase 2 — AI Generation Foundation
+## Current Phase: Phase 2 — AI Processing Foundation
 
-**Status:** In Progress — Implementing AI Generation Pipeline (Goal 7)
+**Status:** In Progress — AI Processing Foundation + `AI_GENERATE_NOTE` (Seventh
+Checkpoint). Implementation complete and statically validated; runtime
+end-to-end validation vs a live stack still pending.
+
+**Also completed:** Full-stack Dockerization (API, OCR, both workers, one-shot
+DB migrations) so the whole system runs via `docker compose`.
 
 **Last Checkpoint:** Material Retry / Reprocessing Semantics Checkpoint Complete
+
+**Current goal:** Establish the generic AI processing foundation and implement the
+first generation operation (`AI_GENERATE_NOTE`): an `AIProvider` abstraction, a
+logically separated AI worker inside `apps/workers/`, a `POST /content/generate/note`
+API (202 + jobId), and persistence of validated output as `AI_GENERATED` + `DRAFT`
+content with `ai_context`/`source_reference` provenance.
 
 ## Priority Revision (2026-08-19)
 
@@ -294,6 +305,75 @@ Explicit retry of failed material processing (see `docs/architecture/materials.m
   ARCHIVED → 409, student 403, cross-tenant 404, anon 401, missing 404).
   `pnpm build/typecheck/lint/format:check` all pass.
 
+### AI Processing Foundation (Phase 2 Goal 7)
+
+AI-assisted study-content generation foundation (`AI_GENERATE_NOTE`) across
+the monolith API, the AI worker, and shared contracts (see
+`docs/architecture/ai.md`, `docs/api/ai.md` when authored):
+
+- **API**: `POST /content/generate/note` (`202` + `jobId`). Accepts
+  `{ sourceType: MATERIAL|TOPIC, sourceId }`, validates, inserts a queued
+  `AI_GENERATE_NOTE` job and publishes it to the dedicated `ai_generation`
+  queue. A second active generation for the same source returns `409`.
+- **Dedup**: partial unique index `jobs_active_generation_unique` on
+  `jobs (institute_id, (payload->'source'->>'type'), (payload->'source'->>'id'))`
+  WHERE `type = 'AI_GENERATE_NOTE' AND status IN ('queued','processing')`
+  (migration `0005_fuzzy_runaways.sql`). **Fix (this checkpoint):** the index
+  originally read flat `payload->>'sourceType'` / `->>'sourceId'`, which are
+  always NULL for the nested `source: { type, id }` payload shape — that would
+  have collapsed dedup to one active job per institute. Expressions updated to
+  the nested path in schema, migration, and snapshot.
+- **JobsService**: `AI_GENERATE_NOTE` → `ai_generation` queue (dedicated,
+  independently scalable); others default to `jobs`.
+- **Worker** (`apps/workers/worker/ai/`): `WORKER_ROLE=ai` selects the AI
+  consumer (`app.py`); `config.py` adds `WORKER_AI_*` settings with
+  OpenAI-compatible defaults (local Ollama base URL, model, timeouts, context
+  budget). `provider.py` = `AIProvider` ABC + `OpenAICompatibleProvider`
+  (httpx `/chat/completions`). `schemas.py` = Pydantic mirror of the Zod
+  `NotePayloadSchema`. `generation/note.py` = deterministic context prep +
+  prompt builder + robust JSON extraction. `service.py` orchestrates
+  source resolution → provider call → validation → persistence.
+- **Persistence**: worker writes directly to PostgreSQL — a `content_items`
+  row (`NOTE`, `DRAFT`, `AI_GENERATED`, exactly-one scope) + a
+  `content_versions` v1 row with `payload`, `ai_context`, and
+  `source_reference` provenance (matches the API's manual-create path).
+  Job transitions `queued → processing → completed|failed` with result/error.
+- **Fix (this checkpoint):** undefined `GenerationFailure` renamed to the
+  defined `GenerationError` (three raise sites) — invalid payloads, invalid
+  AI JSON, and failed validation now record the intended safe error message on
+  the job instead of a generic unexpected failure.
+- **Validation**: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`,
+  Python `ruff check`, `ruff format`, and `mypy` all pass. Full 20-item
+  runtime E2E checklist against a live stack is still pending.
+
+### Dockerization (Infrastructure)
+
+Containerized runtime for the whole system (see
+`infrastructure/compose/Dockerfile.api`, `Dockerfile.python`,
+`docker-compose.yml`):
+
+- `Dockerfile.api` — pnpm workspace multi-stage build (turbo build → all
+  `@catlium/*` dists) then a `node:20-alpine` runtime. The same image serves
+  the `api` service and the one-shot `migrate` service (`pnpm db:migrate`).
+- `Dockerfile.python` — `python:3.12-slim` with both Python apps installed
+  (`pip install ./ocr ./worker`). One image serves `ocr` (uvicorn
+  `app.main:app`), `worker-material`, and `worker-ai` (select via
+  `WORKER_ROLE`).
+- Compose now runs: postgres, redis, rabbitmq (infra) + `migrate`
+  (waits for healthy postgres, runs migrations, exits), `api` (depends on
+  successful migrate + healthy rabbitmq/redis), `ocr`, `worker-material`
+  (depends on ocr), `worker-ai` (defaults to host Ollama via
+  `host.docker.internal`, `extra_hosts: host-gateway`).
+- `.env`: root `.env` is loaded into every app container (`env_file`);
+  connection URLs that must target container hostnames are overridden under
+  each service (postgres/rabbitmq/redis/ocr). `infrastructure/compose/.env.example`
+  documents the compose-tunable variables.
+- Storage: shared named volume `storage_data` mounted at `/storage` in the
+  API and both workers (replaces the local `./storage` shared-filesystem
+  assumption from Goal 6).
+- Root `.dockerignore` keeps env files, secrets, storage, dist, and caches
+  out of images.
+
 ### Shared Packages
 
 - **@catlium/contracts**: Zod schemas for auth, jobs, error responses, role/status enums, content payloads, materials
@@ -395,9 +475,13 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 - **Study/type-specific features**: notes rendering, flashcard practice, Cornell
   workflows (payload contracts now enforced; features not built)
-- **OCR/AI material processing**: PDF and plain-text extraction are implemented
-  (Goal 5); image OCR (tesseract), scanned-PDF OCR, and office documents are
-  not, and AI generation has not started
+- **AI generation E2E runtime validation**: `AI_GENERATE_NOTE` implemented and
+  statically validated; the live end-to-end checklist (202/409, job lifecycle,
+  persistence, failure handling) is pending against containers
+- **AI generation beyond NOTE**: flashcards (`FLASHCARD_SET`), important
+  concepts, and other operations are Roadmap Phase 3 — not started
+- **Image OCR / scanned-PDF / office docs**: tesseract and office extraction
+  not implemented
 - **Reprocessing of READY materials**: `READY` is terminal — failed materials
   can be retried (Goal 6), but there is no re-run trigger for successful ones
 - **Download endpoint**: material binaries can be read via the storage
@@ -412,12 +496,14 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 ## Not Yet Started (ordered by system priority)
 
 1. Study features on the content foundation (notes, flashcards, Cornell, AI context)
-2. AI generation pipeline and advanced OCR (image OCR / scanned PDFs / office documents)
-3. Reprocessing of READY materials + download endpoint
-4. Question bank and examination
-5. Practice mode
-6. Checking system (FORM, OMR, OSM)
-7. SaaS management (deferred)
+2. Docker image build validation + live full-stack boot (compose authored; not yet run in sandbox)
+3. AI generation runtime E2E validation checklist
+4. Advanced OCR (image OCR / scanned PDFs / office documents)
+5. Batch/reprocessing of READY materials + download endpoint
+6. Question bank and examination
+7. Practice mode
+8. Checking system (FORM, OMR, OSM)
+9. SaaS management (deferred)
 
 ---
 
@@ -452,18 +538,20 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 | Job = one attempt  | Retry creates a new job; failed jobs immutable       | Full attempt history preserved; no job status rewinds               |
 | Retry trigger      | `POST /materials/:id/retry`, FAILED → QUEUED         | Explicit, user-triggered; READY is terminal for MVP                 |
 | Worker storage     | Shared filesystem (repo `./storage`)                 | Shared volume when containerized; S3 provider later                 |
+| AI generation      | `AI_GENERATE_NOTE` job → `ai_generation` queue       | Provider abstraction + Pydantic validation mirror; worker writes content directly |
+| AI dedup           | Partial unique index on active generation jobs       | Nested `payload -> 'source'` expressions (fixed this checkpoint)    |
+| Containerization   | pnpm/Python images + compose                          | One-shot `migrate`; shared `storage_data` volume; root `.env` wiring |
 
 ---
 
 ## Infrastructure
 
-- **API**: http://localhost:3000 (NestJS)
-- **OCR**: http://localhost:8000 (FastAPI — running during validation)
-- **Worker**: local process consuming RabbitMQ `jobs` queue (started during validation)
+- **Full stack (Docker)**: `docker compose -f infrastructure/compose/docker-compose.yml up --build` — postgres, redis, rabbitmq, migrate (one-shot), api (:3000), ocr (:8000), worker-material, worker-ai. See `infrastructure/compose/.env.example`.
+- **API**: http://localhost:3000 (NestJS) — Dockerized (`api` service)
+- **OCR**: http://localhost:8000 (FastAPI) — Dockerized (`ocr` service)
+- **Workers**: containerized (`worker-material`, `worker-ai`), consuming RabbitMQ `jobs` / `ai_generation`
 - **PostgreSQL**: localhost:5432 (Docker)
-- **Redis**: localhost:6379 (occupied by a pre-existing `saher-redis-dev`
-  container; compose `catlium-redis` remains `Created` — Redis is not required
-  by the API or worker)
+- **Redis**: localhost:6379 (Docker; not required by API/worker)
 - **RabbitMQ**: localhost:5672 (Docker), management at :15672
 
 ---
@@ -471,9 +559,10 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 ## Known Issues
 
 1. **No tests**: Zero test coverage across all modules.
-2. **Redis port conflict**: `saher-redis-dev` (Redis Stack) already binds
-   host port 6379, so compose's `catlium-redis` does not start. Non-blocking
-   for the API and worker (neither requires Redis).
+2. **Redis port conflict (host)**: a pre-existing `saher-redis-dev` container
+   binds host port 6379, so compose's `catlium-redis` does not start unless
+   that container is stopped. Non-blocking for the API and worker (neither
+   requires Redis).
 3. **Crash window between commit and publish**: a process crash between the
    job insert commit and the RabbitMQ publish could leave a `QUEUED` material
    without a delivered message. Accepted for MVP; an outbox pattern is the
@@ -482,23 +571,28 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
    (failed materials can be retried; successful ones cannot).
 5. **Unsupported OCR formats**: image, scanned-PDF, and office-document
    materials fail cleanly with `FAILED` but have no fallback path yet.
+6. **Docker images not yet built in this environment**: Docker Hub was
+   unreachable in the sandbox, so `docker compose up --build` has not been
+   exercised live; compose config validates and the JS/Python build stages
+   mirror commands that pass locally, but container networking is unverified.
 
 ---
 
 ## Recommended Next Task
 
-**Material download + READY reprocessing, then AI generation groundwork:**
+**Finish the AI generation checkpoint and boot the dockerized stack:**
 
-1. Add a material **download endpoint** (`StorageProvider.read`) so processed
-   materials are retrievable.
-2. Add an explicit **re-run trigger for READY materials** (the failure-retry
-   path already exists from Goal 6), completing the reprocessing story.
-3. Decide AI-generation semantics: new job type + `content_versions`
-   `source_reference` carrying `{ materialId }` provenance.
-4. Extend OCR capabilities when required: image OCR (tesseract), scanned-PDF
-   OCR, and office-document extraction.
-5. Validate, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check` + Python
-   `ruff check`/`mypy`, update docs, commit, and push.
+1. **Runtime E2E validation of AI generation** against a live stack (build
+   images + `docker compose up --build`, then exercise the 20-item checklist:
+   202/409 dedup semantics, async job lifecycle
+   `queued → processing → completed`, content persistence as `AI_GENERATED`
+   + `DRAFT` with provenance, failed-job error handling, tenant isolation).
+2. **Author `docs/api/ai.md`** documenting the generation contract
+   (`POST /content/generate/note`, job shape, payload contracts) to mirror the
+   existing module docs.
+3. Then continue the roadmap: **Phase 3 – AI content generation operations**
+   (flashcards, important concepts), expanding the worker/service/contract
+   pattern established here.
 
-See `docs/architecture/materials.md`, `docs/api/materials.md`,
-`docs/api/jobs.md`.
+See `docs/architecture/materials.md`, `docs/architecture/ai.md`,
+`docs/api/materials.md`, `docs/api/jobs.md`.

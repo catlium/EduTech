@@ -1,17 +1,37 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech - Docker Compose configuration
+# ─────────────────────────────────────────────────────────────
+#
+# Runs the full stack: backing infrastructure (Postgres/Redis/RabbitMQ)
+# plus the application (API, OCR service, DB migrations, and both
+# async workers — material + AI generation).
+#
+# Usage (from the repo root):
+#   1. Copy the root env template, then tune it:
+#        cp .env.example .env
+#      (The app services load the root .env via env_file — compose requires it.)
+#   2. docker compose -f infrastructure/compose/docker-compose.yml up --build
+#
+# The root `.env` is loaded into each app container (env_file). Settings
+# that must point at container hostnames (postgres/rabbitmq/redis/ocr)
+# are overridden under each service's `environment` block so you don't
+# have to rewrite your local `.env` URLs.
+
 services:
+  # ── Backing infrastructure ─────────────────────────────────
   postgres:
     image: postgres:17-alpine
     container_name: catlium-postgres
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: catlium_dev
-      POSTGRES_USER: catlium
-      POSTGRES_PASSWORD: catlium_dev_secret
+      POSTGRES_DB: ${POSTGRES_DB:-catlium_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-catlium}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-catlium_dev_secret}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U catlium -d catlium_dev"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-catlium} -d ${POSTGRES_DB:-catlium_dev}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,8 +56,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: catlium
-      RABBITMQ_DEFAULT_PASS: catlium_dev_secret
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-catlium}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-catlium_dev_secret}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -46,7 +66,113 @@ services:
       timeout: 10s
       retries: 5
 
+  # ── Database migrations (one-shot) ─────────────────────────
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.api
+    command: ["pnpm", "--filter", "@catlium/database", "run", "migrate"]
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Application ────────────────────────────────────────────
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.api
+    container_name: catlium-api
+    ports:
+      - "${API_PORT:-3000}:3000"
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
+      STORAGE_LOCAL_DIR: /storage
+    volumes:
+      - storage_data:/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ocr:
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.python
+    container_name: catlium-ocr
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${OCR_PORT:-8000}:8000"
+    env_file:
+      - ../../.env
+    environment:
+      OCR_HOST: 0.0.0.0
+      OCR_PORT: 8000
+      OCR_RELOAD: "false"
+
+  worker-material:
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.python
+    container_name: catlium-worker-material
+    command: ["python", "-m", "worker.app"]
+    env_file:
+      - ../../.env
+    environment:
+      WORKER_ROLE: material
+      WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
+      WORKER_DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
+      WORKER_OCR_URL: http://ocr:8000
+      WORKER_STORAGE_DIR: /storage
+    volumes:
+      - storage_data:/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      ocr:
+        condition: service_started
+
+  # AI generation worker. By default it reaches a local Ollama on the host
+  # (host-gateway). Point WORKER_AI_PROVIDER_URL at any OpenAI-compatible
+  # endpoint (e.g. a cloud provider) and set WORKER_AI_API_KEY to override.
+  worker-ai:
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.python
+    container_name: catlium-worker-ai
+    command: ["python", "-m", "worker.app"]
+    env_file:
+      - ../../.env
+    environment:
+      WORKER_ROLE: ai
+      WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
+      WORKER_DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
+      WORKER_STORAGE_DIR: /storage
+      WORKER_AI_PROVIDER_URL: ${WORKER_AI_PROVIDER_URL:-http://host.docker.internal:11434/v1}
+    volumes:
+      - storage_data:/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+  storage_data:

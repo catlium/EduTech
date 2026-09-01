@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ContentController } from './content.controller.js';
 import { ContentService } from './content.service.js';
-import { MaterialsModule } from '../materials/materials.module.js';
+import { GenerationController } from './generation.controller.js';
+import { GenerationService } from './generation.service.js';
 import { JobsModule } from '../jobs/jobs.module.js';
-import { ContentGenerationService } from './content-generation.service.js';
 
 @Module({
-  imports: [MaterialsModule, JobsModule],
-  controllers: [ContentController],
-  providers: [ContentService, ContentGenerationService],
+  controllers: [ContentController, GenerationController],
+  providers: [ContentService, GenerationService],
   exports: [ContentService],
+  imports: [JobsModule],
 })
 export class ContentModule {}

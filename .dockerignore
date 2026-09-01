@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Dependencies
+node_modules
+**/node_modules
+.pnpm-store
+
+# Local file storage (learning materials) — lives on a compose volume
+storage
+
+# Environment (never into images)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist
+**/dist
+build
+**/.turbo
+*.tsbuildinfo
+
+# Python
+.venv
+**/.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.mypy_cache
+.pytest_cache
+.ruff_cache
+*.egg-info
+**/*.egg-info
+
+# IDE / OS
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing
+coverage
+
+# Planning docs
+.planning
+docs

@@ -71,3 +71,66 @@ def update_job_status(
 
     with psycopg.connect(settings.database_url) as conn:
         conn.execute(sql, params)
+
+
+def get_topic_materials(topic_id: str, institute_id: str) -> list[dict[str, Any]]:
+    """Eligible generation sources for a topic (ACTIVE + READY + extracted text)."""
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT * FROM materials WHERE topic_id = %s AND institute_id = %s"
+            " AND status = 'ACTIVE' AND processing_status = 'READY'"
+            " AND text_content IS NOT NULL AND length(btrim(text_content)) > 0"
+            " ORDER BY created_at ASC",
+            (topic_id, institute_id),
+        ).fetchall()
+
+
+def insert_ai_content(
+    institute_id: str,
+    *,
+    subject_id: str | None,
+    chapter_id: str | None,
+    topic_id: str | None,
+    title: str,
+    payload: dict[str, Any],
+    ai_context: dict[str, Any],
+    source_reference: dict[str, Any],
+    change_reason: str,
+    created_by: str,
+) -> str:
+    """Persist a generated content item + its first version (version 1).
+
+    Mirrors the API's `ContentService.createContent` creation path for
+    AI-generated content: type NOTE, status DRAFT, source AI_GENERATED, with
+    provenance in `ai_context` / `source_reference`. The worker writes directly
+    to PostgreSQL (same decision as material processing); the Pydantic
+    `NotePayloadSchema` mirror in `worker.ai.schemas` is the validation gate.
+    """
+    with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO content_items"
+            " (institute_id, subject_id, chapter_id, topic_id, type, title, status, source,"
+            "  current_version, created_by, updated_by)"
+            " VALUES (%s, %s, %s, %s, 'NOTE', %s, 'DRAFT', 'AI_GENERATED', 1, %s, %s)"
+            " RETURNING id",
+            (institute_id, subject_id, chapter_id, topic_id, title, created_by, created_by),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("content_items insert returned no row")
+        content_id = str(row[0])
+        cur.execute(
+            "INSERT INTO content_versions"
+            " (content_id, version, payload, ai_context, source_reference, change_type,"
+            "  change_reason, created_by)"
+            " VALUES (%s, 1, %s, %s, %s, 'CREATION', %s, %s)",
+            (
+                content_id,
+                Jsonb(payload),
+                Jsonb(ai_context),
+                Jsonb(source_reference),
+                change_reason,
+                created_by,
+            ),
+        )
+    return content_id

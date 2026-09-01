@@ -127,18 +127,43 @@ System priority order:
 - [x] Run pnpm checks + Python ruff/mypy
 - [x] Update docs and create checkpoint
 
-## Phase 2 — AI Generation Foundation
+## Phase 2 — AI Processing Foundation
 
-### Goal: AI Generation Foundation (Goal 7) [~]
+### Goal: AI Processing Foundation + AI_GENERATE_NOTE (Seventh Checkpoint)
 
-- [x] Define AI_GENERATE_NOTE operation contract in `packages/contracts`
-- [x] Implement `POST /api/v1/content/generate` in NestJS API
-- [x] Implement internal persistence endpoint in NestJS API
-- [x] Implement AI worker logic in `apps/workers`
-- [x] Implement AI provider integration (OpenRouter)
-- [x] Update worker consumer to handle `AI_GENERATE_NOTE`
-- [x] Validate and lint implementation
-- [~] Perform end-to-end AI generation pipeline validation
+- [x] Document AI architecture decisions (provider abstraction, queue separation, worker layout) — see `docs/architecture/ai.md`
+- [x] Add Zod contracts for generation request/response
+- [x] Add partial unique index on `jobs` for active-generation dedup (migration `0005_fuzzy_runaways.sql`)
+- [x] Route `AI_GENERATE_NOTE` jobs to a dedicated `ai_generation` queue (JobsService)
+- [x] Implement `POST /content/generate/note` (202, source validation, 409 dedup, publish)
+- [x] Add `WORKER_AI_*` settings + role dispatch in worker entrypoint (`WORKER_ROLE=ai`)
+- [x] Implement `AIProvider` abstraction + one OpenAI-compatible provider (httpx)
+- [x] Implement Pydantic mirror of `NotePayloadSchema` (canonical validation in worker)
+- [x] Implement NOTE prompt builder + robust JSON parsing (deterministic context prep)
+- [x] Implement AI generation service (resolve sources, call provider, validate, persist content)
+- [x] Implement `ai_generation` queue consumer
+- [x] Persist generated content as `AI_GENERATED` + `DRAFT` with `ai_context`/`source_reference` provenance
+- [x] Update `.env.example` with AI provider variables (`WORKER_AI_*`)
+- [x] Fix undefined `GenerationFailure` → `GenerationError` naming bug (worker)
+- [x] Fix per-source dedup index to read nested `payload -> 'source' -> 'type'` / `-> 'id'` (was `sourceType`/`sourceId` → always NULL)
+- [ ] Update docs (`docs/api/ai.md` generation contract + content/infrastructure/api docs)
+- [ ] Validate end-to-end (20-item checklist against running infrastructure)
+- [x] Run pnpm checks + Python ruff/mypy (all pass)
+- [ ] Update docs and create checkpoint
+
+## Phase 2 — Dockerization (Infrastructure)
+
+### Goal: Containerized full-stack runtime
+
+- [x] Add `Dockerfile.api` (pnpm workspace build → NestJS runtime; serves `api` + `migrate`)
+- [x] Add `Dockerfile.python` (installs OCR + workers; serves `ocr`, `worker-material`, `worker-ai`)
+- [x] Add root `.dockerignore`
+- [x] Extend `infrastructure/compose/docker-compose.yml` with app services + one-shot `migrate`
+- [x] Add `infrastructure/compose/.env.example` (compose/container-host URL defaults)
+- [x] Wire root `.env` via `env_file` + container-hostname overrides (postgres/rabbitmq/redis/ocr)
+- [x] Add shared `storage_data` volume for API + workers
+- [ ] Build + boot the full stack (`docker compose up --build`) to validate container networking
+- [ ] Validate compose against `.env` and document in `docs/project-status.md`
 
 ## Phase 1 — Core Platform Foundation
 

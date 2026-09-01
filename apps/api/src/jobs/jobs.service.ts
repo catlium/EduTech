@@ -19,6 +19,13 @@ export interface Job {
   completedAt: Date | null;
 }
 
+// Job-type → queue routing. Jobs without an explicit mapping default to the
+// generic `jobs` queue consumed by the material-processing worker. AI jobs are
+// routed to a dedicated queue so the AI worker can run (and scale) independently.
+const JOB_QUEUE_BY_TYPE: Record<string, string> = {
+  AI_GENERATE_NOTE: 'ai_generation',
+};
+
 @Injectable()
 export class JobsService {
   constructor(
@@ -55,7 +62,8 @@ export class JobsService {
   }
 
   async publishJob(job: Job): Promise<void> {
-    await this.rabbitmq.publish('jobs', {
+    const queue = JOB_QUEUE_BY_TYPE[job.type] ?? 'jobs';
+    await this.rabbitmq.publish(queue, {
       jobId: job.id,
       instituteId: job.instituteId,
       type: job.type,

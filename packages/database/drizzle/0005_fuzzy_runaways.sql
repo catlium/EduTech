@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "jobs_active_generation_unique" ON "jobs" USING btree ("institute_id",((payload -> 'source' ->> 'type')),((payload -> 'source' ->> 'id'))) WHERE type = 'AI_GENERATE_NOTE' AND status IN ('queued', 'processing');

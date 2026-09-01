@@ -1,0 +1,27 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech — Python image (OCR service + async workers)
+#
+# One image installs both Python apps so a single build serves the
+# `ocr` service, the `worker-material` service and the `worker-ai`
+# service. Each service picks its own entrypoint via command + env.
+#
+#   ocr      → uvicorn app.main:app
+#   worker   → python -m worker.app   (WORKER_ROLE=material|ai)
+# ─────────────────────────────────────────────────────────────
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /srv
+
+# Copy both apps so pip can install them (packages: `app`, `worker`).
+COPY apps/ocr ./ocr
+COPY apps/workers ./worker
+
+# Install both projects (and their declared deps) into one interpreter.
+RUN pip install ./ocr ./worker
+
+CMD ["python", "-m", "worker.app"]
