@@ -7,6 +7,18 @@ operations (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS); static
 validation green; runtime end-to-end validation vs a live stack still pending
 (blocked by sandbox network — Docker Hub/Ollama unreachable).
 
+**PUSH BLOCKED (2026-09-01):** Local commit `a9f4fbf` ("feat(ai): add summary,
+flashcards, and concepts generation") is committed locally but NOT pushed.
+`origin/main` has 2 divergent older commits from another session (`1997340`
+"implement ai generation foundation and worker integration" and `c43e215`
+"commit remaining ai generation foundation changes") that re-implement the
+same AI feature with a **different API surface** (`content-generation.service.ts`
++ internal controller vs this tree's `generation.controller.ts` /
+`POST /content/generate`). These overlap contracts, worker db/config/consumer,
+and content module/controller, so a push requires a deliberate rebase/merge
+with conflict resolution. **Do not force-push.** Resolve the divergence, then
+push.
+
 **Also completed:**
 - Generalized AI generation: `POST /content/generate` (single endpoint,
   `operation` in body), dispatch table in the worker, shared parse/prompt
