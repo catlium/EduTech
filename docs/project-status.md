@@ -7,17 +7,13 @@ operations (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS); static
 validation green; runtime end-to-end validation vs a live stack still pending
 (blocked by sandbox network — Docker Hub/Ollama unreachable).
 
-**PUSH BLOCKED (2026-09-01):** Local commit `a9f4fbf` ("feat(ai): add summary,
-flashcards, and concepts generation") is committed locally but NOT pushed.
-`origin/main` has 2 divergent older commits from another session (`1997340`
-"implement ai generation foundation and worker integration" and `c43e215`
-"commit remaining ai generation foundation changes") that re-implement the
-same AI feature with a **different API surface** (`content-generation.service.ts`
-+ internal controller vs this tree's `generation.controller.ts` /
-`POST /content/generate`). These overlap contracts, worker db/config/consumer,
-and content module/controller, so a push requires a deliberate rebase/merge
-with conflict resolution. **Do not force-push.** Resolve the divergence, then
-push.
+**Divergence resolved (2026-09-01):** `origin/main` had 2 older divergent
+commits (`1997340`, `c43e215`) re-implementing parts of the AI feature with a
+different API surface. Rebased local work onto them, discarded their obsolete
+architecture (`content-generation.service.ts`, `internal/*`, `external
+ai_client.py`, obsolete AI contracts) in favor of this tree's
+`generation.controller.ts` / `POST /content/generate`, and pushed. Clean up
+again across 7 commits, history now linear.
 
 **Also completed:**
 - Generalized AI generation: `POST /content/generate` (single endpoint,
@@ -28,7 +24,9 @@ push.
   new content types.
 - Docker API image bumped to Node 24 (pnpm 11 requires Node ≥22.13 + `node:sqlite`).
 
-**Last Checkpoint:** `7dbe573` — `feat(ai): complete AI generation foundation and dockerize stack`
+**Last Checkpoint:** `88b8a0b` — AI generation divergence reconciled (rebase onto
+`origin/main`, obsolete AI architecture removed) and the full Phase 5
+implementation pushed as `35c6124`
 
 **Current goal:** Close Phase 5 by running the E2E generation validation
 against a live stack, then plan Phase 6 (Question Bank) without implementing it.
