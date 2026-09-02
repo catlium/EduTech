@@ -107,4 +107,52 @@ export class QuestionsController {
   ) {
     await this.questionsService.deleteQuestion(tenant.instituteId, questionId);
   }
+
+  @Post(':questionId/approve')
+  @RequiredRoles(...WRITE_ROLES)
+  async approve(
+    @Tenant() tenant: TenantContext,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+  ) {
+    const question = await this.questionsService.setApprovalStatus(
+      tenant.instituteId,
+      questionId,
+      'APPROVED',
+    );
+    return { question };
+  }
+
+  @Post(':questionId/reject')
+  @RequiredRoles(...WRITE_ROLES)
+  async reject(
+    @Tenant() tenant: TenantContext,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+  ) {
+    const question = await this.questionsService.setApprovalStatus(
+      tenant.instituteId,
+      questionId,
+      'REJECTED',
+    );
+    return { question };
+  }
+
+  @Post(':questionId/archive')
+  @RequiredRoles(...WRITE_ROLES)
+  async archive(
+    @Tenant() tenant: TenantContext,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+  ) {
+    const question = await this.questionsService.setStatus(tenant.instituteId, questionId, 'ARCHIVED');
+    return { question };
+  }
+
+  @Post(':questionId/activate')
+  @RequiredRoles(...WRITE_ROLES)
+  async activate(
+    @Tenant() tenant: TenantContext,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+  ) {
+    const question = await this.questionsService.setStatus(tenant.instituteId, questionId, 'ACTIVE');
+    return { question };
+  }
 }

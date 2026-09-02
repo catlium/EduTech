@@ -163,6 +163,40 @@ export class QuestionsService {
     }
   }
 
+  // ── Approval actions ─────────────────────
+
+  async setApprovalStatus(
+    instituteId: string,
+    questionId: string,
+    approvalStatus: 'APPROVED' | 'REJECTED',
+  ) {
+    const [question] = await this.db
+      .update(questions)
+      .set({ approvalStatus, updatedAt: new Date() })
+      .where(and(eq(questions.id, questionId), eq(questions.instituteId, instituteId)))
+      .returning();
+
+    if (!question) {
+      throw new NotFoundException('Question not found');
+    }
+
+    return question!;
+  }
+
+  async setStatus(instituteId: string, questionId: string, status: 'ACTIVE' | 'ARCHIVED') {
+    const [question] = await this.db
+      .update(questions)
+      .set({ status, updatedAt: new Date() })
+      .where(and(eq(questions.id, questionId), eq(questions.instituteId, instituteId)))
+      .returning();
+
+    if (!question) {
+      throw new NotFoundException('Question not found');
+    }
+
+    return question!;
+  }
+
   // ── Helpers ───────────────────────────────
 
   private validatePayload(questionType: QuestionType, payload: Record<string, unknown>): void {
