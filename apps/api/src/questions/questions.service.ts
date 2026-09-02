@@ -1,0 +1,156 @@
+import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import { eq, and, desc } from 'drizzle-orm';
+import { questions, subjects, chapters, topics } from '@catlium/database';
+import type { Database } from '@catlium/database';
+import { QuestionPayloadSchemas } from '@catlium/contracts';
+import { DATABASE_TOKEN } from '../database/database.module.js';
+
+type ScopeKind = 'subject' | 'chapter' | 'topic';
+type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
+type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
+type QuestionSource = 'MANUAL' | 'AI_GENERATED';
+
+interface CreateQuestionInput {
+  stem: string;
+  questionType: QuestionType;
+  difficulty?: QuestionDifficulty;
+  explanation?: string;
+  source: QuestionSource;
+  subjectId?: string;
+  chapterId?: string;
+  topicId?: string;
+  payload: Record<string, unknown>;
+}
+
+@Injectable()
+export class QuestionsService {
+  constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
+
+  // ── Create ────────────────────────────────
+
+  async createQuestion(instituteId: string, createdBy: string, input: CreateQuestionInput) {
+    this.validatePayload(input.questionType, input.payload);
+
+    const scope = this.resolveScope(input);
+
+    await this.assertScopeInInstitute(instituteId, scope.kind, scope.id);
+
+    const approvalStatus = input.source === 'MANUAL' ? 'APPROVED' : 'PENDING';
+
+    const [question] = await this.db
+      .insert(questions)
+      .values({
+        instituteId,
+        subjectId: scope.kind === 'subject' ? scope.id : null,
+        chapterId: scope.kind === 'chapter' ? scope.id : null,
+        topicId: scope.kind === 'topic' ? scope.id : null,
+        stem: input.stem,
+        questionType: input.questionType,
+        difficulty: input.difficulty ?? 'MEDIUM',
+        explanation: input.explanation ?? null,
+        payload: input.payload,
+        source: input.source,
+        approvalStatus,
+        status: 'ACTIVE',
+        createdBy,
+        updatedBy: createdBy,
+      })
+      .returning();
+
+    return question!;
+  }
+
+  // ── Read ──────────────────────────────────
+
+  async listQuestions(instituteId: string) {
+    return this.db
+      .select()
+      .from(questions)
+      .where(eq(questions.instituteId, instituteId))
+      .orderBy(desc(questions.updatedAt));
+  }
+
+  async getQuestion(instituteId: string, questionId: string) {
+    const [question] = await this.db
+      .select()
+      .from(questions)
+      .where(and(eq(questions.id, questionId), eq(questions.instituteId, instituteId)))
+      .limit(1);
+
+    if (!question) {
+      throw new NotFoundException('Question not found');
+    }
+
+    return question;
+  }
+
+  // ── Helpers ───────────────────────────────
+
+  private validatePayload(questionType: QuestionType, payload: Record<string, unknown>): void {
+    const schema = QuestionPayloadSchemas[questionType];
+    const result = schema.safeParse(payload);
+
+    if (!result.success) {
+      const issue = result.error.issues[0];
+      const path = issue?.path.length ? issue.path.join('.') : 'root';
+      throw new BadRequestException(
+        `Invalid ${questionType} payload: ${path} — ${issue?.message ?? 'does not match schema'}`,
+      );
+    }
+  }
+
+  private resolveScope(input: CreateQuestionInput): { kind: ScopeKind; id: string } {
+    const provided = [
+      input.subjectId !== undefined ? { kind: 'subject' as const, id: input.subjectId } : null,
+      input.chapterId !== undefined ? { kind: 'chapter' as const, id: input.chapterId } : null,
+      input.topicId !== undefined ? { kind: 'topic' as const, id: input.topicId } : null,
+    ].filter((x): x is { kind: ScopeKind; id: string } => x !== null);
+
+    if (provided.length !== 1) {
+      throw new BadRequestException(
+        'Exactly one of subjectId, chapterId, topicId must be provided',
+      );
+    }
+
+    return provided[0];
+  }
+
+  private async assertScopeInInstitute(
+    instituteId: string,
+    kind: ScopeKind,
+    id: string,
+  ): Promise<void> {
+    if (kind === 'subject') {
+      const [row] = await this.db
+        .select({ id: subjects.id })
+        .from(subjects)
+        .where(and(eq(subjects.id, id), eq(subjects.instituteId, instituteId)))
+        .limit(1);
+
+      if (!row) throw new NotFoundException('Subject not found');
+      return;
+    }
+
+    if (kind === 'chapter') {
+      const [row] = await this.db
+        .select({ id: chapters.id })
+        .from(chapters)
+        .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
+        .where(and(eq(chapters.id, id), eq(subjects.instituteId, instituteId)))
+        .limit(1);
+
+      if (!row) throw new NotFoundException('Chapter not found');
+      return;
+    }
+
+    const [row] = await this.db
+      .select({ id: topics.id })
+      .from(topics)
+      .innerJoin(chapters, eq(topics.chapterId, chapters.id))
+      .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
+      .where(and(eq(topics.id, id), eq(subjects.instituteId, instituteId)))
+      .limit(1);
+
+    if (!row) throw new NotFoundException('Topic not found');
+  }
+}

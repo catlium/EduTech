@@ -480,3 +480,109 @@ export const GenerateContentResponseSchema = z.object({
   status: z.literal('QUEUED'),
 });
 export type GenerateContentResponse = z.infer<typeof GenerateContentResponseSchema>;
+
+// ── Question Contracts ─────────────────────
+
+export const QuestionTypeEnum = z.enum(['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK']);
+export type QuestionType = z.infer<typeof QuestionTypeEnum>;
+
+export const QuestionDifficultyEnum = z.enum(['EASY', 'MEDIUM', 'HARD']);
+export type QuestionDifficulty = z.infer<typeof QuestionDifficultyEnum>;
+
+export const QuestionSourceEnum = z.enum(['MANUAL', 'AI_GENERATED']);
+export type QuestionSource = z.infer<typeof QuestionSourceEnum>;
+
+export const QuestionApprovalStatusEnum = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
+export type QuestionApprovalStatus = z.infer<typeof QuestionApprovalStatusEnum>;
+
+// ── Question Payload Contracts ─────────────
+
+export const McqChoiceSchema = z.object({
+  id: z.string().uuid(),
+  text: z.string().min(1).max(1000),
+});
+export type McqChoice = z.infer<typeof McqChoiceSchema>;
+
+export const McqPayloadSchema = z.object({
+  choices: z.array(McqChoiceSchema).min(2),
+  correctChoiceId: z.string().uuid(),
+});
+export type McqPayload = z.infer<typeof McqPayloadSchema>;
+
+export const TrueFalsePayloadSchema = z.object({
+  correctAnswer: z.boolean(),
+});
+export type TrueFalsePayload = z.infer<typeof TrueFalsePayloadSchema>;
+
+export const FillInBlankPayloadSchema = z.object({
+  acceptableAnswers: z.array(z.string().min(1).max(500)).min(1),
+});
+export type FillInBlankPayload = z.infer<typeof FillInBlankPayloadSchema>;
+
+export const QuestionPayloadSchemas = {
+  MCQ: McqPayloadSchema,
+  TRUE_FALSE: TrueFalsePayloadSchema,
+  FILL_IN_BLANK: FillInBlankPayloadSchema,
+} as const;
+export type QuestionPayload =
+  | McqPayload
+  | TrueFalsePayload
+  | FillInBlankPayload;
+
+export const CreateQuestionRequestSchema = z
+  .object({
+    stem: z.string().min(1).max(20000),
+    questionType: QuestionTypeEnum,
+    difficulty: QuestionDifficultyEnum.optional(),
+    explanation: z.string().max(20000).optional(),
+    source: QuestionSourceEnum,
+    payload: z.record(z.string(), z.unknown()),
+    ...AcademicScopeFields,
+  })
+  .superRefine((value, ctx) => {
+    const result = QuestionPayloadSchemas[value.questionType].safeParse(value.payload);
+    if (!result.success) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['payload'],
+        message: `payload does not match ${value.questionType} schema: ${result.error.issues[0]?.message ?? 'invalid'}`,
+      });
+    }
+  })
+  .refine(
+    (v) => [v.subjectId, v.chapterId, v.topicId].filter((x) => x !== undefined).length === 1,
+    { message: 'Exactly one of subjectId, chapterId, topicId must be provided', path: ['scope'] },
+  );
+export type CreateQuestionRequest = z.infer<typeof CreateQuestionRequestSchema>;
+
+export const UpdateQuestionRequestSchema = z.object({
+  stem: z.string().min(1).max(20000).optional(),
+  difficulty: QuestionDifficultyEnum.optional(),
+  explanation: z.string().max(20000).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+});
+export type UpdateQuestionRequest = z.infer<typeof UpdateQuestionRequestSchema>;
+
+export const QuestionResponseSchema = z.object({
+  id: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  subjectId: z.string().uuid().nullable(),
+  chapterId: z.string().uuid().nullable(),
+  topicId: z.string().uuid().nullable(),
+  stem: z.string(),
+  questionType: QuestionTypeEnum,
+  difficulty: QuestionDifficultyEnum,
+  explanation: z.string().nullable(),
+  payload: z.record(z.string(), z.unknown()),
+  source: QuestionSourceEnum,
+  approvalStatus: QuestionApprovalStatusEnum,
+  status: z.string(),
+  createdBy: z.string().uuid(),
+  updatedBy: z.string().uuid().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type QuestionResponse = z.infer<typeof QuestionResponseSchema>;
+
+export const QuestionListItemSchema = QuestionResponseSchema;
+export type QuestionListItem = z.infer<typeof QuestionListItemSchema>;

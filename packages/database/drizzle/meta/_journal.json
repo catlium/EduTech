@@ -50,6 +50,13 @@
       "when": 1788251559403,
       "tag": "0006_wooden_robin_chapel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788324984993,
+      "tag": "0007_brave_iron_monger",
+      "breakpoints": true
     }
   ]
 }

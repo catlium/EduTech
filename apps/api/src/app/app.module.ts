@@ -9,6 +9,7 @@ import { JobsModule } from '../jobs/jobs.module.js';
 import { AcademicModule } from '../academic/academic.module.js';
 import { ContentModule } from '../content/content.module.js';
 import { MaterialsModule } from '../materials/materials.module.js';
+import { QuestionsModule } from '../questions/questions.module.js';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { RabbitMQService } from '../common/services/rabbitmq.service.js';
@@ -37,6 +38,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     AcademicModule,
     ContentModule,
     MaterialsModule,
+    QuestionsModule,
   ],
   providers: [
     {

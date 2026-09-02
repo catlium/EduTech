@@ -22,3 +22,4 @@ export { jobs } from './schema/jobs.js';
 export { subjects, chapters, topics } from './schema/academic.js';
 export { contentItems, contentVersions } from './schema/content.js';
 export { materials } from './schema/materials.js';
+export { questions } from './schema/questions.js';
