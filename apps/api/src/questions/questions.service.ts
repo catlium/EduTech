@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, type SQL } from 'drizzle-orm';
 import { questions, subjects, chapters, topics } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { QuestionPayloadSchemas } from '@catlium/contracts';
@@ -9,6 +9,16 @@ type ScopeKind = 'subject' | 'chapter' | 'topic';
 type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 type QuestionSource = 'MANUAL' | 'AI_GENERATED';
+type QuestionApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+interface ListQuestionFilters {
+  questionType?: QuestionType;
+  difficulty?: QuestionDifficulty;
+  approvalStatus?: QuestionApprovalStatus;
+  subjectId?: string;
+  chapterId?: string;
+  topicId?: string;
+}
 
 interface CreateQuestionInput {
   stem: string;
@@ -66,11 +76,32 @@ export class QuestionsService {
 
   // ── Read ──────────────────────────────────
 
-  async listQuestions(instituteId: string) {
+  async listQuestions(instituteId: string, filters: ListQuestionFilters = {}) {
+    const conditions: SQL[] = [eq(questions.instituteId, instituteId)];
+
+    if (filters.questionType !== undefined) {
+      conditions.push(eq(questions.questionType, filters.questionType));
+    }
+    if (filters.difficulty !== undefined) {
+      conditions.push(eq(questions.difficulty, filters.difficulty));
+    }
+    if (filters.approvalStatus !== undefined) {
+      conditions.push(eq(questions.approvalStatus, filters.approvalStatus));
+    }
+    if (filters.subjectId !== undefined) {
+      conditions.push(eq(questions.subjectId, filters.subjectId));
+    }
+    if (filters.chapterId !== undefined) {
+      conditions.push(eq(questions.chapterId, filters.chapterId));
+    }
+    if (filters.topicId !== undefined) {
+      conditions.push(eq(questions.topicId, filters.topicId));
+    }
+
     return this.db
       .select()
       .from(questions)
-      .where(eq(questions.instituteId, instituteId))
+      .where(and(...conditions))
       .orderBy(desc(questions.updatedAt));
   }
 

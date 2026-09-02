@@ -6,8 +6,10 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
   ParseUUIDPipe,
+  ParseEnumPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -47,8 +49,26 @@ export class QuestionsController {
   }
 
   @Get()
-  async list(@Tenant() tenant: TenantContext) {
-    const questions = await this.questionsService.listQuestions(tenant.instituteId);
+  async list(
+    @Tenant() tenant: TenantContext,
+    @Query('questionType', new ParseEnumPipe(['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'], { optional: true }))
+    questionType?: 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK',
+    @Query('difficulty', new ParseEnumPipe(['EASY', 'MEDIUM', 'HARD'], { optional: true }))
+    difficulty?: 'EASY' | 'MEDIUM' | 'HARD',
+    @Query('approvalStatus', new ParseEnumPipe(['PENDING', 'APPROVED', 'REJECTED'], { optional: true }))
+    approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED',
+    @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
+    @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
+    @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
+  ) {
+    const questions = await this.questionsService.listQuestions(tenant.instituteId, {
+      questionType,
+      difficulty,
+      approvalStatus,
+      subjectId,
+      chapterId,
+      topicId,
+    });
     return { questions };
   }
 
