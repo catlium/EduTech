@@ -24,6 +24,28 @@ System priority order:
 - [-] Advanced institute management
 - [-] User profile management / password change endpoint
 
+## Phase 6 — Question Bank
+
+### Goal: Question Bank (E2E validated 2026-09-02) ✅
+
+- [x] QBN-01 — Question CRUD: create (201), list, retrieve (200), PATCH update
+      (field-limited, 200), DELETE (204, first in platform, tenant-scoped 404)
+- [x] QBN-02 — List filtering: questionType/difficulty/approvalStatus/
+      subjectId/chapterId/topicId with AND semantics; invalid enum/uuid → 400
+- [x] QBN-03 — Role-gated creation: STUDENT denied all mutations (403), reads
+      allowed (200)
+- [x] QBN-04 — Create with explanation + source echoes both in the 201 response
+- [x] QBN-05 — Approval lifecycle: reject→REJECTED, approve→APPROVED (both
+      directions), archive/activate, filter by approvalStatus
+- [x] QBN-06 — MANUAL source → approvalStatus APPROVED (server-computed)
+- [x] QBN-07 — AI_GENERATED source → approvalStatus PENDING (server-computed)
+- [x] Security/negative sweep: mass-assignment body fields → 400; cross-institute
+      actions → 404; random uuid → 404; no cookie → 401; non-member header → 403
+- [x] `questions` table + migration 0007 (exactly-one-scope CHECK) applied
+- [x] Question Zod contracts + 10-endpoint API contract (`docs/api/questions.md`)
+- [x] Run pnpm typecheck + lint (all pass)
+- [x] Update docs and create checkpoint
+
 ## Phase 2 — Academic & Content Foundation
 
 ### Goal: Academic Hierarchy (First Checkpoint) ✅

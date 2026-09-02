@@ -1,63 +1,46 @@
 # Project Status
 
-## Current Phase: Phase 5 — AI Learning Content Generation
+## Current Phase: Phase 6 — Question Bank
 
-**Status: COMPLETE (validated 2026-09-02).** Implementation and runtime E2E
-validation green for all four generation operations (NOTE, SUMMARY,
-FLASHCARD_SET, IMPORTANT_CONCEPTS) against the dockerized full stack. The
-docker leverage issue is resolved (see below). Two real defects were found and
-fixed by the E2E run. All 20 items in `docs/user-validation.md` Phase 5 section
-pass (run with an OpenAI-compatible test double standing in for a real LLM —
-see that file for exact results and the two provider-free validation paths).
+**Status: COMPLETE (E2E validated 2026-09-02).** Implementation and runtime E2E
+validation green for the full question CRUD surface plus the approval lifecycle
+and list filtering, against the dockerized full stack. All Phase 6 items in
+`docs/user-validation.md` pass (QBN-01..07 + security/negative block). This
+closes the question bank per the roadmap; v2 features (QUESTION wildcard loading
+for dynamic referencing, distractors, MCQ from image/OCR) are deferred.
 
-**Docker fix (2026-09-02):** the one-shot `migrate` service failed with
-`Cannot find module '/app/pnpm'` — pnpm exists only in the _build_ stage of
-`Dockerfile.api`, not the runtime image. `infrastructure/compose/docker-compose.yml`
-now runs the migrate service with `working_dir: /app/packages/database` and
-`command: ["node_modules/.bin/drizzle-kit", "migrate"]` (the binary ships in the
-image); the root `db:migrate` shortcut is unaffected.
+**Completed work:**
 
-**Bugs fixed by the Phase 5 E2E run (2026-09-02):**
+- `questions` table (17 columns, JSONB payload, varchar enums) + migration
+  `0007_brave_iron_monger.sql` with the `questions_exactly_one_scope` CHECK
+  (exactly one of subjectId/chapterId/topicId).
+- Question Zod contracts in `@catlium/contracts` (type/difficulty/source/
+  approval enums; MCQ/TRUE_FALSE/FILL_IN_BLANK payload schemas with superRefine
+  dispatch; create/update/response schemas).
+- `QuestionsModule` (`apps/api/src/questions`): create (server-computed
+  approval from source: MANUAL→APPROVED, AI_GENERATED→PENDING), list, get,
+  PATCH update (field-limited white-list, payload re-validated), DELETE (first
+  `@Delete` in the platform, 204, tenant-scoped), approve/reject/archive/
+  activate actions. All tenant-scoped (anti-IDOR 404) and role-gated
+  (INSTITUTE_ADMIN/TEACHER).
+- `docs/api/questions.md` — canonical 10-endpoint contract.
 
-1. `apps/workers/worker/ai/service.py` — job `result.materialIds` used raw
-   psycopg3 `UUID` objects; `Jsonb` serialization failed and the job died with
-   `"Unexpected generation failure"` _after_ content was persisted. Now
-   `str(m["id"])` (already the case in `_persist`'s `source_reference`).
-2. `apps/api/src/content/generation.service.ts` — Drizzle ≥0.44 wraps driver
-   errors in `DrizzleQueryError`, hiding `code = '23505'`; a duplicate
-   active-generation insert returned `500` instead of `409`. `isUniqueViolation`
-   now walks `error.cause` (matching `academic.service.ts`'s existing pattern).
+**Database changes:** new `questions` table (migration 0007), FKs to
+institutes/subjects/chapters/topics/users, exactly-one-scope CHECK.
 
-**Also completed:**
+**Validation status:** all `docs/user-validation.md` Phase 6 items `[x]`,
+2026-09-02 against the live stack (includes student-403 sweep, cross-institute
+404s, mass-assignment 400s). `pnpm typecheck && pnpm lint` green.
 
-- Full dockerized stack boot (`docker compose -f
-infrastructure/compose/docker-compose.yml up --build`) verified live: migrate
-  (exit 0, 12 tables), api, ocr, worker-material, worker-ai all healthy;
-  health checks `GET /api/v1/health` and `GET /health` → 200.
+**Last Checkpoint:** Phase 6 close — `docs(phase6): close question bank phase
+with E2E validation` (see commit below).
 
-**Divergence resolved (2026-09-01):** `origin/main` had 2 older divergent
-commits (`1997340`, `c43e215`) re-implementing parts of the AI feature with a
-different API surface. Rebased local work onto them, discarded their obsolete
-architecture (`content-generation.service.ts`, `internal/*`, `external
-ai_client.py`, obsolete AI contracts) in favor of this tree's
-`generation.controller.ts` / `POST /content/generate`, and pushed. Clean up
-again across 7 commits, history now linear.
+**Recommended next task:** Plan Phase 7 — AI Question Generation & Review
+(the AI worker inserts questions via the create path, landing on `PENDING`;
+review approve/reject re-uses the Phase 6 actions).
 
-**Also completed:**
-
-- Generalized AI generation: `POST /content/generate` (single endpoint,
-  `operation` in body), dispatch table in the worker, shared parse/prompt
-  helpers, Pydantic mirrors of all payload schemas.
-- Per-operation active-generation dedup (migration `0006_wooden_robin_chapel.sql`).
-- `docs/api/ai.md` generation contract + `docs/api/content.md` updated for the
-  new content types.
-- Docker API image bumped to Node 24 (pnpm 11 requires Node ≥22.13 + `node:sqlite`).
-
-**Last Checkpoint:** Phase 5 E2E validated and checkpointed (see commit below)
-
-**Current goal:** Phase 5 is closed. Next: Phase 6 (Question Bank) — plan it
-(after the roadmap lock-in below) without implementing it until the plan is
-agreed.
+For the prior phases (Phase 5 AI generation, docker setup, divergence
+resolution), see the historical entries below.
 
 ## Priority Revision (2026-08-19)
 

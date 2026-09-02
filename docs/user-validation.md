@@ -291,6 +291,146 @@ MATERIAL-source generation).
 
 ---
 
+## Phase 6 — Question Bank (E2E)
+
+Status: `[x]` All tests passed 2026-09-02 against the dockerized stack
+(postgres/redis/rabbitmq/api/ocr/worker-material/worker-ai).
+
+### Fixtures (created during this run, `catlium_dev`)
+
+- Institute A `11111111-1111-1111-1111-111111111111`, Institute B
+  `55555555-5555-5555-5555-555555555555`.
+- Teacher A `p6.teacher@catlium.dev` (id `9f63bf7b-e9d4-49f4-8640-0888ffba3a5c`),
+  membership A `33333333-...` role `INSTITUTE_ADMIN` status `active` (lowercase).
+- Teacher B `p6.other@catlium.dev` (id `34998026-c148-42df-86b9-5c0e2fd17814`),
+  membership B `44444444-...` role `TEACHER`.
+- Student `p6.student@catlium.dev` (id `2aa4673f-b23a-433c-9609-b1cd9adf55c0`),
+  membership `ede60155-...` role `STUDENT` status `active`.
+- Academic scope (retrieved via `SELECT`): subject `math`
+  `324428a6-8d42-4926-9540-9b8a83943a24`; chapter `algebra`
+  `87dfe71c-c556-4b40-9270-72b14df976f9`; topic `Linear Equations`
+  `10df37f8-acd5-4406-9a36-eb631c4c54f3`.
+- Not recorded here: dummy throwaway accounts only; no credentials or tokens.
+
+**Casing note (Pitfall 3):** membership `status` must be lowercase `'active'`;
+the DTO/payload field names are exactly `stem`, `questionType`, `difficulty`,
+`explanation`, `payload`, `source`, `subjectId`, `chapterId`, `topicId` — never
+invented names (Pitfall 4). Base URL `http://localhost:3000/api/v1`; writes use
+teacher-A cookie + header `x-institute-id: 11111111-...`.
+
+### QBN-01 — Create, list, retrieve, update, delete
+
+- **Setup:** live stack up; teacher-A cookie; scope = subject `math`.
+- **Endpoint:** `POST /api/v1/questions` (create); `GET /api/v1/questions` (list);
+  `GET /api/v1/questions/:id` (retrieve); `PATCH /api/v1/questions/:id` (update);
+  `DELETE /api/v1/questions/:id` (delete).
+- **Payload (create):**
+  ```json
+  {
+    "stem": "E2E MCQ question",
+    "questionType": "MCQ",
+    "difficulty": "EASY",
+    "explanation": "expected explanation",
+    "source": "MANUAL",
+    "subjectId": "324428a6-8d42-4926-9540-9b8a83943a24",
+    "payload": {
+      "choices": [
+        {"id": "9f63bf7b-e9d4-49f4-8640-0888ffba3a5c", "text": "A"},
+        {"id": "7e0f0634-5649-4859-bbeb-af8d0b248c60", "text": "B"}
+      ],
+      "correctChoiceId": "9f63bf7b-e9d4-49f4-8640-0888ffba3a5c"
+    }
+  }
+  ```
+- **Expected output:** create → `201` with `approvalStatus: "APPROVED"`; list →
+  `200` array; retrieve → `200` matching question; PATCH `{"stem":"updated"}`
+  → `200`, `stem` replaced, `questionType`/`source`/`approvalStatus` unchanged;
+  DELETE → `204` empty body, subsequent `GET /:id` → `404`; random UUID PATCH/DELETE
+  → `404`.
+
+### QBN-02 — List filtering
+
+- **Setup:** live stack up; teacher-A cookie; ≥4 questions spanning
+  MCQ/TRUE_FALSE/FILL_IN_BLANK and EASY/MEDIUM/HARD and PENDING/APPROVED.
+- **Endpoint:** `GET /api/v1/questions?questionType=MCQ`,
+  `?difficulty=EASY`, `?approvalStatus=APPROVED`,
+  `?subjectId=<math-uuid>`, `?chapterId=<algebra-uuid>`, `?topicId=<topic-uuid>`,
+  `?questionType=MCQ&approvalStatus=APPROVED`.
+- **Payload:** none.
+- **Expected output:** each single filter returns only rows matching it (AND
+  combine for the multi-filter call = intersection); `?difficulty=INSANE` → `400`;
+  `?subjectId=not-a-uuid` → `400`; institute-B list → `200` empty (no leakage).
+
+### QBN-03 — Role-gated creation (teacher/manual only)
+
+- **Setup:** live stack up; student cookie `p6.student@catlium.dev` + institute-A header.
+- **Endpoint:** `POST /api/v1/questions` (also PATCH/DELETE/approve/reject/archive/activate).
+- **Payload:** same create payload as QBN-01.
+- **Expected output:** `403` on every mutation handler; `GET /api/v1/questions`
+  and `GET /api/v1/questions/:id` → `200` (reads allowed).
+
+### QBN-04 — Create with explanation + source echoes
+
+- **Setup:** live stack up; teacher-A cookie; scope subject `math`.
+- **Endpoint:** `POST /api/v1/questions`.
+- **Payload:** the QBN-01 create payload (has `explanation` + `source: "MANUAL"`).
+- **Expected output:** `201`; response echoes `explanation: "expected
+  explanation"` and `source: "MANUAL"`.
+
+### QBN-05 — Approval lifecycle
+
+- **Setup:** live stack up; teacher-A cookie; a `PENDING` question (e.g. an
+  `AI_GENERATED` one).
+- **Endpoint:** `POST /api/v1/questions/:id/reject`, `/approve`, `/archive`, `/activate`.
+- **Payload:** none.
+- **Expected output:** reject PENDING → `200 approvalStatus: "REJECTED"`; approve
+  same → `200 APPROVED` (REJECTED→APPROVED allowed); approve an already-APPROVED → `200
+  APPROVED` (idempotent); archive → `200 status: "ARCHIVED"`; activate → `200 status:
+  "ACTIVE"`; filter `?approvalStatus=PENDING` returns pending rows; random UUID action
+  → `404`.
+
+### QBN-06 — Manual source → APPROVED
+
+- **Setup:** live stack up; teacher-A cookie; scope subject `math`.
+- **Endpoint:** `POST /api/v1/questions`.
+- **Payload:** the QBN-01 create payload (`source: "MANUAL"` only).
+- **Expected output:** `201` with `approvalStatus: "APPROVED"` (server-computed
+  — never accepted from the body).
+
+### QBN-07 — AI_GENERATED source → PENDING
+
+- **Setup:** live stack up; teacher-A cookie; scope topic `Linear Equations`.
+- **Endpoint:** `POST /api/v1/questions` with `source: "AI_GENERATED"`.
+- **Payload:**
+  ```json
+  {
+    "stem": "AI TF (E2E)",
+    "questionType": "TRUE_FALSE",
+    "difficulty": "MEDIUM",
+    "source": "AI_GENERATED",
+    "topicId": "10df37f8-acd5-4406-9a36-eb631c4c54f3",
+    "payload": {"correctAnswer": true}
+  }
+  ```
+- **Expected output:** `201` with `approvalStatus: "PENDING"` (server-computed).
+
+### Security / negative block
+
+- **Setup:** live stack up; teacher-A + teacher-B + student cookies.
+- **Endpoint:** multiple (below).
+- **Expected output:**
+  - Request body containing `approvalStatus` or `instituteId` → `400` (mass-assignment
+    rejected; whitelist).
+  - Malformed payload on create/PATCH (MCQ with a single choice) → `400`.
+  - Institute-B member acting on an institute-A question id (GET/PATCH/DELETE/approve/
+    archive) → `404` every time (no existence oracle).
+  - No cookie → `401`; non-member institute header → `403` (TenantGuard, not `404`).
+  - Student on institute-A question id → `403` on mutations (see QBN-03).
+  - Every non-2xx response body matches the global shape
+    `{"statusCode", "message", "error"}`.
+
+---
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete
