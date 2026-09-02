@@ -22,6 +22,10 @@ interface CreateQuestionInput {
   payload: Record<string, unknown>;
 }
 
+type QuestionUpdateInput = Partial<
+  Pick<CreateQuestionInput, 'stem' | 'difficulty' | 'explanation' | 'payload'>
+>;
+
 @Injectable()
 export class QuestionsService {
   constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
@@ -82,6 +86,50 @@ export class QuestionsService {
     }
 
     return question;
+  }
+
+  // ── Update ────────────────────────────────
+
+  async updateQuestion(
+    instituteId: string,
+    userId: string,
+    questionId: string,
+    patch: QuestionUpdateInput,
+  ) {
+    const existing = await this.getQuestion(instituteId, questionId);
+
+    if (patch.payload !== undefined) {
+      this.validatePayload(existing.questionType as QuestionType, patch.payload);
+    }
+
+    const [question] = await this.db
+      .update(questions)
+      .set({
+        ...patch,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(questions.id, questionId), eq(questions.instituteId, instituteId)))
+      .returning();
+
+    if (!question) {
+      throw new NotFoundException('Question not found');
+    }
+
+    return question!;
+  }
+
+  // ── Delete ────────────────────────────────
+
+  async deleteQuestion(instituteId: string, questionId: string) {
+    const [question] = await this.db
+      .delete(questions)
+      .where(and(eq(questions.id, questionId), eq(questions.instituteId, instituteId)))
+      .returning();
+
+    if (!question) {
+      throw new NotFoundException('Question not found');
+    }
   }
 
   // ── Helpers ───────────────────────────────

@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Param,
   Body,
   UseGuards,
@@ -11,7 +13,7 @@ import {
 } from '@nestjs/common';
 
 import { QuestionsService } from './questions.service.js';
-import { CreateQuestionDto } from './dto/question.dto.js';
+import { CreateQuestionDto, UpdateQuestionDto } from './dto/question.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -57,5 +59,32 @@ export class QuestionsController {
   ) {
     const question = await this.questionsService.getQuestion(tenant.instituteId, questionId);
     return { question };
+  }
+
+  @Patch(':questionId')
+  @RequiredRoles(...WRITE_ROLES)
+  async update(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+    @Body() dto: UpdateQuestionDto,
+  ) {
+    const question = await this.questionsService.updateQuestion(
+      tenant.instituteId,
+      user.userId,
+      questionId,
+      dto,
+    );
+    return { question };
+  }
+
+  @Delete(':questionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequiredRoles(...WRITE_ROLES)
+  async delete(
+    @Tenant() tenant: TenantContext,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+  ) {
+    await this.questionsService.deleteQuestion(tenant.instituteId, questionId);
   }
 }

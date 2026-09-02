@@ -11,6 +11,26 @@ type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 type QuestionSource = 'MANUAL' | 'AI_GENERATED';
 
+export class UpdateQuestionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  stem?: string;
+
+  @IsOptional()
+  @IsIn(['EASY', 'MEDIUM', 'HARD'])
+  difficulty?: QuestionDifficulty;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  explanation?: string;
+
+  @IsOptional()
+  @IsObject()
+  payload?: Record<string, unknown>;
+}
+
 export class CreateQuestionDto {
   @IsString()
   @MaxLength(20000)
