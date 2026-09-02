@@ -1,3 +1,18 @@
+---
+gsd_state_version: 1.0
+current_phase: 6
+current_phase_name: question-bank
+status: executing
+last_updated: "2026-09-02T04:35:26.383Z"
+state_head: a81f3763a54fd4f5bf6dfabccfbadc2bf44f8a14
+progress:
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 3
+  completed_plans: 0
+  percent: 0
+---
+
 # STATE.md
 
 ## Project Reference
@@ -5,13 +20,13 @@
 See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Core value:** A teacher takes a source material through upload → async OCR/AI processing → AI-generated, reviewable content/questions → a published, approved-question-only examination, and a student takes it and receives an automatically-computed, reproducible result.
-**Current focus:** Roadmap Phase 6 — Question Bank (planned, ready to execute).
+**Current focus:** Phase 06 — question-bank
 
 ## Project State
 
 **Sequence:** Phase 6 (planned), backend-first full-stack monorepo
 **Phase:** 6 — Question Bank
-**Status:** Ready to execute. Backend Phases 1–5 complete and validated.
+**Status:** Executing Phase 06
 Phase 5 E2E validation passed live on 2026-09-02 against the dockerized stack
 (see `docs/user-validation.md`). Backend Phases 7–17 not started. Frontend
 Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
@@ -22,6 +37,7 @@ Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 **Status:** Ready to execute (planned 2026-09-02; 3 plans / 3 waves). No implementation yet.
 
 **Completed (verified against codebase):**
+
 - Phase 1 — Backend Foundation & Authentication (identity, tenancy, jobs, roles)
 - Phase 2 — Academic Structure (subject → chapter → topic)
 - Phase 3 — Learning Materials (upload, validation, metadata, processing status)
@@ -34,6 +50,7 @@ Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
   3 plans (06-01 tracer, 06-02 expansion, 06-03 close), VALIDATION strategy.
 
 **In progress / not started:**
+
 - Phase 6 (Question Bank — QBN-01..07): plans ready, not executed
 - Phases 7–17 (AI question generation, examination, attempts, evaluation, results, analytics, practice, cross-module security, contract verification, testing, backend-complete checkpoint): not started
 - Phases 18–25 (frontend + integration + polish): gated behind Phase 17
@@ -66,6 +83,7 @@ Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 **Phase 6 — Question Bank (ready to execute):**
 
 Plans produced (3 plans / 3 waves, verified by plan-checker):
+
 - **06-01 (Wave 1, tracer):** `questions` Drizzle schema + migration 0007
   (generate+migrate, never push), Zod contracts (varchar enums, MCQ/TF/FITB JSONB
   payloads, superRefine, exactly-one-scope CHECK), module/controller/service,
