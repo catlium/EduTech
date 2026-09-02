@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 current_phase: 6
 current_phase_name: question-bank
-status: executing
-last_updated: "2026-09-02T04:35:26.383Z"
-state_head: a81f3763a54fd4f5bf6dfabccfbadc2bf44f8a14
+status: completed
+last_updated: "2026-09-02T05:58:00.000Z"
+state_head: 68eee01
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 3
+  percent: 100
 ---
 
 # STATE.md
@@ -24,17 +24,19 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Project State
 
-**Sequence:** Phase 6 (planned), backend-first full-stack monorepo
+**Sequence:** Phase 6 (completed), backend-first full-stack monorepo
 **Phase:** 6 — Question Bank
-**Status:** Executing Phase 06
-Phase 5 E2E validation passed live on 2026-09-02 against the dockerized stack
+**Status:** Completed
+Phase 6 E2E validation passed live on 2026-09-02 against the dockerized stack
 (see `docs/user-validation.md`). Backend Phases 7–17 not started. Frontend
 Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 
 ## Phase State
 
 **Current:** Phase 6 — Question Bank
-**Status:** Ready to execute (planned 2026-09-02; 3 plans / 3 waves). No implementation yet.
+**Status:** COMPLETE (E2E validated 2026-09-02). All 3 plans (06-01/06-02/06-03)
+implemented and verified; all `docs/user-validation.md` Phase 6 items `[x]`; all
+`docs/tasks.md` QBN-01..07 `[x]`; `pnpm typecheck && pnpm lint` green.
 
 **Completed (verified against codebase):**
 
@@ -46,12 +48,14 @@ Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
   IMPORTANT_CONCEPTS via `POST /content/generate`; provider abstraction; dispatch
   table; per-operation dedup index; `docs/api/ai.md`. **E2E validation passed
   2026-09-02** (full record in `docs/user-validation.md`). Reqs AI-01..02 ✓, AI-05..09 ✓.
-- Phase 6 planning — RESEARCH (06-RESEARCH.md), PATTERNS (06-PATTERNS.md),
-  3 plans (06-01 tracer, 06-02 expansion, 06-03 close), VALIDATION strategy.
+- Phase 6 — Question Bank (QBN-01..07): `questions` table + migration 0007
+  (exactly-one-scope CHECK), question Zod contracts, 10-endpoint QuestionsModule
+  (create/list/get/PATCH/DELETE/approve/reject/archive/activate, all tenant-scoped
+  and role-gated), list filtering, `docs/api/questions.md`. **E2E validated
+  2026-09-02** (security sweep incl. student-403 + cross-institute-404). Reqs QBN-01..07 ✓.
 
 **In progress / not started:**
 
-- Phase 6 (Question Bank — QBN-01..07): plans ready, not executed
 - Phases 7–17 (AI question generation, examination, attempts, evaluation, results, analytics, practice, cross-module security, contract verification, testing, backend-complete checkpoint): not started
 - Phases 18–25 (frontend + integration + polish): gated behind Phase 17
 
@@ -64,7 +68,7 @@ Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 | 3 | Learning Materials | ✓ completed |
 | 4 | Async Processing & Text Extraction | ✓ completed |
 | 5 | AI Learning Content Generation | ✓ completed (E2E validated 2026-09-02) |
-| 6 | Question Bank | ◆ ready to execute |
+| 6 | Question Bank | ✓ completed (E2E validated 2026-09-02) |
 | 7 | AI Question Generation & Review | ○ pending |
 | 8 | Quiz & Examination Management | ○ pending |
 | 9 | Student Examination Attempts | ○ pending |
@@ -80,29 +84,27 @@ Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 
 ## Current Task
 
-**Phase 6 — Question Bank (ready to execute):**
+**Phase 6 — Question Bank (COMPLETE 2026-09-02):**
 
-Plans produced (3 plans / 3 waves, verified by plan-checker):
+All 3 plans executed inline, each committed with a SUMMARY:
 
-- **06-01 (Wave 1, tracer):** `questions` Drizzle schema + migration 0007
-  (generate+migrate, never push), Zod contracts (varchar enums, MCQ/TF/FITB JSONB
-  payloads, superRefine, exactly-one-scope CHECK), module/controller/service,
-  `POST /questions` with server-computed approval (MANUAL→APPROVED,
-  AI_GENERATED→PENDING), get-by-id, list, `docs/api/questions.md`.
-- **06-02 (Wave 2):** PATCH update (field-limited + payload re-validated), the
-  platform's first `@Delete` (204, institute-scoped), QBN-02 list filters,
-  approve/reject/archive/activate actions, student-403 / cross-institute-404 sweep.
-- **06-03 (Wave 3, close):** E2E checklist in `docs/user-validation.md` run to
-  all `[x]`, docs/tasks + project-status updates, typecheck/lint, checkpoint commit.
+- **06-01 (Wave 1, tracer):** `questions` schema + migration 0007, Zod contracts,
+   POST/get/list module, server-computed approval, `docs/api/questions.md`. `521eb7c`.
+- **06-02 (Wave 2):** PATCH update, first DELETE (204), list filters,
+   approve/reject/archive/activate, student-403 / cross-institute-404 sweep.
+   `074a01a`, `3cd98c0`, `b7ecd9e`.
+- **06-03 (Wave 3, close):** E2E checklist all `[x]`, tasks+project-status,
+   doc sweep. `68eee01`.
 
-**Next action:** Execute Phase 6 (handler: exec the 3 plans; Wave 1 tracer must
-verify end-to-end before Waves 2–3 start).
+**Next action:** Plan Phase 7 — AI Question Generation & Review. The AI worker
+inserts questions via the Phase 6 create path (landing on `PENDING`); review
+approve/reject re-use the Phase 6 action endpoints.
 
 ## Verification
 
 - Phases 1–5: validated against live PostgreSQL + RabbitMQ + worker + OCR (see `docs/project-status.md`)
 - Phase 5 E2E: passed 2026-09-02 (docs/user-validation.md), all 20 items
-- Phase 6: planned; not yet executed
+- Phase 6 E2E: passed 2026-09-02 (docs/user-validation.md), all QBN-01..07 + security block items [x]
 - Known: zero test coverage across the codebase
 
 ## Decisions
@@ -115,4 +117,4 @@ verify end-to-end before Waves 2–3 start).
 
 ## Blocked
 
-- Nothing currently blocks Phase 6 execution. Frontend phases remain gated by design until the Phase 17 backend-complete checkpoint.
+- Phase 6 is complete. Nothing blocks Phase 7 planning. Frontend phases remain gated by design until the Phase 17 backend-complete checkpoint.

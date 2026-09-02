@@ -57,7 +57,7 @@ Completion summary (verified against codebase):
 ## Phase 6 — Question Bank ◆
 **Goal:** Complete question management — CRUD, filtering (difficulty, type, subject/chapter/topic), manual creation, explanations, source (MANUAL|AI_GENERATED), approval (PENDING|APPROVED|REJECTED). Manual questions auto-approved; AI-generated begin PENDING.
 **Success Criteria:** Question bank CRUD works; approval rules enforced.
-**Status:** PLANNED (3 plans / 3 waves, plan-checker verified; not implemented). Reqs: QBN-01..07.
+**Status:** COMPLETE (E2E validated 2026-09-02; all docs/user-validation.md Phase 6 items [x]). Reqs: QBN-01..07.
 
 ## Phase 7 — AI Question Generation & Review ○
 **Goal:** Teacher specifies subject/chapter/topic, type, count, difficulty distribution → AI generates PENDING questions → teacher approves/rejects (or batch where defined). AI questions never auto-become official exam questions.
