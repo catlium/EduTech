@@ -360,22 +360,16 @@ Reuse `isUniqueViolation`, `ContentPayloadSchemas` dispatch, `Parse*Pipe`s, `@Te
 | A6 | Phase 6 create DTO accepts `source` in `['MANUAL','AI_GENERATED']`, service maps to approval; only MANUAL is semantically reachable | QBN-04..07 | If a TEACHER submits AI_GENERATED they get a PENDING row — harmless; keeps Phase 7 path identical |
 | A7 | `explanation` is plain text, nullable | QBN-04 | Rich-text later = format column addition |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Hard delete vs archive-only for QBN-01.** No `@Delete` exists in the platform and Phase 8 (exams) may reference questions.
-   - What we know: zero FKs reference questions today; archive/activate endpoints keep deletions recoverable.
-   - What's unclear: product intent behind "delete".
-   - Recommendation: hard delete (204), institute-scoped; mandate `onDelete: 'restrict'` in the Phase 8 exam_questions schema. Confirm in discuss/verify.
+   - [RESOLVED] Adopted: hard delete (204), institute-scoped; `onDelete: 'restrict'` mandated for the Phase 8 exam_questions schema. Implemented in 06-02 Task 1.
 
 2. **Approve/reject endpoints in Phase 6 vs Phase 7.**
-   - What we know: QBN-05 requires the status; without AI generation, PENDING/REJECTED are unreachable unless endpoints exist.
-   - What's unclear: whether approval UX belongs to the Phase 7 AI workflow only.
-   - Recommendation: add `POST /questions/:id/approve` and `/reject` now (cheap, testable, matches action-endpoint style); Phase 7 reuses them for AIGQ-06.
+   - [RESOLVED] Adopted: add `POST /questions/:id/approve` and `/reject` now (cheap, testable, matches action-endpoint style). Implemented in 06-02 Task 3.
 
 3. **Correct-answer storage inside payload vs a dedicated `answer_key` column.**
-   - What we know: content precedent puts everything in JSONB; Phase 9/10 need deterministic evaluation (MCQ/TF/FITB).
-   - What's unclear: whether a separate column is easier to strip from student projections.
-   - Recommendation: keep in `payload` (single contract, content pattern); Phase 9 projects payload minus correct keys. Both schemes work with the current schema shape.
+   - [RESOLVED] Adopted: keep in `payload` (single contract, content pattern). Phase 9 projects payload minus correct keys. Implemented in 06-01 Task 1.
 
 ## Environment Availability
 
