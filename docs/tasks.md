@@ -148,9 +148,9 @@ System priority order:
 - [x] Fix per-source dedup index to read nested `payload -> 'source' -> 'type'` / `-> 'id'` (was `sourceType`/`sourceId` → always NULL)
 - [x] Generalize dedup index to per-operation + source (migration `0006_wooden_robin_chapel.sql`)
 - [x] Document AI generation contract in `docs/api/ai.md`; update `docs/api/content.md` for new content types
-- [ ] Validate end-to-end (20-item checklist against running infrastructure)
+- [x] Validate end-to-end (20-item checklist against running infrastructure; passed 2026-09-02 vs a mock OpenAI-compatible provider — see `docs/user-validation.md`)
 - [x] Run pnpm checks + Python ruff/mypy (all pass)
-- [ ] Create checkpoint
+- [x] Create checkpoint
 
 ## Phase 2 — Dockerization (Infrastructure)
 

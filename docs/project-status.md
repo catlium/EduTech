@@ -2,11 +2,38 @@
 
 ## Current Phase: Phase 5 — AI Learning Content Generation
 
-**Status:** IN PROGRESS — implementation complete for all four generation
-operations (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS); static
-validation green; runtime end-to-end validation vs a live stack still pending
-(blocked by sandbox network — Docker Hub/Ollama unreachable). The exact tests
-to run are recorded in `docs/user-validation.md` (Phase 5 E2E section).
+**Status: COMPLETE (validated 2026-09-02).** Implementation and runtime E2E
+validation green for all four generation operations (NOTE, SUMMARY,
+FLASHCARD_SET, IMPORTANT_CONCEPTS) against the dockerized full stack. The
+docker leverage issue is resolved (see below). Two real defects were found and
+fixed by the E2E run. All 20 items in `docs/user-validation.md` Phase 5 section
+pass (run with an OpenAI-compatible test double standing in for a real LLM —
+see that file for exact results and the two provider-free validation paths).
+
+**Docker fix (2026-09-02):** the one-shot `migrate` service failed with
+`Cannot find module '/app/pnpm'` — pnpm exists only in the _build_ stage of
+`Dockerfile.api`, not the runtime image. `infrastructure/compose/docker-compose.yml`
+now runs the migrate service with `working_dir: /app/packages/database` and
+`command: ["node_modules/.bin/drizzle-kit", "migrate"]` (the binary ships in the
+image); the root `db:migrate` shortcut is unaffected.
+
+**Bugs fixed by the Phase 5 E2E run (2026-09-02):**
+
+1. `apps/workers/worker/ai/service.py` — job `result.materialIds` used raw
+   psycopg3 `UUID` objects; `Jsonb` serialization failed and the job died with
+   `"Unexpected generation failure"` _after_ content was persisted. Now
+   `str(m["id"])` (already the case in `_persist`'s `source_reference`).
+2. `apps/api/src/content/generation.service.ts` — Drizzle ≥0.44 wraps driver
+   errors in `DrizzleQueryError`, hiding `code = '23505'`; a duplicate
+   active-generation insert returned `500` instead of `409`. `isUniqueViolation`
+   now walks `error.cause` (matching `academic.service.ts`'s existing pattern).
+
+**Also completed:**
+
+- Full dockerized stack boot (`docker compose -f
+infrastructure/compose/docker-compose.yml up --build`) verified live: migrate
+  (exit 0, 12 tables), api, ocr, worker-material, worker-ai all healthy;
+  health checks `GET /api/v1/health` and `GET /health` → 200.
 
 **Divergence resolved (2026-09-01):** `origin/main` had 2 older divergent
 commits (`1997340`, `c43e215`) re-implementing parts of the AI feature with a
@@ -17,6 +44,7 @@ ai_client.py`, obsolete AI contracts) in favor of this tree's
 again across 7 commits, history now linear.
 
 **Also completed:**
+
 - Generalized AI generation: `POST /content/generate` (single endpoint,
   `operation` in body), dispatch table in the worker, shared parse/prompt
   helpers, Pydantic mirrors of all payload schemas.
@@ -25,12 +53,11 @@ again across 7 commits, history now linear.
   new content types.
 - Docker API image bumped to Node 24 (pnpm 11 requires Node ≥22.13 + `node:sqlite`).
 
-**Last Checkpoint:** `88b8a0b` — AI generation divergence reconciled (rebase onto
-`origin/main`, obsolete AI architecture removed) and the full Phase 5
-implementation pushed as `35c6124`
+**Last Checkpoint:** Phase 5 E2E validated and checkpointed (see commit below)
 
-**Current goal:** Close Phase 5 by running the E2E generation validation
-against a live stack, then plan Phase 6 (Question Bank) without implementing it.
+**Current goal:** Phase 5 is closed. Next: Phase 6 (Question Bank) — plan it
+(after the roadmap lock-in below) without implementing it until the plan is
+agreed.
 
 ## Priority Revision (2026-08-19)
 
@@ -60,12 +87,14 @@ Documented in `docs/architecture/content.md`.
 ## Phase 2 — AI Generation Foundation
 
 ### Goal 7: AI Generation Foundation [~]
+
 **Status:** In Progress
 **Started:** 2026-08-19
 
 Establishing a reusable pipeline for AI-driven content creation.
 
 **Completed:**
+
 - [x] Defined AI_GENERATE_NOTE operation contract and internal persistence schemas in `@catlium/contracts`.
 - [x] Implemented `POST /api/v1/content/generate` in NestJS API.
 - [x] Implemented internal persistence endpoint in NestJS API.
@@ -75,6 +104,7 @@ Establishing a reusable pipeline for AI-driven content creation.
 - [x] Validated and linted implementation.
 
 **In Progress:**
+
 - [ ] Perform end-to-end AI generation pipeline validation.
 
 ## Completed Work
@@ -333,8 +363,8 @@ and shared contracts (see `docs/architecture/ai.md`, `docs/api/ai.md`):
   `AI_GENERATE_FLASHCARDS`, `AI_GENERATE_CONCEPTS`.
 - **Dedup**: partial unique index `jobs_active_generation_unique` on
   `jobs (institute_id, (payload->'operation'), (payload->'source'->>'type'),
-  (payload->'source'->>'id'))` WHERE `type IN (four operations) AND status IN
-  ('queued','processing')`. **Fixes:** originally read flat
+(payload->'source'->>'id'))` WHERE `type IN (four operations) AND status IN
+('queued','processing')`. **Fixes:** originally read flat
   `payload->>'sourceType'` (always NULL for the nested `source: { type, id }`
   shape — collapsed dedup to one job per institute), and was scoped only to
   `type = 'AI_GENERATE_NOTE'`. Both corrected (migration `0005_fuzzy_runaways.sql`
@@ -362,8 +392,8 @@ and shared contracts (see `docs/architecture/ai.md`, `docs/api/ai.md`):
   the job instead of a generic unexpected failure.
 - **Validation**: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`,
   Python `ruff check`, `ruff format`, and `mypy` all pass; compose config
-  validates. Full runtime E2E checklist against a live stack is still pending
-  (blocked by sandbox network).
+  validates. Full runtime E2E checklist against the live stack passed on
+  2026-09-02 (see the Phase 5 section above and `docs/user-validation.md`).
 
 ### Dockerization (Infrastructure)
 
@@ -497,11 +527,9 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 - **Study/type-specific features**: notes rendering, flashcard practice, Cornell
   workflows (payload contracts now enforced; features not built)
-- **AI generation E2E runtime validation**: `AI_GENERATE_NOTE` implemented and
-  statically validated; the live end-to-end checklist (202/409, job lifecycle,
-  persistence, failure handling) is pending against containers
-- **AI generation beyond NOTE**: flashcards (`FLASHCARD_SET`), important
-  concepts, and other operations are Roadmap Phase 3 — not started
+- **AI generation beyond the four operations**: NOTE/SUMMARY/FLASHCARD_SET/
+  IMPORTANT_CONCEPTS are built, validated, and closed; other generation
+  operations are not started
 - **Image OCR / scanned-PDF / office docs**: tesseract and office extraction
   not implemented
 - **Reprocessing of READY materials**: `READY` is terminal — failed materials
@@ -517,52 +545,50 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Not Yet Started (ordered by system priority)
 
-1. Study features on the content foundation (notes, flashcards, Cornell, AI context)
-2. Docker image build validation + live full-stack boot (compose authored; not yet run in sandbox)
-3. AI generation runtime E2E validation checklist
-4. Advanced OCR (image OCR / scanned PDFs / office documents)
-5. Batch/reprocessing of READY materials + download endpoint
-6. Question bank and examination
-7. Practice mode
-8. Checking system (FORM, OMR, OSM)
-9. SaaS management (deferred)
+1. Question bank and examination (Phase 6 — plan next)
+2. Study features on the content foundation (notes, flashcards, Cornell, AI context)
+3. Advanced OCR (image OCR / scanned PDFs / office documents)
+4. Batch/reprocessing of READY materials + download endpoint
+5. Practice mode
+6. Checking system (FORM, OMR, OSM)
+7. SaaS management (deferred)
 
 ---
 
 ## Current Architecture Decisions
 
-| Decision           | Choice                                               | Notes                                                               |
-| ------------------ | ---------------------------------------------------- | ------------------------------------------------------------------- |
-| Auth pattern       | Cookie-based JWT                                     | Access + refresh tokens in httpOnly cookies                         |
-| CSRF               | Double-submit cookie                                 | csrf_token cookie + x-csrf-token header                             |
-| Tenant resolution  | x-institute-id header (UUID)                         | Guard resolves membership + roles per request                       |
-| Job distribution   | RabbitMQ                                             | API publishes plain JSON to `jobs`; worker consumes directly (pika) |
-| Worker model       | Direct RabbitMQ consumer                             | Not Celery; API publish contract is plain JSON (incompatible)       |
-| OCR extraction     | FastAPI `/extract`, PDF + plain text                 | pypdf; images/office/scanned-PDF deferred                           |
-| OCR role           | Text extraction only                                 | No materials/notes/questions/exam business logic in the OCR service |
-| Database           | PostgreSQL + Drizzle ORM                             | Schema in packages/database, migrations via drizzle-kit             |
-| Validation         | class-validator (API) + Zod (contracts)              | API DTOs use class-validator; shared contracts use Zod              |
-| JWT secret         | registerAsync + fail-fast in production              | No silent fallback; dev-only default outside production             |
-| Rate limiting      | @nestjs/throttler (in-memory)                        | Auth endpoints 5/min; global default 100/min                        |
-| Content storage    | PostgreSQL + JSONB                                   | Single DB; no MongoDB; rich content in JSONB                        |
-| Academic model     | subjects → chapters → topics                         | Tenant-scoped tree; service-layer isolation                         |
-| Content versioning | content_items + content_versions                     | Monotonic version, JSONB payload, regeneration-aware                |
-| Content attachment | Exactly one academic scope                           | CHECK constraint; subject/chapter/topic nullable FKs                |
-| Current version    | Integer pointer on content_items                     | Avoids circular FK; append-only history cannot dangle               |
-| Update safety      | Row lock (FOR UPDATE) + unique (content_id, version) | Concurrent updates cannot collide version numbers                   |
-| Content contracts  | Zod canonical payload, dispatch by type              | NOTE/FLASHCARD_SET/CORNELL_NOTE enforced on create+update           |
-| Payload vs HTML    | Payload JSONB is canonical; rendered_html derived    | Backend not coupled to any frontend editor                          |
-| Material model     | Source assets in `materials`, distinct from content  | Files on local disk (provider), metadata in PostgreSQL              |
-| Material scope     | Exactly one academic scope (CHECK constraint)        | Same model as content_items; no duplication                         |
-| File storage       | Local filesystem via StorageProvider abstraction     | Replaceable with S3 later; binaries never in PostgreSQL             |
-| Processing state   | `processing_status` on material; jobs track jobs     | Material and job lifecycles deliberately distinct                   |
-| Processing safety  | Row lock (FOR UPDATE) + insert-then-publish          | Duplicate enqueue → 409; publish failure reverts material           |
-| Job = one attempt  | Retry creates a new job; failed jobs immutable       | Full attempt history preserved; no job status rewinds               |
-| Retry trigger      | `POST /materials/:id/retry`, FAILED → QUEUED         | Explicit, user-triggered; READY is terminal for MVP                 |
-| Worker storage     | Shared filesystem (repo `./storage`)                 | Shared volume when containerized; S3 provider later                 |
+| Decision           | Choice                                               | Notes                                                                             |
+| ------------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Auth pattern       | Cookie-based JWT                                     | Access + refresh tokens in httpOnly cookies                                       |
+| CSRF               | Double-submit cookie                                 | csrf_token cookie + x-csrf-token header                                           |
+| Tenant resolution  | x-institute-id header (UUID)                         | Guard resolves membership + roles per request                                     |
+| Job distribution   | RabbitMQ                                             | API publishes plain JSON to `jobs`; worker consumes directly (pika)               |
+| Worker model       | Direct RabbitMQ consumer                             | Not Celery; API publish contract is plain JSON (incompatible)                     |
+| OCR extraction     | FastAPI `/extract`, PDF + plain text                 | pypdf; images/office/scanned-PDF deferred                                         |
+| OCR role           | Text extraction only                                 | No materials/notes/questions/exam business logic in the OCR service               |
+| Database           | PostgreSQL + Drizzle ORM                             | Schema in packages/database, migrations via drizzle-kit                           |
+| Validation         | class-validator (API) + Zod (contracts)              | API DTOs use class-validator; shared contracts use Zod                            |
+| JWT secret         | registerAsync + fail-fast in production              | No silent fallback; dev-only default outside production                           |
+| Rate limiting      | @nestjs/throttler (in-memory)                        | Auth endpoints 5/min; global default 100/min                                      |
+| Content storage    | PostgreSQL + JSONB                                   | Single DB; no MongoDB; rich content in JSONB                                      |
+| Academic model     | subjects → chapters → topics                         | Tenant-scoped tree; service-layer isolation                                       |
+| Content versioning | content_items + content_versions                     | Monotonic version, JSONB payload, regeneration-aware                              |
+| Content attachment | Exactly one academic scope                           | CHECK constraint; subject/chapter/topic nullable FKs                              |
+| Current version    | Integer pointer on content_items                     | Avoids circular FK; append-only history cannot dangle                             |
+| Update safety      | Row lock (FOR UPDATE) + unique (content_id, version) | Concurrent updates cannot collide version numbers                                 |
+| Content contracts  | Zod canonical payload, dispatch by type              | NOTE/FLASHCARD_SET/CORNELL_NOTE enforced on create+update                         |
+| Payload vs HTML    | Payload JSONB is canonical; rendered_html derived    | Backend not coupled to any frontend editor                                        |
+| Material model     | Source assets in `materials`, distinct from content  | Files on local disk (provider), metadata in PostgreSQL                            |
+| Material scope     | Exactly one academic scope (CHECK constraint)        | Same model as content_items; no duplication                                       |
+| File storage       | Local filesystem via StorageProvider abstraction     | Replaceable with S3 later; binaries never in PostgreSQL                           |
+| Processing state   | `processing_status` on material; jobs track jobs     | Material and job lifecycles deliberately distinct                                 |
+| Processing safety  | Row lock (FOR UPDATE) + insert-then-publish          | Duplicate enqueue → 409; publish failure reverts material                         |
+| Job = one attempt  | Retry creates a new job; failed jobs immutable       | Full attempt history preserved; no job status rewinds                             |
+| Retry trigger      | `POST /materials/:id/retry`, FAILED → QUEUED         | Explicit, user-triggered; READY is terminal for MVP                               |
+| Worker storage     | Shared filesystem (repo `./storage`)                 | Shared volume when containerized; S3 provider later                               |
 | AI generation      | `AI_GENERATE_NOTE` job → `ai_generation` queue       | Provider abstraction + Pydantic validation mirror; worker writes content directly |
-| AI dedup           | Partial unique index on active generation jobs       | Nested `payload -> 'source'` expressions (fixed this checkpoint)    |
-| Containerization   | pnpm/Python images + compose                          | One-shot `migrate`; shared `storage_data` volume; root `.env` wiring |
+| AI dedup           | Partial unique index on active generation jobs       | Nested `payload -> 'source'` expressions (fixed this checkpoint)                  |
+| Containerization   | pnpm/Python images + compose                         | One-shot `migrate`; shared `storage_data` volume; root `.env` wiring              |
 
 ---
 
@@ -593,28 +619,23 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
    (failed materials can be retried; successful ones cannot).
 5. **Unsupported OCR formats**: image, scanned-PDF, and office-document
    materials fail cleanly with `FAILED` but have no fallback path yet.
-6. **Docker images not yet built in this environment**: Docker Hub was
-   unreachable in the sandbox, so `docker compose up --build` has not been
-   exercised live; compose config validates and the JS/Python build stages
-   mirror commands that pass locally, but container networking is unverified.
+6. **Redis port conflict (host) covered above; dockerized stack otherwise
+   validated live on 2026-09-02** — see the Phase 5 section (migrate fixed,
+   compose boot exercised, health checks 200).
 
 ---
 
 ## Recommended Next Task
 
-**Finish the AI generation checkpoint and boot the dockerized stack:**
+**Phase 5 is closed. Plan Phase 6 — Question Bank (no implementation yet):**
 
-1. **Runtime E2E validation of AI generation** against a live stack (build
-   images + `docker compose up --build`, then exercise the 20-item checklist:
-   202/409 dedup semantics, async job lifecycle
-   `queued → processing → completed`, content persistence as `AI_GENERATED`
-   + `DRAFT` with provenance, failed-job error handling, tenant isolation).
-2. **Author `docs/api/ai.md`** documenting the generation contract
-   (`POST /content/generate/note`, job shape, payload contracts) to mirror the
-   existing module docs.
-3. Then continue the roadmap: **Phase 3 – AI content generation operations**
-   (flashcards, important concepts), expanding the worker/service/contract
-   pattern established here.
+1. Follow the checkpoint/continuity rules: after this checkpoint is pushed,
+   run `/gsd-plan-phase` (or the project's phase planning flow) for the Question
+   Bank phase, capturing the roadmap decision about how questions attach to the
+   academic tree, JSONB contract shapes, and whether generation/checking flows
+   are in scope.
+2. Implementation of Question Bank comes after its plan is agreed, per
+   AGENTS.md "What NOT to Implement Yet".
 
-See `docs/architecture/materials.md`, `docs/architecture/ai.md`,
-`docs/api/materials.md`, `docs/api/jobs.md`.
+The dockerized stack (`infrastructure/compose/docker-compose.yml`) is the
+validation harness for any follow-on testing.

@@ -104,7 +104,7 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
                 "contentType": operation.content_type,
                 "sourceType": source["type"],
                 "sourceId": source["id"],
-                "materialIds": [m["id"] for m in materials],
+                "materialIds": [str(m["id"]) for m in materials],
             },
         )
         logger.info(
