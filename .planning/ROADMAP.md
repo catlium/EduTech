@@ -57,7 +57,7 @@ Completion summary (verified against codebase):
 ## Phase 6 — Question Bank ◆
 **Goal:** Complete question management — CRUD, filtering (difficulty, type, subject/chapter/topic), manual creation, explanations, source (MANUAL|AI_GENERATED), approval (PENDING|APPROVED|REJECTED). Manual questions auto-approved; AI-generated begin PENDING.
 **Success Criteria:** Question bank CRUD works; approval rules enforced.
-**Status:** PLANNING (not implemented). Reqs: QBN-01..07.
+**Status:** PLANNED (3 plans / 3 waves, plan-checker verified; not implemented). Reqs: QBN-01..07.
 
 ## Phase 7 — AI Question Generation & Review ○
 **Goal:** Teacher specifies subject/chapter/topic, type, count, difficulty distribution → AI generates PENDING questions → teacher approves/rejects (or batch where defined). AI questions never auto-become official exam questions.
@@ -176,9 +176,9 @@ Completion summary (verified against codebase):
 
 ## Recommended Next Task
 
-**Phase 5 is closed (E2E validated 2026-09-02). Plan Phase 6 — Question Bank:**
+**Phase 5 is closed (E2E validated 2026-09-02). Phase 6 planned — execute next:**
 
 1. ✅ Phase 5 completion checkpoint committed and pushed (`fea9c28`).
 2. ✅ E2E validation run against the dockerized stack (see `docs/user-validation.md`).
-3. **→ Plan Phase 6 (Question Bank — QBN-01..07)** — gather context (discuss-phase)
-   then produce the plan (plan-phase). No implementation until the plan is agreed.
+3. ✅ Phase 6 (Question Bank — QBN-01..07) planned: RESEARCH, PATTERNS, 3 plans, VALIDATION.
+4. **→ Execute Phase 6** (run the 3 plans; Wave 1 tracer must verify end-to-end first).
