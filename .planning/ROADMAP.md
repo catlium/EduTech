@@ -49,15 +49,15 @@ Completion summary (verified against codebase):
 **Success Criteria:** A supported learning material is processed asynchronously into usable extracted text; the request does not block.
 **Status:** COMPLETE for supported formats (RabbitMQ + pika worker + FastAPI OCR, PDF + plain text, retry). Image OCR (PROC-06) not started. Reqs: PROC-01..05 ✓, PROC-06..07 ○.
 
-## Phase 5 — AI Learning Content Generation ◆
+## Phase 5 — AI Learning Content Generation ✓
 **Goal:** AI-assisted generation of Summary (summary, key concepts, important points), Flashcards (question, answer, difficulty), and Important Concepts (name, description). AI provider isolated behind an internal service/interface; job flow API → job → queue → AI → store → COMPLETED/FAILED.
 **Success Criteria:** AI content can be requested, processed asynchronously, stored, retrieved, and updated through the API.
-**Status:** IN PROGRESS. All generation operations implemented (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS) with generalized dispatch, per-operation dedup index, `POST /content/generate`, and `docs/api/ai.md`. Reqs: AI-01..02 ✓, AI-05..09 ✓ (E2E validation against running infrastructure pending — blocked by sandbox network).
+**Status:** COMPLETE. All generation operations implemented (NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS) with generalized dispatch, per-operation dedup index, `POST /content/generate`, and `docs/api/ai.md`. E2E validated live 2026-09-02 against the dockerized stack (see `docs/user-validation.md`; mock OpenAI-compatible provider). Reqs: AI-01..02 ✓, AI-05..09 ✓.
 
-## Phase 6 — Question Bank ○
+## Phase 6 — Question Bank ◆
 **Goal:** Complete question management — CRUD, filtering (difficulty, type, subject/chapter/topic), manual creation, explanations, source (MANUAL|AI_GENERATED), approval (PENDING|APPROVED|REJECTED). Manual questions auto-approved; AI-generated begin PENDING.
 **Success Criteria:** Question bank CRUD works; approval rules enforced.
-**Status:** NOT STARTED. Reqs: QBN-01..07.
+**Status:** PLANNING (not implemented). Reqs: QBN-01..07.
 
 ## Phase 7 — AI Question Generation & Review ○
 **Goal:** Teacher specifies subject/chapter/topic, type, count, difficulty distribution → AI generates PENDING questions → teacher approves/rejects (or batch where defined). AI questions never auto-become official exam questions.
@@ -176,8 +176,9 @@ Completion summary (verified against codebase):
 
 ## Recommended Next Task
 
-**Close out Phase 5 (AI generation), then plan Phase 6:**
+**Phase 5 is closed (E2E validated 2026-09-02). Plan Phase 6 — Question Bank:**
 
-1. Commit the Phase 5 completion checkpoint: generalized AI generation (NOTE/SUMMARY/FLASHCARDS/CONCEPTS), `POST /content/generate`, per-operation dedup migration `0006`, `docs/api/ai.md`, Docker Node 24 fix.
-2. Run the E2E validation checklist against running infrastructure (`docker compose up --build` + generation flow against Ollama) where network is available; update `docs/project-status.md` validation status.
-3. Plan Phase 6 (Question Bank — QBN-01..07) for the first major greenfield backend module.
+1. ✅ Phase 5 completion checkpoint committed and pushed (`fea9c28`).
+2. ✅ E2E validation run against the dockerized stack (see `docs/user-validation.md`).
+3. **→ Plan Phase 6 (Question Bank — QBN-01..07)** — gather context (discuss-phase)
+   then produce the plan (plan-phase). No implementation until the plan is agreed.
