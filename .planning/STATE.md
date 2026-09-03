@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-current_phase: 6
-current_phase_name: question-bank
+current_phase: 7
+current_phase_name: ai-question-generation
 status: completed
-last_updated: "2026-09-02T05:58:00.000Z"
-state_head: 68eee01
+last_updated: "2026-09-03T03:20:00.000Z"
+state_head: <PENDING_COMMIT>
 progress:
   total_phases: 1
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 4
+  completed_plans: 4
   percent: 100
 ---
 
@@ -20,23 +20,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Core value:** A teacher takes a source material through upload → async OCR/AI processing → AI-generated, reviewable content/questions → a published, approved-question-only examination, and a student takes it and receives an automatically-computed, reproducible result.
-**Current focus:** Phase 06 — question-bank
+**Current focus:** Phase 07 — ai-question-generation
 
 ## Project State
 
-**Sequence:** Phase 6 (completed), backend-first full-stack monorepo
-**Phase:** 6 — Question Bank
+**Sequence:** Phase 7 (completed), backend-first full-stack monorepo
+**Phase:** 7 — AI Question Generation & Review
 **Status:** Completed
-Phase 6 E2E validation passed live on 2026-09-02 against the dockerized stack
-(see `docs/user-validation.md`). Backend Phases 7–17 not started. Frontend
+Phase 7 E2E validation passed live on 2026-09-03 against the dockerized stack
+(see `docs/user-validation.md`). Backend Phases 8–17 not started. Frontend
 Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 
 ## Phase State
 
-**Current:** Phase 6 — Question Bank
-**Status:** COMPLETE (E2E validated 2026-09-02). All 3 plans (06-01/06-02/06-03)
-implemented and verified; all `docs/user-validation.md` Phase 6 items `[x]`; all
-`docs/tasks.md` QBN-01..07 `[x]`; `pnpm typecheck && pnpm lint` green.
+**Current:** Phase 7 — AI Question Generation & Review
+**Status:** COMPLETE (E2E validated 2026-09-03). Plan 07-01 implemented and
+verified; all `docs/user-validation.md` Phase 7 items `[x]` (AIGQ-01..08,
+`p7_e2e.sh` PASS=10 FAIL=0); all `docs/tasks.md` AIGQ items `[x]`; `pnpm
+typecheck && pnpm lint` green.
 
 **Completed (verified against codebase):**
 
@@ -53,10 +54,16 @@ implemented and verified; all `docs/user-validation.md` Phase 6 items `[x]`; all
   (create/list/get/PATCH/DELETE/approve/reject/archive/activate, all tenant-scoped
   and role-gated), list filtering, `docs/api/questions.md`. **E2E validated
   2026-09-02** (security sweep incl. student-403 + cross-institute-404). Reqs QBN-01..07 ✓.
+- Phase 7 — AI Question Generation & Review (AIGQ-01..08): worker
+  `AI_GENERATE_QUESTIONS` op + MCQ/TRUE_FALSE/FILL_IN_BLANK payload schemas +
+  prompt builder + `insert_generated_questions`; contracts for generate/batch
+  actions; API `POST /questions/generate` (202), `GET /questions/generate/:jobId`,
+  `POST /questions/batch-approve|reject`; tenant-scoped topic validation.
+  **E2E validated 2026-09-03** (`p7_e2e.sh` PASS=10 FAIL=0). Reqs AIGQ-01..08 ✓.
 
 **In progress / not started:**
 
-- Phases 7–17 (AI question generation, examination, attempts, evaluation, results, analytics, practice, cross-module security, contract verification, testing, backend-complete checkpoint): not started
+- Phases 8–17 (examination management, attempts, evaluation, results, analytics, practice, cross-module security, contract verification, testing, backend-complete checkpoint): not started
 - Phases 18–25 (frontend + integration + polish): gated behind Phase 17
 
 ## Phase Plans
@@ -69,7 +76,7 @@ implemented and verified; all `docs/user-validation.md` Phase 6 items `[x]`; all
 | 4 | Async Processing & Text Extraction | ✓ completed |
 | 5 | AI Learning Content Generation | ✓ completed (E2E validated 2026-09-02) |
 | 6 | Question Bank | ✓ completed (E2E validated 2026-09-02) |
-| 7 | AI Question Generation & Review | ○ pending |
+| 7 | AI Question Generation & Review | ✓ completed (E2E validated 2026-09-03) |
 | 8 | Quiz & Examination Management | ○ pending |
 | 9 | Student Examination Attempts | ○ pending |
 | 10 | Automatic Evaluation | ○ pending |
@@ -84,27 +91,32 @@ implemented and verified; all `docs/user-validation.md` Phase 6 items `[x]`; all
 
 ## Current Task
 
-**Phase 6 — Question Bank (COMPLETE 2026-09-02):**
+**Phase 7 — AI Question Generation & Review (COMPLETE 2026-09-03):**
 
-All 3 plans executed inline, each committed with a SUMMARY:
+Plan 07-01 executed and committed with a SUMMARY:
 
-- **06-01 (Wave 1, tracer):** `questions` schema + migration 0007, Zod contracts,
-   POST/get/list module, server-computed approval, `docs/api/questions.md`. `521eb7c`.
-- **06-02 (Wave 2):** PATCH update, first DELETE (204), list filters,
-   approve/reject/archive/activate, student-403 / cross-institute-404 sweep.
-   `074a01a`, `3cd98c0`, `b7ecd9e`.
-- **06-03 (Wave 3, close):** E2E checklist all `[x]`, tasks+project-status,
-   doc sweep. `68eee01`.
+- **07-01:** worker `AI_GENERATE_QUESTIONS` operation + payload schemas + prompt
+  builder + `insert_generated_questions`; generate/batch contracts; API `POST
+  /questions/generate` / `GET /questions/generate/:jobId` / `POST
+  /questions/batch-approve|reject`; tenant-scoped topic validation;
+  `docs/api/questions.md` updated. E2E `p7_e2e.sh` PASS=10 FAIL=0 (AIGQ-01..08).
 
-**Next action:** Plan Phase 7 — AI Question Generation & Review. The AI worker
-inserts questions via the Phase 6 create path (landing on `PENDING`); review
-approve/reject re-use the Phase 6 action endpoints.
+**Next action:** Plan Phase 8 — Quiz & Examination Management (quiz and
+examination entities that source from the approved question bank; attempt flow
+is Phase 9).
+
+## Session Continuity
+
+Last session: 2026-09-03
+Stopped at: Phase 7 (AI Question Generation & Review) completed & committed; next is Phase 8 (Quiz & Examination Management) planning
+Resume file: none
 
 ## Verification
 
 - Phases 1–5: validated against live PostgreSQL + RabbitMQ + worker + OCR (see `docs/project-status.md`)
 - Phase 5 E2E: passed 2026-09-02 (docs/user-validation.md), all 20 items
 - Phase 6 E2E: passed 2026-09-02 (docs/user-validation.md), all QBN-01..07 + security block items [x]
+- Phase 7 E2E: passed 2026-09-03 (docs/user-validation.md), AIGQ-01..08 `p7_e2e.sh` PASS=10 FAIL=0
 - Known: zero test coverage across the codebase
 
 ## Decisions

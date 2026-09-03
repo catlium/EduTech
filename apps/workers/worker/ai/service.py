@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC"}
 
+QA_OPERATION = "AI_GENERATE_QUESTIONS"
+VALID_QUESTION_TYPES = {"MCQ", "TRUE_FALSE", "FILL_IN_BLANK"}
+VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
+
 
 class GenerationError(Exception):
     """Carries a safe, user-facing error message for the failed job."""
@@ -42,7 +46,7 @@ class GenerationError(Exception):
 class Operation:
     operation: str
     content_type: str
-    build_messages: Callable[[str, str], list[dict[str, str]]]
+    build_messages: Callable[..., list[dict[str, str]]]
     parse: Callable[[str], dict[str, Any]]
     model: type[BaseModel]
     default_title: str
@@ -81,6 +85,14 @@ OPERATIONS: dict[str, Operation] = {
         model=schemas.ImportantConceptsPayload,
         default_title="AI-generated important concepts",
     ),
+    QA_OPERATION: Operation(
+        operation=QA_OPERATION,
+        content_type="QUESTION_SET",
+        build_messages=generation.questions.build_messages,
+        parse=generation.questions.parse_questions_json,
+        model=schemas.GeneratedQuestions,
+        default_title="AI-generated questions",
+    ),
 }
 
 
@@ -90,6 +102,13 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
         operation, source = _validate_payload(payload)
         materials = _resolve_materials(institute_id, source)
         context, context_meta = _build_context(materials)
+
+        if operation.operation == QA_OPERATION:
+            _generate_questions(
+                job_id, institute_id, operation, source, materials, context, payload
+            )
+            return
+
         provider = create_provider()
         raw = provider.complete(operation.build_messages(context, _source_label(source, materials)))
         output = _validate_output(operation, raw)
@@ -115,6 +134,74 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
         )
     except Exception as exc:
         _fail(job_id, exc)
+
+
+def _generate_questions(
+    job_id: str,
+    institute_id: str,
+    operation: Operation,
+    source: dict[str, str],
+    materials: list[dict[str, Any]],
+    context: str,
+    payload: dict[str, Any],
+) -> None:
+    """Generate objective questions and persist each as a PENDING question row."""
+    params = payload.get("params") or {}
+    if not isinstance(params, dict):
+        raise GenerationError("Invalid job payload")
+    type_ = str(params.get("questionType") or "MCQ")
+    count_value: Any = params.get("count")
+    difficulty = str(params.get("difficulty") or "MEDIUM")
+
+    if type_ not in VALID_QUESTION_TYPES:
+        raise GenerationError("Invalid question type in job payload")
+    if difficulty not in VALID_DIFFICULTIES:
+        raise GenerationError("Invalid difficulty in job payload")
+    try:
+        count_int = int(count_value)
+    except (TypeError, ValueError):
+        raise GenerationError("Invalid question count in job payload") from None
+    if not 1 <= count_int <= 50:
+        raise GenerationError("Question count must be between 1 and 50")
+
+    provider = create_provider()
+    raw = provider.complete(
+        operation.build_messages(
+            context,
+            _source_label(source, materials),
+            type_=type_,
+            count=count_int,
+            difficulty=difficulty,
+        )
+    )
+    output = _validate_output(operation, raw)
+
+    scope = _resolve_scope(source, materials)
+    question_ids = db.insert_generated_questions(
+        institute_id,
+        questions=output["questions"],
+        subject_id=scope["subjectId"],
+        chapter_id=scope["chapterId"],
+        topic_id=scope["topicId"],
+        created_by=source["requestedBy"],
+    )
+    db.update_job_status(
+        job_id,
+        "completed",
+        result={
+            "count": len(question_ids),
+            "questionIds": question_ids,
+            "questionType": type_,
+            "difficulty": difficulty,
+            "sourceType": source["type"],
+            "sourceId": source["id"],
+            "materialIds": [str(m["id"]) for m in materials],
+        },
+    )
+    logger.info(
+        "AI questions generated: job=%s count=%s", job_id, len(question_ids)
+    )
+
 
 
 def _fail(job_id: str, exc: Exception) -> None:

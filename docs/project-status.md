@@ -1,46 +1,56 @@
 # Project Status
 
-## Current Phase: Phase 6 — Question Bank
+## Current Phase: Phase 7 — AI Question Generation & Review
 
-**Status: COMPLETE (E2E validated 2026-09-02).** Implementation and runtime E2E
-validation green for the full question CRUD surface plus the approval lifecycle
-and list filtering, against the dockerized full stack. All Phase 6 items in
-`docs/user-validation.md` pass (QBN-01..07 + security/negative block). This
-closes the question bank per the roadmap; v2 features (QUESTION wildcard loading
-for dynamic referencing, distractors, MCQ from image/OCR) are deferred.
+**Status: COMPLETE (E2E validated 2026-09-03).** Implementation and runtime E2E
+validation green for AI-driven question generation. A teacher requests questions
+for a topic; the AI worker builds a prompt from the topic's READY material, calls
+the (replaceable) AI provider, normalizes the returned questions, inserts them
+with `source=AI_GENERATED` and `approval_status=PENDING`, and surfaces the
+outcome via the jobs API. Review (single approve/reject + new batch
+approve/reject) re-uses the Phase 6 question actions. All Phase 7 items in
+`docs/user-validation.md` pass (AIGQ-01..08, `p7_e2e.sh` PASS=10 FAIL=0).
 
 **Completed work:**
 
-- `questions` table (17 columns, JSONB payload, varchar enums) + migration
-  `0007_brave_iron_monger.sql` with the `questions_exactly_one_scope` CHECK
-  (exactly one of subjectId/chapterId/topicId).
-- Question Zod contracts in `@catlium/contracts` (type/difficulty/source/
-  approval enums; MCQ/TRUE_FALSE/FILL_IN_BLANK payload schemas with superRefine
-  dispatch; create/update/response schemas).
-- `QuestionsModule` (`apps/api/src/questions`): create (server-computed
-  approval from source: MANUAL→APPROVED, AI_GENERATED→PENDING), list, get,
-  PATCH update (field-limited white-list, payload re-validated), DELETE (first
-  `@Delete` in the platform, 204, tenant-scoped), approve/reject/archive/
-  activate actions. All tenant-scoped (anti-IDOR 404) and role-gated
-  (INSTITUTE_ADMIN/TEACHER).
-- `docs/api/questions.md` — canonical 10-endpoint contract.
+- Worker (`apps/workers`): `AI_GENERATE_QUESTIONS` operation in the dispatch
+  table (`content_type=QUESTION_SET`), MCQ/TRUE_FALSE/FILL_IN_BLANK payload
+  schemas + `GeneratedQuestion`/`GeneratedQuestions` Pydantic mirrors with an
+  MCQ `model_validator` that normalizes choice ids to UUIDs and rewrites
+  `correctChoiceId`; `generation/questions.py` prompt builder +
+  `parse_questions_json`; `db.py insert_generated_questions(...)`.
+- Contracts (`@catlium/contracts`): `GenerateQuestionsRequestSchema`
+  (`topicId`, `questionType`, `count` 1..50, optional `difficulty`),
+  `GenerateQuestionsResponseSchema`, `BatchQuestionActionRequestSchema`.
+- API (`apps/api`): `QuestionGenerationService` (tenant-scoped topic validation
+  via subjects→chapters→topics joined on `subjects.instituteId`), DTOs, and four
+  new endpoints under `/questions` — `POST /generate` (202), `GET
+  /generate/:jobId`, `POST /batch-approve`, `POST /batch-reject`. JobsService
+  routes `AI_GENERATE_QUESTIONS` → the dedicated `ai_generation` queue.
+- `docs/api/questions.md` — documented the four new endpoints.
 
-**Database changes:** new `questions` table (migration 0007), FKs to
-institutes/subjects/chapters/topics/users, exactly-one-scope CHECK.
+**Decisions:** questions are scoped to a topic (`sourceType: TOPIC`) reusing the
+top-level generation payload shape; AI questions always land `PENDING` (never
+auto-approved, same rule as Phase 6); review re-uses the Phase 6 actions plus new
+batch approve/reject. E2E used the same local OpenAI-compatible mock provider as
+Phase 5/6 (no real LLM).
 
-**Validation status:** all `docs/user-validation.md` Phase 6 items `[x]`,
-2026-09-02 against the live stack (includes student-403 sweep, cross-institute
-404s, mass-assignment 400s). `pnpm typecheck && pnpm lint` green.
+**Database changes:** none (questions already existed from Phase 6; the worker
+inserts via the same table and the API create path's server-computed approval).
 
-**Last Checkpoint:** Phase 6 close — `docs(phase6): close question bank phase
-with E2E validation` (see commit below).
+**Validation status:** all `docs/user-validation.md` Phase 7 items `[x]`
+(2026-09-03, live stack, `p7_e2e.sh` PASS=10 FAIL=0 — includes student-403
+sweep). `pnpm typecheck && pnpm lint` green (9 tasks); Python `ruff`/`mypy`
+clean on all changed worker files.
 
-**Recommended next task:** Plan Phase 7 — AI Question Generation & Review
-(the AI worker inserts questions via the create path, landing on `PENDING`;
-review approve/reject re-uses the Phase 6 actions).
+**Last Checkpoint:** Phase 7 close — `docs(phase7): close AI question generation
+phase with E2E validation` (see commit below).
 
-For the prior phases (Phase 5 AI generation, docker setup, divergence
-resolution), see the historical entries below.
+**Recommended next task:** Plan Phase 8 — Quiz & Examination Management (quiz
+and examination entities that select from the approved question bank; attempt
+flow is Phase 9).
+
+For the prior phases (Phases 2–6) see the historical entries below.
 
 ## Priority Revision (2026-08-19)
 

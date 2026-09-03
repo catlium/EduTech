@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc, type SQL } from 'drizzle-orm';
+import { eq, and, desc, inArray, type SQL } from 'drizzle-orm';
 import { questions, subjects, chapters, topics } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { QuestionPayloadSchemas } from '@catlium/contracts';
@@ -195,6 +195,22 @@ export class QuestionsService {
     }
 
     return question!;
+  }
+
+  async batchSetApprovalStatus(
+    instituteId: string,
+    questionIds: string[],
+    approvalStatus: 'APPROVED' | 'REJECTED',
+  ) {
+    const result = await this.db
+      .update(questions)
+      .set({ approvalStatus, updatedAt: new Date() })
+      .where(
+        and(eq(questions.instituteId, instituteId), inArray(questions.id, questionIds)),
+      )
+      .returning({ id: questions.id });
+
+    return result.map((row) => row.id);
   }
 
   // ── Helpers ───────────────────────────────

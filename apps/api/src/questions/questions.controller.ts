@@ -15,7 +15,12 @@ import {
 } from '@nestjs/common';
 
 import { QuestionsService } from './questions.service.js';
+import { QuestionGenerationService } from './question-generation.service.js';
 import { CreateQuestionDto, UpdateQuestionDto } from './dto/question.dto.js';
+import {
+  GenerateQuestionsDto,
+  BatchQuestionActionDto,
+} from './dto/question-generation.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -30,7 +35,10 @@ const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
 @Controller('questions')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
 export class QuestionsController {
-  constructor(private readonly questionsService: QuestionsService) {}
+  constructor(
+    private readonly questionsService: QuestionsService,
+    private readonly generationService: QuestionGenerationService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -106,6 +114,70 @@ export class QuestionsController {
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
     await this.questionsService.deleteQuestion(tenant.instituteId, questionId);
+  }
+
+  @Post('generate')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async generate(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: GenerateQuestionsDto,
+  ) {
+    const generation = await this.generationService.requestGeneration(
+      tenant.instituteId,
+      user.userId,
+      dto,
+    );
+    return { generation };
+  }
+
+  @Get('generate/:jobId')
+  @RequiredRoles(...WRITE_ROLES)
+  async getGeneration(
+    @Tenant() tenant: TenantContext,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+  ) {
+    const job = await this.generationService.getGenerationJob(tenant.instituteId, jobId);
+    return {
+      generation: {
+        jobId: job.id,
+        operation: job.type,
+        status: job.status,
+        result: job.result,
+        error: job.error,
+        createdAt: job.createdAt,
+        completedAt: job.completedAt,
+      },
+    };
+  }
+
+  @Post('batch-approve')
+  @RequiredRoles(...WRITE_ROLES)
+  async batchApprove(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: BatchQuestionActionDto,
+  ) {
+    const updated = await this.questionsService.batchSetApprovalStatus(
+      tenant.instituteId,
+      dto.questionIds,
+      'APPROVED',
+    );
+    return { updated: updated.length, questionIds: updated };
+  }
+
+  @Post('batch-reject')
+  @RequiredRoles(...WRITE_ROLES)
+  async batchReject(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: BatchQuestionActionDto,
+  ) {
+    const updated = await this.questionsService.batchSetApprovalStatus(
+      tenant.instituteId,
+      dto.questionIds,
+      'REJECTED',
+    );
+    return { updated: updated.length, questionIds: updated };
   }
 
   @Post(':questionId/approve')

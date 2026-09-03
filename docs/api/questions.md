@@ -261,3 +261,139 @@ Roles: `INSTITUTE_ADMIN`, `TEACHER`. Sets `status` to `ACTIVE` (e.g. restore an
 archived question). `404` if not in the active institute.
 
 Response: `{ "question": Question }`
+
+## Generate questions with AI (Phase 7)
+
+```
+POST /questions/generate
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `202 Accepted`.
+
+Asynchronously generates objective questions from a topic's eligible
+(ACTIVE + READY + extracted-text) materials and stores each as a **PENDING**
+question (`source: AI_GENERATED`). Generation never auto-approves — every
+generated question begins PENDING and is editable/reviewable via the existing
+`PATCH`, `approve`/`reject`, and batch endpoints (AIGQ-08).
+
+The generation is tracked as a job on the `ai_generation` queue (operation
+`AI_GENERATE_QUESTIONS`); its progress/result is polled via
+`GET /questions/generate/:jobId`.
+
+Body:
+
+```json
+{
+  "topicId": "uuid",
+  "questionType": "MCQ",
+  "count": 5,
+  "difficulty": "MEDIUM"
+}
+```
+
+| Field          | Required | Values |
+|----------------|----------|--------|
+| `topicId`      | yes      | `uuid` (a topic in the active institute) |
+| `questionType` | yes      | `MCQ` \| `TRUE_FALSE` \| `FILL_IN_BLANK` |
+| `count`        | yes      | integer 1–50 |
+| `difficulty`   | no       | `EASY` \| `MEDIUM` \| `HARD` (default `MEDIUM`) |
+
+`404` if the `topicId` is not in the active institute. `400` on invalid enum or
+`count` out of range.
+
+Response:
+
+```json
+{
+  "generation": {
+    "jobId": "uuid",
+    "operation": "AI_GENERATE_QUESTIONS",
+    "sourceType": "TOPIC",
+    "sourceId": "uuid",
+    "status": "QUEUED"
+  }
+}
+```
+
+## Get question-generation job
+
+```
+GET /questions/generate/:jobId
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`.
+
+Returns the tracked generation job and its `result` (the generated `questionIds`
+array, `count`, `questionType`, `difficulty`, and source) once `status` is
+`completed`, or `error` when `failed`. `404` if the job is not in the active
+institute or is not a question-generation job.
+
+Response:
+
+```json
+{
+  "generation": {
+    "jobId": "uuid",
+    "operation": "AI_GENERATE_QUESTIONS",
+    "status": "completed",
+    "result": {
+      "count": 5,
+      "questionIds": ["uuid", "..."]
+    },
+    "error": null,
+    "createdAt": "iso8601",
+    "completedAt": "iso8601"
+  }
+}
+```
+
+## Batch approve questions
+
+```
+POST /questions/batch-approve
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`.
+
+Sets `approvalStatus` to `APPROVED` for every listed question that exists in the
+active institute. Idempotent; foreign-institute or nonexistent ids are simply
+not updated (never an error).
+
+Body:
+
+```json
+{
+  "questionIds": ["uuid", "uuid"]
+}
+```
+
+Response:
+
+```json
+{ "updated": 2, "questionIds": ["uuid", "uuid"] }
+```
+
+## Batch reject questions
+
+```
+POST /questions/batch-reject
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`.
+
+Sets `approvalStatus` to `REJECTED` for every listed question that exists in the
+active institute. Idempotent.
+
+Body:
+
+```json
+{
+  "questionIds": ["uuid", "uuid"]
+}
+```
+
+Response:
+
+```json
+{ "updated": 2, "questionIds": ["uuid", "uuid"] }
+```

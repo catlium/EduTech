@@ -431,6 +431,95 @@ teacher-A cookie + header `x-institute-id: 11111111-...`.
 
 ---
 
+## Phase 7 — AI Question Generation & Review (E2E)
+
+Status: `[x]` All tests passed 2026-09-03 against the dockerized stack
+(postgres/redis/rabbitmq/api/ocr/worker-material/worker-ai). The AI provider was
+the same local OpenAI-compatible test double as Phase 5/6 (`POST
+/chat/completions` returning schema-valid JSON), reachable by `worker-ai` at
+`http://host.docker.internal:11434/v1` — no real LLM was used
+(`WORKER_AI_MODEL=llama3.2`).
+
+Checks map to requirements AIGQ-01..08.
+
+### Fixtures (created during this run, `catlium_dev`)
+
+- Institute `11111111-1111-1111-1111-111111111111`.
+- A fresh teacher registered via `POST /api/v1/auth/register`, then wired via
+  SQL with `membership_roles` = `INSTITUTE_ADMIN` (`membership` status lowercase
+  `'active'`).
+- Fresh academic scope (subject → chapter → topic, kebab-case slugs, unique per
+  run) created via `POST /api/v1/academic/...`.
+- A READY text material on the topic via `POST /api/v1/materials/text`
+  (`{"topicId", "title", "text"}`).
+
+Headers on all requests: Cookie `access_token=<teacher session>` +
+`x-institute-id: 11111111-...`. Base URL `http://localhost:3000/api/v1`.
+
+### AIGQ-01 — State a generation request (202 + QUEUED)
+
+- **Endpoint:** `POST /api/v1/questions/generate`
+- **Payload:**
+  ```json
+  { "topicId": "<topic-id>", "questionType": "MCQ", "count": 3, "difficulty": "MEDIUM" }
+  ```
+- **Expected output:** `202` `{ "generation": { "jobId", "operation":
+  "AI_GENERATE_QUESTIONS", "sourceType": "TOPIC", "sourceId": "<topic-id>",
+  "status": "QUEUED" } }`.
+
+### AIGQ-02 — Generation job completes with the generated questions
+
+- **Endpoint:** `GET /api/v1/questions/generate/:jobId` (poll)
+- **Expected output:** job `queued → processing → completed`; `result` carries
+  `count: 3` and `questionIds` (3 uuids). A worker-side failure surfaces as job
+  `failed` with a safe `error.message` and the raw traceback only in the worker
+  log.
+
+### AIGQ-03 — Questions land with source AI_GENERATED
+
+- **Endpoint:** `GET /api/v1/questions/:id` (one generated id)
+- **Expected output:** `source: "AI_GENERATED"`.
+
+### AIGQ-04 — Questions land with approvalStatus PENDING
+
+- **Endpoint:** `GET /api/v1/questions/:id`
+- **Expected output:** `approvalStatus: "PENDING"` (never auto-approved).
+
+### AIGQ-05 — Pending list filter
+
+- **Endpoint:** `GET /api/v1/questions?approvalStatus=PENDING&topicId=<topic-id>`
+- **Expected output:** `200`; exactly the 3 freshly generated PENDING questions.
+
+### AIGQ-06 — Single approve re-uses the Phase 6 action
+
+- **Endpoint:** `POST /api/v1/questions/:id/approve`
+- **Expected output:** `200` `approvalStatus: "APPROVED"`.
+
+### AIGQ-07 — Batch approve / reject convenience
+
+- **Endpoint:** `POST /api/v1/questions/batch-approve` (and `.../batch-reject`)
+- **Payload:**
+  ```json
+  { "questionIds": ["<uuid>", "<uuid>"] }
+  ```
+- **Expected output:** `200`; `updated` = number of questions actually flipped
+  (2 for the two remaining PENDING in this run).
+
+### AIGQ-08 — Students cannot generate questions (403)
+
+- **Setup:** a fresh student registered + wired with role `STUDENT`.
+- **Endpoint:** `POST /api/v1/questions/generate`
+- **Payload:** `{ "topicId": "<topic-id>", "questionType": "MCQ", "count": 2 }`
+- **Expected output:** `403`.
+
+### Full run result
+
+The `p7_e2e.sh` harness ran these 8 checks end-to-end with **PASS=10 FAIL=0**
+(the two extra passes are the 202+QUEUED and operation-literal sub-checks of
+AIGQ-01).
+
+---
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete

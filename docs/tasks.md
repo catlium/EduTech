@@ -24,6 +24,34 @@ System priority order:
 - [-] Advanced institute management
 - [-] User profile management / password change endpoint
 
+## Phase 7 — AI Question Generation & Review
+
+### Goal: AI Question Generation & Review (E2E validated 2026-09-03) ✅
+
+- [x] AIGQ-01 — State a generation request: teacher posts `POST /questions/generate`
+      `{topicId, questionType, count, difficulty}` → 202 + QUEUED, operation
+      `AI_GENERATE_QUESTIONS`, sourceType TOPIC
+- [x] AIGQ-02 — Generation job completes: `GET /questions/generate/:jobId` →
+      `completed` with `result.count` and `result.questionIds`
+- [x] AIGQ-03 — Questions land with `source: "AI_GENERATED"`
+- [x] AIGQ-04 — Questions land `approvalStatus: "PENDING"` (never auto-approved)
+- [x] AIGQ-05 — Pending list filter (`?approvalStatus=PENDING&topicId=`) returns
+      exactly the generated PENDING questions
+- [x] AIGQ-06 — Single approve re-uses the Phase 6 action (`/questions/:id/approve`)
+- [x] AIGQ-07 — Batch approve/reject (`/questions/batch-approve`,
+      `/questions/batch-reject`) flip N PENDING questions, `updated` reported
+- [x] AIGQ-08 — Students cannot generate questions (403)
+- [x] Worker: `AI_GENERATE_QUESTIONS` operation + MCQ/TRUE_FALSE/FILL_IN_BLANK
+      payload schemas + prompt builder + `insert_generated_questions` (source,
+      PENDING); normalized via MCQ choice-id model_validator
+- [x] Contracts: `GenerateQuestionsRequestSchema` (count 1..50) /
+      `GenerateQuestionsResponseSchema` / `BatchQuestionActionRequestSchema`
+  - [x] JobsService routes `AI_GENERATE_QUESTIONS` → `ai_generation` queue
+- [x] API: `QuestionGenerationService` (tenant-scoped topic validation),
+      `QuestionGenerationDto`, 4 new endpoints documented in `docs/api/questions.md`
+- [x] Run pnpm typecheck + lint (9 tasks green) and Python ruff + mypy (clean)
+- [x] E2E harness `p7_e2e.sh` PASS=10 FAIL=0; update docs + create checkpoint
+
 ## Phase 6 — Question Bank
 
 ### Goal: Question Bank (E2E validated 2026-09-02) ✅

@@ -142,3 +142,53 @@ def insert_ai_content(
             ),
         )
     return content_id
+
+
+def insert_generated_questions(
+    institute_id: str,
+    *,
+    questions: list[dict[str, Any]],
+    subject_id: str | None,
+    chapter_id: str | None,
+    topic_id: str | None,
+    created_by: str,
+) -> list[str]:
+    """Persist AI-generated questions as PENDING rows in the ``questions`` table.
+
+    Mirrors the API's ``QuestionsService.createQuestion`` for the AI_GENERATED
+    path: ``source`` = ``AI_GENERATED`` and ``approval_status`` = ``PENDING``
+    (never auto-approved — AIGQ-08). The worker writes directly to PostgreSQL,
+    consistent with material processing / ``insert_ai_content``. Each item is
+    the validated ``GeneratedQuestion`` shape (canonical payload after the
+    Pydantic mirror normalized MCQ choice ids).
+    """
+    ids: list[str] = []
+    with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
+        for q in questions:
+            cur.execute(
+                "INSERT INTO questions"
+                " (institute_id, subject_id, chapter_id, topic_id, stem, question_type,"
+                "  difficulty, explanation, payload, source, approval_status, status,"
+                "  created_by, updated_by)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AI_GENERATED', 'PENDING',"
+                "  'ACTIVE', %s, %s)"
+                " RETURNING id",
+                (
+                    institute_id,
+                    subject_id,
+                    chapter_id,
+                    topic_id,
+                    q["stem"],
+                    q["questionType"],
+                    q["difficulty"],
+                    q.get("explanation"),
+                    Jsonb(q["payload"]),
+                    created_by,
+                    created_by,
+                ),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("questions insert returned no row")
+            ids.append(str(row[0]))
+    return ids

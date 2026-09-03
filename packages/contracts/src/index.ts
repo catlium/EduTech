@@ -586,3 +586,25 @@ export type QuestionResponse = z.infer<typeof QuestionResponseSchema>;
 
 export const QuestionListItemSchema = QuestionResponseSchema;
 export type QuestionListItem = z.infer<typeof QuestionListItemSchema>;
+
+export const GenerateQuestionsRequestSchema = z.object({
+  topicId: z.string().uuid(),
+  questionType: QuestionTypeEnum,
+  count: z.number().int().min(1).max(50),
+  difficulty: QuestionDifficultyEnum.optional(),
+});
+export type GenerateQuestionsRequest = z.infer<typeof GenerateQuestionsRequestSchema>;
+
+export const GenerateQuestionsResponseSchema = z.object({
+  jobId: z.string().uuid(),
+  operation: z.literal('AI_GENERATE_QUESTIONS'),
+  sourceType: z.literal('TOPIC'),
+  sourceId: z.string().uuid(),
+  status: z.literal('QUEUED'),
+});
+export type GenerateQuestionsResponse = z.infer<typeof GenerateQuestionsResponseSchema>;
+
+export const BatchQuestionActionRequestSchema = z.object({
+  questionIds: z.array(z.string().uuid()).min(1),
+});
+export type BatchQuestionActionRequest = z.infer<typeof BatchQuestionActionRequestSchema>;
