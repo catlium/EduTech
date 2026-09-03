@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-09-03T03:23:39.387Z",
+  "phase": 7,
+  "phase_name": "ai-question-generation",
+  "phase_dir": ".planning/phases/07-ai-question-generation",
+  "plan": 1,
+  "task": 5,
+  "total_tasks": 5,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Worker AI_GENERATE_QUESTIONS operation + payload schemas + prompt builder + insert_generated_questions", "status": "done", "commit": "4cfbc13"},
+    {"id": 2, "name": "Contracts: GenerateQuestions request/response (count 1..50) + BatchQuestionAction", "status": "done", "commit": "4cfbc13"},
+    {"id": 3, "name": "JobsService routes AI_GENERATE_QUESTIONS -> ai_generation queue", "status": "done", "commit": "4cfbc13"},
+    {"id": 4, "name": "API: generate + getGenerationJob + batch-approve/reject endpoints, tenant-scoped topic validation, docs", "status": "done", "commit": "4cfbc13"},
+    {"id": 5, "name": "E2E validation (p7_e2e.sh PASS=10 FAIL=0) + docs + checkpoint commit", "status": "done", "commit": "4cfbc13"}
+  ],
+  "remaining_tasks": [
+    {"id": 8, "name": "Phase 8: Quiz & Examination Management", "status": "not_started"}
+  ],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {"decision": "Questions are scoped to a topic (sourceType TOPIC) reusing the top-level generation payload shape; single topicId per request", "rationale": "Consistency with existing AI generation; topic is the natural review unit", "phase": 7},
+    {"decision": "AI-generated questions always land approval_status=PENDING, never auto-approved", "rationale": "Matches Phase 6 rule and AIGQ-08; teacher must review AI output", "phase": 7},
+    {"decision": "Review reuses Phase 6 approve/reject actions + adds batch approve/reject for review ergonomics", "rationale": "Reuse over duplication; batch actions for BULK review workflow", "phase": 7},
+    {"decision": "E2E uses local OpenAI-compatible mock provider (host :11434, worker reaches host.docker.internal:11434, WORKER_AI_MODEL=llama3.2)", "rationale": "No real LLM; same pattern as Phase 5/6 validation", "phase": 7}
+  ],
+  "uncommitted_files": [
+    ".planning/STATE.md",
+    ".planning/HANDOFF.json",
+    ".planning/phases/07-ai-question-generation/.continue-here.md"
+  ],
+  "next_action": "Plan Phase 8 — Quiz & Examination Management (quiz + examination entities sourcing from the approved question bank; student attempt flow is Phase 9). Create .planning/phases/08-quiz-examination-management/ planning artifacts (RESEARCH, PATTERNS, 08-01-PLAN) then implement phase-by-phase with E2E validation and a checkpoint commit.",
+  "context_notes": "Session 2026-09-03. Backend Phases 7-17 in scope; user does NOT test (no GUI) — agent builds each backend phase, live-tests against the dockerized stack, stores state, commits a checkpoint after each phase, reports, then continues. Phase 7 (AI Question Generation & Review) is COMPLETE and committed (4cfbc13). All AIGQ-01..08 pass (p7_e2e.sh PASS=10 FAIL=0). Typecheck+lint green; worker ruff/mypy clean. Next: Phase 8. Stack still up (postgres/redis/rabbitmq/api/ocr/worker-material/worker-ai). Mock provider running as docker container 'mock-llm' publishing host port 11434. E2E helper scripts in /tmp/opencode/ (p7_e2e.sh, mock_llm.py)."
+}
