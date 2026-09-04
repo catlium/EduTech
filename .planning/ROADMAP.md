@@ -67,7 +67,7 @@ Completion summary (verified against codebase):
 ## Phase 8 — Quiz & Examination Management ○
 **Goal:** Assessment CRUD, add/remove questions, duration, max marks, instructions, scheduling, publish/complete; lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED; valid state transitions; only approved questions in official assessments.
 **Success Criteria:** Assessment management works with enforced state transitions.
-**Status:** NOT STARTED. Reqs: EXAM-01..08.
+**Status:** PLANNED (4 plans: 08-01 tracer foundation, 08-02 CRUD + question linking, 08-03 state machine/publish gate, 08-04 E2E close). Reqs: EXAM-01..08.
 
 ## Phase 9 — Student Examination Attempts ○
 **Goal:** Available exam → start attempt → answer → update → submit; duplicate-attempt prevention; retrieve own attempts; validate availability/state; time tracking; never expose correct answers/answer key/teacher-only info during an active exam (projection/serialization).
