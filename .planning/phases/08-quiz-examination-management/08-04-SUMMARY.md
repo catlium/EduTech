@@ -149,3 +149,12 @@ Verified before metadata commit:
 ---
 *Phase: 08-quiz-examination-management — Plan 04*
 *Completed: 2026-09-05*
+
+## Self-Check: PASSED (append)
+
+Verified after metadata commits:
+- FOUND: commit `23b3e58` (SUMMARY + STATE + ROADMAP band)
+- FOUND: STATE.md progress advanced (status `completed`, completed_plans 7→8, percent 100, state_head = `86f2689`), Phase 8 row ✓ in Phase Plans, next action = plan Phase 9
+- FOUND: ROADMAP.md Phase 8 → **COMPLETE** (all four plans 08-01..08-04 ✓)
+- FOUND: REQUIREMENTS.md EXAM-01..08 already `[x]` (lines 81-88) + traceability row `✓ complete` — no change required (`requirements mark-complete` reported `table_unmatched` for all 8 ids because the project's hybrid STATE.md layout lacks the canonical `## Current Position` fields the matcher parses; the end state was already correct)
+- PASS: `pnpm typecheck && pnpm lint` after metadata updates
