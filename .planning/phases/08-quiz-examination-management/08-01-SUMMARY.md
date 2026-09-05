@@ -195,6 +195,16 @@ None - no external service configuration required.
 - 08-03 (publish/complete state machine) builds on the documented lifecycle already encoded in `docs/api/assessments.md`.
 - The `assessment_questions_unique` constraint + cascade FKs are live, so link add/remove and question deletion behave per the schema contract.
 
+## Self-Check: PASSED
+
+Verified before metadata commit:
+- FOUND: `.planning/phases/08-quiz-examination-management/08-01-SUMMARY.md`
+- FOUND: `packages/database/src/schema/examinations.ts`
+- FOUND: `packages/database/drizzle/0008_awesome_vermin.sql`
+- FOUND: `apps/api/src/examinations/examinations.service.ts`
+- FOUND: `docs/api/assessments.md`
+- FOUND: commit `ff32bc0` (Task 1), `95788e6` (Task 2)
+
 ---
 *Phase: 08-quiz-examination-management — Plan 01*
 *Completed: 2026-09-05*
