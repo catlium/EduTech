@@ -195,8 +195,10 @@ the added link rows (`{ added: [...] }`, `sortOrder` 1-based, `marks` default
 1). Each referenced question is validated to exist in the active institute; a
 foreign-institute **questionId** returns `400` (`Question ... not found or not
 in this institute`) and a foreign-institute **assessmentId** returns `404`.
-Duplicate links are rejected by the `assessment_questions_unique` constraint
-with `409`.
+An ARCHIVED (non-ACTIVE) in-institute questionId returns `400` (`Question ...
+is not ACTIVE`) — such a question can never be published, so it cannot be
+linked. Duplicate links are rejected by the `assessment_questions_unique`
+constraint with `409`.
 
 ## Remove question from assessment
 
@@ -216,9 +218,11 @@ POST /assessments/:assessmentId/publish
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-03.) Transitions
 `DRAFT → PUBLISHED` and returns `201` with the updated assessment. Publish
 validation gate: the assessment must be non-empty (at least one linked
-question), every linked question must be `APPROVED`
-(EXAM-08 — only approved questions may appear in a PUBLISHED assessment;
-approval status is re-checked at publish time, not link time),
+question), every linked question must be `APPROVED` and `ACTIVE`
+(EXAM-08 — only approved, active questions may appear in a PUBLISHED
+assessment; approval status and question `status` are re-checked at publish
+time, not link time, so an ARCHIVED question that was approved at link time
+fails validation and blocks publish),
 `durationMinutes` and `maxMarks` must be set, and the schedule must be valid.
 Any gate failure and any non-DRAFT source state return `400`.
 `PUBLISHED` may be unpublished back to `DRAFT`; `ACTIVE → DRAFT` is not allowed.
@@ -266,6 +270,7 @@ transition is possible.
 - `instituteId` and `status` are **never accepted** in any request body; sending
   either returns `400` on every endpoint that takes a body.
 - Only `APPROVED` questions may appear in a PUBLISHED assessment (EXAM-08); a
-  publish attempt with PENDING/REJECTED/ARCHIVED questions fails validation.
+  publish attempt with PENDING/REJECTED/ARCHIVED questions fails validation
+  (a question must be both `APPROVED` and `ACTIVE`).
 - All reads and writes are institute-scoped; foreign-institute ids always return
   `404`.

@@ -158,15 +158,21 @@ export class ExaminationsService {
     const assessment = await this.getAssessment(instituteId, assessmentId);
     this.assertValidTransition(assessment.status, 'PUBLISHED');
 
-    // Pitfall 1 — re-check the CURRENT approval status of every linked
-    // question (a question approved at link time may have been rejected since).
+    // Pitfall 1 — re-check the CURRENT approval status AND status (ACTIVE) of
+    // every linked question (a question approved at link time may have been
+    // rejected or archived since). ARCHIVED questions (WR-03/EXAM-08) are
+    // unlinkable and unpublishable; status is independent of approvalStatus.
     const linked = await this.listQuestions(instituteId, assessmentId);
     if (linked.length === 0) {
       throw new BadRequestException('Assessment must have at least one question');
     }
-    const unapproved = linked.filter((q) => q.question.approvalStatus !== 'APPROVED');
+    const unapproved = linked.filter(
+      (q) => q.question.approvalStatus !== 'APPROVED' || q.question.status !== 'ACTIVE',
+    );
     if (unapproved.length > 0) {
-      throw new BadRequestException(`${unapproved.length} question(s) are not APPROVED`);
+      throw new BadRequestException(
+        `${unapproved.length} question(s) are not APPROVED or not ACTIVE`,
+      );
     }
 
     if (!assessment.durationMinutes || assessment.durationMinutes <= 0) {
@@ -254,16 +260,23 @@ export class ExaminationsService {
     }
 
     // Pitfall 3 — cross-tenant linking blocked: every question must exist in
-    // the active institute, checked on BOTH id and instituteId.
+    // the active institute, checked on BOTH id and instituteId. The existence
+    // (institute-scope) check runs FIRST and keeps the exact Pitfall-3 400; the
+    // status check only fires for in-institute questions (no new oracle, T-08-22).
     for (const id of questionIds) {
       const [question] = await this.db
-        .select({ id: questions.id })
+        .select({ id: questions.id, status: questions.status })
         .from(questions)
         .where(and(eq(questions.id, id), eq(questions.instituteId, instituteId)))
         .limit(1);
 
       if (!question) {
         throw new BadRequestException(`Question ${id} not found or not in this institute`);
+      }
+      // T-08-21 — an ARCHIVED (non-ACTIVE) question cannot be linked at all;
+      // defense in depth with the publish gate (WR-03/EXAM-08).
+      if (question.status !== 'ACTIVE') {
+        throw new BadRequestException(`Question ${id} is not ACTIVE`);
       }
     }
 
