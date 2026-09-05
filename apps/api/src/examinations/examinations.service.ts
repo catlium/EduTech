@@ -1,6 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc, inArray, count } from 'drizzle-orm';
-import { assessments, assessmentQuestions } from '@catlium/database';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  Inject,
+} from '@nestjs/common';
+import { eq, and, desc, asc, inArray, count } from 'drizzle-orm';
+import { assessments, assessmentQuestions, questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 
@@ -117,6 +123,101 @@ export class ExaminationsService {
 
     if (!assessment) {
       throw new NotFoundException('Assessment not found');
+    }
+  }
+
+  // ── Question linking ─────────────────────
+
+  async listQuestions(instituteId: string, assessmentId: string) {
+    await this.getAssessment(instituteId, assessmentId);
+
+    const rows = await this.db
+      .select()
+      .from(assessmentQuestions)
+      .innerJoin(
+        questions,
+        and(eq(assessmentQuestions.questionId, questions.id), eq(questions.instituteId, instituteId)),
+      )
+      .where(eq(assessmentQuestions.assessmentId, assessmentId))
+      .orderBy(asc(assessmentQuestions.sortOrder));
+
+    return rows.map((row) => ({
+      id: row.assessment_questions.id,
+      assessmentId: row.assessment_questions.assessmentId,
+      questionId: row.assessment_questions.questionId,
+      sortOrder: row.assessment_questions.sortOrder,
+      marks: row.assessment_questions.marks,
+      question: row.questions,
+    }));
+  }
+
+  async addQuestions(instituteId: string, assessmentId: string, questionIds: string[]) {
+    await this.getAssessment(instituteId, assessmentId);
+
+    // Pitfall 3 — cross-tenant linking blocked: every question must exist in
+    // the active institute, checked on BOTH id and instituteId.
+    for (const id of questionIds) {
+      const [question] = await this.db
+        .select({ id: questions.id })
+        .from(questions)
+        .where(and(eq(questions.id, id), eq(questions.instituteId, instituteId)))
+        .limit(1);
+
+      if (!question) {
+        throw new BadRequestException(`Question ${id} not found or not in this institute`);
+      }
+    }
+
+    try {
+      return await this.db.transaction(async (tx) => {
+        const added: Array<typeof assessmentQuestions.$inferSelect> = [];
+        // sortOrder is 1-based on the array index; marks defaults to 1 (A5).
+        for (let i = 0; i < questionIds.length; i++) {
+          const [row] = await tx
+            .insert(assessmentQuestions)
+            .values({
+              assessmentId,
+              questionId: questionIds[i]!,
+              sortOrder: i + 1,
+              marks: 1,
+            })
+            .returning();
+          added.push(row!);
+        }
+        return added;
+      });
+    } catch (error) {
+      this.throwIfUniqueViolation(error, 'Question already in this assessment');
+      throw error;
+    }
+  }
+
+  async removeQuestion(instituteId: string, assessmentId: string, questionId: string) {
+    await this.getAssessment(instituteId, assessmentId);
+
+    const [row] = await this.db
+      .delete(assessmentQuestions)
+      .where(
+        and(
+          eq(assessmentQuestions.assessmentId, assessmentId),
+          eq(assessmentQuestions.questionId, questionId),
+        ),
+      )
+      .returning();
+
+    if (!row) {
+      throw new NotFoundException('Assessment question not found');
+    }
+  }
+
+  private throwIfUniqueViolation(error: unknown, message: string): void {
+    const code =
+      typeof error === 'object' && error !== null && 'cause' in error
+        ? (error.cause as { code?: string })?.code
+        : (error as { code?: string })?.code;
+
+    if (code === '23505') {
+      throw new ConflictException(message);
     }
   }
 

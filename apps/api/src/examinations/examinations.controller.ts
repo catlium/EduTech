@@ -15,6 +15,7 @@ import {
 import { ExaminationsService } from './examinations.service.js';
 import { CreateAssessmentDto } from './dto/create-assessment.dto.js';
 import { UpdateAssessmentDto } from './dto/update-assessment.dto.js';
+import { AddQuestionsDto } from './dto/add-questions.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -90,5 +91,47 @@ export class ExaminationsController {
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     await this.examinationsService.deleteAssessment(tenant.instituteId, assessmentId);
+  }
+
+  @Get(':assessmentId/questions')
+  async listQuestions(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    const questions = await this.examinationsService.listQuestions(
+      tenant.instituteId,
+      assessmentId,
+    );
+    return { questions };
+  }
+
+  @Post(':assessmentId/questions')
+  @RequiredRoles(...WRITE_ROLES)
+  async addQuestions(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+    @Body() dto: AddQuestionsDto,
+  ) {
+    const added = await this.examinationsService.addQuestions(
+      tenant.instituteId,
+      assessmentId,
+      dto.questionIds,
+    );
+    return { added };
+  }
+
+  @Delete(':assessmentId/questions/:questionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequiredRoles(...WRITE_ROLES)
+  async removeQuestion(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+  ) {
+    await this.examinationsService.removeQuestion(
+      tenant.instituteId,
+      assessmentId,
+      questionId,
+    );
   }
 }

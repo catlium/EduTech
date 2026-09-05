@@ -663,3 +663,20 @@ export const AssessmentListItemSchema = AssessmentResponseSchema.extend({
   questionCount: z.number(),
 });
 export type AssessmentListItem = z.infer<typeof AssessmentListItemSchema>;
+
+// Add questions to an assessment (validated in-institute, Pitfall 3).
+export const AddQuestionsRequestSchema = z.object({
+  questionIds: z.array(z.string().uuid()).min(1),
+});
+export type AddQuestionsRequest = z.infer<typeof AddQuestionsRequestSchema>;
+
+// A link row on the assessment_questions join table with the nested question.
+export const AssessmentQuestionSchema = z.object({
+  id: z.string().uuid(),
+  assessmentId: z.string().uuid(),
+  questionId: z.string().uuid(),
+  sortOrder: z.number(),
+  marks: z.number(),
+  question: QuestionResponseSchema,
+});
+export type AssessmentQuestion = z.infer<typeof AssessmentQuestionSchema>;
