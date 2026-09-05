@@ -184,6 +184,28 @@ export class ExaminationsService {
     return this.setStatus(instituteId, assessmentId, 'PUBLISHED');
   }
 
+  // Manual activation for the MVP (research A1) — no cron/auto-activation.
+  async activateAssessment(instituteId: string, assessmentId: string) {
+    const assessment = await this.getAssessment(instituteId, assessmentId);
+    this.assertValidTransition(assessment.status, 'ACTIVE');
+    return this.setStatus(instituteId, assessmentId, 'ACTIVE');
+  }
+
+  // Terminal transition — COMPLETED has no outgoing transitions.
+  async completeAssessment(instituteId: string, assessmentId: string) {
+    const assessment = await this.getAssessment(instituteId, assessmentId);
+    this.assertValidTransition(assessment.status, 'COMPLETED');
+    return this.setStatus(instituteId, assessmentId, 'COMPLETED');
+  }
+
+  // PUBLISHED→DRAFT (research A4) so teachers can fix mistakes. ACTIVE→DRAFT
+  // is blocked by VALID_TRANSITIONS — students may be attempting.
+  async unpublishAssessment(instituteId: string, assessmentId: string) {
+    const assessment = await this.getAssessment(instituteId, assessmentId);
+    this.assertValidTransition(assessment.status, 'DRAFT');
+    return this.setStatus(instituteId, assessmentId, 'DRAFT');
+  }
+
   // ── Delete ────────────────────────────────
 
   async deleteAssessment(instituteId: string, assessmentId: string) {

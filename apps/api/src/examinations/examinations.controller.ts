@@ -106,6 +106,45 @@ export class ExaminationsController {
     return { assessment };
   }
 
+  @Post(':assessmentId/activate')
+  @RequiredRoles(...WRITE_ROLES)
+  async activate(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    const assessment = await this.examinationsService.activateAssessment(
+      tenant.instituteId,
+      assessmentId,
+    );
+    return { assessment };
+  }
+
+  @Post(':assessmentId/complete')
+  @RequiredRoles(...WRITE_ROLES)
+  async complete(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    const assessment = await this.examinationsService.completeAssessment(
+      tenant.instituteId,
+      assessmentId,
+    );
+    return { assessment };
+  }
+
+  @Post(':assessmentId/unpublish')
+  @RequiredRoles(...WRITE_ROLES)
+  async unpublish(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    const assessment = await this.examinationsService.unpublishAssessment(
+      tenant.instituteId,
+      assessmentId,
+    );
+    return { assessment };
+  }
+
   @Get(':assessmentId/questions')
   async listQuestions(
     @Tenant() tenant: TenantContext,
