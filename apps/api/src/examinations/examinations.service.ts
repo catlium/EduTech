@@ -8,7 +8,17 @@ import {
 import { eq, and, desc, asc, inArray, count } from 'drizzle-orm';
 import { assessments, assessmentQuestions, questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
+import type { AssessmentStatus } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+
+// Pattern 1 (08-RESEARCH) — the transition lookup table is the single source
+// of truth for lifecycle legality. COMPLETED is terminal (empty list).
+const VALID_TRANSITIONS: Record<AssessmentStatus, AssessmentStatus[]> = {
+  DRAFT: ['PUBLISHED'],
+  PUBLISHED: ['ACTIVE', 'DRAFT'], // unpublish back to draft
+  ACTIVE: ['COMPLETED'],
+  COMPLETED: [],
+};
 
 export interface CreateAssessmentInput {
   title: string;
@@ -113,6 +123,67 @@ export class ExaminationsService {
     return assessment!;
   }
 
+  // ── State machine ─────────────────────────
+
+  private assertValidTransition(current: string, next: AssessmentStatus): void {
+    const allowed = VALID_TRANSITIONS[current as AssessmentStatus];
+    if (!allowed || !allowed.includes(next)) {
+      throw new BadRequestException(
+        `Cannot transition assessment from ${current} to ${next}`,
+      );
+    }
+  }
+
+  private async setStatus(
+    instituteId: string,
+    assessmentId: string,
+    status: AssessmentStatus,
+  ) {
+    const [assessment] = await this.db
+      .update(assessments)
+      .set({ status, updatedAt: new Date() })
+      .where(and(eq(assessments.id, assessmentId), eq(assessments.instituteId, instituteId)))
+      .returning();
+
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found');
+    }
+
+    return assessment!;
+  }
+
+  // Pattern 3 (08-RESEARCH) — the publish validation gate: every precondition
+  // re-checked at publish time, any failure keeps the assessment in DRAFT.
+  async publishAssessment(instituteId: string, assessmentId: string) {
+    const assessment = await this.getAssessment(instituteId, assessmentId);
+    this.assertValidTransition(assessment.status, 'PUBLISHED');
+
+    // Pitfall 1 — re-check the CURRENT approval status of every linked
+    // question (a question approved at link time may have been rejected since).
+    const linked = await this.listQuestions(instituteId, assessmentId);
+    if (linked.length === 0) {
+      throw new BadRequestException('Assessment must have at least one question');
+    }
+    const unapproved = linked.filter((q) => q.question.approvalStatus !== 'APPROVED');
+    if (unapproved.length > 0) {
+      throw new BadRequestException(`${unapproved.length} question(s) are not APPROVED`);
+    }
+
+    if (!assessment.durationMinutes || assessment.durationMinutes <= 0) {
+      throw new BadRequestException('Duration must be configured before publishing');
+    }
+    if (!assessment.maxMarks || assessment.maxMarks <= 0) {
+      throw new BadRequestException('Maximum marks must be configured before publishing');
+    }
+    if (assessment.startsAt && assessment.endsAt) {
+      if (new Date(assessment.startsAt) >= new Date(assessment.endsAt)) {
+        throw new BadRequestException('Schedule start must be before end');
+      }
+    }
+
+    return this.setStatus(instituteId, assessmentId, 'PUBLISHED');
+  }
+
   // ── Delete ────────────────────────────────
 
   async deleteAssessment(instituteId: string, assessmentId: string) {
@@ -152,7 +223,13 @@ export class ExaminationsService {
   }
 
   async addQuestions(instituteId: string, assessmentId: string, questionIds: string[]) {
-    await this.getAssessment(instituteId, assessmentId);
+    const existing = await this.getAssessment(instituteId, assessmentId);
+
+    // Research "question set is locked after PUBLISHED" + T-08-17 — only a
+    // DRAFT assessment can change its question set; unpublish first otherwise.
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException('Questions can only be added in DRAFT status');
+    }
 
     // Pitfall 3 — cross-tenant linking blocked: every question must exist in
     // the active institute, checked on BOTH id and instituteId.
@@ -193,7 +270,13 @@ export class ExaminationsService {
   }
 
   async removeQuestion(instituteId: string, assessmentId: string, questionId: string) {
-    await this.getAssessment(instituteId, assessmentId);
+    const existing = await this.getAssessment(instituteId, assessmentId);
+
+    // Same non-DRAFT lock as addQuestions — the question set is immutable
+    // once published.
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException('Questions can only be removed in DRAFT status');
+    }
 
     const [row] = await this.db
       .delete(assessmentQuestions)

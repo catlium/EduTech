@@ -93,6 +93,19 @@ export class ExaminationsController {
     await this.examinationsService.deleteAssessment(tenant.instituteId, assessmentId);
   }
 
+  @Post(':assessmentId/publish')
+  @RequiredRoles(...WRITE_ROLES)
+  async publish(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    const assessment = await this.examinationsService.publishAssessment(
+      tenant.instituteId,
+      assessmentId,
+    );
+    return { assessment };
+  }
+
   @Get(':assessmentId/questions')
   async listQuestions(
     @Tenant() tenant: TenantContext,
