@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Param,
   Body,
   UseGuards,
@@ -12,6 +14,7 @@ import {
 
 import { ExaminationsService } from './examinations.service.js';
 import { CreateAssessmentDto } from './dto/create-assessment.dto.js';
+import { UpdateAssessmentDto } from './dto/update-assessment.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -60,5 +63,32 @@ export class ExaminationsController {
       assessmentId,
     );
     return { assessment };
+  }
+
+  @Patch(':assessmentId')
+  @RequiredRoles(...WRITE_ROLES)
+  async update(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+    @Body() dto: UpdateAssessmentDto,
+  ) {
+    const assessment = await this.examinationsService.updateAssessment(
+      tenant.instituteId,
+      user.userId,
+      assessmentId,
+      dto,
+    );
+    return { assessment };
+  }
+
+  @Delete(':assessmentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequiredRoles(...WRITE_ROLES)
+  async delete(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    await this.examinationsService.deleteAssessment(tenant.instituteId, assessmentId);
   }
 }
