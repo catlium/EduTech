@@ -1,16 +1,17 @@
 ---
 gsd_state_version: 1.0
-current_phase: 7
-current_phase_name: ai-question-generation
-status: completed
-last_updated: "2026-09-03T03:20:00.000Z"
-state_head: 4cfbc13
+current_phase: 8
+current_phase_name: quiz-examination-management
+status: executing
+stopped_at: Plan 08-01 complete — assessments schema, migration 0008, contracts, create/get/list slice; next up 08-02 (update/delete + question linking)
+last_updated: "2026-09-05T04:40:00.000Z"
+state_head: 95788e6
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 3
+  completed_phases: 0
+  total_plans: 8
+  completed_plans: 5
+  percent: 62
 ---
 
 # STATE.md
@@ -20,24 +21,25 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Core value:** A teacher takes a source material through upload → async OCR/AI processing → AI-generated, reviewable content/questions → a published, approved-question-only examination, and a student takes it and receives an automatically-computed, reproducible result.
-**Current focus:** Phase 07 — ai-question-generation
+**Current focus:** Phase 08 — quiz-examination-management
 
 ## Project State
 
-**Sequence:** Phase 7 (completed), backend-first full-stack monorepo
-**Phase:** 7 — AI Question Generation & Review
-**Status:** Completed
-Phase 7 E2E validation passed live on 2026-09-03 against the dockerized stack
-(see `docs/user-validation.md`). Backend Phases 8–17 not started. Frontend
-Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
+**Sequence:** Phase 8 (in progress, plan 08-01 complete), backend-first full-stack monorepo
+**Phase:** 8 — Quiz & Examination Management
+**Status:** Executing — Plan 08-01 done (E2E verified live 2026-09-05 against the dockerized stack; see `docs/user-validation.md`). Phases 9–17 not started. Frontend Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 
 ## Phase State
 
-**Current:** Phase 7 — AI Question Generation & Review
-**Status:** COMPLETE (E2E validated 2026-09-03). Plan 07-01 implemented and
-verified; all `docs/user-validation.md` Phase 7 items `[x]` (AIGQ-01..08,
-`p7_e2e.sh` PASS=10 FAIL=0); all `docs/tasks.md` AIGQ items `[x]`; `pnpm
-typecheck && pnpm lint` green.
+**Current:** Phase 8 — Quiz & Examination Management
+**Status:** IN PROGRESS. Plan 08-01 implemented and verified:
+
+- `assessments` + `assessment_questions` Drizzle tables, generated migration 0008 (`0008_awesome_vermin.sql`) applied to catlium_dev (unique link `assessment_questions_unique`, cascade FKs, varchar status)
+- Zod Assessment contracts (Create/Update/Response/ListItem, `AssessmentStatusEnum`) in `@catlium/contracts`
+- `ExaminationsModule`: `POST /api/v1/assessments` (201, DRAFT server-computed), `GET /api/v1/assessments` (questionCount computed, updatedAt desc), `GET /api/v1/assessments/:assessmentId` (tenant-scoped, anti-IDOR 404)
+- Mass-assignment hardened (status/instituteId → 400); schedule validated server-side (past start or endsAt before startsAt → 400)
+- `docs/api/assessments.md` documents the full module surface incl. 08-02/08-03 endpoints
+- E2E: 10-case curl sweep all green; `pnpm typecheck && pnpm lint` green
 
 **Completed (verified against codebase):**
 
@@ -60,10 +62,15 @@ typecheck && pnpm lint` green.
   actions; API `POST /questions/generate` (202), `GET /questions/generate/:jobId`,
   `POST /questions/batch-approve|reject`; tenant-scoped topic validation.
   **E2E validated 2026-09-03** (`p7_e2e.sh` PASS=10 FAIL=0). Reqs AIGQ-01..08 ✓.
+- Phase 8 plan 08-01 — Assessment foundation (see above): schema + migration 0008
+  + contracts + create/get/list slice. **E2E validated 2026-09-05** (10-case curl sweep).
+  Reqs EXAM-01/03/04 partially addressed (create/get/list + duration/maxMarks/instructions + scheduling);
+  full EXAM-01..08 closes with 08-02/08-03/08-04.
 
 **In progress / not started:**
 
-- Phases 8–17 (examination management, attempts, evaluation, results, analytics, practice, cross-module security, contract verification, testing, backend-complete checkpoint): not started
+- Phase 8 plans 08-02 (update/delete + question linking), 08-03 (state machine + publish gate), 08-04 (E2E close): pending
+- Phases 9–17 (attempts, evaluation, results, analytics, practice, cross-module security, contract verification, testing, backend-complete checkpoint): not started
 - Phases 18–25 (frontend + integration + polish): gated behind Phase 17
 
 ## Phase Plans
@@ -77,7 +84,7 @@ typecheck && pnpm lint` green.
 | 5 | AI Learning Content Generation | ✓ completed (E2E validated 2026-09-02) |
 | 6 | Question Bank | ✓ completed (E2E validated 2026-09-02) |
 | 7 | AI Question Generation & Review | ✓ completed (E2E validated 2026-09-03) |
-| 8 | Quiz & Examination Management | ○ pending |
+| 8 | Quiz & Examination Management | ◆ in progress |
 | 9 | Student Examination Attempts | ○ pending |
 | 10 | Automatic Evaluation | ○ pending |
 | 11 | Results | ○ pending |
@@ -91,25 +98,23 @@ typecheck && pnpm lint` green.
 
 ## Current Task
 
-**Phase 7 — AI Question Generation & Review (COMPLETE 2026-09-03):**
+**Phase 8 — Quiz & Examination Management (IN PROGRESS):**
 
-Plan 07-01 executed and committed with a SUMMARY:
+Plan 08-01 executed and committed with a SUMMARY:
 
-- **07-01:** worker `AI_GENERATE_QUESTIONS` operation + payload schemas + prompt
-  builder + `insert_generated_questions`; generate/batch contracts; API `POST
-  /questions/generate` / `GET /questions/generate/:jobId` / `POST
-  /questions/batch-approve|reject`; tenant-scoped topic validation;
-  `docs/api/questions.md` updated. E2E `p7_e2e.sh` PASS=10 FAIL=0 (AIGQ-01..08).
+- **08-01:** assessments + assessment_questions schema, migration 0008, Zod
+  Assessment contracts, ExaminationsModule create/get/list slice, docs/api/assessments.md.
+  E2E 10-case sweep PASS=10 FAIL=0 (`ff32bc0`, `95788e6`).
 
-**Next action:** Plan Phase 8 — Quiz & Examination Management (quiz and
-examination entities that source from the approved question bank; attempt flow
-is Phase 9).
+**Next action:** Execute Plan 08-02 — assessment update/delete + question linking
+(PATCH/DELETE /assessments/:assessmentId, GET/POST /:assessmentId/questions,
+DELETE /:assessmentId/questions/:questionId).
 
 ## Session Continuity
 
-Last session: 2026-09-03
-Stopped at: Phase 7 (AI Question Generation & Review) completed & committed; next is Phase 8 (Quiz & Examination Management) planning
-Resume file: none
+Last session: 2026-09-05
+Stopped at: Plan 08-01 complete — assessments schema, migration 0008, contracts, create/get/list slice verified; proceed to 08-02
+Resume file: .planning/phases/08-quiz-examination-management/08-01-SUMMARY.md
 
 ## Verification
 
@@ -117,6 +122,7 @@ Resume file: none
 - Phase 5 E2E: passed 2026-09-02 (docs/user-validation.md), all 20 items
 - Phase 6 E2E: passed 2026-09-02 (docs/user-validation.md), all QBN-01..07 + security block items [x]
 - Phase 7 E2E: passed 2026-09-03 (docs/user-validation.md), AIGQ-01..08 `p7_e2e.sh` PASS=10 FAIL=0
+- Phase 8 plan 08-01 E2E: passed 2026-09-05 (10-case curl sweep: 201 DRAFT, 200/200/404 reads, anti-IDOR 404, mass-assignment 400s, schedule 400s)
 - Known: zero test coverage across the codebase
 
 ## Decisions
@@ -126,7 +132,8 @@ Resume file: none
 - Modular monolith; RabbitMQ async; direct pika workers; deterministic objective evaluation (no AI); AI questions → PENDING, never auto-approve
 - AI generation E2E validation used a mock OpenAI-compatible provider (no real LLM); a real-LLM smoke run is optional follow-up, not blocking
 - Question bank: varchar enums (not pgEnum), JSONB payload with Zod discriminated union, exactly-one-scope CHECK, server-computed approvalStatus (never from client), migrate-not-push
+- Assessments (08-01): varchar status (no pgEnum); questionCount computed at read time (second grouped query — no stored column); startsAt in the past rejected with 400 (Pitfall 6); `assessment_questions_unique` as a UNIQUE table constraint; dto/assessment-query.dto.ts placeholder for 08-02 filters
 
 ## Blocked
 
-- Phase 6 is complete. Nothing blocks Phase 7 planning. Frontend phases remain gated by design until the Phase 17 backend-complete checkpoint.
+- Phase 8 continues: nothing blocks 08-02 planning/execution. Frontend phases remain gated by design until the Phase 17 backend-complete checkpoint.

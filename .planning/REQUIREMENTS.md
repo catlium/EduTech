@@ -78,10 +78,10 @@
 
 ### Phase 8 — Quiz & Examination Management (NOT STARTED)
 
-- [ ] **EXAM-01**: Create/retrieve/update/delete assessment
+- [x] **EXAM-01**: Create/retrieve/update/delete assessment
 - [ ] **EXAM-02**: Add/remove questions
-- [ ] **EXAM-03**: Configure duration + maximum marks + instructions
-- [ ] **EXAM-04**: Scheduling
+- [x] **EXAM-03**: Configure duration + maximum marks + instructions
+- [x] **EXAM-04**: Scheduling
 - [ ] **EXAM-05**: Publish + complete
 - [ ] **EXAM-06**: Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED
 - [ ] **EXAM-07**: Backend enforces valid state transitions
@@ -252,6 +252,7 @@
 | FE-16 | 25 | [ ] gated |
 
 **Coverage:**
+
 - Backend v1: 17 phases mapped (1–4 complete, 5 partial, 6–17 not started)
 - Frontend & integration: 8 phases (18–25), gated behind the Phase 17 backend-complete checkpoint
 - Frontend is part of the master roadmap (full-stack monorepo), NOT out of scope
