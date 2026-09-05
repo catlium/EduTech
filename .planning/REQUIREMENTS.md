@@ -76,7 +76,7 @@
 - [ ] **AIGQ-07**: Batch approval/rejection where defined
 - [ ] **AIGQ-08**: AI-generated questions NEVER automatically become official exam questions
 
-### Phase 8 — Quiz & Examination Management (IN PROGRESS)
+### Phase 8 — Quiz & Examination Management (COMPLETE)
 
 - [x] **EXAM-01**: Create/retrieve/update/delete assessment
 - [x] **EXAM-02**: Add/remove questions
@@ -85,7 +85,7 @@
 - [x] **EXAM-05**: Publish + complete
 - [x] **EXAM-06**: Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED
 - [x] **EXAM-07**: Backend enforces valid state transitions
-- [x] **EXAM-08**: Only APPROVED questions usable in official assessments
+- [x] **EXAM-08**: Only APPROVED questions usable in official assessments (incl. ARCHIVED+APPROVED → publish 400, ARCHIVED → link 400 — WR-03 closed 08-05, E2E PASS=60)
 
 ### Phase 9 — Student Examination Attempts (NOT STARTED)
 

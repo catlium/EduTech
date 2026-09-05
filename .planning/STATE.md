@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 current_phase: 8
 current_phase_name: quiz-examination-management
-status: completed
-stopped_at: Phase 8 complete — all four plans (08-01..08-04) E2E validated (p8_e2e.sh PASS=56 FAIL=0, 2026-09-05); next up: plan Phase 9 (student examination attempts)
-last_updated: "2026-09-05T05:33:00.000Z"
-state_head: 86f26899768dc69bfa8eadd00eaf31c486d821fd
+status: executing
+stopped_at: "Phase 8 complete — all five plans (08-01..08-05) E2E validated (p8_e2e.sh PASS=60 FAIL=0, 2026-09-05); WR-03 gap closed; next up: plan Phase 9 (student examination attempts)"
+last_updated: "2026-09-05T08:35:00.000Z"
+state_head: 8d5f226
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_plans: 11
+  completed_plans: 9
+  percent: 0
 ---
 
 # STATE.md
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Sequence:** Phase 8 (complete — E2E validated 2026-09-05), backend-first full-stack monorepo
 **Phase:** 8 — Quiz & Examination Management
-**Status:** COMPLETE — all four plans (08-01..08-04) done; every Phase 8 item in `docs/user-validation.md` `[x]` (EXAM-01..08 + security block, `p8_e2e.sh` PASS=56 FAIL=0 against the dockerized stack). Phases 9–17 not started. Frontend Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
+**Status:** Executing Phase 08
 
 ## Phase State
 
@@ -86,7 +86,7 @@ See: .planning/PROJECT.md (updated 2026-09-01)
   T3 security sweep student-403 ×4 / institute-B-404 ×4 / random-uuid-404 ×4 /
   error-shape; commits `f204d41`, `9a33f50`, `552b6d0`).
   Reqs EXAM-05..08 now closed (publish + complete + lifecycle + enforced transitions + approved-only gate).
-- Phase 8 plan 08-04 — E2E close (COMPLETE, this plan): `docs/user-validation.md` Phase 8 section with
+- Phase 8 plan 08-04 — E2E close (COMPLETE): `docs/user-validation.md` Phase 8 section with
   fixtures block, `### EXAM-01..08` subsections + security/negative block, all `[x]`
   (run 2026-09-05, `p8_e2e.sh` PASS=56 FAIL=0 — incl. lifecycle, six illegal transitions,
   EXAM-08 publish gate, student-403 / institute-B-404 / mass-assignment / auth sweep);
@@ -94,6 +94,16 @@ See: .planning/PROJECT.md (updated 2026-09-01)
   entry (AGENTS.md Rule 3); `docs/api/assessments.md` CON-02 sweep (4 precision fixes —
   201 return codes, add-questions 400/404 scope, open reads on list-questions, precise
   complete rule). Zero implementation defects — docs only. Commits `f5028f2`, `86f2689`.
+- Phase 8 plan 08-05 — WR-03 gap closure (COMPLETE): publish gate now filters
+  `approvalStatus !== 'APPROVED' || status !== 'ACTIVE'` — an ARCHIVED+APPROVED linked
+  question blocks publish with 400 `1 question(s) are not APPROVED or not ACTIVE`
+  (verification truth #21 in docs/api/assessments.md:269 now matches runtime, restoring
+  the CON-02 sweep promise); addQuestions blocks non-ACTIVE links with 400
+  `Question <id> is not ACTIVE` (defense in depth, A-08-G1) while keeping the
+  institute-scope existence check first (no new cross-tenant oracle); docs/api/assessments.md
+  + docs/user-validation.md EXAM-08 updated (all `[x]`); E2E suite extended with 4
+  ARCHIVED gate cases + EXAM-05 status asserts counted → `p8_e2e.sh` **PASS=60 FAIL=0**
+  (2026-09-05). Commits `577e944`, `8d5f226`.
 
 **In progress / not started:**
 
@@ -127,7 +137,7 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Phase 8 — Quiz & Examination Management (COMPLETE):**
 
-Plans 08-01 (`ff32bc0`, `95788e6`), 08-02 (`5725a33`, `10f840b`, `5dd52d4`), 08-03 (`f204d41`, `9a33f50`, `552b6d0`) and 08-04 (`f5028f2`, `86f2689`) executed, committed and E2E-validated:
+Plans 08-01 (`ff32bc0`, `95788e6`), 08-02 (`5725a33`, `10f840b`, `5dd52d4`), 08-03 (`f204d41`, `9a33f50`, `552b6d0`), 08-04 (`f5028f2`, `86f2689`) and 08-05 (`577e944`, `8d5f226`) executed, committed and E2E-validated:
 
 - **08-01:** assessments + assessment_questions schema, migration 0008, Zod
   Assessment contracts, ExaminationsModule create/get/list slice, docs/api/assessments.md.
@@ -148,6 +158,13 @@ Plans 08-01 (`ff32bc0`, `95788e6`), 08-02 (`5725a33`, `10f840b`, `5dd52d4`), 08-
   (EXAM-01..08 + security, all `[x]`, `p8_e2e.sh` PASS=56 FAIL=0 — 201 statuses
   recorded for transition endpoints), tasks.md Phase 8 block, project-status.md
   Phase 8 COMPLETE entry, docs/api/assessments.md CON-02 sweep (4 fixes).
+- **08-05 (WR-03 gap closure):** publish gate filter
+  `approvalStatus !== 'APPROVED' || q.question.status !== 'ACTIVE'` —
+  ARCHIVED+APPROVED linked → publish 400 `not APPROVED or not ACTIVE`; addQuestions
+  blocks ARCHIVED links (400 `Question <id> is not ACTIVE`, existence check stays
+  first); all-ACTIVE reactivation round-trip proven; docs/api/assessments.md:269
+  claim now TRUE (CON-02 promise restored); docs/user-validation.md EXAM-08
+  extended (all `[x]`); suite `p8_e2e.sh` **PASS=60 FAIL=0** (4 new ARCHIVED checks).
 
 **Next action:** Plan Phase 9 — Student Examination Attempts (student takes a
 PUBLISHED/ACTIVE assessment within its schedule window; locked question set +
@@ -157,8 +174,8 @@ answers).
 ## Session Continuity
 
 Last session: 2026-09-05
-Stopped at: Phase 8 complete — E2E validated; next: plan Phase 9 (student examination attempts)
-Resume file: .planning/phases/08-quiz-examination-management/08-04-SUMMARY.md
+Stopped at: Phase 8 complete — E2E validated PASS=60 FAIL=0; WR-03 closed; next: plan Phase 9 (student examination attempts)
+Resume file: .planning/phases/08-quiz-examination-management/08-05-SUMMARY.md
 
 ## Verification
 
@@ -170,6 +187,7 @@ Resume file: .planning/phases/08-quiz-examination-management/08-04-SUMMARY.md
 - Phase 8 plan 08-02 E2E: passed 2026-09-05 (Task 1: 7-test PATCH/DELETE sweep incl. state-guard + schedule + whitelist + anti-IDOR; Task 2: 6-test question-linking sweep incl. cross-tenant 400 + duplicate 409 + sorted list; Task 3: security sweep student-403s / institute-B-404s / error-shape)
 - Phase 8 plan 08-03 E2E: passed 2026-09-05 (Task 1: publish gate — empty 400, valid 200 PUBLISHED, PENDING-linked 400 with count, no-duration/no-maxMarks/bad-schedule 400s, re-publish 400, PATCH/add/remove on PUBLISHED 400; Task 2: full lifecycle DRAFT→PUBLISHED→ACTIVE→COMPLETED + complete-on-COMPLETED 400 + activate-from-DRAFT 400 + unpublish round-trip + unpublish-from-ACTIVE 400; Task 3: security sweep student 403 ×4 / reads 200 ×3, institute-B 404 ×4, random-uuid 404 ×4, error-shape uniform)
 - Phase 8 plan 08-04 E2E: passed 2026-09-05 (`p8_e2e.sh` PASS=56 FAIL=0 — EXAM-01 CRUD 201/200/204/404, EXAM-02 linking 201/409/204, EXAM-03 config echo, EXAM-04 schedule 400s, EXAM-05 publish/complete 201, EXAM-06 full lifecycle, EXAM-07 six illegal transitions, EXAM-08 PENDING-gate 400 + all-APPROVED 201, security block 17 cases; corrected harness double-exec bug — final sweep clean)
+- Phase 8 plan 08-05 E2E: passed 2026-09-05 (`p8_e2e.sh` PASS=60 FAIL=0 — EXAM-08 ARCHIVED gate: link-time 400 'is not ACTIVE', archive-after-link publish 400 'not APPROVED or not ACTIVE', reactivation → publish 201; EXAM-05 status asserts now counted; runs at /tmp/opencode/p8_e2e_run_08_05c.log)
 - Known: zero test coverage across the codebase
 
 ## Decisions
@@ -183,6 +201,7 @@ Resume file: .planning/phases/08-quiz-examination-management/08-04-SUMMARY.md
 - Assessments (08-02): DELETE is NOT state-guarded (204 for any status — only PATCH is DRAFT-locked); duplicate question links → 409 via unique-constraint mapping inside a transaction (race-safe, no pre-query); DTO null semantics contract-exact — `@ValidateIf(v => v !== undefined)` rejects explicit null on non-nullable fields while startsAt/endsAt accept null to clear the schedule; listQuestions JOIN double-scopes (assessment ownership + questions.instituteId) as defense in depth
 - Assessments (08-03): re-publish → 400 (rejected, not no-op re-check — plan truth); complete accepts from ACTIVE only — no implicit ACTIVE step; activate is manual (no cron — research A1), schedule advisory + read-time checked; publish gate re-checks CURRENT approvalStatus via listQuestions internals (Pitfall 1); a single shared private setStatus helper drives all four transitions (get → assertValidTransition → institute-scoped UPDATE RETURNING)
 - Assessments (08-04, phase close): close date = real E2E date (2026-09-05), not the plan's 2026-09-04 planning timestamp; transition/add endpoints return 201 (NestJS POST default) — recorded as truth and fixed in docs/api/assessments.md rather than reconciled to the 08-03-era "200" recordings; tasks.md keeps its newest-first layout (the awk-to-EOF gate counts legacy Phase 2/1 markers after the mid-file block — the Phase 8 block itself has 0 unchecked items, fails_when holds); zero implementation defects surfaced across the 56-check sweep — docs-only close
+- Assessments (08-05, WR-03 gap closure): ARCHIVED (non-ACTIVE) questions are unlinkable at addQuestions AND unpublishable at publishAssessment (A-08-G1 — defense in depth; docs already promised it, keep the assemble-from-valid-questions guarantee); publish 400 message composed to keep the existing 'not APPROVED' E2E grep matching while adding 'not ACTIVE' (one message, both causes); addQuestions check order unchanged — institute-scope existence first (exact Pitfall-3 400 preserved, no cross-tenant oracle), status second; E2E EXAM-05 status asserts converted from FAIL-only to PASS-counting (symmetric with EXAM-06) to reconcile the documented PASS=56 baseline, no new checks added
 
 ## Blocked
 
@@ -194,3 +213,4 @@ Resume file: .planning/phases/08-quiz-examination-management/08-04-SUMMARY.md
 |------|----------|-------|-------|
 | Phase 8 P3 | 12 | 3 tasks | 3 files |
 | Phase 8 P4 | 12 | 3 tasks | 4 files |
+| Phase 8 P5 | 33 | 2 tasks | 3 files |
