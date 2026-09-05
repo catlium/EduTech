@@ -1,6 +1,71 @@
 # Project Status
 
-## Current Phase: Phase 7 — AI Question Generation & Review
+## Current Phase: Phase 8 — Quiz & Examination Management
+
+**Status: COMPLETE (E2E validated 2026-09-05).** Implementation and runtime E2E
+validation green for the full assessment lifecycle. A teacher creates an
+assessment (DRAFT), links approved questions from the institute's question
+bank, configures duration/max marks/instructions and a schedule, publishes it
+(approved-only gate), activates and completes it — with every state transition
+enforced server-side. All Phase 8 items in `docs/user-validation.md` pass
+(EXAM-01..08 + security block, `p8_e2e.sh` PASS=56 FAIL=0).
+
+**Completed work:**
+
+- Examinations module (`apps/api/src/examinations`): 11 tenant-scoped
+  endpoints — `POST /assessments` (201, status DRAFT server-computed), `GET
+  /assessments` (computed questionCount, updatedAt desc), `GET/PATCH/DELETE
+  /assessments/:assessmentId` (PATCH DRAFT-only + whitelist; DELETE 204),
+  question linking `POST/GET /assessments/:id/questions` + `DELETE
+  /assessments/:id/questions/:questionId` (institute-scoped per-id check,
+  duplicate → 409), lifecycle `POST /assessments/:id/publish|activate|
+  complete|unpublish`.
+- State machine: `VALID_TRANSITIONS` lookup table
+  (DRAFT→PUBLISHED, PUBLISHED→ACTIVE/DRAFT, ACTIVE→COMPLETED, COMPLETED
+  terminal) + `assertValidTransition`; publish gate re-checks every linked
+  question's CURRENT approvalStatus (EXAM-08) + non-empty + duration + maxMarks
+  + valid schedule; question-set/config locked on non-DRAFT.
+- Schema: `assessments` + `assessment_questions` tables, generated migration
+  `0008_awesome_vermin.sql` — unique link `assessment_questions_unique`,
+  cascade FKs, varchar status, JSONB instructions.
+- Contracts (`@catlium/contracts`): `CreateAssessmentRequestSchema` (schedule
+  refine), `UpdateAssessmentRequestSchema`, `AssessmentResponseSchema`,
+  `AssessmentListItemSchema`, `AssessmentStatusEnum`,
+  `AddQuestionsRequestSchema`, `AssessmentQuestionSchema`.
+- Docs: `docs/api/assessments.md` full module contract (verified against
+  behavior in the 08-04 sweep).
+
+**Decisions:** varchar status (no pgEnum); `questionCount` computed at read
+time (never stored); `startsAt` must be future + `endsAt` after `startsAt`
+(Pitfall 6); DELETE is not state-guarded (204 any status) while PATCH and
+question-set mutations are DRAFT-only; duplicate links → 409 via unique-
+constraint mapping in a transaction (race-safe); re-publish → 400 (not no-op);
+complete accepts from ACTIVE only (no implicit ACTIVE); activate is manual (no
+cron — research A1), schedule advisory + read-time checked; per-question
+`marks` default 1, `maxMarks` teacher-managed (Pitfall 5 Option A — Phase 11
+validates).
+
+**Database changes:** `assessments` + `assessment_questions` tables with the
+`assessment_questions_unique` table constraint and cascade FKs (migration
+`0008_awesome_vermin.sql`, applied to `catlium_dev`).
+
+**Validation status:** all `docs/user-validation.md` Phase 8 items `[x]`
+(2026-09-05, live dockerized stack, `p8_e2e.sh` PASS=56 FAIL=0 — includes the
+full lifecycle, six illegal-transition cases, the PENDING-question publish
+gate, and a student-403 / institute-B-404 / mass-assignment / auth security
+sweep). `pnpm typecheck && pnpm lint` green.
+
+**Last Checkpoint:** Phase 8 close (2026-09-05, commit recorded in the 08-04
+SUMMARY).
+
+**Recommended next task:** Plan Phase 9 — Student Examination Attempts (a
+student takes a PUBLISHED/ACTIVE assessment within its schedule window; the
+locked question set + `marks` from Phase 8 are the input; response
+serialization must never expose correct answers).
+
+For the prior phases see the historical entries below.
+
+## Phase 7 — AI Question Generation & Review
 
 **Status: COMPLETE (E2E validated 2026-09-03).** Implementation and runtime E2E
 validation green for AI-driven question generation. A teacher requests questions

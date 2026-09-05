@@ -52,6 +52,43 @@ System priority order:
 - [x] Run pnpm typecheck + lint (9 tasks green) and Python ruff + mypy (clean)
 - [x] E2E harness `p7_e2e.sh` PASS=10 FAIL=0; update docs + create checkpoint
 
+## Phase 8 — Quiz & Examination Management
+
+### Goal: Quiz & Examination Management (E2E validated 2026-09-05) ✅
+
+- [x] EXAM-01 — Assessment CRUD: create (201, status DRAFT server-computed),
+      list (200 + computed questionCount), retrieve (200), PATCH (200,
+      DRAFT-only state guard, whitelist), DELETE (204, then GET 404)
+- [x] EXAM-02 — Add/remove questions on the assessment_questions join table:
+      POST :id/questions (201, institute-scoped per-id check, sortOrder 1-based,
+      marks 1, duplicate → 409), GET :id/questions (sorted, nested question +
+      marks), DELETE :id/questions/:qid (204)
+- [x] EXAM-03 — Configure durationMinutes + maxMarks + instructions echoed on
+      create and PATCH
+- [x] EXAM-04 — Scheduling: valid startsAt/endsAt window (201); endsAt before
+      startsAt → 400; past startsAt → 400 (Pitfall 6)
+- [x] EXAM-05 — Publish (201 PUBLISHED via validation gate) + complete (201
+      COMPLETED from ACTIVE via manual activate, no cron)
+- [x] EXAM-06 — Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED run in order
+      on one assessment, each status confirmed
+- [x] EXAM-07 — Backend enforces valid transitions via VALID_TRANSITIONS table:
+      DRAFT→ACTIVE, complete-from-DRAFT, ACTIVE→DRAFT (unpublish), any-on-
+      COMPLETED → 400 each
+- [x] EXAM-08 — APPROVED-only publish gate: PENDING question linked → 400
+      ("N question(s) are not APPROVED"); all APPROVED → 201 PUBLISHED
+- [x] Schema: `assessments` + `assessment_questions` tables, migration 0008
+      (unique link `assessment_questions_unique`, cascade FKs, varchar status)
+- [x] Contracts: Create/Update/Response/ListItem + AssessmentStatusEnum +
+      AddQuestionsRequestSchema + AssessmentQuestionSchema
+- [x] API: ExaminationsModule — 11 endpoints (CRUD + questions sub-resource +
+      publish/activate/complete/unpublish), tenant-scoped, role-gated
+- [x] Security sweep: mass-assignment 400s, cross-institute 404s, student 403s
+      with reads 200, random uuid 404, no cookie 401, non-member header 403,
+      uniform error shape
+- [x] Run pnpm typecheck + lint (all pass)
+- [x] E2E harness `p8_e2e.sh` PASS=56 FAIL=0 (2026-09-05); update docs +
+      create checkpoint
+
 ## Phase 6 — Question Bank
 
 ### Goal: Question Bank (E2E validated 2026-09-02) ✅

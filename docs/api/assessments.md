@@ -179,9 +179,10 @@ Content`. Institute-scoped: a foreign-institute or nonexistent id returns `404`.
 GET /assessments/:assessmentId/questions
 ```
 
-Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02.) Returns the linked
-questions with their per-assessment `marks` and `sortOrder`. `404` if the
-assessment is not in the active institute.
+Reads are available to any member of the active institute (no role
+restriction). Returns the linked questions with their per-assessment `marks`
+and `sortOrder`, ordered ascending by `sortOrder`. `404` if the assessment is
+not in the active institute.
 
 ## Add questions to assessment
 
@@ -189,10 +190,13 @@ assessment is not in the active institute.
 POST /assessments/:assessmentId/questions
 ```
 
-Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02.) Adds question ids
-to the assessment; each referenced question is validated to exist in the active
-institute. Duplicate links are rejected by the `assessment_questions_unique`
-constraint. `404` for a foreign-institute assessment or question.
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02.) Returns `201` with
+the added link rows (`{ added: [...] }`, `sortOrder` 1-based, `marks` default
+1). Each referenced question is validated to exist in the active institute; a
+foreign-institute **questionId** returns `400` (`Question ... not found or not
+in this institute`) and a foreign-institute **assessmentId** returns `404`.
+Duplicate links are rejected by the `assessment_questions_unique` constraint
+with `409`.
 
 ## Remove question from assessment
 
@@ -210,10 +214,13 @@ POST /assessments/:assessmentId/publish
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-03.) Transitions
-`DRAFT → PUBLISHED`. Publish validation gate: the assessment must be non-empty
-(at least one linked question), every linked question must be `APPROVED`
-(EXAM-08 — only approved questions may appear in a PUBLISHED assessment),
+`DRAFT → PUBLISHED` and returns `201` with the updated assessment. Publish
+validation gate: the assessment must be non-empty (at least one linked
+question), every linked question must be `APPROVED`
+(EXAM-08 — only approved questions may appear in a PUBLISHED assessment;
+approval status is re-checked at publish time, not link time),
 `durationMinutes` and `maxMarks` must be set, and the schedule must be valid.
+Any gate failure and any non-DRAFT source state return `400`.
 `PUBLISHED` may be unpublished back to `DRAFT`; `ACTIVE → DRAFT` is not allowed.
 
 ## Activate assessment
@@ -223,9 +230,10 @@ POST /assessments/:assessmentId/activate
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-03.) Transitions
-`PUBLISHED → ACTIVE`. Manual activation — there is no cron/auto-activation in
-the MVP; the schedule stays advisory and is checked on reads (Phase 9 student
-attempts). Any other source state returns `400`.
+`PUBLISHED → ACTIVE` and returns `201` with the updated assessment. Manual
+activation — there is no cron/auto-activation in the MVP; the schedule stays
+advisory and is checked on reads (Phase 9 student attempts). Any other source
+state returns `400`.
 
 ## Unpublish assessment
 
@@ -234,8 +242,8 @@ POST /assessments/:assessmentId/unpublish
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-03.) Transitions
-`PUBLISHED → DRAFT` so a teacher can fix mistakes; the question set and
-config become editable again, and the assessment can be re-published.
+`PUBLISHED → DRAFT` (returns `201`) so a teacher can fix mistakes; the question
+set and config become editable again, and the assessment can be re-published.
 `ACTIVE → DRAFT` and any other source state return `400` (students may be
 attempting once ACTIVE).
 
@@ -246,8 +254,12 @@ POST /assessments/:assessmentId/complete
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-03.) Transitions the
-assessment to `COMPLETED` (end of lifecycle). Requires the assessment to be
-`ACTIVE` (or applies the state-machine rules defined in 08-03).
+assessment to `COMPLETED` (end of lifecycle, terminal) and returns `201` with
+the updated assessment. The source state must be `ACTIVE` — complete from
+`DRAFT` or `PUBLISHED` returns `400` (`Cannot transition assessment from X to
+COMPLETED`); there is no implicit intermediate ACTIVE step (ACTIVE is reached
+only via the manual `/activate` endpoint). Once `COMPLETED`, no further
+transition is possible.
 
 ## Negative rules
 
