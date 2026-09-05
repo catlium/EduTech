@@ -185,5 +185,5 @@ Verified before metadata commit:
 ## Self-Check: PASSED (append)
 
 Verified after metadata commits:
-- FOUND: commit `<METADATA_HASH>` (STATE/ROADMAP/REQUIREMENTS update) — replace placeholder after commit
-- FOUND: STATE.md progress advanced (completed_plans 7, percent 87), ROADMAP 08-03 marked ✓, REQUIREMENTS EXAM-05/06/07/08 checked
+- FOUND: commit `8742a77` (STATE/ROADMAP/REQUIREMENTS update)
+- FOUND: STATE.md progress advanced (completed_plans 7, percent 87), ROADMAP 08-03 marked ✓, REQUIREMENTS EXAM-01..08 complete (EXAM-05..08 via 08-03)
