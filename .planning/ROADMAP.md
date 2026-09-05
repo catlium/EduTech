@@ -78,7 +78,7 @@ Completion summary (verified against codebase):
 
 **Goal:** Assessment CRUD, add/remove questions, duration, max marks, instructions, scheduling, publish/complete; lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED; valid state transitions; only approved questions in official assessments.
 **Success Criteria:** Assessment management works with enforced state transitions.
-**Status:** IN PROGRESS (4 plans: 08-01 ✓ complete — assessments schema, migration 0008, contracts, create/get/list slice; 08-02 ✓ complete — DRAFT-guarded PATCH update, DELETE 204, question linking (add/remove/list with marks + sortOrder, cross-tenant + duplicate blocked); 08-03 state machine/publish gate, 08-04 E2E close — pending). Reqs: EXAM-01..08.
+**Status:** IN PROGRESS (4 plans: 08-01 ✓ complete — assessments schema, migration 0008, contracts, create/get/list slice; 08-02 ✓ complete — DRAFT-guarded PATCH update, DELETE 204, question linking (add/remove/list with marks + sortOrder, cross-tenant + duplicate blocked); 08-03 ✓ complete — state machine VALID_TRANSITIONS + publish/activate/complete/unpublish endpoints, EXAM-08 publish gate; 08-04 E2E close — pending). Reqs: EXAM-01..08 ✓ complete (via 08-01/08-02/08-03).
 
 ## Phase 9 — Student Examination Attempts ○
 
