@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 current_phase: 8
 current_phase_name: quiz-examination-management
-status: executing
-stopped_at: Plan 08-03 complete — state machine (VALID_TRANSITIONS + publish/activate/complete/unpublish endpoints) E2E verified; next up 08-04 (E2E close)
-last_updated: "2026-09-05T05:17:00.000Z"
-state_head: 552b6d06d789926badaef18ba2d2354e20217e55
+status: completed
+stopped_at: Phase 8 complete — all four plans (08-01..08-04) E2E validated (p8_e2e.sh PASS=56 FAIL=0, 2026-09-05); next up: plan Phase 9 (student examination attempts)
+last_updated: "2026-09-05T05:33:00.000Z"
+state_head: 86f26899768dc69bfa8eadd00eaf31c486d821fd
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 8
-  completed_plans: 7
-  percent: 87
+  completed_plans: 8
+  percent: 100
 ---
 
 # STATE.md
@@ -25,14 +25,14 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Project State
 
-**Sequence:** Phase 8 (in progress, plans 08-01 + 08-02 + 08-03 complete), backend-first full-stack monorepo
+**Sequence:** Phase 8 (complete — E2E validated 2026-09-05), backend-first full-stack monorepo
 **Phase:** 8 — Quiz & Examination Management
-**Status:** Executing — Plans 08-01 + 08-02 + 08-03 done (E2E verified live 2026-09-05 against the dockerized stack; see `docs/user-validation.md`). Phases 9–17 not started. Frontend Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
+**Status:** COMPLETE — all four plans (08-01..08-04) done; every Phase 8 item in `docs/user-validation.md` `[x]` (EXAM-01..08 + security block, `p8_e2e.sh` PASS=56 FAIL=0 against the dockerized stack). Phases 9–17 not started. Frontend Phases 18–25 gated behind the Phase 17 backend-complete checkpoint.
 
 ## Phase State
 
 **Current:** Phase 8 — Quiz & Examination Management
-**Status:** IN PROGRESS. Plans 08-01 + 08-02 implemented and verified:
+**Status:** COMPLETE. All four plans implemented, committed and E2E-verified:
 
 - `assessments` + `assessment_questions` Drizzle tables, generated migration 0008 (`0008_awesome_vermin.sql`) applied to catlium_dev (unique link `assessment_questions_unique`, cascade FKs, varchar status)
 - Zod Assessment contracts (Create/Update/Response/ListItem, `AssessmentStatusEnum`, `AddQuestionsRequestSchema`, `AssessmentQuestionSchema`) in `@catlium/contracts`
@@ -86,10 +86,17 @@ See: .planning/PROJECT.md (updated 2026-09-01)
   T3 security sweep student-403 ×4 / institute-B-404 ×4 / random-uuid-404 ×4 /
   error-shape; commits `f204d41`, `9a33f50`, `552b6d0`).
   Reqs EXAM-05..08 now closed (publish + complete + lifecycle + enforced transitions + approved-only gate).
+- Phase 8 plan 08-04 — E2E close (COMPLETE, this plan): `docs/user-validation.md` Phase 8 section with
+  fixtures block, `### EXAM-01..08` subsections + security/negative block, all `[x]`
+  (run 2026-09-05, `p8_e2e.sh` PASS=56 FAIL=0 — incl. lifecycle, six illegal transitions,
+  EXAM-08 publish gate, student-403 / institute-B-404 / mass-assignment / auth sweep);
+  `docs/tasks.md` Phase 8 block (13 `[x]` items); `docs/project-status.md` Phase 8 COMPLETE
+  entry (AGENTS.md Rule 3); `docs/api/assessments.md` CON-02 sweep (4 precision fixes —
+  201 return codes, add-questions 400/404 scope, open reads on list-questions, precise
+  complete rule). Zero implementation defects — docs only. Commits `f5028f2`, `86f2689`.
 
 **In progress / not started:**
 
-- Phase 8 plan 08-04 (E2E close): pending
 - Phases 9–17 (attempts, evaluation, results, analytics, practice, cross-module security, contract verification, testing, backend-complete checkpoint): not started
 - Phases 18–25 (frontend + integration + polish): gated behind Phase 17
 
@@ -104,7 +111,7 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 | 5 | AI Learning Content Generation | ✓ completed (E2E validated 2026-09-02) |
 | 6 | Question Bank | ✓ completed (E2E validated 2026-09-02) |
 | 7 | AI Question Generation & Review | ✓ completed (E2E validated 2026-09-03) |
-| 8 | Quiz & Examination Management | ◆ in progress |
+| 8 | Quiz & Examination Management | ✓ completed (E2E validated 2026-09-05) |
 | 9 | Student Examination Attempts | ○ pending |
 | 10 | Automatic Evaluation | ○ pending |
 | 11 | Results | ○ pending |
@@ -118,9 +125,9 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Current Task
 
-**Phase 8 — Quiz & Examination Management (IN PROGRESS):**
+**Phase 8 — Quiz & Examination Management (COMPLETE):**
 
-Plans 08-01 (`ff32bc0`, `95788e6`), 08-02 (`5725a33`, `10f840b`, `5dd52d4`) and 08-03 (`f204d41`, `9a33f50`, `552b6d0`) executed and committed with SUMMARIES:
+Plans 08-01 (`ff32bc0`, `95788e6`), 08-02 (`5725a33`, `10f840b`, `5dd52d4`), 08-03 (`f204d41`, `9a33f50`, `552b6d0`) and 08-04 (`f5028f2`, `86f2689`) executed, committed and E2E-validated:
 
 - **08-01:** assessments + assessment_questions schema, migration 0008, Zod
   Assessment contracts, ExaminationsModule create/get/list slice, docs/api/assessments.md.
@@ -137,16 +144,21 @@ Plans 08-01 (`ff32bc0`, `95788e6`), 08-02 (`5725a33`, `10f840b`, `5dd52d4`) and 
   unpublish (PUBLISHED→DRAFT round-trip; ACTIVE→DRAFT blocked), non-DRAFT
   question-set lock. E2E: full lifecycle + unpublish round-trip reachable;
   student 403 ×4, institute-B 404 ×4, random-uuid 404 ×4, error shape uniform.
+- **08-04 (E2E close):** full Phase 8 checklist in docs/user-validation.md
+  (EXAM-01..08 + security, all `[x]`, `p8_e2e.sh` PASS=56 FAIL=0 — 201 statuses
+  recorded for transition endpoints), tasks.md Phase 8 block, project-status.md
+  Phase 8 COMPLETE entry, docs/api/assessments.md CON-02 sweep (4 fixes).
 
-**Next action:** Execute Plan 08-04 — phase E2E close (consolidated full-stack
-verification of the complete assessment lifecycle incl. schedule-check-on-read and
-docs/user-validation.md updates).
+**Next action:** Plan Phase 9 — Student Examination Attempts (student takes a
+PUBLISHED/ACTIVE assessment within its schedule window; locked question set +
+per-link `marks` from Phase 8 are the input; responses must never expose correct
+answers).
 
 ## Session Continuity
 
 Last session: 2026-09-05
-Stopped at: Plan 08-03 complete — state machine + publish gate verified; proceed to 08-04 (E2E close)
-Resume file: .planning/phases/08-quiz-examination-management/08-03-SUMMARY.md
+Stopped at: Phase 8 complete — E2E validated; next: plan Phase 9 (student examination attempts)
+Resume file: .planning/phases/08-quiz-examination-management/08-04-SUMMARY.md
 
 ## Verification
 
@@ -157,6 +169,7 @@ Resume file: .planning/phases/08-quiz-examination-management/08-03-SUMMARY.md
 - Phase 8 plan 08-01 E2E: passed 2026-09-05 (10-case curl sweep: 201 DRAFT, 200/200/404 reads, anti-IDOR 404, mass-assignment 400s, schedule 400s)
 - Phase 8 plan 08-02 E2E: passed 2026-09-05 (Task 1: 7-test PATCH/DELETE sweep incl. state-guard + schedule + whitelist + anti-IDOR; Task 2: 6-test question-linking sweep incl. cross-tenant 400 + duplicate 409 + sorted list; Task 3: security sweep student-403s / institute-B-404s / error-shape)
 - Phase 8 plan 08-03 E2E: passed 2026-09-05 (Task 1: publish gate — empty 400, valid 200 PUBLISHED, PENDING-linked 400 with count, no-duration/no-maxMarks/bad-schedule 400s, re-publish 400, PATCH/add/remove on PUBLISHED 400; Task 2: full lifecycle DRAFT→PUBLISHED→ACTIVE→COMPLETED + complete-on-COMPLETED 400 + activate-from-DRAFT 400 + unpublish round-trip + unpublish-from-ACTIVE 400; Task 3: security sweep student 403 ×4 / reads 200 ×3, institute-B 404 ×4, random-uuid 404 ×4, error-shape uniform)
+- Phase 8 plan 08-04 E2E: passed 2026-09-05 (`p8_e2e.sh` PASS=56 FAIL=0 — EXAM-01 CRUD 201/200/204/404, EXAM-02 linking 201/409/204, EXAM-03 config echo, EXAM-04 schedule 400s, EXAM-05 publish/complete 201, EXAM-06 full lifecycle, EXAM-07 six illegal transitions, EXAM-08 PENDING-gate 400 + all-APPROVED 201, security block 17 cases; corrected harness double-exec bug — final sweep clean)
 - Known: zero test coverage across the codebase
 
 ## Decisions
@@ -169,13 +182,15 @@ Resume file: .planning/phases/08-quiz-examination-management/08-03-SUMMARY.md
 - Assessments (08-01): varchar status (no pgEnum); questionCount computed at read time (second grouped query — no stored column); startsAt in the past rejected with 400 (Pitfall 6); `assessment_questions_unique` as a UNIQUE table constraint; dto/assessment-query.dto.ts placeholder for 08-02 filters
 - Assessments (08-02): DELETE is NOT state-guarded (204 for any status — only PATCH is DRAFT-locked); duplicate question links → 409 via unique-constraint mapping inside a transaction (race-safe, no pre-query); DTO null semantics contract-exact — `@ValidateIf(v => v !== undefined)` rejects explicit null on non-nullable fields while startsAt/endsAt accept null to clear the schedule; listQuestions JOIN double-scopes (assessment ownership + questions.instituteId) as defense in depth
 - Assessments (08-03): re-publish → 400 (rejected, not no-op re-check — plan truth); complete accepts from ACTIVE only — no implicit ACTIVE step; activate is manual (no cron — research A1), schedule advisory + read-time checked; publish gate re-checks CURRENT approvalStatus via listQuestions internals (Pitfall 1); a single shared private setStatus helper drives all four transitions (get → assertValidTransition → institute-scoped UPDATE RETURNING)
+- Assessments (08-04, phase close): close date = real E2E date (2026-09-05), not the plan's 2026-09-04 planning timestamp; transition/add endpoints return 201 (NestJS POST default) — recorded as truth and fixed in docs/api/assessments.md rather than reconciled to the 08-03-era "200" recordings; tasks.md keeps its newest-first layout (the awk-to-EOF gate counts legacy Phase 2/1 markers after the mid-file block — the Phase 8 block itself has 0 unchecked items, fails_when holds); zero implementation defects surfaced across the 56-check sweep — docs-only close
 
 ## Blocked
 
-- Phase 8 continues: nothing blocks 08-04 execution. Frontend phases remain gated by design until the Phase 17 backend-complete checkpoint.
+- None. Phase 8 is complete and closed; nothing blocks Phase 9 planning. Frontend phases remain gated by design until the Phase 17 backend-complete checkpoint.
 
 ## Performance Metrics
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 8 P3 | 12 | 3 tasks | 3 files |
+| Phase 8 P4 | 12 | 3 tasks | 4 files |
