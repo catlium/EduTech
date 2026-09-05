@@ -525,8 +525,8 @@ AIGQ-01).
 Status: `[x]` All tests passed 2026-09-05 against the dockerized stack
 (postgres/rabbitmq/api; API `catlium-api` healthy, `GET /api/v1/health` →
 `200 {status:"ok"}`). Checks map to requirements EXAM-01..08 plus the
-security/negative block. Full sweep: `p8_e2e.sh` **PASS=56 FAIL=0** (52 main
-run + 4 corrected EXAM-08 gate cases).
+security/negative block. Full sweep: `p8_e2e.sh` **PASS=60 FAIL=0** (52 main
+run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05).
 
 ### Fixtures (created/promoted during this run, `catlium_dev`)
 
@@ -669,6 +669,17 @@ run + 4 corrected EXAM-08 gate cases).
   CURRENT status at publish); publish of a DRAFT holding only APPROVED
   questions → `201` `status: "PUBLISHED"`. Result `[x]` 2026-09-05 (both cases
   on separate assessments).
+- **ARCHIVED gate sub-cases (WR-03, added 08-05):** a question that was
+  APPROVED then ARCHIVED must be excluded from official assessments the same
+  way a PENDING one is:
+  - addQuestions with an ARCHIVED question → `400` body naming the question id
+    with `Question <id> is not ACTIVE` (link time).
+  - ARCHIVED+APPROVED question linked BEFORE archiving, then publish → `400`
+    with `1 question(s) are not APPROVED or not ACTIVE` (publish time re-check
+    of CURRENT `status` column, not just `approvalStatus`).
+  - Reactivating the question (`POST /questions/:id/activate`) restores
+    publishability → publish → `201` `status: "PUBLISHED"`.
+  - Result `[x]` 2026-09-05 (all three sub-cases passed; PASS=60 FAIL=0).
 
 ### Security / negative block — [x]
 
