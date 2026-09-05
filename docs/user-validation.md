@@ -520,6 +520,197 @@ AIGQ-01).
 
 ---
 
+## Phase 8 — Quiz & Examination Management (E2E)
+
+Status: `[x]` All tests passed 2026-09-05 against the dockerized stack
+(postgres/rabbitmq/api; API `catlium-api` healthy, `GET /api/v1/health` →
+`200 {status:"ok"}`). Checks map to requirements EXAM-01..08 plus the
+security/negative block. Full sweep: `p8_e2e.sh` **PASS=56 FAIL=0** (52 main
+run + 4 corrected EXAM-08 gate cases).
+
+### Fixtures (created/promoted during this run, `catlium_dev`)
+
+- Institute A `11111111-1111-1111-1111-111111111111`, Institute B
+  `55555555-5555-5555-5555-555555555555`.
+- Teacher A `p8.teacher@catlium.dev` (id `3c77502e-eab4-4d74-8901-d67b9af37cc4`),
+  membership `88888888-8888-8888-8888-888888888888` role `INSTITUTE_ADMIN`
+  status `active` (lowercase).
+- Teacher B `p8.other@catlium.dev` (id `1f494ad6-7788-4095-bf5a-d72bdc81af4e`),
+  membership `99999999-9999-9999-9999-999999999999` role `TEACHER` (institute B).
+- Student `p8student1788584106@test.com` (id
+  `5a200bb9-886c-4ef2-b10a-bae964ea1379`), membership
+  `6421b5f4-4e99-474c-86eb-ba4b7c600690` role `STUDENT` (institute A).
+- Academic scope (institute A): subject `math`
+  `324428a6-8d42-4926-9540-9b8a83943a24` (from `SELECT id FROM subjects WHERE
+  slug='math'`); topic `Linear Equations`
+  `10df37f8-acd5-4406-9a36-eb631c4c54f3` (AI_GENERATED question scope).
+- Fresh questions via `POST /api/v1/questions`: two APPROVED `MANUAL` MCQs and
+  one PENDING `AI_GENERATED` TRUE_FALSE (server-computed approval — MANUAL →
+  APPROVED, AI_GENERATED → PENDING).
+- Password reset to a known bcrypt `Password123!` for all three fixture users
+  (prior-session recovery pattern; throwaway accounts only — no real
+  credentials recorded).
+- **Casing requirement:** membership `status` must be lowercase `'active'`
+  (Phase 6 Pitfall); `'ACTIVE'` yields 403 from `TenantGuard`.
+- Payload field names are used VERBATIM from the Create/UpdateAssessmentDto
+  Zod contract: `title`, `description`, `durationMinutes`, `maxMarks`,
+  `instructions`, `startsAt`, `endsAt`, `status` — never invented names. Base
+  URL `http://localhost:3000/api/v1`; writes use teacher-A cookie + header
+  `x-institute-id: 11111111-...`.
+
+### EXAM-01 — Assessment CRUD (create, list, retrieve, update, delete) — [x]
+
+- **Setup required:** live stack up; teacher-A cookie; institute-A header.
+- **Endpoint:** `POST /api/v1/assessments` (create); `GET /api/v1/assessments`
+  (list); `GET /api/v1/assessments/:assessmentId` (retrieve);
+  `PATCH /api/v1/assessments/:assessmentId` (update);
+  `DELETE /api/v1/assessments/:assessmentId` (delete).
+- **Payload (create):**
+  ```json
+  {
+    "title": "EXAM-01 crud",
+    "description": "d",
+    "durationMinutes": 60,
+    "maxMarks": 100,
+    "instructions": { "text": "Read carefully" },
+    "startsAt": "2030-01-01T09:00:00.000Z",
+    "endsAt": "2030-01-01T11:00:00.000Z"
+  }
+  ```
+- **Expected output:** create → `201` with `status: "DRAFT"` (server-computed);
+  list → `200` array with computed `questionCount` on each row; retrieve →
+  `200`; PATCH `{"title":"..."}` → `200`; DELETE → `204` empty body, then GET →
+  `404`. Result `[x]` 2026-09-05 (all five sub-steps passed).
+
+### EXAM-02 — Add/remove questions (assessment_questions join) — [x]
+
+- **Setup required:** live stack up; teacher-A cookie; a DRAFT assessment + two
+  APPROVED institute-A questions.
+- **Endpoint:** `POST /api/v1/assessments/:assessmentId/questions`;
+  `GET /api/v1/assessments/:assessmentId/questions`;
+  `DELETE /api/v1/assessments/:assessmentId/questions/:questionId`.
+- **Payload:** `{ "questionIds": ["<approved-uuid-1>", "<approved-uuid-2>"] }`.
+- **Expected output:** POST adds both links → `201` `{ added: [...] }` with
+  `sortOrder` 1/2 and `marks` 1 per row; GET → `200` list ordered by sortOrder
+  with nested question data + marks; DELETE → `204`, subsequent GET shows only
+  the remaining link; duplicate link (re-POST an existing questionId) → `409`.
+  Result `[x]` 2026-09-05.
+
+### EXAM-03 — Configure duration + max marks + instructions — [x]
+
+- **Setup required:** live stack up; teacher-A cookie.
+- **Endpoint:** `POST /api/v1/assessments`; `PATCH /api/v1/assessments/:id`.
+- **Payload:** create `{ "durationMinutes": 60, "maxMarks": 100,
+  "instructions": { "text": "Read carefully" } }`; PATCH `{
+  "durationMinutes": 90, "maxMarks": 150, "instructions": { "text": "Updated" }
+  }`.
+- **Expected output:** the 201 create response echoes `durationMinutes: 60`,
+  `maxMarks: 100` and the `instructions` object; PATCH → `200` echoing the new
+  values (90 / 150 / `{"text":"Updated"}`). Result `[x]` 2026-09-05.
+
+### EXAM-04 — Scheduling (startsAt/endsAt) — [x]
+
+- **Setup required:** live stack up; teacher-A cookie.
+- **Endpoint:** `POST /api/v1/assessments`.
+- **Payload:** valid `{ "startsAt": "2030-01-01T09:00:00.000Z", "endsAt":
+  "2030-01-01T11:00:00.000Z" }`; invalid endsAt-before-startsAt (`endsAt`
+  2030-01-01T09:00, `startsAt` 2030-01-01T11:00); past `startsAt`
+  (2020-01-01T09:00 with a future endsAt).
+- **Expected output:** valid window → `201`; endsAt before startsAt → `400`;
+  past startsAt → `400` (Pitfall 6). Result `[x]` 2026-09-05.
+
+### EXAM-05 — Publish + complete — [x]
+
+- **Setup required:** live stack up; teacher-A cookie; DRAFT with 1 APPROVED
+  question + durationMinutes 60 + maxMarks 100 + future schedule.
+- **Endpoint:** `POST /api/v1/assessments/:assessmentId/publish`;
+  `POST /api/v1/assessments/:assessmentId/activate`;
+  `POST /api/v1/assessments/:assessmentId/complete`.
+- **Payload:** none (body empty).
+- **Expected output:** publish → `201` `status: "PUBLISHED"`; activate →
+  `201` `status: "ACTIVE"`; complete → `201` `status: "COMPLETED"`. (Note:
+  these POST transition endpoints return the NestJS POST default `201`, not
+  `200` — see the Task 2 discrepancy log.) Result `[x]` 2026-09-05.
+
+### EXAM-06 — Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED — [x]
+
+- **Setup required:** live stack up; teacher-A cookie; DRAFT with 1 APPROVED
+  question + 60 min + 100 marks + future schedule.
+- **Endpoint:** `POST /assessments/:id/publish`, then `/activate`, then
+  `/complete` — strictly in order on the SAME assessment.
+- **Payload:** none.
+- **Expected output:** each step's response shows the exact next status and the
+  assessment stays reachable: step 1 → `PUBLISHED`, step 2 → `ACTIVE`, step 3 →
+  `COMPLETED` (full path DRAFT→PUBLISHED→ACTIVE→COMPLETED proven on one
+  assessment). Result `[x]` 2026-09-05.
+
+### EXAM-07 — Backend enforces valid state transitions — [x]
+
+- **Setup required:** live stack up; teacher-A cookie; one fresh DRAFT, one
+  ACTIVE, one COMPLETED assessment.
+- **Endpoint:** `POST /assessments/:id/activate|complete|unpublish|publish`
+  with illegal sources.
+- **Payload:** none.
+- **Expected output:** DRAFT→ACTIVE → `400`; complete-from-DRAFT → `400`;
+  ACTIVE→DRAFT (unpublish from an ACTIVE assessment) → `400`; any transition on
+  a COMPLETED assessment (publish/activate/complete) → `400` each. Every `400`
+  body names the attempted transition (`Cannot transition assessment from X to
+  Y`). Result `[x]` 2026-09-05 (six illegal cases).
+
+### EXAM-08 — Only APPROVED questions usable in official assessments — [x]
+
+- **Setup required:** live stack up; teacher-A cookie; a PENDING
+  `AI_GENERATED` question and an APPROVED `MANUAL` question.
+- **Endpoint:** `POST /assessments/:id/questions`; `POST /assessments/:id/publish`.
+- **Payload:** `{ "questionIds": ["<pending-uuid>"] }` for the negative case;
+  `{ "questionIds": ["<approved-uuid>"] }` for the positive case.
+- **Expected output:** publish of a DRAFT holding a PENDING question → `400`
+  with `1 question(s) are not APPROVED` (Pitfall 1 — approve-gate re-checks
+  CURRENT status at publish); publish of a DRAFT holding only APPROVED
+  questions → `201` `status: "PUBLISHED"`. Result `[x]` 2026-09-05 (both cases
+  on separate assessments).
+
+### Security / negative block — [x]
+
+- **Setup required:** live stack up; teacher-A, teacher-B (institute B) and
+  student cookies.
+- **Endpoint:** multiple (below).
+- **Payload:** none unless noted.
+- **Expected output:**
+  - Request body containing `status` or `instituteId` on create → `400`
+    (mass-assignment rejected; whitelist).
+  - Institute-B member on an institute-A assessment id (GET/PATCH/DELETE/
+    publish/complete/add-questions) → `404` every time (no existence oracle).
+  - Student on institute-A assessment: create/add-questions/delete/publish/
+    complete → `403`; reads (list, get, list-questions) → `200`.
+  - Random uuid GET/PATCH/publish → `404`; no cookie → `401`; non-member
+    `x-institute-id` header → `403` (TenantGuard, NOT `404`).
+  - Every non-2xx response body matches the global shape
+    `{"statusCode", "message", "error"}`.
+  - Result `[x]` 2026-09-05 (17 security/negative cases passed).
+
+### Discrepancies logged for Task 2 (CON-02 sweep of docs/api/assessments.md)
+
+1. **Plan-checklist vs behavior — transition/add status codes are `201`, not
+   `200`:** live verification shows publish/activate/complete/unpublish and
+   add-questions all return `201` (NestJS POST default; no `@HttpCode`
+   override). The 08-03-era sweeps recorded "200"; the doc does not state a
+   code for these endpoints — Task 2 should state `201` explicitly.
+2. **docs/api/assessments.md "Add questions" scope error:** the doc says `404`
+   for "a foreign-institute assessment **or question**"; actual behavior is
+   foreign-institute **questionId** → `400` (`Question ... not found or not in
+   this institute`, Pitfall 3) while foreign-institute **assessmentId** → `404`.
+3. **docs/api/assessments.md "List assessment questions" roles error:** the doc
+   lists roles `INSTITUTE_ADMIN`, `TEACHER`, but the route has no
+   `@RequiredRoles` — student GET `:id/questions` → `200` (reads open to all
+   institute members).
+4. **docs/api/assessments.md "Complete assessment" is vague:** "(or applies the
+   state-machine rules defined in 08-03)" should be the precise rule: source
+   must be `ACTIVE`; any other source → `400 Cannot transition assessment from
+   X to COMPLETED`.
+
+---
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete
