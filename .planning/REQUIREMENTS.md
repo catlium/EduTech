@@ -82,10 +82,10 @@
 - [x] **EXAM-02**: Add/remove questions
 - [x] **EXAM-03**: Configure duration + maximum marks + instructions
 - [x] **EXAM-04**: Scheduling
-- [ ] **EXAM-05**: Publish + complete
-- [ ] **EXAM-06**: Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED
-- [ ] **EXAM-07**: Backend enforces valid state transitions
-- [ ] **EXAM-08**: Only APPROVED questions usable in official assessments
+- [x] **EXAM-05**: Publish + complete
+- [x] **EXAM-06**: Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED
+- [x] **EXAM-07**: Backend enforces valid state transitions
+- [x] **EXAM-08**: Only APPROVED questions usable in official assessments
 
 ### Phase 9 — Student Examination Attempts (NOT STARTED)
 
@@ -232,7 +232,7 @@
 | AI-05..09 | 5 | ✓ complete (E2E validation pending infrastructure) |
 | QBN-01..07 | 6 | [ ] not started |
 | AIGQ-01..08 | 7 | [ ] not started |
-| EXAM-01..08 | 8 | ◆ in progress (EXAM-01..04 ✓ via 08-01/08-02; EXAM-05..08 pending 08-03) |
+| EXAM-01..08 | 8 | ✓ complete (EXAM-01..04 via 08-01/08-02; EXAM-05..08 via 08-03) |
 | ATMPT-01..08 | 9 | [ ] not started |
 | EVAL-01..04 | 10 | [ ] not started |
 | RES-01..06 | 11 | [ ] not started |
