@@ -216,6 +216,29 @@ Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-03.) Transitions
 `durationMinutes` and `maxMarks` must be set, and the schedule must be valid.
 `PUBLISHED` may be unpublished back to `DRAFT`; `ACTIVE → DRAFT` is not allowed.
 
+## Activate assessment
+
+```
+POST /assessments/:assessmentId/activate
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-03.) Transitions
+`PUBLISHED → ACTIVE`. Manual activation — there is no cron/auto-activation in
+the MVP; the schedule stays advisory and is checked on reads (Phase 9 student
+attempts). Any other source state returns `400`.
+
+## Unpublish assessment
+
+```
+POST /assessments/:assessmentId/unpublish
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-03.) Transitions
+`PUBLISHED → DRAFT` so a teacher can fix mistakes; the question set and
+config become editable again, and the assessment can be re-published.
+`ACTIVE → DRAFT` and any other source state return `400` (students may be
+attempting once ACTIVE).
+
 ## Complete assessment
 
 ```
