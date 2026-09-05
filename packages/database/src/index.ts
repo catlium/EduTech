@@ -23,3 +23,4 @@ export { subjects, chapters, topics } from './schema/academic.js';
 export { contentItems, contentVersions } from './schema/content.js';
 export { materials } from './schema/materials.js';
 export { questions } from './schema/questions.js';
+export { assessments, assessmentQuestions } from './schema/examinations.js';

@@ -608,3 +608,58 @@ export const BatchQuestionActionRequestSchema = z.object({
   questionIds: z.array(z.string().uuid()).min(1),
 });
 export type BatchQuestionActionRequest = z.infer<typeof BatchQuestionActionRequestSchema>;
+
+// ── Assessment Contracts ────────────────────
+
+export const AssessmentStatusEnum = z.enum(['DRAFT', 'PUBLISHED', 'ACTIVE', 'COMPLETED']);
+export type AssessmentStatus = z.infer<typeof AssessmentStatusEnum>;
+
+export const CreateAssessmentRequestSchema = z
+  .object({
+    title: z.string().min(1).max(255),
+    description: z.string().max(5000).optional(),
+    durationMinutes: z.number().int().min(1).max(600).optional(),
+    maxMarks: z.number().int().min(1).max(10000).optional(),
+    instructions: z.record(z.string(), z.unknown()).optional(),
+    startsAt: z.string().datetime().optional(),
+    endsAt: z.string().datetime().optional(),
+  })
+  .refine((v) => v.startsAt === undefined || v.endsAt === undefined || new Date(v.startsAt) < new Date(v.endsAt), {
+    message: 'Schedule start must be before end',
+    path: ['schedule'],
+  });
+export type CreateAssessmentRequest = z.infer<typeof CreateAssessmentRequestSchema>;
+
+export const UpdateAssessmentRequestSchema = z.object({
+  title: z.string().min(1).max(255).optional(),
+  description: z.string().max(5000).nullable().optional(),
+  durationMinutes: z.number().int().min(1).max(600).nullable().optional(),
+  maxMarks: z.number().int().min(1).max(10000).nullable().optional(),
+  instructions: z.record(z.string(), z.unknown()).nullable().optional(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
+});
+export type UpdateAssessmentRequest = z.infer<typeof UpdateAssessmentRequestSchema>;
+
+export const AssessmentResponseSchema = z.object({
+  id: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  title: z.string(),
+  description: z.string().nullable(),
+  durationMinutes: z.number().int().nullable(),
+  maxMarks: z.number().int().nullable(),
+  instructions: z.record(z.string(), z.unknown()).nullable(),
+  startsAt: z.string().datetime().nullable(),
+  endsAt: z.string().datetime().nullable(),
+  status: AssessmentStatusEnum,
+  createdBy: z.string().uuid(),
+  updatedBy: z.string().uuid().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type AssessmentResponse = z.infer<typeof AssessmentResponseSchema>;
+
+export const AssessmentListItemSchema = AssessmentResponseSchema.extend({
+  questionCount: z.number(),
+});
+export type AssessmentListItem = z.infer<typeof AssessmentListItemSchema>;

@@ -57,6 +57,13 @@
       "when": 1788324984993,
       "tag": "0007_brave_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788581614675,
+      "tag": "0008_awesome_vermin",
+      "breakpoints": true
     }
   ]
 }
