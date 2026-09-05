@@ -76,10 +76,10 @@
 - [ ] **AIGQ-07**: Batch approval/rejection where defined
 - [ ] **AIGQ-08**: AI-generated questions NEVER automatically become official exam questions
 
-### Phase 8 — Quiz & Examination Management (NOT STARTED)
+### Phase 8 — Quiz & Examination Management (IN PROGRESS)
 
 - [x] **EXAM-01**: Create/retrieve/update/delete assessment
-- [ ] **EXAM-02**: Add/remove questions
+- [x] **EXAM-02**: Add/remove questions
 - [x] **EXAM-03**: Configure duration + maximum marks + instructions
 - [x] **EXAM-04**: Scheduling
 - [ ] **EXAM-05**: Publish + complete
@@ -232,7 +232,7 @@
 | AI-05..09 | 5 | ✓ complete (E2E validation pending infrastructure) |
 | QBN-01..07 | 6 | [ ] not started |
 | AIGQ-01..08 | 7 | [ ] not started |
-| EXAM-01..08 | 8 | [ ] not started |
+| EXAM-01..08 | 8 | ◆ in progress (EXAM-01..04 ✓ via 08-01/08-02; EXAM-05..08 pending 08-03) |
 | ATMPT-01..08 | 9 | [ ] not started |
 | EVAL-01..04 | 10 | [ ] not started |
 | RES-01..06 | 11 | [ ] not started |
