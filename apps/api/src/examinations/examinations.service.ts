@@ -44,17 +44,38 @@ export interface UpdateAssessmentInput {
 export class ExaminationsService {
   constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
 
+  /**
+   * Shared schedule validation — called from both createAssessment and
+   * updateAssessment to prevent schedule-invariant drift (08-06 WR-01 fix).
+   *
+   * @param startsAt  merged start (Date | null)
+   * @param endsAt    merged end (Date | null)
+   * @param patchingStart true when the patch itself is changing startsAt
+   *                     (future-startsAt only fires in this case)
+   */
+  private validateSchedule(
+    startsAt: Date | null | undefined,
+    endsAt: Date | null | undefined,
+    patchingStart = false,
+  ): void {
+    if (startsAt != null && endsAt != null) {
+      if (startsAt >= endsAt) {
+        throw new BadRequestException('Assessment schedule is invalid: start must be before end');
+      }
+    }
+    if (patchingStart && startsAt != null && startsAt <= new Date()) {
+      throw new BadRequestException('Assessment start date must be in the future');
+    }
+  }
+
   // ── Create ────────────────────────────────
 
   async createAssessment(instituteId: string, createdBy: string, input: CreateAssessmentInput) {
-    if (input.startsAt !== undefined) {
-      if (new Date(input.startsAt) <= new Date()) {
-        throw new BadRequestException('Schedule start must be in the future');
-      }
-      if (input.endsAt !== undefined && new Date(input.startsAt) >= new Date(input.endsAt)) {
-        throw new BadRequestException('Schedule start must be before end');
-      }
-    }
+    this.validateSchedule(
+      input.startsAt ? new Date(input.startsAt) : null,
+      input.endsAt ? new Date(input.endsAt) : null,
+      input.startsAt !== undefined,
+    );
 
     const [assessment] = await this.db
       .insert(assessments)
@@ -92,12 +113,20 @@ export class ExaminationsService {
       throw new BadRequestException('Assessment can only be edited in DRAFT status');
     }
 
-    // Pitfall 6 — re-validate the schedule when either end changes.
-    if (patch.startsAt != null && patch.endsAt != null) {
-      if (new Date(patch.startsAt) >= new Date(patch.endsAt)) {
-        throw new BadRequestException('Schedule start must be before end');
-      }
-    }
+    // 08-06 WR-01 fix: validate the MERGED schedule (existing overlaid with
+    // the patch) on every update. The future-startsAt rule fires only when the
+    // patch itself changes startsAt (touching startsAt only, or both fields);
+    // untouched-field freedom is preserved so PATCH-only-endsAt stays legal
+    // and null-clear remains allowed.
+    this.validateSchedule(
+      patch.startsAt !== undefined
+        ? (patch.startsAt === null ? null : new Date(patch.startsAt))
+        : existing.startsAt,
+      patch.endsAt !== undefined
+        ? (patch.endsAt === null ? null : new Date(patch.endsAt))
+        : existing.endsAt,
+      patch.startsAt !== undefined && patch.startsAt !== null,
+    );
 
     const startsAt =
       patch.startsAt === undefined ? undefined : patch.startsAt === null ? null : new Date(patch.startsAt);

@@ -159,8 +159,21 @@ Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02.)
 Updateable fields (all optional): `title`, `description`, `durationMinutes`,
 `maxMarks`, `instructions`, `startsAt`, `endsAt` (the latter two additionally
 nullable to clear the schedule). Edits are DRAFT-only; the whitelist rejects
-`status` and `instituteId` with `400`. Schedule validation applies as on create.
-`404` if not in the active institute.
+`status` and `instituteId` with `400`. `404` if not in the active institute.
+
+**Merged-schedule validation (08-06 WR-01 fix):** on every PATCH the full
+resulting schedule (untouched fields keep existing values) is validated before
+any write. The rules are identical to the create path: when both `startsAt` and
+`endsAt` are non-null, `startsAt` must be strictly before `endsAt`. The
+future-startsAt rule fires **only** when the PATCH itself changes `startsAt`
+(to a non-null value) — untouched or null-cleared `startsAt` fields skip the
+future check, so a PATCH that only touches `endsAt` is always legal (even if
+the resulting `endsAt` is in the past). Null-clearing `startsAt` or `endsAt`
+to `null` is allowed; a `null` merged column is simply ignored by the pair
+rule. Inverted schedule (`endsAt` before `startsAt` in the merged result) →
+`400` (`Assessment schedule is invalid: start must be before end`). Past
+`startsAt` when the PATCH sets it → `400` (`Assessment start date must be in
+the future`).
 
 Response: `{ "assessment": Assessment }`
 
