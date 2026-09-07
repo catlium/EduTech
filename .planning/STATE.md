@@ -4,8 +4,8 @@ current_phase: 8
 current_phase_name: quiz-examination-management
 status: executing
 stopped_at: "Phase 8 complete — all five plans (08-01..08-05) E2E validated (p8_e2e.sh PASS=60 FAIL=0, 2026-09-05); WR-03 gap closed; next up: plan Phase 9 (student examination attempts)"
-last_updated: "2026-09-05T08:35:00.000Z"
-state_head: 8d5f226
+last_updated: "2026-09-07T03:17:05.696Z"
+state_head: 59291700df79a9088fad57aea48d19a49e787268
 progress:
   total_phases: 3
   completed_phases: 0
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Core value:** A teacher takes a source material through upload → async OCR/AI processing → AI-generated, reviewable content/questions → a published, approved-question-only examination, and a student takes it and receives an automatically-computed, reproducible result.
-**Current focus:** Phase 08 — quiz-examination-management
+**Current focus:** Phase 8 — quiz-examination-management
 
 ## Project State
 
 **Sequence:** Phase 8 (complete — E2E validated 2026-09-05), backend-first full-stack monorepo
 **Phase:** 8 — Quiz & Examination Management
-**Status:** Executing Phase 08
+**Status:** Executing Phase 8
 
 ## Phase State
 
@@ -173,9 +173,15 @@ answers).
 
 ## Session Continuity
 
-Last session: 2026-09-05
-Stopped at: Phase 8 complete — E2E validated PASS=60 FAIL=0; WR-03 closed; next: plan Phase 9 (student examination attempts)
-Resume file: .planning/phases/08-quiz-examination-management/08-05-SUMMARY.md
+Last session: 2026-09-07 (resumed)
+Stopped at: Resumed Phase 8 gap-closure (plans 08-06, 08-07 pending). E2E harness
+`/tmp/opencode/p8_e2e.sh` was lost (untracked, /tmp wiped); reconstructed from
+docs/user-validation.md Phase 8 block and verified green at **PASS=76 FAIL=0**
+(2026-09-07). Superset of the original PASS=60 — same documented cases plus
+fine-grained body asserts. Harness persisted in-repo at `scripts/e2e/p8_e2e.sh`
+to prevent recurrence. Plan E2E count pin re-baselined: 76 (baseline) → 81 (08-06)
+→ 86 (08-07). Docker stack up (api/postgres/rabbitmq/redis/ocr/workers).
+Resume file: .planning/phases/08-quiz-examination-management/.continue-here.md
 
 ## Verification
 
@@ -188,6 +194,7 @@ Resume file: .planning/phases/08-quiz-examination-management/08-05-SUMMARY.md
 - Phase 8 plan 08-03 E2E: passed 2026-09-05 (Task 1: publish gate — empty 400, valid 200 PUBLISHED, PENDING-linked 400 with count, no-duration/no-maxMarks/bad-schedule 400s, re-publish 400, PATCH/add/remove on PUBLISHED 400; Task 2: full lifecycle DRAFT→PUBLISHED→ACTIVE→COMPLETED + complete-on-COMPLETED 400 + activate-from-DRAFT 400 + unpublish round-trip + unpublish-from-ACTIVE 400; Task 3: security sweep student 403 ×4 / reads 200 ×3, institute-B 404 ×4, random-uuid 404 ×4, error-shape uniform)
 - Phase 8 plan 08-04 E2E: passed 2026-09-05 (`p8_e2e.sh` PASS=56 FAIL=0 — EXAM-01 CRUD 201/200/204/404, EXAM-02 linking 201/409/204, EXAM-03 config echo, EXAM-04 schedule 400s, EXAM-05 publish/complete 201, EXAM-06 full lifecycle, EXAM-07 six illegal transitions, EXAM-08 PENDING-gate 400 + all-APPROVED 201, security block 17 cases; corrected harness double-exec bug — final sweep clean)
 - Phase 8 plan 08-05 E2E: passed 2026-09-05 (`p8_e2e.sh` PASS=60 FAIL=0 — EXAM-08 ARCHIVED gate: link-time 400 'is not ACTIVE', archive-after-link publish 400 'not APPROVED or not ACTIVE', reactivation → publish 201; EXAM-05 status asserts now counted; runs at /tmp/opencode/p8_e2e_run_08_05c.log)
+- Phase 8 RESUME E2E: reconstructed harness verified green 2026-09-07 at `scripts/e2e/p8_e2e.sh` PASS=76 FAIL=0 (superset of original 60; new baseline for 08-06/08-07 counting)
 - Known: zero test coverage across the codebase
 
 ## Decisions
