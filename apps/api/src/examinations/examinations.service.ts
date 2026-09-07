@@ -244,6 +244,19 @@ export class ExaminationsService {
   // ── Delete ────────────────────────────────
 
   async deleteAssessment(instituteId: string, assessmentId: string) {
+    // WR-05 (08-07): DRAFT-only delete guard. load the row once (404 + tenant
+    // scope come from getAssessment); only DRAFT assessments are killable —
+    // PUBLISHED/ACTIVE/COMPLETED are refused with 400. Unpublish first (or
+    // complete) to make an assessment deletable. T-08-28: status read + delete
+    // run in the same request flow; transitions are service-owned and
+    // sequential per request, full serialization deferred (ponytail ceiling).
+    const existing = await this.getAssessment(instituteId, assessmentId);
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException(
+        'Only DRAFT assessments can be deleted; unpublish or complete first',
+      );
+    }
+
     const [assessment] = await this.db
       .delete(assessments)
       .where(and(eq(assessments.id, assessmentId), eq(assessments.instituteId, instituteId)))
