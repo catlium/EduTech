@@ -9,7 +9,9 @@ implementation is considered closed. Each item lists:
 - **Payload** — request body (paste exactly)
 - **Expected output** — response body / DB state / observable behavior
 
-Status markers: `[ ]` not run, `[~]` in progress, `[x]` passed, `[!]` failed.
+Status markers: the square-bracket markers `[x]` (passed) are appended to
+completed items; `not run` / `in progress` / `failed` items use the other
+three marker states and block milestone closure until resolved.
 
 ---
 

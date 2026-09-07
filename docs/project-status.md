@@ -2,29 +2,32 @@
 
 ## Current Phase: Phase 8 — Quiz & Examination Management
 
-**Status: COMPLETE (E2E validated 2026-09-05).** Implementation and runtime E2E
-validation green for the full assessment lifecycle. A teacher creates an
-assessment (DRAFT), links approved questions from the institute's question
-bank, configures duration/max marks/instructions and a schedule, publishes it
-(approved-only gate), activates and completes it — with every state transition
-enforced server-side. All Phase 8 items in `docs/user-validation.md` pass
-(EXAM-01..08 + security block, `p8_e2e.sh` PASS=56 FAIL=0).
+**Status: COMPLETE — gap-closure run (08-05..08-07) finished 2026-09-07.**
+Implementation and runtime E2E validation green for the full assessment
+lifecycle, and all five verification gaps (WR-01..WR-05) from the Phase 8
+post-hoc verification are resolved. A teacher creates an assessment (DRAFT),
+links approved questions from the institute's question bank, configures
+duration/max marks/instructions and a schedule, publishes it (approved-only
+gate), activates and completes it — with every state transition enforced
+server-side. All Phase 8 items in `docs/user-validation.md` pass (EXAM-01..08
++ security block + gap-closure cases, `p8_e2e.sh` PASS=86 FAIL=0).
 
 **Completed work:**
 
 - Examinations module (`apps/api/src/examinations`): 11 tenant-scoped
   endpoints — `POST /assessments` (201, status DRAFT server-computed), `GET
   /assessments` (computed questionCount, updatedAt desc), `GET/PATCH/DELETE
-  /assessments/:assessmentId` (PATCH DRAFT-only + whitelist; DELETE 204),
-  question linking `POST/GET /assessments/:id/questions` + `DELETE
-  /assessments/:id/questions/:questionId` (institute-scoped per-id check,
-  duplicate → 409), lifecycle `POST /assessments/:id/publish|activate|
+  /assessments/:assessmentId` (PATCH DRAFT-only + whitelist; DELETE
+  DRAFT-only), question linking `POST/GET /assessments/:id/questions` +
+  `DELETE /assessments/:id/questions/:questionId` (institute-scoped per-id
+  check, duplicate → 409), lifecycle `POST /assessments/:id/publish|activate|
   complete|unpublish`.
 - State machine: `VALID_TRANSITIONS` lookup table
   (DRAFT→PUBLISHED, PUBLISHED→ACTIVE/DRAFT, ACTIVE→COMPLETED, COMPLETED
   terminal) + `assertValidTransition`; publish gate re-checks every linked
-  question's CURRENT approvalStatus (EXAM-08) + non-empty + duration + maxMarks
-  + valid schedule; question-set/config locked on non-DRAFT.
+  question's CURRENT approvalStatus AND `ACTIVE` status (EXAM-08) +
+  non-empty + duration + maxMarks + valid schedule; question-set/config locked
+  on non-DRAFT.
 - Schema: `assessments` + `assessment_questions` tables, generated migration
   `0008_awesome_vermin.sql` — unique link `assessment_questions_unique`,
   cascade FKs, varchar status, JSONB instructions.
@@ -33,35 +36,65 @@ enforced server-side. All Phase 8 items in `docs/user-validation.md` pass
   `AssessmentListItemSchema`, `AssessmentStatusEnum`,
   `AddQuestionsRequestSchema`, `AssessmentQuestionSchema`.
 - Docs: `docs/api/assessments.md` full module contract (verified against
-  behavior in the 08-04 sweep).
+  behavior in the 08-04 sweep + 08-05..08-07 updates).
+- **Gap closure 08-05 (WR-03):** publish gate blocks ARCHIVED+APPROVED
+  questions (`not APPROVED or not ACTIVE` 400); addQuestions blocks ARCHIVED
+  links (`Question <id> is not ACTIVE` 400); docs/api/assessments.md:269
+  claim now matches runtime.
+- **Gap closure 08-06 (WR-01/WR-02):** merged-schedule re-validation on every
+  PATCH (inverted/past-start → 400, null-clear legal, untouched-field
+  freedom); required non-blank title + bounded questionIds (POST `{}` /
+  `{"title":""}` → 400, questionIds 1..1000).
+- **Gap closure 08-07 (WR-04/WR-05):** `addQuestions` computes
+  `max(sortOrder)` once per assessment inside the transaction and inserts at
+  `max + i + 1` (no duplicate offsets on append); the two historic
+  duplicate-sortOrder assessments resynced to deterministic order via tracked
+  `packages/database/scripts/resync-assessment-sort-order.sql` (0 duplicate
+  groups proven); `DELETE` refuses PUBLISHED/ACTIVE/COMPLETED with 400
+  (DRAFT-only guard).
 
 **Decisions:** varchar status (no pgEnum); `questionCount` computed at read
 time (never stored); `startsAt` must be future + `endsAt` after `startsAt`
-(Pitfall 6); DELETE is not state-guarded (204 any status) while PATCH and
-question-set mutations are DRAFT-only; duplicate links → 409 via unique-
-constraint mapping in a transaction (race-safe); re-publish → 400 (not no-op);
-complete accepts from ACTIVE only (no implicit ACTIVE); activate is manual (no
-cron — research A1), schedule advisory + read-time checked; per-question
-`marks` default 1, `maxMarks` teacher-managed (Pitfall 5 Option A — Phase 11
-validates).
+(Pitfall 6); DELETE is DRAFT-only (400 for PUBLISHED/ACTIVE/COMPLETED — 08-07
+WR-05, recorded `costly`: reverting means coordinated service+docs+E2E
+removal) while PATCH and question-set mutations are also DRAFT-only; duplicate
+links → 409 via unique-constraint mapping in a transaction (race-safe);
+re-publish → 400 (not no-op); complete accepts from ACTIVE only (no implicit
+ACTIVE); activate is manual (no cron — research A1), schedule advisory +
+read-time checked; per-question `marks` default 1, `maxMarks` teacher-managed
+(Pitfall 5 Option A — Phase 11 validates); append sortOrder offsets from a
+single in-transaction `max()` read (08-07 WR-04).
 
 **Database changes:** `assessments` + `assessment_questions` tables with the
 `assessment_questions_unique` table constraint and cascade FKs (migration
-`0008_awesome_vermin.sql`, applied to `catlium_dev`).
+`0008_awesome_vermin.sql`, applied to `catlium_dev`). Data repair only in
+08-07: `packages/database/scripts/resync-assessment-sort-order.sql`
+(idempotent, DDL-free) renumbered the two WR-04 duplicate assessments to
+deterministic 1..n order. No new migrations, no schema diffs — schema-gate
+held.
+
+**Known issues:** WR-06 (answer-key exposure via the open
+`GET /assessments/:id/questions` read) is explicitly deferred to Phase 9 —
+the Phase 9 projection/serialization gate owns it per 08-VERIFICATION.md; must
+be closed before student attempts ship. No other open defects.
 
 **Validation status:** all `docs/user-validation.md` Phase 8 items `[x]`
-(2026-09-05, live dockerized stack, `p8_e2e.sh` PASS=56 FAIL=0 — includes the
-full lifecycle, six illegal-transition cases, the PENDING-question publish
-gate, and a student-403 / institute-B-404 / mass-assignment / auth security
-sweep). `pnpm typecheck && pnpm lint` green.
+(2026-09-07, live dockerized stack, `p8_e2e.sh` PASS=86 FAIL=0, two
+back-to-back runs — includes the full lifecycle, six illegal-transition cases,
+the PENDING/ARCHIVED publish gates, sortOrder append ordering, the DRAFT-only
+DELETE guard, and a student-403 / institute-B-404 / mass-assignment / auth
+security sweep). `pnpm typecheck && pnpm lint` green (9/9 turbo tasks).
+Verification gaps WR-01..WR-05 all resolved; 5 of 5.
 
-**Last Checkpoint:** Phase 8 close (2026-09-05, commit recorded in the 08-04
-SUMMARY).
+**Last Checkpoint:** Phase 8 gap-closure close (2026-09-07, plan 08-07;
+commits `aae746f`/`93f74a2`/`8ed3656`/`ed49b8f`/`b6d14cb` + SUMMARY).
 
-**Recommended next task:** Plan Phase 9 — Student Examination Attempts (a
-student takes a PUBLISHED/ACTIVE assessment within its schedule window; the
-locked question set + `marks` from Phase 8 are the input; response
-serialization must never expose correct answers).
+**Recommended next task:** run `/gsd-verify-phase 08` for the post-close phase
+verification, then plan Phase 9 — Student Examination Attempts (a student
+takes a PUBLISHED/ACTIVE assessment within its schedule window; the locked
+question set + `marks` from Phase 8 are the input; response serialization must
+never expose correct answers — closes WR-06). Per orchestrator, not
+auto-continued (AGENTS.md Rule 10).
 
 For the prior phases see the historical entries below.
 

@@ -88,6 +88,26 @@ System priority order:
 - [x] Run pnpm typecheck + lint (all pass)
 - [x] E2E harness `p8_e2e.sh` PASS=56 FAIL=0 (2026-09-05); update docs +
       create checkpoint
+- [x] 08-05 WR-03 gap: publish gate blocks ARCHIVED+APPROVED questions
+      ("not APPROVED or not ACTIVE" 400); addQuestions blocks ARCHIVED links
+      ("Question <id> is not ACTIVE" 400) — docs/api/assessments.md:269 now
+      truthful (2026-09-05, PASS=60)
+- [x] 08-06 WR-01/WR-02 gap: merged-schedule re-validation on every PATCH
+      (inverted/past-start → 400, null-clear legal, untouched-field freedom);
+      required non-blank title + bounded questionIds (POST {} / blank title →
+      400) (2026-09-07, PASS=81)
+- [x] 08-07 WR-04 gap: addQuestions sortOrder from a single in-transaction
+      max-read, appends at max + i + 1 (no duplicates); tracked resync script
+      `packages/database/scripts/resync-assessment-sort-order.sql` renumbered
+      the two duplicate assessments (0 duplicate groups verified) (2026-09-07)
+- [x] 08-07 WR-05 gap: DELETE refuses PUBLISHED/ACTIVE/COMPLETED with 400
+      (DRAFT-only guard); DRAFT deletes stay 204 (2026-09-07)
+- [x] 08-07 E2E + docs close: `p8_e2e.sh` PASS=86 FAIL=0 (two back-to-back
+      runs); user-validation.md zero unchecked markers; project-status.md
+      Phase 8 gap-closure complete (2026-09-07)
+- [-] WR-06 (answer-key exposure via open questions read) deferred to Phase 9
+      — Phase 9 projection/serialization gate owns the fix; must close before
+      student attempts ship (08-VERIFICATION.md deferral)
 
 ## Phase 6 — Question Bank
 
