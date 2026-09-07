@@ -522,11 +522,13 @@ AIGQ-01).
 
 ## Phase 8 — Quiz & Examination Management (E2E)
 
-Status: `[x]` All tests passed 2026-09-05 against the dockerized stack
+Status: `[x]` All tests passed 2026-09-07 against the dockerized stack
 (postgres/rabbitmq/api; API `catlium-api` healthy, `GET /api/v1/health` →
 `200 {status:"ok"}`). Checks map to requirements EXAM-01..08 plus the
-security/negative block. Full sweep: `p8_e2e.sh` **PASS=60 FAIL=0** (52 main
-run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05).
+security/negative block. Full sweep: `p8_e2e.sh` **PASS=81 FAIL=0** (52 main
+run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05 +
+16 body-assert superset from the 2026-09-07 reconstruction + 5
+merged-schedule/DTO cases from 08-06).
 
 ### Fixtures (created/promoted during this run, `catlium_dev`)
 
@@ -581,6 +583,12 @@ run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05).
   list → `200` array with computed `questionCount` on each row; retrieve →
   `200`; PATCH `{"title":"..."}` → `200`; DELETE → `204` empty body, then GET →
   `404`. Result `[x]` 2026-09-05 (all five sub-steps passed).
+- **Title required (WR-02, added 08-06):** `title` is required and must be a
+  non-empty string — `POST /api/v1/assessments {}` → `400` and
+  `POST /api/v1/assessments {"title":""}` → `400` (global ValidationPipe:
+  `@IsDefined` + `@MinLength(1)` on `CreateAssessmentDto`); a valid title
+  (1–255 chars) still creates → `201`. Result `[x]` 2026-09-07 (both 400s
+  live in `p8_e2e.sh` POST empty/blank cases, PASS=81).
 
 ### EXAM-02 — Add/remove questions (assessment_questions join) — [x]
 
@@ -595,6 +603,13 @@ run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05).
   with nested question data + marks; DELETE → `204`, subsequent GET shows only
   the remaining link; duplicate link (re-POST an existing questionId) → `409`.
   Result `[x]` 2026-09-05.
+- **questionIds required + bounded (WR-02, added 08-06):** the
+  `questionIds` array is required, non-empty, and capped at 1000 IDs — a
+  missing `questionIds`, an empty array `[]`, or an array of >1000 IDs returns
+  `400` (global ValidationPipe: `@IsDefined` + `@IsArray` +
+  `@ArrayMaxSize(1000)` on `AddQuestionsDto`, retaining `@ArrayMinSize(1)` +
+  per-element `@IsUUID`). A valid 1–1000-UUID array still links → `201`.
+  Result `[x]` 2026-09-07 (rules recorded; PASS=81 suite green).
 
 ### EXAM-03 — Configure duration + max marks + instructions — [x]
 
@@ -618,6 +633,22 @@ run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05).
   (2020-01-01T09:00 with a future endsAt).
 - **Expected output:** valid window → `201`; endsAt before startsAt → `400`;
   past startsAt → `400` (Pitfall 6). Result `[x]` 2026-09-05.
+- **Merged-schedule re-validation on PATCH (WR-01, added 08-06):** every
+  `PATCH /assessments/:id` validates the FULL merged schedule (existing
+  schedule overlaid with the patch), not just the patched fields:
+  - PATCH `{ "endsAt": "<existing startsAt - 1h>" }` on a scheduled DRAFT →
+    `400` (merged endsAt precedes startsAt; the old non-null-only path would
+    have 200'd).
+  - PATCH `{ "startsAt": "<now - 1h>" }` → `400` (merged startsAt in the
+    past — the future rule fires only when the PATCH winds startsAt).
+  - PATCH `{ "endsAt": "<now + 3 days>" }` with startsAt untouched → `200`
+    (no endsAt-future requirement; untouched-field freedom preserved).
+  - PATCH `{ "endsAt": null }` on a scheduled assessment → allowed (null-clear
+    legal) as long as the merged result stays valid.
+  - Both create and update share one `validateSchedule` helper (no drift).
+    Result `[x]` 2026-09-07 (first three rules live in `p8_e2e.sh` merged
+    PATCH cases, PASS=81; null-clear covered by the shared-helper design +
+    docs/api/assessments.md).
 
 ### EXAM-05 — Publish + complete — [x]
 

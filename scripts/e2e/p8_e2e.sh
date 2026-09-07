@@ -20,7 +20,7 @@ RAND="$(date +%s)"
 # --- helpers ---------------------------------------------------------------
 ok() { # ok <http_code> <expected> <label>
   local code="$1" exp="$2" label="$3"
-  if [ "$code" = "$exp" ]; then PASS=$((PASS+1));
+  if [ "$code" = "$exp" ]; then PASS=$((PASS+1)); echo "  ok $label";
   else FAIL=$((FAIL+1)); FAILURES+=("$label: expected $exp got $code"); echo "  FAIL $label (got $code, want $exp)"; fi
 }
 body_has() { # body_has <substring> <label>  (reads $BODY_FILE)
@@ -148,6 +148,34 @@ IR=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-i
 ok "$IR" 400 "EXAM-04 inverted 400"
 PST=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"past $RAND\",\"startsAt\":\"2020-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\"}")
 ok "$PST" 400 "EXAM-04 past start 400"
+
+echo "== 08-06 merged-schedule + DTO validation (WR-01/WR-02) =="
+# Fixture DRAFT A: valid schedule now+2d .. now+2d+2h
+MS_ST=$(date -u -d "+2 days" +"%Y-%m-%dT%H:%M:%S.000Z")
+MS_EN=$(date -u -d "+2 days +2 hours" +"%Y-%m-%dT%H:%M:%S.000Z")
+MA=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"merged $RAND\",\"startsAt\":\"$MS_ST\",\"endsAt\":\"$MS_EN\"}")
+MA=$(jget id)
+# 1. PATCH-only-endsAt inverted: endsAt = fixture startsAt - 1h -> 400 (the OLD
+#    non-null-only path validated only patched fields and would have 200'd)
+MS_PAST_EN=$(date -u -d "$MS_ST -1 hour" +"%Y-%m-%dT%H:%M:%S.000Z")
+m1=$(req PATCH "/assessments/$MA" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"endsAt\":\"$MS_PAST_EN\"}")
+ok "$m1" 400 "PATCH endsAt before startsAt (merged schedule) -> 400"
+# 2. PATCH-only-startsAt past: merged startsAt (< now) with untouched endsAt ->
+#    400 (future rule fires only when the PATCH winds startsAt)
+MS_PAST_ST=$(date -u -d "-1 hour" +"%Y-%m-%dT%H:%M:%S.000Z")
+m2=$(req PATCH "/assessments/$MA" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"startsAt\":\"$MS_PAST_ST\"}")
+ok "$m2" 400 "PATCH startsAt into the past -> 400"
+# 3. PATCH-only-endsAt legal: endsAt = now+3d (untouched startsAt stays future)
+#    -> 200 — no endsAt-future requirement, untouched-field freedom preserved
+MS_FUT_EN=$(date -u -d "+3 days" +"%Y-%m-%dT%H:%M:%S.000Z")
+m3=$(req PATCH "/assessments/$MA" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"endsAt\":\"$MS_FUT_EN\"}")
+ok "$m3" 200 "PATCH endsAt-only (future) still legal -> 200"
+# 4. POST {} -> 400 (required title — @IsDefined on CreateAssessmentDto)
+m4=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d '{}')
+ok "$m4" 400 "POST empty assessment -> 400"
+# 5. POST {title:""} -> 400 (non-blank title — @MinLength(1))
+m5=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d '{"title":""}')
+ok "$m5" 400 "POST blank title -> 400"
 
 echo "== EXAM-05 lifecycle =="
 A5=$(mk_pub "EXAM-05 $RAND"); A5=$(jget id)
