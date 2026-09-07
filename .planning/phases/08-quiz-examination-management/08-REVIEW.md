@@ -1,8 +1,8 @@
 ---
 phase: 08-quiz-examination-management
-reviewed: 2026-09-05T00:00:00Z
+reviewed: 2026-09-07T00:00:00Z
 depth: standard
-files_reviewed: 19
+files_reviewed: 21
 files_reviewed_list:
   - apps/api/src/app/app.module.ts
   - apps/api/src/examinations/dto/add-questions.dto.ts
@@ -20,58 +20,76 @@ files_reviewed_list:
   - packages/database/drizzle/0008_awesome_vermin.sql
   - packages/database/drizzle/meta/0008_snapshot.json
   - packages/database/drizzle/meta/_journal.json
+  - packages/database/scripts/resync-assessment-sort-order.sql
   - packages/database/src/index.ts
   - packages/database/src/schema/examinations.ts
   - packages/database/src/schema/index.ts
 findings:
   critical: 0
-  warning: 6
-  info: 3
-  total: 9
+  warning: 9
+  info: 4
+  total: 13
 status: findings
 ---
 
 # Phase 08: Code Review Report
 
-**Reviewed:** 2026-09-05T00:00:00Z
+**Reviewed:** 2026-09-07T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 19
+**Files Reviewed:** 21
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the Phase 8 examinations NestJS module (controller, service, DTOs),
-the `assessments`/`assessment_questions` schema and migration 0008, the
-contracts additions, and the Phase 8 docs.
+Original 08-05 review (19 files) preserved below; this revision adds the
+08-06 + 08-07 gap-closure delta review of the only new code:
+`validateSchedule()` + its create/update call sites, the DRAFT-only
+`deleteAssessment` guard, the in-transaction `max(sortOrder)` offset in
+`addQuestions`, the tightened create/add-questions DTOs, and the
+`resync-assessment-sort-order.sql` repair script.
 
-Defense-in-depth checks performed against supporting infrastructure
-(`main.ts` ValidationPipe, TenantGuard, RolesGuard, DatabaseModule, questions
-schema/service) confirm the foundation is sound:
+**Delta verdict — sequential-path fixes are correct; concurrency residuals remain.**
 
-- **Tenant isolation** is correctly enforced in every service method — all
-  queries are scoped with `instituteId` from the tenant context, and
-  cross-tenant question linking is blocked (id + instituteId pair check).
-- **Mass assignment** is blocked at the pipe level (`whitelist: true` +
-  `forbidNonWhitelisted: true` in `main.ts:19-24`); `status`/`instituteId`
-  cannot be smuggled into PATCH because the whitelisted DTO keys are the only
-  ones reaching the `.set({...patch})` spread.
-- **Lifecycle state machine** (`VALID_TRANSITIONS`) is a clean single source
-  of truth; publish gate re-checks approval status at publish time as
-  designed.
+Verified against the new code:
 
-The warnings below are concentrated in: incomplete schedule re-validation on
-PATCH, the publish gate ignoring question `status` (ARCHIVED), sortOrder
-collisions when appending questions to a non-empty assessment, delete
-bypassing the ACTIVE/COMPLETED protection the state machine otherwise
-guarantees, missing `@IsDefined` on required DTO fields (500s instead of
-400s), and the ungated questions read exposing answer keys to students.
+- **Tenant scope preserved everywhere.** `deleteAssessment` re-checks
+  instituteId in the DELETE predicate (service:262); `addQuestions`
+  verifies every question id + instituteId before the transaction and
+  verifies the assessment is tenant-owned (service:296, 308-323); the
+  transaction's `max(sortOrder)` select is scoped by an already-verified
+  assessmentId. No new oracle introduced.
+- **WR-01 fixed** — `create-assessment.dto.ts` now `@IsString() @IsDefined()
+  @MinLength(1) @MaxLength(255)`; `add-questions.dto.ts` now `@IsDefined()
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(1000) @IsUUID(undefined,{each:true})`.
+- **WR-02 fixed** — merged-schedule validation (existing overlaid with
+  patch) via the shared `validateSchedule` helper; future-startsAt fires
+  when the patch touches startsAt; both call sites verified.
+- **WR-03 fixed** — publish gate now also requires `question.status === 'ACTIVE'`
+  (service:199), and `addQuestions` blocks ARCHIVED links at link time (service:320-322).
+- **WR-04 fixed for the sequential case** — single `max(sortOrder)` read
+  inside the transaction, offsets `base + i + 1` (service:332-345).
+  **Residual race → WR-07.**
+- **WR-05 fixed for the sequential case** — DRAFT-only guard added
+  (service:253-258). **Residual TOCTOU → WR-08.**
+- **IN-02 fixed** — `@ArrayMaxSize(1000)` bounds the N+1 loop.
+- **New WR-09** — the title fix was applied to create only; PATCH
+  `{"title": ""}` still passes and persists an empty title.
+- **New IN-04** — `validateSchedule` is NaN-blind to `Invalid Date`.
 
-## Warnings
+WR-06 (ungated questions read) and IN-01/IN-03 remain open from the
+original review. No Critical findings in the new code.
+
+## Warnings (original 08-05 review, preserved)
 
 ### WR-01: Required DTO fields pass validation when missing/empty — 500 instead of 400
 
 **File:** `apps/api/src/examinations/dto/add-questions.dto.ts:3-6`,
 `apps/api/src/examinations/dto/create-assessment.dto.ts:12-15`
+
+> **Status (08-07 delta): RESOLVED** — `@IsDefined` + `@MinLength(1)` added to
+> `title` (create-assessment.dto.ts:16-17); `@IsDefined` + `@ArrayMinSize(1)`
+> added to `questionIds` (add-questions.dto.ts:4-8). `{}` / missing
+> `questionIds` / `title: ""` now produce 400s. See WR-09 for the PATCH-side gap.
 
 **Issue:** class-validator skips all validators when a value is `null` or
 `undefined` unless `@IsDefined`/`@IsNotEmpty` is present. Neither
@@ -114,6 +132,13 @@ export class CreateAssessmentDto {
 
 **File:** `apps/api/src/examinations/examinations.service.ts:96-100`
 
+> **Status (08-07 delta): RESOLVED** — replaced by `validateSchedule`
+> (service:56-69) called with merged values from both call sites
+> (service:74-78 create, 121-129 update). Verified: PATCH-only-`endsAt`
+> against a stored future `startsAt` throws; PATCH-only-`startsAt` past a
+> stored `endsAt` throws; null-clear of one side remains legal; future rule
+> fires when the patch touches `startsAt`.
+
 **Issue:** The guard is `if (patch.startsAt != null && patch.endsAt != null)`.
 If only `endsAt` is patched (e.g. to `2025-01-01`) while the stored
 `startsAt` is `2030-01-01`, the check is skipped and an inverted schedule is
@@ -140,6 +165,10 @@ if (mergedStartsAt !== null && mergedEndsAt !== null && mergedStartsAt >= merged
 
 **File:** `apps/api/src/examinations/examinations.service.ts:163-170`
 
+> **Status (08-07 delta): RESOLVED** — the gate now rejects
+> `q.question.status !== 'ACTIVE'` (service:199), and ARCHIVED questions are
+> rejected at link time (service:320-322).
+
 **Issue:** The gate rejects only
 `q.question.approvalStatus !== 'APPROVED'`. The `questions` table has an
 independent `status` column (`ACTIVE`/`ARCHIVED`, see
@@ -160,6 +189,11 @@ const unapproved = linked.filter(
 ### WR-04: addQuestions sortOrder collides with existing links
 
 **File:** `apps/api/src/examinations/examinations.service.ts:274-284`
+
+> **Status (08-07 delta): RESOLVED for the sequential case.** The offset is
+> now a single in-transaction `max(assessmentQuestions.sortOrder)` read
+> (service:332-335) with `sortOrder: (agg?.maxSort ?? 0) + i + 1`
+> (service:345). **Residual concurrency gap → WR-07.**
 
 **Issue:** New links are inserted with `sortOrder: i + 1` (1-based array
 index). If the assessment already has 3 questions (sortOrder 1-3) and a
@@ -185,6 +219,9 @@ for (let i = 0; i < questionIds.length; i++) {
 
 **File:** `apps/api/src/examinations/examinations.service.ts:211-220`
 
+> **Status (08-07 delta): RESOLVED for the sequential case.** DRAFT-only
+> guard added (service:253-258, message at 256). **Residual TOCTOU → WR-08.**
+
 **Issue:** `deleteAssessment` has no status guard. The state machine blocks
 `ACTIVE → DRAFT` specifically because "students may be attempting"
 (comment at line 201-202), and edits are DRAFT-only — yet a TEACHER can
@@ -208,6 +245,11 @@ if (existing.status !== 'DRAFT') {
 
 **File:** `apps/api/src/examinations/examinations.controller.ts:148-158` (service `listQuestions`: `examinations.service.ts:224-245`)
 
+> **Status (08-07 delta): STILL OPEN.** Not touched by 08-06/08-07.
+> `GET /assessments/:assessmentId/questions` remains ungated and returns the
+> full nested `question` row including answer-bearing `payload`. Must be
+> closed before Phase 9 student attempts.
+
 **Issue:** `GET /assessments/:assessmentId/questions` has no `@RequiredRoles`
 and returns the full nested `question` row, including the answer-bearing
 `payload` (`correctChoiceId` for MCQ, `correctAnswer` for TRUE_FALSE,
@@ -228,11 +270,111 @@ Phase 9 student attempts ship.
 async listQuestions(/* ... */) { /* ... */ }
 ```
 
+## Warnings (08-07 delta review, new)
+
+### WR-07: addQuestions sortOrder race survives the in-transaction max read
+
+**File:** `apps/api/src/examinations/examinations.service.ts:326-352`
+
+**Issue:** The transaction reads `max(sortOrder)` once (line 333) and offsets
+from it (line 345), which fixes the *sequential* duplicate case (WR-04). But
+under Postgres READ COMMITTED, two concurrent `addQuestions` calls on the
+same assessment each see `max = N` in their own snapshot and both insert rows
+with `sortOrder = N+1`. The schema's only unique constraint is
+`(assessmentId, questionId)` (`examinations.ts:42`) — there is no unique
+index on `(assessmentId, sortOrder)`, so the duplicate sortOrder rows commit
+and persist — exactly the corruption `resync-assessment-sort-order.sql` was
+written to repair. The T-08-28 "sequential per request" comment assumes
+service-level serialization that NestJS async handlers do not provide (each
+`await` interleaves concurrent requests). The data-integrity comment claims
+"no duplicate sortOrder from stale/racing max computations" — the racing case
+is explicitly *not* prevented.
+
+**Fix:** Make the base computation race-proof with a per-assessment advisory
+lock or row lock taken inside the transaction (cheapest: `SELECT ... FOR
+UPDATE` on the assessment row before reading max), or add a deferred unique
+index on `(assessment_id, sort_order)` so a race surfaces as a 409 instead of
+silent corruption:
+```typescript
+return await this.db.transaction(async (tx) => {
+  // Serialize append-ers per assessment; blocks WR-04-class races.
+  await tx
+    .select({ id: assessments.id })
+    .from(assessments)
+    .where(eq(assessments.id, assessmentId))
+    .for('update');
+
+  const [agg] = await tx
+    .select({ maxSort: max(assessmentQuestions.sortOrder) })
+    .from(assessmentQuestions)
+    .where(eq(assessmentQuestions.assessmentId, assessmentId));
+  // ... offsets unchanged
+});
+```
+
+### WR-08: deleteAssessment guard is read-then-delete without an atomic status predicate
+
+**File:** `apps/api/src/examinations/examinations.service.ts:246-268`
+
+**Issue:** The DRAFT check (line 253-258) reads the status, but the DELETE's
+WHERE clause (line 262) contains only `id` + `instituteId`. Between the read
+and the delete, a concurrent `publishAssessment` can legally flip the row to
+PUBLISHED (its UPDATE likewise has no status predicate), and the delete then
+destroys a PUBLISHED/ACTIVE assessment and, via cascade
+(`examinations.ts:34`), its question links and future attempt rows — the
+exact data loss WR-05 was added to prevent. The "transitions are
+service-owned and sequential per request" comment does not hold: NestJS
+handlers interleave at every `await`, so the guard and the delete are not
+atomic. One-line hardening closes the window entirely.
+
+**Fix:** Move the status requirement into the DELETE predicate — the guard
+becomes atomic and still yields the same 400/404 semantics:
+```typescript
+const [assessment] = await this.db
+  .delete(assessments)
+  .where(
+    and(
+      eq(assessments.id, assessmentId),
+      eq(assessments.instituteId, instituteId),
+      eq(assessments.status, 'DRAFT'),
+    ),
+  )
+  .returning();
+```
+
+### WR-09: Title validation fix applied to create only — PATCH persists empty titles
+
+**File:** `apps/api/src/examinations/dto/update-assessment.dto.ts:19-22`
+
+**Issue:** WR-01's fix added `@MinLength(1)` to `CreateAssessmentDto.title`
+(create-assessment.dto.ts:17), but `UpdateAssessmentDto.title` still has only
+`@ValidateIf(...) @IsString() @MaxLength(255)` — no `@MinLength`. A PATCH
+with `{"title": ""}` passes the pipe and overwrites a good title with an
+empty string in the DB. The Zod contract requires
+`title: z.string().min(1).max(255)` (`contracts/src/index.ts:634`), so the
+DTO/contract drift WR-01 identified on create now persists on update. This
+file was outside the 08-06/08-07 changed set, but the gap-closure fix is
+incomplete without it.
+
+**Fix:**
+```typescript
+export class UpdateAssessmentDto {
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  title?: string;
+  // ...
+}
+```
+
 ## Info
 
 ### IN-01: Dead placeholder DTO
 
 **File:** `apps/api/src/examinations/dto/assessment-query.dto.ts:1-2`
+
+> **Status (08-07 delta): STILL OPEN.**
 
 **Issue:** `AssessmentQueryDto` is an empty class never imported anywhere in
 the codebase (grep confirms). `GET /assessments` takes no query filters in
@@ -244,6 +386,11 @@ the codebase (grep confirms). `GET /assessments` takes no query filters in
 
 **File:** `apps/api/src/examinations/dto/add-questions.dto.ts:4-6`
 
+> **Status (08-07 delta): RESOLVED** — `@ArrayMaxSize(1000)` present at
+> add-questions.dto.ts:6. The per-id N+1 validation loop (service:308-323)
+> is now bounded, though a full 1000-id payload still issues 1000 sequential
+> selects before the 1000-insert transaction.
+
 **Issue:** `questionIds` is unbounded, and the service validates each id with
 a separate query (N+1, `examinations.service.ts:258-268`) — a request with
 thousands of ids is expensive and wasted work since only DRAFT assessments
@@ -254,6 +401,10 @@ accept links.
 
 **File:** `apps/api/src/examinations/examinations.service.ts:50-57`
 
+> **Status (08-07 delta): STILL OPEN.** `validateSchedule` keeps the same
+> shape — the `startsAt != null && endsAt != null` gate means a bare past
+> `endsAt` on create is still silently accepted.
+
 **Issue:** When only `endsAt` is provided (no `startsAt`), no check runs — a
 past `endsAt` or inverted intent is accepted. The docs
 (`docs/api/assessments.md:99-101`) claim "when both are provided `endsAt`
@@ -262,8 +413,40 @@ bare `endsAt` against `now` would catch typos earlier.
 **Fix:** If `input.endsAt !== undefined && input.startsAt === undefined`,
 require `new Date(input.endsAt) > new Date()`.
 
+### IN-04: validateSchedule is blind to Invalid Date inputs
+
+**File:** `apps/api/src/examinations/examinations.service.ts:56-69`
+
+**Issue:** Both call sites convert with `new Date(patch.startsAt)` /
+`new Date(input.endsAt)` before validating. A non-parseable string yields
+`Invalid Date`, and every comparison in `validateSchedule` — `>=`, `<=` —
+evaluates `false` against NaN, so the schedule passes validation and the
+`Invalid Date` reaches the insert/update, where the driver's
+`toISOString()` throws `RangeError` → 500. The HTTP paths are guarded by
+`@IsISO8601()` on the DTOs (create-assessment.dto.ts:43-48,
+update-assessment.dto.ts:45-51), so this is a hardening gap for programmatic
+callers of the service, not a current HTTP-path bug — but the helper is the
+shared single source of truth and should be NaN-proof.
+
+**Fix:** Reject unparseable dates inside the helper:
+```typescript
+private validateSchedule(
+  startsAt: Date | null | undefined,
+  endsAt: Date | null | undefined,
+  patchingStart = false,
+): void {
+  if (startsAt != null && Number.isNaN(startsAt.getTime())) {
+    throw new BadRequestException('Assessment start date is invalid');
+  }
+  if (endsAt != null && Number.isNaN(endsAt.getTime())) {
+    throw new BadRequestException('Assessment end date is invalid');
+  }
+  // ... existing checks
+}
+```
+
 ---
 
-_Reviewed: 2026-09-05T00:00:00Z_
+_Reviewed: 2026-09-07T00:00:00Z_
 _Reviewer: the agent (gsd-code-reviewer)_
 _Depth: standard_
