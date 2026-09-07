@@ -525,10 +525,11 @@ AIGQ-01).
 Status: `[x]` All tests passed 2026-09-07 against the dockerized stack
 (postgres/rabbitmq/api; API `catlium-api` healthy, `GET /api/v1/health` →
 `200 {status:"ok"}`). Checks map to requirements EXAM-01..08 plus the
-security/negative block. Full sweep: `p8_e2e.sh` **PASS=81 FAIL=0** (52 main
+security/negative block. Full sweep: `p8_e2e.sh` **PASS=83 FAIL=0** (52 main
 run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05 +
 16 body-assert superset from the 2026-09-07 reconstruction + 5
-merged-schedule/DTO cases from 08-06).
+merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
+from 08-07).
 
 ### Fixtures (created/promoted during this run, `catlium_dev`)
 
@@ -610,6 +611,30 @@ merged-schedule/DTO cases from 08-06).
   `@ArrayMaxSize(1000)` on `AddQuestionsDto`, retaining `@ArrayMinSize(1)` +
   per-element `@IsUUID`). A valid 1–1000-UUID array still links → `201`.
   Result `[x]` 2026-09-07 (rules recorded; PASS=81 suite green).
+- **sortOrder continuity on append (WR-04, added 08-07):** each append reads
+  `max(sortOrder)` for the assessment exactly once inside the transaction and
+  inserts at `max + i + 1` — appending to an assessment whose links end at N
+  yields N+1, N+2, ... with no duplicate offsets (previously each request
+  restarted at 1). Verified live:
+  - Appending a fresh 2-question batch to a DRAFT assessment already holding 2
+    questions → `201`, and `GET :id/questions` lists the pre-existing ids
+    before the appended ids (stable `orderBy(sortOrder asc)`). Live in
+    `p8_e2e.sh` sortOrder-append block (PASS=83).
+  - **Resync (data repair):** the two assessments with historic duplicates —
+    `1db88ee9-dded-497a-b434-94225679d1ad`,
+    `c561fdf0-563e-44b1-a638-1a6327a76b91` — were renumbered deterministically
+    to 1..n by `packages/database/scripts/resync-assessment-sort-order.sql`
+    (idempotent, DDL-free, transaction-wrapped), run via psql against
+    `catlium_dev`.
+  - **Verification query (must return 0 rows):**
+    ```sql
+    SELECT assessment_id, sort_order, count(*) FROM assessment_questions
+    WHERE assessment_id IN ('1db88ee9-dded-497a-b434-94225679d1ad',
+                            'c561fdf0-563e-44b1-a638-1a6327a76b91')
+    GROUP BY assessment_id, sort_order HAVING count(*) > 1;
+    ```
+    → `0 rows`; per-assessment contiguity `max = count = count(DISTINCT)`
+    (`n=2, min=1, max=2` for both). Result `[x]` 2026-09-07.
 
 ### EXAM-03 — Configure duration + max marks + instructions — [x]
 

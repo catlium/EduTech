@@ -128,6 +128,33 @@ ok "$QDEL" 204 "EXAM-02 remove-question 204"
 QL2=$(req GET "/assessments/$A2/questions" -H "x-institute-id: $IA")
 body_has "\"$Q2ID\"" "EXAM-02 remaining q2"
 
+echo "== sortOrder append ordering (08-07 WR-04) =="
+# Existing DRAFT assessment already holding 2 questions, then append a fresh
+# 2-question batch -> 201, and GET :id/questions lists pre-existing ids BEFORE
+# the appended ids (sortOrder continues at max+1, no duplicates).
+mk_mcq "ap3"; QAP3=$(jget id)
+mk_mcq "ap4"; QAP4=$(jget id)
+req POST "/questions/$QAP3/approve" -H "x-institute-id: $IA" >/dev/null
+req POST "/questions/$QAP4/approve" -H "x-institute-id: $IA" >/dev/null
+AO=$(create_ass "ORDER $RAND"); AO=$(jget id)
+req POST "/assessments/$AO/questions" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"questionIds\":[\"$QAP3\"]}" >/dev/null
+req POST "/assessments/$AO/questions" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"questionIds\":[\"$QAP4\"]}" >/dev/null
+so1=$(req POST "/assessments/$AO/questions" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"questionIds\":[\"$Q1ID\",\"$Q2ID\"]}")
+ok "$so1" 201 "append to existing assessment -> 201"
+req GET "/assessments/$AO/questions" -H "x-institute-id: $IA" >/dev/null
+QIDS_ORDER=$(grep -oP '"questionId":"[0-9a-f-]+"' "$BODY_FILE" | sed -E 's/.*:"([0-9a-f-]+)"/\1/' | tr '\n' ' ')
+idx3=$(echo "$QIDS_ORDER" | tr ' ' '\n' | grep -n -F "$QAP3" | head -1 | cut -d: -f1)
+idx4=$(echo "$QIDS_ORDER" | tr ' ' '\n' | grep -n -F "$QAP4" | head -1 | cut -d: -f1)
+idx1=$(echo "$QIDS_ORDER" | tr ' ' '\n' | grep -n -F "$Q1ID" | head -1 | cut -d: -f1)
+idx2=$(echo "$QIDS_ORDER" | tr ' ' '\n' | grep -n -F "$Q2ID" | head -1 | cut -d: -f1)
+if [ -n "$idx3" ] && [ -n "$idx4" ] && [ -n "$idx1" ] && [ -n "$idx2" ] && \
+   [ "$idx3" -lt "$idx1" ] && [ "$idx3" -lt "$idx2" ] && \
+   [ "$idx4" -lt "$idx1" ] && [ "$idx4" -lt "$idx2" ]; then
+  PASS=$((PASS+1)); echo "  ok appended ids appear after pre-existing (order: $QIDS_ORDER)"
+else
+  FAIL=$((FAIL+1)); FAILURES+=("ordering: appended ids must follow pre-existing (order: $QIDS_ORDER)"); echo "  FAIL ordering (got: $QIDS_ORDER)"
+fi
+
 echo "== EXAM-03 =="
 CR3=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" \
   -d "{\"title\":\"EXAM-03 $RAND\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"}}")
