@@ -83,7 +83,7 @@ Body:
 
 | Field             | Required | Values                                   |
 | ----------------- | -------- | ---------------------------------------- |
-| `title`           | yes      | string 1–255                             |
+| `title`           | yes      | string 1–255 (required, must be non-empty) |
 | `description`     | no       | string ≤5000                             |
 | `durationMinutes` | no       | integer 1–600                            |
 | `maxMarks`        | no       | integer 1–10000                          |
@@ -99,6 +99,10 @@ sending either field returns `400`.
 Schedule validation is enforced server-side: when `startsAt` is provided it
 must not be in the past, and when both are provided `endsAt` must be after
 `startsAt`. Violations return `400`.
+
+`title` is required and must be a non-empty string (1–255 chars): a missing
+title (`POST {}`) or an empty/blank title (`POST {"title":""}`) returns `400`
+via the global validation pipe (08-06 WR-02 fix).
 
 Response: `{ "assessment": Assessment }`
 
@@ -205,13 +209,16 @@ POST /assessments/:assessmentId/questions
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02.) Returns `201` with
 the added link rows (`{ added: [...] }`, `sortOrder` 1-based, `marks` default
-1). Each referenced question is validated to exist in the active institute; a
-foreign-institute **questionId** returns `400` (`Question ... not found or not
-in this institute`) and a foreign-institute **assessmentId** returns `404`.
-An ARCHIVED (non-ACTIVE) in-institute questionId returns `400` (`Question ...
-is not ACTIVE`) — such a question can never be published, so it cannot be
-linked. Duplicate links are rejected by the `assessment_questions_unique`
-constraint with `409`.
+1). The `questionIds` array is required and must be a non-empty array of UUIDs,
+capped at 1000 IDs per request (08-06 WR-02 fix): a missing `questionIds`,
+an empty array, or an array of more than 1000 IDs returns `400` via the global
+validation pipe. Each referenced question is validated to exist in the active
+institute; a foreign-institute **questionId** returns `400` (`Question ...
+not found or not in this institute`) and a foreign-institute **assessmentId**
+returns `404`. An ARCHIVED (non-ACTIVE) in-institute questionId returns `400`
+(`Question ... is not ACTIVE`) — such a question can never be published, so it
+cannot be linked. Duplicate links are rejected by the
+`assessment_questions_unique` constraint with `409`.
 
 ## Remove question from assessment
 

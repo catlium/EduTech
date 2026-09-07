@@ -7,10 +7,14 @@ import {
   Min,
   Max,
   IsISO8601,
+  IsDefined,
+  MinLength,
 } from 'class-validator';
 
 export class CreateAssessmentDto {
   @IsString()
+  @IsDefined()
+  @MinLength(1)
   @MaxLength(255)
   title!: string;
 
