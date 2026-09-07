@@ -187,8 +187,18 @@ Response: `{ "assessment": Assessment }`
 DELETE /assessments/:assessmentId
 ```
 
-Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02.) Returns `204 No
-Content`. Institute-scoped: a foreign-institute or nonexistent id returns `404`.
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02; DRAFT-only guard
+added in 08-07.) Returns `204 No Content`. Institute-scoped: a
+foreign-institute or nonexistent id returns `404`.
+
+**DRAFT-only (08-07 WR-05):** only a `DRAFT` assessment can be deleted. A
+`PUBLISHED`, `ACTIVE`, or `COMPLETED` assessment is refused with `400`
+(`Only DRAFT assessments can be deleted; unpublish or complete first`) — the
+same lifecycle protection the state machine and the DRAFT-only edit guard
+apply everywhere else. Unpublish a `PUBLISHED` assessment (`PUBLISHED → DRAFT`,
+see below) to make it deletable again; `ACTIVE`/`COMPLETED` assessments are
+never deletable (students may be attempting, or the paper is historical
+record).
 
 ## List assessment questions
 

@@ -280,6 +280,30 @@ req POST "/questions/$QARC2ID/activate" -H "x-institute-id: $IA" >/dev/null
 ar3=$(req POST "/assessments/$Aarc2/publish" -H "x-institute-id: $IA")
 ok "$ar3" 201 "ARCHIVED reactivated publish 201"
 
+echo "== DELETE guard (08-07 WR-05) =="
+# Deleting a non-DRAFT assessment is refused with 400; the DRAFT-delete success
+# case is the existing EXAM-01 delete 204 (regression, count pinned at 3).
+APUB=$(mk_pub "DEL pub $RAND"); APUB=$(jget id)
+req POST "/assessments/$APUB/questions" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"questionIds\":[\"$Q1ID\"]}" >/dev/null
+req POST "/assessments/$APUB/publish" -H "x-institute-id: $IA" >/dev/null
+dg1=$(req DELETE "/assessments/$APUB" -H "x-institute-id: $IA")
+ok "$dg1" 400 "DELETE published assessment -> 400"
+
+ARUN=$(mk_pub "DEL run $RAND"); ARUN=$(jget id)
+req POST "/assessments/$ARUN/questions" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"questionIds\":[\"$Q1ID\"]}" >/dev/null
+req POST "/assessments/$ARUN/publish" -H "x-institute-id: $IA" >/dev/null
+req POST "/assessments/$ARUN/activate" -H "x-institute-id: $IA" >/dev/null
+dg2=$(req DELETE "/assessments/$ARUN" -H "x-institute-id: $IA")
+ok "$dg2" 400 "DELETE active assessment -> 400"
+
+ADONE=$(mk_pub "DEL done $RAND"); ADONE=$(jget id)
+req POST "/assessments/$ADONE/questions" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"questionIds\":[\"$Q1ID\"]}" >/dev/null
+req POST "/assessments/$ADONE/publish" -H "x-institute-id: $IA" >/dev/null
+req POST "/assessments/$ADONE/activate" -H "x-institute-id: $IA" >/dev/null
+req POST "/assessments/$ADONE/complete" -H "x-institute-id: $IA" >/dev/null
+dg3=$(req DELETE "/assessments/$ADONE" -H "x-institute-id: $IA")
+ok "$dg3" 400 "DELETE completed assessment -> 400"
+
 echo "== Security / negative block =="
 ma1=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"ma $RAND\",\"status\":\"PUBLISHED\"}")
 ok "$ma1" 400 "SEC mass-assign status 400"

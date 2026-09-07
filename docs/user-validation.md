@@ -525,11 +525,11 @@ AIGQ-01).
 Status: `[x]` All tests passed 2026-09-07 against the dockerized stack
 (postgres/rabbitmq/api; API `catlium-api` healthy, `GET /api/v1/health` →
 `200 {status:"ok"}`). Checks map to requirements EXAM-01..08 plus the
-security/negative block. Full sweep: `p8_e2e.sh` **PASS=83 FAIL=0** (52 main
+security/negative block. Full sweep: `p8_e2e.sh` **PASS=86 FAIL=0** (52 main
 run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05 +
 16 body-assert superset from the 2026-09-07 reconstruction + 5
 merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
-from 08-07).
++ 3 DELETE-guard cases from 08-07).
 
 ### Fixtures (created/promoted during this run, `catlium_dev`)
 
@@ -687,6 +687,17 @@ from 08-07).
   `201` `status: "ACTIVE"`; complete → `201` `status: "COMPLETED"`. (Note:
   these POST transition endpoints return the NestJS POST default `201`, not
   `200` — see the Task 2 discrepancy log.) Result `[x]` 2026-09-05.
+- **DRAFT-only DELETE guard (WR-05, added 08-07):** `DELETE
+  /api/v1/assessments/:assessmentId` refuses any non-DRAFT assessment with
+  `400` body `Only DRAFT assessments can be deleted; unpublish or complete
+  first`:
+  - DELETE on a PUBLISHED assessment → `400` (unpublish
+    `PUBLISHED → DRAFT` first to make it deletable).
+  - DELETE on an ACTIVE assessment → `400` (students may be attempting).
+  - DELETE on a COMPLETED assessment → `400` (historical record).
+  - DELETE on a DRAFT assessment → `204` unchanged (EXAM-01 regression).
+  Result `[x]` 2026-09-07 (first three live in `p8_e2e.sh` DELETE-guard
+  block, PASS=86; DRAFT regression = the EXAM-01 delete-204 case).
 
 ### EXAM-06 — Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED — [x]
 
