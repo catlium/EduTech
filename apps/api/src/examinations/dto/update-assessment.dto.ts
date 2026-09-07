@@ -2,6 +2,7 @@ import {
   IsString,
   IsObject,
   IsInt,
+  MinLength,
   MaxLength,
   Min,
   Max,
@@ -18,6 +19,7 @@ import {
 export class UpdateAssessmentDto {
   @ValidateIf((_o, v) => v !== undefined)
   @IsString()
+  @MinLength(1)
   @MaxLength(255)
   title?: string;
 
