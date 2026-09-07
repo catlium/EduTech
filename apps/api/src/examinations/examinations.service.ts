@@ -5,7 +5,7 @@ import {
   ConflictException,
   Inject,
 } from '@nestjs/common';
-import { eq, and, desc, asc, inArray, count } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, count, max } from 'drizzle-orm';
 import { assessments, assessmentQuestions, questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import type { AssessmentStatus } from '@catlium/contracts';
@@ -311,15 +311,25 @@ export class ExaminationsService {
 
     try {
       return await this.db.transaction(async (tx) => {
+        // WR-04 (08-07): read max(sortOrder) ONCE per assessment, inside the
+        // transaction, before the loop. Every appended question offsets from
+        // this single base — no mid-loop per-append reads, no duplicate
+        // sortOrder from stale/racing max computations. base = existing max
+        // (0 when the assessment holds no links yet), offsets base + i + 1.
+        const [agg] = await tx
+          .select({ maxSort: max(assessmentQuestions.sortOrder) })
+          .from(assessmentQuestions)
+          .where(eq(assessmentQuestions.assessmentId, assessmentId));
+
         const added: Array<typeof assessmentQuestions.$inferSelect> = [];
-        // sortOrder is 1-based on the array index; marks defaults to 1 (A5).
+        // sortOrder continues after the existing max; marks defaults to 1 (A5).
         for (let i = 0; i < questionIds.length; i++) {
           const [row] = await tx
             .insert(assessmentQuestions)
             .values({
               assessmentId,
               questionId: questionIds[i]!,
-              sortOrder: i + 1,
+              sortOrder: (agg?.maxSort ?? 0) + i + 1,
               marks: 1,
             })
             .returning();
