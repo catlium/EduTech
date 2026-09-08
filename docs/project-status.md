@@ -1,6 +1,35 @@
 # Project Status
 
-## Current Phase: Phase 8 — Quiz & Examination Management
+## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
+
+**Status: IN PROGRESS — Wave 0 complete.** A user-directed prioritization
+replaces the sequential roadmap for this milestone: ship a working
+teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
+first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
+source of truth): `docs/architecture/demo-milestone.md`. The original Phase 17
+frontend-gate checkpoint is deliberately overridden for this milestone
+(recorded in `.planning/STATE.md` and `.planning/ROADMAP.md`).
+
+**Wave 0 done:**
+
+- Reproducible, idempotent demo seed (`packages/database/scripts/seed-demo.ts`,
+  `pnpm db:seed`): institute `catlium-demo` (`99999999-9999-9999-9999-999999999999`,
+  distinct from the surviving E2E fixture institutes), `teacher@catlium.dev` /
+  `student@catlium.dev` (`Password123!`), membership roles, starter subject.
+- `GET /api/v1/memberships` (no tenant header) for the institute picker;
+  contract `MembershipListItemSchema`; new `docs/api/auth.md`.
+- Live-verified (teacher roles, student role, anon 401, tenant read path);
+  `p8_e2e.sh` regression **PASS=86 FAIL=0**.
+
+**Database changes:** none (seed only; no migrations).
+
+**Next task:** Wave 1 — Syllabus backend (migration 0009, worker
+`AI_GENERATE_SYLLABUS`, syllabus API module, syllabus E2E). See
+`docs/tasks.md` and `docs/architecture/demo-milestone.md`.
+
+---
+
+## Prior: Phase 8 — Quiz & Examination Management
 
 **Status: COMPLETE — gap-closure run (08-05..08-07) finished 2026-09-07.**
 Implementation and runtime E2E validation green for the full assessment

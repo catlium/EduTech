@@ -3,6 +3,16 @@ import { z } from 'zod';
 export const RoleEnum = z.enum(['INSTITUTE_ADMIN', 'TEACHER', 'STUDENT']);
 export type Role = z.infer<typeof RoleEnum>;
 
+// A user's membership in an institute, used by the institute picker.
+export const MembershipListItemSchema = z.object({
+  instituteId: z.string().uuid(),
+  instituteName: z.string(),
+  slug: z.string(),
+  status: z.string(),
+  roles: z.array(RoleEnum),
+});
+export type MembershipListItem = z.infer<typeof MembershipListItemSchema>;
+
 export const JobStatusEnum = z.enum(['queued', 'processing', 'completed', 'failed']);
 export type JobStatus = z.infer<typeof JobStatusEnum>;
 

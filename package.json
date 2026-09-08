@@ -15,6 +15,7 @@
     "clean": "turbo run clean",
     "db:generate": "pnpm --filter @catlium/database run generate",
     "db:migrate": "pnpm --filter @catlium/database run migrate",
+    "db:seed": "pnpm --filter @catlium/database run seed",
     "db:studio": "pnpm --filter @catlium/database run studio"
   },
   "devDependencies": {

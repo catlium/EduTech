@@ -1,212 +1,182 @@
 ---
 phase: 08-quiz-examination-management
-verified: 2026-09-05T05:49:47Z
-status: gaps_found
-score: 22/23 must-haves verified
+verified: 2026-09-07T04:48:10Z
+status: passed
+score: 23/23 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "docs/api/assessments.md is verified against implemented behavior (CON-01-style sweep; discrepancies fixed deliberately, not hidden) — 08-04 must-have #2"
-    status: failed
-    reason: "docs/api/assessments.md:269 claims 'a publish attempt with PENDING/REJECTED/ARCHIVED questions fails validation', but publishAssessment (examinations.service.ts:167) filters only on q.question.approvalStatus !== 'APPROVED'. questions.status (ACTIVE/ARCHIVED, schema questions.ts:33) is independent of approvalStatus (archiving via POST /questions/:id/archive changes status only), so an ARCHIVED+APPROVED question links (addQuestions checks only id+instituteId) and passes the publish gate. The 08-04 CON-02 sweep fixed 4 discrepancies but left this one — the doc still asserts behavior the code does not implement. This is also the weakest point of the EXAM-08 gate vs the module's own documented contract."
-    artifacts:
-      - path: "docs/api/assessments.md"
-        issue: "Line 269 claims ARCHIVED questions fail publish validation; code does not check question.status"
-      - path: "apps/api/src/examinations/examinations.service.ts"
-        issue: "publishAssessment:167 unapproved filter ignores q.question.status — ARCHIVED+APPROVED passes"
-    missing:
-      - "Add `|| q.question.status !== 'ACTIVE'` to the publish unapproved filter (and to addQuestions if ARCHIVED links are also to be blocked), or correct the doc to 'PENDING/REJECTED' if ARCHIVED participation is intentional"
-      - "Re-run the publish-gate E2E with an ARCHIVED+APPROVED linked question (expect 400) after the fix, and update user-validation.md EXAM-08"
-  - truth: "Schedule validation is enforced server-side (EXAM-04, incl. update path) — 08-01 truth #6 / 08-02 PATCH re-validation"
-    status: partial
-    reason: "WR-02: updateAssessment (examinations.service.ts:96-100) re-validates the schedule only when BOTH startsAt and endsAt are present in the patch. Patching only endsAt (or only startsAt) against stored values can persist an inverted window, and the update path has no future-startsAt check (create path has one at :50-53). The comment at :95 claims 're-validate the schedule when either end changes' — the code validates only when both change."
-    artifacts:
-      - path: "apps/api/src/examinations/examinations.service.ts"
-        issue: "updateAssessment:96-100 guards on patch.startsAt != null && patch.endsAt != null; merged-schedule validation missing; no future-startsAt check on update"
-    missing:
-      - "Validate the merged schedule (existing values overlaid with patch values) and require startsAt > now when it changes"
-  - truth: "Required request fields reject malformed/empty bodies with 400 (contract error semantics)"
-    status: partial
-    reason: "WR-01: CreateAssessmentDto.title has @IsString @MaxLength(255) but no @IsDefined/@MinLength — POST {} passes class-validator (skips undefined), title reaches the DB insert as undefined → NOT NULL violation → 500 instead of 400; title:'' persists an empty-titled assessment while the Zod contract (contracts/src/index.ts:619) requires min(1). AddQuestionsDto.questionIds likewise has no @IsDefined/@IsArray — POST without questionIds throws TypeError in the service → 500."
-    artifacts:
-      - path: "apps/api/src/examinations/dto/create-assessment.dto.ts"
-        issue: "title lacks @IsDefined and @MinLength(1) — empty body/empty title → 500/empty persistence, contradicting the DTO-vs-contract agreement"
-      - path: "apps/api/src/examinations/dto/add-questions.dto.ts"
-        issue: "questionIds lacks @IsDefined/@IsArray — missing questionIds → 500"
-    missing:
-      - "@IsDefined() + @MinLength(1) on CreateAssessmentDto.title; @IsDefined() + @IsArray() on AddQuestionsDto.questionIds (+ optional @ArrayMaxSize per review IN-02)"
-  - truth: "POST /assessments/:id/questions adds per-row sortOrder preserving stable ordering (EXAM-02)"
-    status: partial
-    reason: "WR-04: addQuestions (examinations.service.ts:274-284) inserts sortOrder = i+1 (1-based array index) without offsetting by the existing max — appending to a non-empty assessment duplicates sortOrder values and destabilizes the documented orderBy(sortOrder asc) list. CONFIRMED in the live DB: assessments 1db88ee9-dded-497a-b434-94225679d1ad and c561fdf0-563e-44b1-a638-1a6327a76b91 each have 2 links both with sort_order=1."
-    artifacts:
-      - path: "apps/api/src/examinations/examinations.service.ts"
-        issue: "addQuestions:280 sortOrder: i + 1 collides with existing links on append"
-    missing:
-      - "Compute max(sortOrder) for the assessment once, then insert base + i + 1"
-  - truth: "DELETE /assessments/:assessmentId respects the lifecycle protections the state machine otherwise guarantees"
-    status: partial
-    reason: "WR-05: deleteAssessment (examinations.service.ts:211-220) has no status guard — a TEACHER can hard-delete an ACTIVE or COMPLETED assessment (links cascade via the 08-01 FK). The state machine blocks ACTIVE→DRAFT for the same 'students may be attempting' reason, and edits are DRAFT-only, but delete bypasses both. The 08-02 plan deliberately left DELETE unguarded (recorded decision), so this is not a plan deviation, but it is inconsistent with the DRAFT-only protection applied everywhere else; destructive impact (attempt-row cascade) materializes when Phase 9 attempt rows exist."
-    artifacts:
-      - path: "apps/api/src/examinations/examinations.service.ts"
-        issue: "deleteAssessment lacks a status check; deletes ACTIVE/COMPLETED assessments"
-    missing:
-      - "Reject DELETE unless status is DRAFT (e.g. 'Only DRAFT assessments can be deleted; unpublish or complete first'), or explicitly defer the guard to Phase 9 with the attempts-table design"
+re_verification:
+  previous_status: gaps_found
+  previous_score: 22/23
+  gaps_closed:
+    - "WR-03 (failed truth #21): docs/api/assessments.md:269 vs publishAssessment ARCHIVED divergence — publish gate now filters approvalStatus !== 'APPROVED' || status !== 'ACTIVE'; addQuestions blocks non-ACTIVE links; doc corrected; E2E ARCHIVED link 400 / publish 400 / reactivate 201 (08-05, PASS=60)"
+    - "WR-02 (partial truth #6): PATCH schedule re-validation only when both ends patched — merged-schedule validation via shared validateSchedule on every PATCH; future-startsAt fires when the patch winds startsAt; null-clear legal; untouched-field freedom preserved (08-06, PASS=81)"
+    - "WR-01 (partial truth): DTO required-field 500s — CreateAssessmentDto.title @IsDefined + @MinLength(1); AddQuestionsDto.questionIds @IsDefined + @IsArray + @ArrayMinSize(1) + @ArrayMaxSize(1000) + per-item @IsUUID; POST {} / {\"title\":\"\"} -> 400 (08-06, PASS=81); PATCH blank title -> 400 (WR-09, fb7bcb7)"
+    - "WR-04 (partial truth #10): append sortOrder collision — single in-transaction max(sortOrder) read, base + i + 1; tracked idempotent resync script renumbered the 2 known duplicates; global dup-group query returns 0 rows (08-07, PASS=83)"
+    - "WR-05 (partial truth #9): DELETE bypassed lifecycle guard — DRAFT-only guard, PUBLISHED/ACTIVE/COMPLETED -> 400 exact message; DRAFT delete stays 204; docs + E2E (08-07, PASS=86)"
+  gaps_remaining: []
+  regressions: []
 deferred:
   - truth: "GET /:assessmentId/questions never exposes answer keys to students (WR-06)"
     addressed_in: "Phase 9"
-    evidence: "Phase 9 goal: 'never expose correct answers/answer key/teacher-only info during an active exam (projection/serialization)'. The review classifies WR-06 as a platform-wide convention (questions module opens reads to members; docs/api/assessments.md:182-183 documents reads open to any member) rather than a Phase 8 regression — but the exposure exists for DRAFT/PUBLISHED/ACTIVE assessments today, so the reviewer's own recommendation is 'must be closed before Phase 9 student attempts ship'. Deferred with the Phase 9 projection/serialization success criterion as the enforcement point."
+    evidence: "Phase 9 goal: 'never expose correct answers/answer key/teacher-only info during an active exam (projection/serialization)'. Open member reads on questions remain by Phase 8 design; documented as known issue in docs/project-status.md and [-] in docs/tasks.md. Not a regression — Phase 9 owns the closure."
 ---
 
 # Phase 8: Quiz & Examination Management — Verification Report
 
 **Phase Goal:** Assessment CRUD, add/remove questions, duration, max marks, instructions, scheduling, publish/complete; lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED; valid state transitions; only approved questions in official assessments. (Reqs EXAM-01..08.)
-**Verified:** 2026-09-05T05:49:47Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-09-07T04:48:10Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure (previous: gaps_found 22/23, 2026-09-05)
 
 ## Goal Achievement
 
-The phase's core success criterion — **assessment management works with enforced state transitions** — is achieved in the codebase. The full CRUD surface, question linking, the `VALID_TRANSITIONS` state machine, the publish validation gate, tenant scoping, and the mass-assignment hardening all exist, are wired, and carry runtime residue proving they executed (DB rows in all four lifecycle states: ACTIVE 1 / COMPLETED 7 / DRAFT 38 / PUBLISHED 1; 23 join rows; migration 0008 applied with the unique constraint). `pnpm typecheck && pnpm lint` green (9/9 turbo tasks).
-
-However, one phase deliverable failed verification and four warnings survive: the publish gate and the module's own behavior-verified contract doc diverge on ARCHIVED questions (**WR-03**), PATCH schedule re-validation is partial (**WR-02**), required-field validation 500s instead of 400 (**WR-01**), append sortOrder collides (DB-confirmed, **WR-04**), and DELETE bypasses the lifecycle guard (**WR-05**). One warning (**WR-06**, answer-key exposure via the open questions read) is explicitly the Phase 9 projection/serialization gate and is deferred there.
+**Verdict: the phase goal is achieved.** "Assessment management works with enforced state transitions" is observably true in the live codebase. All five verification gaps from the 2026-09-05 report (WR-01..WR-05) are closed in code, docs, and E2E coverage; the one deferred item (WR-06, answer-key exposure) remains explicitly deferred to Phase 9 where the roadmap owns it. The E2E suite was re-run by this verifier against the live dockerized stack and reproduced **PASS=86 FAIL=0** twice consecutively; `pnpm typecheck && pnpm lint` are green; the DB carries runtime residue of every lifecycle state (ACTIVE 28 / COMPLETED 82 / DRAFT 287 / PUBLISHED 54, 279 join rows) and the sortOrder duplicate-group invariant query returns 0 rows.
 
 ### Observable Truths
 
 | # | Truth (source plan) | Status | Evidence |
 |---|--------------------|--------|----------|
-| 1 | assessments + assessment_questions tables exist via generated migration 0008 (unique link, cascade FKs, varchar status, no pgEnum, no drizzle-kit push) — 08-01 | ✓ VERIFIED | `schema/examinations.ts` (44 lines, both tables, `assessment_questions_unique`, cascade FKs); `drizzle/0008_awesome_vermin.sql` (CREATE TABLE x2 + 5 FK constraints + UNIQUE); psql: both tables + `assessment_questions_unique` present in catlium_dev |
-| 2 | POST /api/v1/assessments creates DRAFT from TEACHER/INSTITUTE_ADMIN with title/description/durationMinutes/maxMarks/instructions/startsAt/endsAt → 201 — 08-01 | ✓ VERIFIED | controller `@HttpCode(201)` + `@RequiredRoles(...WRITE_ROLES)` (controller.ts:35-37); service inserts `status: 'DRAFT'` server-computed (service.ts:70); DTO whitelist; no-cookie POST → 401 proves guard stack wired |
-| 3 | GET /:assessmentId → 200 in-institute / 404 foreign+random (tenant-scoped, anti-IDOR) — 08-01 | ✓ VERIFIED | `getAssessment` `and(eq(id), eq(instituteId))` + NotFoundException (service.ts:331-343); every mutation/transition reuses it |
-| 4 | GET /assessments → institute-scoped, updatedAt desc, computed questionCount — 08-01 | ✓ VERIFIED | `listAssessments` (service.ts:345-376): institute where, desc(updatedAt), second grouped count → questionCount (never a stored column) |
-| 5 | instituteId/status in any request body → 400 (whitelist mass-assignment) — 08-01 | ✓ VERIFIED | DTOs have no status/instituteId fields; `main.ts` ValidationPipe `whitelist:true, forbidNonWhitelisted:true`; contracts same |
-| 6 | Schedule validated server-side: startsAt future, endsAt after startsAt (both provided) on create — 08-01 | ✓ VERIFIED (create path) | createAssessment:50-57 (past startsAt → 400, endsAt ≤ startsAt → 400); Zod refine (contracts:627-630); E2E documented; **update-path edge = Gap WR-02** |
-| 7 | typecheck && lint pass — 08-01 | ✓ VERIFIED | `pnpm typecheck` and `pnpm lint` both green (9/9 turbo, cached) |
-| 8 | PATCH updates DRAFT-only; non-DRAFT → 400; status/instituteId in body → 400 — 08-02 | ✓ VERIFIED | updateAssessment DRAFT guard (service.ts:91-93); UpdateAssessmentDto whitelist + null semantics; E2E documented (PATCH PUBLISHED → 400) |
-| 9 | DELETE hard-deletes institute-scoped → 204, cascade, foreign → 404 — 08-02 | ✓ VERIFIED (per plan — DELETE deliberately unguarded; **WR-05** recorded separately) | deleteAssessment scoped predicate (service.ts:211-220); join cascade via FK; controller `@HttpCode(NO_CONTENT)`; E2E documented |
-| 10 | POST :id/questions adds in-institute ids with sortOrder/marks, blocks foreign (Pitfall 3) and duplicates — 08-02 | ✓ VERIFIED (with **WR-04** append-order caveat) | per-id id+instituteId check (service.ts:258-268); transactional insert; 23505 → 409 Conflict (service.ts:318-327); E2E + live DB residue |
-| 11 | DELETE :id/questions/:questionId → 204; foreign → 404 — 08-02 | ✓ VERIFIED | removeQuestion scoped delete + NotFoundException (service.ts:294-316); controller 204 |
-| 12 | GET :id/questions → linked questions ordered by sortOrder, marks + nested question data — 08-02 | ✓ VERIFIED (with **WR-06** exposure caveat) | `listQuestions` INNER JOIN questions on id+instituteId, orderBy asc(sortOrder) (service.ts:224-245); E2E documented |
-| 13 | STUDENT mutations → 403, reads → 200 — 08-02 | ✓ VERIFIED | every mutation/action carries `@RequiredRoles(...WRITE_ROLES)`; reads (list/get/listQuestions) open; controller + E2E sweep documented |
-| 14 | State machine is a server-side transition table; any illegal transition → 400 (EXAM-07) — 08-03 | ✓ VERIFIED | `VALID_TRANSITIONS` (service.ts:16-21: DRAFT→PUBLISHED, PUBLISHED→ACTIVE/DRAFT, ACTIVE→COMPLETED, COMPLETED terminal) + single `assertValidTransition` (128-135); 400 message names source/target |
-| 15 | Publish gate: ≥1 question, all linked currently APPROVED, duration > 0, maxMarks > 0, valid schedule — 08-03 (EXAM-08) | ✓ VERIFIED (PENDING/REJECTED/duration/maxMarks/schedule enforced; **WR-03** ARCHIVED edge documented as gap) | publishAssessment:157-185 re-queries CURRENT approvalStatus via listQuestions (Pitfall 1); 400 messages for each precondition; E2E documented (PENDING → 400 '1 question(s) are not APPROVED') |
-| 16 | Re-publish on PUBLISHED → 400 — 08-03 | ✓ VERIFIED | PUBLISHED→PUBLISHED not in VALID_TRANSITIONS → 400; E2E documented |
-| 17 | complete from ACTIVE only; manual activate; no implicit ACTIVE; terminal COMPLETED — 08-03 | ✓ VERIFIED | activateAssessment/completeAssessment/unpublishAssessment all get→assert→setStatus (service.ts:188-207); full lifecycle + illegal cases E2E-documented; DB residue (7 COMPLETED rows) |
-| 18 | PENDING/REJECTED linked question blocks publish with 400 listing count — 08-03 | ✓ VERIFIED | unapproved filter → `${n} question(s) are not APPROVED` (service.ts:167-170); E2E documented |
-| 19 | PUBLISHED→DRAFT unpublish allowed; ACTIVE→DRAFT blocked — 08-03 | ✓ VERIFIED | VALID_TRANSITIONS PUBLISHED:['ACTIVE','DRAFT'], ACTIVE:['COMPLETED']; unpublish round-trip E2E-documented |
-| 20 | docs/user-validation.md Phase 8 section covers EXAM-01..08 + security, every item [x] — 08-04 | ✓ VERIFIED | read section (user-validation.md:523-712): EXAM-01..08 + security block all [x] 2026-09-05; zero `[ ]`/`[!]` markers in file; p8_e2e.sh PASS=56 FAIL=0 documented |
-| 21 | docs/api/assessments.md verified against implemented behavior; discrepancies fixed deliberately — 08-04 | ✗ FAILED | 4 of 5 discrepancies fixed (201 codes, add-questions 400/404 scope, list-questions roles, complete rule), but :269 ARCHIVED claim contradicts publishAssessment:167 (see Gap 1 / WR-03) |
-| 22 | docs/tasks.md Phase 8 block all [x]; docs/project-status.md Phase 8 COMPLETE entry with Rule-3 fields — 08-04 | ✓ VERIFIED | tasks.md:55-80 (EXAM-01..08 + schema/contracts/API/security all [x]); project-status.md:3-64 (COMPLETE entry, decisions, DB changes, validation status, next task) |
-| 23 | Final typecheck && lint green; phase checkpoint committed — 08-04 | ✓ VERIFIED | typecheck+lint green (9/9); commit chain complete in git log (ff32bc0 → 86f2689 → 23b3e58 → 3ba8c4b), no missing task commits |
+| 1 | assessments + assessment_questions tables exist via generated migration 0008 (unique link, cascade FKs, varchar status, no pgEnum, no drizzle-kit push) — 08-01 | ✓ VERIFIED | `schema/examinations.ts` (both tables, `assessment_questions_unique`, cascade FKs); `drizzle/0008_awesome_vermin.sql`; psql: both tables + unique constraint present in catlium_dev; schema-gate held (packages/database diff = resync SQL only) |
+| 2 | POST /api/v1/assessments creates DRAFT from TEACHER/INSTITUTE_ADMIN with title/description/durationMinutes/maxMarks/instructions/startsAt/endsAt → 201 — 08-01 | ✓ VERIFIED | controller `@HttpCode(201)` + `@RequiredRoles(...WRITE_ROLES)`; service inserts `status: 'DRAFT'` server-computed; DTO whitelist; no-cookie → 401; E2E create cases pass |
+| 3 | GET /:assessmentId → 200 in-institute / 404 foreign+random (tenant-scoped, anti-IDOR) — 08-01 | ✓ VERIFIED | `getAssessment` `and(eq(id), eq(instituteId))` + NotFoundException; every mutation/transition reuses it |
+| 4 | GET /assessments → institute-scoped, updatedAt desc, computed questionCount — 08-01 | ✓ VERIFIED | `listAssessments`: institute where, desc(updatedAt), second grouped count → questionCount |
+| 5 | instituteId/status in any request body → 400 (whitelist mass-assignment) — 08-01 | ✓ VERIFIED | DTOs have no status/instituteId fields; `main.ts` ValidationPipe `whitelist:true, forbidNonWhitelisted:true`; E2E security block |
+| 6 | Schedule validated server-side: startsAt future, endsAt after startsAt, on create AND on merged PATCH — 08-01 + WR-02 closure | ✓ VERIFIED | shared `validateSchedule` (service.ts:56-69) used by create (:74-78) and update (:121-129, merged existing+patch values, future-startsAt when patch winds startsAt); E2E: PATCH endsAt-before-startsAt → 400, PATCH past startsAt → 400, PATCH endsAt-only legal → 200 |
+| 7 | typecheck && lint pass — 08-01 | ✓ VERIFIED | `pnpm typecheck` and `pnpm lint` green in apps/api (this re-verification, 2026-09-07) |
+| 8 | PATCH updates DRAFT-only; non-DRAFT → 400; status/instituteId in body → 400 — 08-02 | ✓ VERIFIED | updateAssessment DRAFT guard (service.ts:112-114); UpdateAssessmentDto whitelist + null semantics; E2E |
+| 9 | DELETE hard-deletes institute-scoped DRAFT → 204, cascade, foreign → 404; non-DRAFT → 400 — 08-02 + WR-05 closure | ✓ VERIFIED | deleteAssessment loads row via getAssessment (404+scope) then DRAFT-only guard (service.ts:253-258, exact 400 message); E2E: DELETE published/active/completed → 400 ×3, DRAFT → 204 regression |
+| 10 | POST :id/questions adds in-institute ids with sortOrder/marks, blocks foreign (Pitfall 3), duplicates → 409, non-ACTIVE → 400, appended sortOrder continues at max+1 — 08-02 + WR-03/WR-04 closure | ✓ VERIFIED | per-id id+instituteId check; non-ACTIVE link → 400 (service.ts:320-322); single in-transaction `max(sortOrder)` + `(agg?.maxSort ?? 0) + i + 1` (:332-345); 23505 → 409; E2E: append-to-existing → 201 with ordered ids |
+| 11 | DELETE :id/questions/:questionId → 204; foreign → 404 — 08-02 | ✓ VERIFIED | removeQuestion scoped delete + NotFoundException; controller 204 |
+| 12 | GET :id/questions → linked questions ordered by sortOrder, marks + nested question data — 08-02 (WR-06 exposure deferred to Phase 9) | ✓ VERIFIED | `listQuestions` INNER JOIN questions on id+instituteId, orderBy asc(sortOrder); E2E ordering greps |
+| 13 | STUDENT mutations → 403, reads → 200 — 08-02 | ✓ VERIFIED | every mutation carries `@RequiredRoles(...WRITE_ROLES)`; reads open; E2E security block (17 cases) |
+| 14 | State machine is a server-side transition table; any illegal transition → 400 (EXAM-07) — 08-03 | ✓ VERIFIED | `VALID_TRANSITIONS` (DRAFT→PUBLISHED, PUBLISHED→ACTIVE/DRAFT, ACTIVE→COMPLETED, COMPLETED terminal) + single `assertValidTransition`; 400 message names source/target |
+| 15 | Publish gate: ≥1 question, all linked currently APPROVED **and ACTIVE**, duration > 0, maxMarks > 0, valid schedule — 08-03 (EXAM-08) + WR-03 closure | ✓ VERIFIED | publishAssessment re-queries CURRENT status via listQuestions then filters `approvalStatus !== 'APPROVED' || status !== 'ACTIVE'` (service.ts:198-200); 400 messages; E2E: PENDING → 400, ARCHIVED link → 400, ARCHIVED publish → 400, reactivated → 201 |
+| 16 | Re-publish on PUBLISHED → 400 — 08-03 | ✓ VERIFIED | PUBLISHED→PUBLISHED not in VALID_TRANSITIONS → 400 |
+| 17 | complete from ACTIVE only; manual activate; no implicit ACTIVE; terminal COMPLETED — 08-03 | ✓ VERIFIED | activate/complete/unpublish all get→assert→setStatus; DB residue: 82 COMPLETED rows |
+| 18 | PENDING/REJECTED linked question blocks publish with 400 listing count — 08-03 | ✓ VERIFIED | unapproved filter → `${n} question(s) are not APPROVED or not ACTIVE` |
+| 19 | PUBLISHED→DRAFT unpublish allowed; ACTIVE→DRAFT blocked — 08-03 | ✓ VERIFIED | VALID_TRANSITIONS PUBLISHED:['ACTIVE','DRAFT'], ACTIVE:['COMPLETED']; E2E round-trip |
+| 20 | docs/user-validation.md Phase 8 section covers EXAM-01..08 + security + gap-closure rules, every item [x] — 08-04 + 08-05..08-07 | ✓ VERIFIED | EXAM-01..08 + security all [x]; gap rules (WR-01..WR-05) recorded with dates and E2E evidence; `grep -c "\[ \]\|\[!\]"` → 0; header PASS=86 |
+| 21 | docs/api/assessments.md verified against implemented behavior; discrepancies fixed deliberately, not hidden — 08-04 + WR-03 closure | ✓ VERIFIED | :269/:303 now claim a question must be both APPROVED and ACTIVE — matches service.ts:198-200; Delete section states DRAFT-only rule with the exact 400 message; merged-schedule PATCH semantics documented; add-questions ARCHIVED→400 documented |
+| 22 | docs/tasks.md Phase 8 block all [x] (WR-06 deferral [-]); docs/project-status.md Phase 8 COMPLETE entry with Rule-3 fields — 08-04 + 08-07 Task 3 | ✓ VERIFIED | tasks.md: 08-05..08-07 gap items [x], WR-06 [-] with reason; project-status.md: gap-closure complete, WR-01..WR-05 resolved, WR-06 deferred, validation status PASS=86 (two back-to-back runs), recommended next task |
+| 23 | Final typecheck && lint green; phase checkpoint committed — 08-04 + 08-07 | ✓ VERIFIED | typecheck+lint green (2026-09-07 re-run); commit chain present: aae746f/93f74a2/8ed3656 (WR-04), ed49b8f/b6d14cb (WR-05), a535b9f/f8fd6f7 (WR-01/02 08-06), 08-05 WR-03 commits, 571b527/5cbd2ae/be9b100/fb7bcb7 docs+WR-09 |
 
-**Score:** 22/23 truths verified
+**Score:** 23/23 truths verified (0 present-but-behavior-unverified — every behavior-dependent truth is exercised by the E2E suite this verifier re-ran)
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `packages/database/src/schema/examinations.ts` | assessments + assessment_questions, varchar status, unique link, cascade FKs | ✓ VERIFIED | 44 lines; matches plan spec column-for-column |
-| `packages/database/drizzle/0008_awesome_vermin.sql` | generated migration, both tables + 5 FKs + UNIQUE | ✓ VERIFIED | journaled (meta/_journal.json); applied (psql proof) |
-| `packages/contracts/src/index.ts` Assessment section | AssessmentStatusEnum, Create/Update/Response/ListItem, AddQuestions, AssessmentQuestion | ✓ VERIFIED | contracts:612-682; enum exactly DRAFT/PUBLISHED/ACTIVE/COMPLETED |
-| `apps/api/src/examinations/*` (module/controller/service/DTOs) | full surface incl. publish/activate/complete/unpublish | ✓ VERIFIED | 11 endpoints; all wired in app.module.ts:43; WR-01 DTO defect noted |
-| `docs/api/assessments.md` | full module contract documented | ⚠️ PARTIAL | one knowingly-inaccurate statement remains (:269 ARCHIVED — Gap WR-03) |
-| `docs/user-validation.md` Phase 8 section | EXAM-01..08 + security, all [x] | ✓ VERIFIED | 523-712; dated 2026-09-05 |
-| `docs/tasks.md` + `docs/project-status.md` | Phase 8 blocks/entries per AGENTS.md Rules 3/4 | ✓ VERIFIED | tasks.md 13 [x]; project-status COMPLETE entry |
+| `packages/database/src/schema/examinations.ts` | assessments + assessment_questions, varchar status, unique link, cascade FKs | ✓ VERIFIED | matches plan spec column-for-column |
+| `packages/database/drizzle/0008_awesome_vermin.sql` | generated migration, both tables + 5 FKs + UNIQUE | ✓ VERIFIED | journaled; applied (psql proof); no new migrations (schema-gate) |
+| `packages/database/scripts/resync-assessment-sort-order.sql` | WR-04 data repair: idempotent, DDL-free, transaction-wrapped | ✓ VERIFIED | BEGIN/COMMIT, row_number() OVER (PARTITION BY assessment_id ORDER BY sort_order, id); applied → `UPDATE 4` per 08-07-SUMMARY; global dup-group query now 0 rows |
+| `packages/contracts/src/index.ts` Assessment section | AssessmentStatusEnum, Create/Update/Response/ListItem, AddQuestions, AssessmentQuestion | ✓ VERIFIED | enum exactly DRAFT/PUBLISHED/ACTIVE/COMPLETED; title min(1); questionIds min(1) — consistent with DTOs |
+| `apps/api/src/examinations/*` (module/controller/service/DTOs) | full surface incl. publish/activate/complete/unpublish + all WR fixes | ✓ VERIFIED | 11 endpoints wired in app.module.ts; DTOs carry @IsDefined/@MinLength/@IsArray/@ArrayMaxSize; deleteAssessment DRAFT guard; addQuestions max-offset |
+| `docs/api/assessments.md` | full module contract documented, behavior-verified | ✓ VERIFIED | all 5 previously-discrepant statements now match runtime (201 codes, add-questions scope, list-roles, complete rule, ARCHIVED publish gate, DRAFT-only delete, merged PATCH) |
+| `docs/user-validation.md` Phase 8 section | EXAM-01..08 + security + gap rules, all [x] | ✓ VERIFIED | markers 0 unchecked; gap-closure rules (WR-01..WR-05) recorded with dates and E2E evidence |
+| `docs/tasks.md` + `docs/project-status.md` | Phase 8 closed state per AGENTS.md Rules 3/4 | ✓ VERIFIED | tasks.md gap items [x] + WR-06 [-]; project-status.md COMPLETE entry with validation status |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|----|--------|---------|
-| transition endpoints | VALID_TRANSITIONS | `assertValidTransition` on every lifecycle method (publish/activate/complete/unpublish) | ✓ WIRED | service.ts:128-135, single source of truth, no scattered if/else |
-| publishAssessment | linked questions' CURRENT approval | listQuestions JOIN (double-scoped by instituteId), re-queried at publish, not link time | ✓ WIRED (missing ARCHIVED dimension — WR-03) | service.ts:163,167; Pitfall 1 satisfied for PENDING/REJECTED |
-| addQuestions | questions tenant scope | per-id `and(eq(id), eq(instituteId))` pre-check | ✓ WIRED | service.ts:258-268 (Pitfall 3) |
-| duplicate link | DB unique constraint | transactional insert + 23505 → 409 Conflict | ✓ WIRED | service.ts:270-291 + schema unique |
-| every read/mutation | instituteId scope | `and(eq(id), eq(instituteId))` / `eq(instituteId)` on all queries | ✓ WIRED | getAssessment/listAssessments/deleteAssessment/setStatus all scoped; REVIEW confirms no unscoped query |
-| mass-assignment | 400 | global ValidationPipe whitelist + forbidNonWhitelisted; DTOs lack status/instituteId | ✓ WIRED | main.ts:19-24; contracts match |
-| DRAFT-only edits | PATCH/addQuestions/removeQuestion | status guard in all three | ✓ WIRED | service.ts:91-93, 252-254, 299-301 |
-| DELETE lifecycle protection | state machine | **NOT WIRED** | ⚠️ | WR-05: deleteAssessment has no status guard (plan-deliberate, recorded) |
+| transition endpoints | VALID_TRANSITIONS | `assertValidTransition` on publish/activate/complete/unpublish | ✓ WIRED | service.ts:157-164, single source of truth |
+| publishAssessment | linked questions' CURRENT approval + status | listQuestions JOIN (institute-scoped), re-queried at publish | ✓ WIRED | service.ts:194-205 — ARCHIVED+APPROVED now rejected (WR-03 closed) |
+| addQuestions | questions tenant scope + ACTIVE status | per-id `and(eq(id), eq(instituteId))` + status check | ✓ WIRED | service.ts:308-323 (cross-tenant 400, non-ACTIVE 400) |
+| addQuestions | sortOrder uniqueness | single in-transaction `max(assessmentQuestions.sortOrder)` + `base + i + 1` | ✓ WIRED | service.ts:332-345 — no mid-loop reads (WR-04 closed) |
+| duplicate link | DB unique constraint | transactional insert + 23505 → 409 | ✓ WIRED | service.ts:353-356 + schema unique |
+| every read/mutation | instituteId scope | `and(eq(id), eq(instituteId))` / `eq(instituteId)` on all queries | ✓ WIRED | reviewed — no unscoped query |
+| mass-assignment | 400 | global ValidationPipe whitelist + forbidNonWhitelisted; DTOs lack status/instituteId | ✓ WIRED | main.ts:19-24 |
+| DRAFT-only edits | PATCH/addQuestions/removeQuestion/deleteAssessment | status guard in all four | ✓ WIRED | service.ts:112-114, 300-302, 364-366, 253-258 (WR-05 closed) |
+| PATCH schedule | merged schedule invariants | shared `validateSchedule` with merged existing+patch values | ✓ WIRED | service.ts:121-129 (WR-02 closed) |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 |----------|--------------|--------|--------------------|--------|
 | POST /assessments response | assessment | DB insert `.returning()` (real query) | Yes | ✓ FLOWING |
-| GET /assessments list | assessments[].questionCount | second grouped count query over assessment_questions | Yes | ✓ FLOWING |
+| GET /assessments list | assessments[].questionCount | second grouped count query | Yes | ✓ FLOWING |
 | GET /:id/questions | questions[].question | INNER JOIN to questions table (real rows) | Yes | ✓ FLOWING |
-| publish gate | unapproved count | re-query of linked questions at publish | Yes | ✓ FLOWING (PENDING/REJECTED; ARCHIVED not checked — WR-03) |
+| publish gate | unapproved count | re-query of linked questions at publish (approval + status) | Yes | ✓ FLOWING |
+| addQuestions | sortOrder | in-transaction MAX aggregate over assessment_questions | Yes | ✓ FLOWING (no client-supplied offsets) |
 | status on responses | assessment.status | DB column updated via setStatus | Yes | ✓ FLOWING |
 
 ### Behavioral Spot-Checks
 
-Step 7b: no automated test suite exists by design (repo convention — E2E checklist is the validation architecture). Read-only checks run against the live dockerized stack:
+Step 7b: repo convention is E2E-checklist validation (no unit-test suite by design). The E2E harness is the behavioral test for the behavior-dependent truths; this verifier **ran it twice against the live stack** (API :3000, real PG), not once. Read-only DB checks run alongside:
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Tables + constraint live in PG | psql information_schema queries | both tables + `assessment_questions_unique` present | ✓ PASS |
-| Lifecycle states reachable at runtime | psql `SELECT status, count(*) FROM assessments GROUP BY status` | ACTIVE 1, COMPLETED 7, DRAFT 38, PUBLISHED 1 | ✓ PASS (transition endpoints executed real transitions) |
-| Join rows persisted | psql count on assessment_questions | 23 | ✓ PASS |
-| Watchdog: unauthenticated access blocked | curl no-cookie GET/POST /api/v1/assessments | 401 / 401 | ✓ PASS (guard stack enforced at runtime) |
-| WR-04 sortOrder collision observable | psql `GROUP BY assessment_id, sort_order HAVING count(*)>1` | 2 assessments with duplicated sort_order=1 | ✗ FAIL (confirms Gap WR-04) |
-| Phase E2E harness present | ls /tmp/opencode/p8_e2e.sh | 12.8K script (PASS=56 FAIL=0 documented 2026-09-05) | ✓ PASS (not re-run — mutates state; cookies stale) |
+| Full Phase 8 suite (run 1) | `bash /tmp/opencode/p8_e2e.sh 2>&1 \| tail -3` | `RESULT: PASS=86 FAIL=0` | ✓ PASS |
+| Full Phase 8 suite (run 2, captured log) | `bash /tmp/opencode/p8_e2e.sh > /tmp/opencode/p8_verify_run.log` | `RESULT: PASS=86 FAIL=0` | ✓ PASS |
+| New WR-04/WR-05/merged-PATCH/DTO checks present in suite | grep p8_verify_run.log | sortOrder-append block; DELETE published/active/completed → 400 ×3; PATCH merged-schedule ×3; POST empty/blank title → 400 ×2 | ✓ PASS |
+| WR-03 ARCHIVED gate runtime | grep p8_verify_run.log | ARCHIVED link 400 / ARCHIVED publish 400 / reactivated publish 201 | ✓ PASS |
+| Lifecycle states reachable at runtime | psql `SELECT status, count(*) FROM assessments GROUP BY status` | ACTIVE 28, COMPLETED 82, DRAFT 287, PUBLISHED 54 (grown by E2E runs — transitions execute) | ✓ PASS |
+| Join rows persisted | psql count on assessment_questions | 279 | ✓ PASS |
+| sortOrder duplicate-group invariant | psql `GROUP BY assessment_id, sort_order HAVING count(*)>1` | 0 rows (was 2 duplicate groups before resync) | ✓ PASS (WR-04) |
+| Watchdog: unauthenticated access blocked | curl no-cookie GET/POST /api/v1/assessments | 401 / 401 | ✓ PASS |
+| typecheck + lint | `pnpm typecheck && pnpm lint` (apps/api) | both green | ✓ PASS |
 
 ### Probe Execution
 
-No probes declared by the phase PLANs or SUMMARYs (validation is via the E2E checklist + curl sweeps, not probe scripts). Step 7c: SKIPPED (no probe-*.sh in PLAN/SUMMARY, not a migration-only/tooling phase).
+No probes declared by the phase PLANs or SUMMARYs (validation is via the E2E checklist + curl sweeps, not probe scripts). Step 7c: SKIPPED (no probe-*.sh in PLAN/SUMMARY, not a migration-only/tooling phase). The resync SQL script IS a tracked runnable artifact and its post-state invariant was verified above (0 duplicate groups).
 
 ### Requirements Coverage
 
-All 8 requirement IDs accounted for — none orphaned. Every EXAM ID appears in at least one PLAN's `requirements`/`requirements_addressed` and is `[x]` in REQUIREMENTS.md (lines 81-88) with traceability `✓ complete` (line 235).
+All 8 requirement IDs accounted for — none orphaned. Every EXAM ID is `[x]` in REQUIREMENTS.md (lines 81-88) with traceability `✓ complete` (line 235), maps onto implemented endpoints, and carries green E2E/user-validation coverage.
 
 | Requirement | Source Plan(s) | Description | Status | Evidence |
 |-------------|---------------|-------------|--------|----------|
-| EXAM-01 | 08-01 T1, 08-02 T1/T3, 08-04 | Create/retrieve/update/delete assessment | ✓ SATISFIED | POST/GET/PATCH/DELETE endpoints verified (truths 2,3,4,8,9,13); E2E [x] |
-| EXAM-02 | 08-02 T2, 08-04 | Add/remove questions | ✓ SATISFIED (WR-04 ordering caveat) | join-table endpoints verified (truths 10,11,12); E2E [x] |
-| EXAM-03 | 08-01 T1, 08-02 T1, 08-04 | Configure duration + max marks + instructions | ✓ SATISFIED | columns + create/PATCH echo (truths 2,8,23); E2E [x] |
-| EXAM-04 | 08-01 T1, 08-02 T1, 08-04 | Scheduling | ⚠️ SATISFIED (WR-02 partial re-validation) | create-path validation verified (truth 6); PATCH single-end edge = Gap |
-| EXAM-05 | 08-03 T1/T2/T3, 08-04 | Publish + complete | ✓ SATISFIED | publish/activate/complete endpoints + DB residue (truths 15,17) |
-| EXAM-06 | 08-03 T1/T2, 08-04 | Lifecycle DRAFT→PUBLISHED→ACTIVE→COMPLETED | ✓ SATISFIED | full order reachable; 7 COMPLETED rows in DB (truths 14,17,19) |
-| EXAM-07 | 08-03 T1/T2/T3, 08-04 | Backend enforces valid state transitions | ✓ SATISFIED | VALID_TRANSITIONS + assertValidTransition; illegal → 400 (truth 14) |
-| EXAM-08 | 08-03 T1, 08-04 | Only APPROVED questions in official assessments | ⚠️ SATISFIED (WR-03 ARCHIVED edge) | PENDING/REJECTED blocked at publish (truths 15,18); ARCHIVED+APPROVED passes = Gap WR-03 |
+| EXAM-01 | 08-01 T1, 08-02 T1/T3, 08-04 | Create/retrieve/update/delete assessment | ✓ SATISFIED | POST/GET/PATCH/DELETE verified; E2E incl. DRAFT-only delete guard |
+| EXAM-02 | 08-02 T2, 08-04, 08-07 T1 | Add/remove questions | ✓ SATISFIED | join endpoints verified; sortOrder continuity + resync documented; E2E append/ordering cases |
+| EXAM-03 | 08-01 T1, 08-02 T1, 08-04 | Configure duration + max marks + instructions | ✓ SATISFIED | columns + create/PATCH echo; E2E [x] |
+| EXAM-04 | 08-01 T1, 08-02 T1, 08-04, 08-06 | Scheduling | ✓ SATISFIED | create + merged-PATCH validation shared helper; E2E merged cases |
+| EXAM-05 | 08-03 T1/T2/T3, 08-04, 08-07 T2 | Publish + complete | ✓ SATISFIED | publish/activate/complete endpoints + DB residue; DRAFT-only delete guard E2E |
+| EXAM-06 | 08-03 T1/T2, 08-04 | Lifecycle DRAFT→PUBLISHED→ACTIVE→COMPLETED | ✓ SATISFIED | full order reachable; COMPLETED residue 82 rows |
+| EXAM-07 | 08-03 T1/T2/T3, 08-04 | Backend enforces valid state transitions | ✓ SATISFIED | VALID_TRANSITIONS + assertValidTransition; illegal → 400 (6 E2E cases) |
+| EXAM-08 | 08-03 T1, 08-04, 08-05 | Only APPROVED questions in official assessments | ✓ SATISFIED | APPROVED **and** ACTIVE gate at publish (WR-03); link-time non-ACTIVE 400; PENDING/REJECTED/ARCHIVED blocked; reactivation restores publish |
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `examinations.service.ts` | 167 | publish gate checks approvalStatus only (WR-03) | ⚠️ Warning | ARCHIVED+APPROVED question enters PUBLISHED assessment; contradicts docs/api/assessments.md:269 and weakens EXAM-08 vs documented contract |
-| `examinations.service.ts` | 96-100 | PATCH schedule re-validation only when both fields patched (WR-02) | ⚠️ Warning | single-end PATCH persists inverted/past schedule; update path lacks future-startsAt |
-| `dto/create-assessment.dto.ts` | 13-15 | required title missing @IsDefined/@MinLength (WR-01) | ⚠️ Warning | POST {} → 500 (NOT NULL violation), empty title persists; contract requires min(1) |
-| `dto/add-questions.dto.ts` | 4-6 | questionIds missing @IsDefined/@IsArray (WR-01) | ⚠️ Warning | POST without questionIds → 500 (TypeError) |
-| `examinations.service.ts` | 280 | sortOrder = i+1 without existing-max offset (WR-04) | ⚠️ Warning | DB-confirmed duplicate sort_order=1 on 2 assessments; unstable list ordering |
-| `examinations.service.ts` | 211-220 | deleteAssessment no status guard (WR-05) | ⚠️ Warning | hard-deletes ACTIVE/COMPLETED; inconsistent with DRAFT-only protection; destructive once Phase 9 attempt rows exist |
-| `examinations.controller.ts` | 148-158 | GET :id/questions open reads expose answer payloads (WR-06) | ⚠️ Warning (deferred → Phase 9) | student can read correctChoiceId/correctAnswer on DRAFT/PUBLISHED/ACTIVE; Phase 9 projection gate owns the fix |
+| (none in scope) | — | all debt-marker greps clean (TBD/FIXME/XXX → 0 in examinations module); no stub/placeholder/console.log implementations | ✓ clean | — |
 
-No TBD/FIXME/XXX debt markers in any phase file (grep clean).
+**Deferred (not a gap):** WR-06 — `GET /:assessmentId/questions` reads remain open to any member and return full question payloads (incl. answer fields) for DRAFT/PUBLISHED/ACTIVE assessments. This is Phase 8 by design (documented in docs/api/assessments.md:182-183), recorded as known issue in docs/project-status.md and `[-]` in docs/tasks.md, and the Phase 9 goal explicitly owns the closure ("never expose correct answers/answer key/teacher-only info during an active exam (projection/serialization)"). No regression; deferred per the previous verification.
+
+**Informational (non-blocking, unchanged or fixed):**
+- IN-01 dead `AssessmentQueryDto` placeholder (103B, unused) — still present; harmless.
+- IN-02 unbounded questionIds — **fixed** (08-06: `@ArrayMaxSize(1000)`).
+- IN-03 bare `endsAt` not validated against now on create — intentional, documented (no endsAt-future requirement; only the pair rule + future startsAt).
+- Naming quirk: 08-06-SUMMARY labels the merged-schedule fix "WR-01" and the DTO fix "WR-02", while 08-VERIFICATION (2026-09-05) labelled them the reverse. Both items are closed and verified; only the labels were transposed in the summary.
+- WR-09 (post-08-07 code-review finding): `UpdateAssessmentDto.title` gained `@MinLength(1)` (fb7bcb7) so PATCH `{"title":""}` → 400 — additional hardening beyond the closure list.
 
 ### Human Verification Required
 
-**Status is gaps_found** (rule 1 precedence), so the human-verification section routes through the gap closures below rather than a `human_needed` status:
+None. Every item from the 2026-09-05 human-check list was an "after the fix" runtime check; the fixes landed (08-05/08-06/08-07) and this verifier exercised each behavior against the live stack via the E2E suite (PASS=86 FAIL=0 ×2) and DB invariant queries:
 
-1. **Publish gate with an ARCHIVED+APPROVED question (WR-03)** — after the fix: link an ARCHIVED+APPROVED question to a DRAFT assessment, publish → expect `400`. Grep cannot prove runtime gate behavior; the E2E checklist's EXAM-08 currently only exercises PENDING.
-2. **Single-end PATCH schedule (WR-02)** — after the fix: PATCH only `endsAt` earlier than the stored `startsAt` → expect `400`; PATCH `startsAt` in the past → expect `400`.
-3. **Empty-body validation (WR-01)** — after the fix: POST `{}` and POST `{"title":""}` → expect `400` (not 500).
-4. **Append sortOrder (WR-04)** — after the fix: add 2 questions to an assessment already holding 3, GET :id/questions → expect sortOrder continuing at 4,5 (no duplicates).
-5. **DELETE guard (WR-05)** — decide with the developer: add the DRAFT-only delete guard now, or defer to Phase 9 with the attempts-table design (attempt rows will cascade otherwise).
-6. **E2E regression** — re-run `/tmp/opencode/p8_e2e.sh` against the live stack (mutating; requires re-issuing fixture cookies) after fixes; all 56 checks must stay green.
+1. ~~Publish gate with ARCHIVED+APPROVED question~~ → E2E `ARCHIVED publish 400` ✓ (plus `ARCHIVED link 400` and reactivate → 201).
+2. ~~Single-end PATCH schedule~~ → E2E `PATCH endsAt before startsAt (merged) -> 400`, `PATCH startsAt into the past -> 400`, `PATCH endsAt-only legal -> 200` ✓.
+3. ~~Empty-body validation~~ → E2E `POST empty -> 400`, `POST blank title -> 400` ✓ (PATCH blank title → 400 via WR-09).
+4. ~~Append sortOrder~~ → E2E append block + global dup-group query 0 rows ✓.
+5. ~~DELETE guard~~ → E2E DELETE published/active/completed → 400 ×3 + DRAFT 204 regression ✓.
+6. ~~E2E regression~~ → PASS=86 FAIL=0, reproduced twice by this verifier ✓.
 
 ### Gaps Summary
 
-The phase goal ("assessment management works with enforced state transitions") is substantively achieved and runtime-proven. Five warning-level findings survive the code review, of which **one fails a phase must-have** and is the primary gap:
+**No gaps remain.** The 2026-09-05 report's five findings are closed:
 
-1. **Gap (failed truth):** `docs/api/assessments.md:269` asserts ARCHIVED questions fail publish validation, but `publishAssessment` never checks `question.status` — the ARCHIVED+APPROVED question passes the EXAM-08 gate. The 08-04 CON-02 sweep's core promise ("discrepancies fixed deliberately, not hidden") is violated by this surviving doc-vs-code contradiction. Fix is one filter clause + gate E2E (`unapproved = linked.filter(q => q.question.approvalStatus !== 'APPROVED' || q.question.status !== 'ACTIVE')`).
-2. **Gap (partial):** WR-02 — PATCH re-validates the schedule only when both ends are in the patch; merged-schedule validation and the future-startsAt rule are missing on the update path (EXAM-04 edge).
-3. **Gap (partial):** WR-01 — missing `@IsDefined`/`@MinLength` on required DTO fields → 500 instead of 400 on empty/malformed bodies.
-4. **Gap (partial):** WR-04 — append sortOrder collision (DB-confirmed), destabilizing the documented ordering.
-5. **Gap (partial):** WR-05 — DELETE bypasses the DRAFT-only protection applied everywhere else; plan-deliberate, but its destructive impact lands with Phase 9 attempt rows.
+1. **WR-03 (was failed truth #21):** publish gate now requires both `APPROVED` and `ACTIVE` (service.ts:198-200); addQuestions rejects non-ACTIVE links (400); docs/api/assessments.md corrected and consistent with runtime; E2E proves all three ARCHIVED sub-cases. Closed 08-05.
+2. **WR-02 (was partial truth #6):** merged-schedule validation on every PATCH via shared `validateSchedule`; inverted merged window → 400; patch-wound past startsAt → 400; null-clear legal. Closed 08-06.
+3. **WR-01 (was partial):** required DTO fields validated (`@IsDefined`/`@MinLength(1)` title; `@IsDefined`/`@IsArray`/`@ArrayMinSize(1)`/`@ArrayMaxSize(1000)`/`@IsUUID` questionIds); empty/blank bodies → 400, never 500. Closed 08-06 (+WR-09 PATCH blank title).
+4. **WR-04 (was partial truth #10):** in-transaction `max(sortOrder)` base + i + 1 removes the duplicate-offset path; tracked idempotent resync SQL repaired the 2 known assessments; global duplicate-group query → 0 rows. Closed 08-07.
+5. **WR-05 (was partial truth #9):** DRAFT-only DELETE guard with the exact 400 message; PUBLISHED/ACTIVE/COMPLETED deletions blocked; DRAFT 204 unchanged; documented in docs/api/assessments.md + user-validation EXAM-05. Closed 08-07.
 
-**Deferred to Phase 9 (forward-gaps, not actionable now):** WR-06 (answer-key exposure via the open questions read) — the Phase 9 goal explicitly owns "never expose correct answers/answer key/teacher-only info during an active exam (projection/serialization)"; the reviewer's own callout is "must be closed before Phase 9 student attempts ship".
+**Deferred to Phase 9 (forward-gap, documented, not actionable now):** WR-06 (answer-key exposure via the open questions read) — Phase 9's goal owns the projection/serialization gate.
 
-**Non-blocking observations (informational):** IN-01 dead `AssessmentQueryDto` placeholder; IN-02 unbounded `questionIds` (N+1 validate); IN-03 bare `endsAt` not validated against now on create.
+**Closure evidence summary (this re-verification, 2026-09-07):** E2E `PASS=86 FAIL=0` twice (own runs, log at /tmp/opencode/p8_verify_run.log); psql invariant 0 duplicate sortOrder groups; lifecycle residue ACTIVE 28 / COMPLETED 82 / DRAFT 287 / PUBLISHED 54 across 279 join rows; `pnpm typecheck && pnpm lint` green; user-validation.md 0 unchecked markers; git history contains every fix commit (aae746f, 93f74a2, 8ed3656, ed49b8f, b6d14cb, 571b527, 5cbd2ae, a535b9f, f8fd6f7, be9b100, fb7bcb7).
 
 ---
 
-_Verified: 2026-09-05T05:49:47Z_
-_Verifier: the agent (gsd-verifier)_
+_Verified: 2026-09-07T04:48:10Z_
+_Verifier: the agent (gsd-verifier, re-verification)_

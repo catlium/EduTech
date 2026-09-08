@@ -1,5 +1,51 @@
 # Task Tracker
 
+## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
+
+Master plan: `docs/architecture/demo-milestone.md` (source of truth). This
+milestone intentionally overrides the sequential roadmap gate: a working
+teacher→syllabus→notes→questions→quiz→student→attempt→result demo ships first
+(with a first-class `apps/web` frontend).
+
+### Wave 0 — Bootstrap (seed + memberships)
+
+- [x] Idempotent demo seed (`packages/database/scripts/seed-demo.ts`, `pnpm db:seed`)
+      — institute `catlium-demo` (99999999-...), teacher@catlium.dev + student@catlium.dev
+      (`Password123!`), starter subject Mathematics
+- [x] `GET /api/v1/memberships` (TenancyModule) for the institute picker
+- [x] Contract `MembershipListItemSchema`; `docs/api/auth.md` created
+- [x] Verified live: teacher roles INSTITUTE_ADMIN+TEACHER, student STUDENT, anon 401
+- [x] Regression: `p8_e2e.sh` PASS=86 FAIL=0
+
+### Wave 1 — Syllabus backend
+
+- [ ] Migration 0009 `syllabus_proposals`
+- [ ] Worker: `AI_GENERATE_SYLLABUS` (Pydantic mirrors + proposal upsert)
+- [ ] API module `syllabus`: generate/get/patch/confirm (proposal-only AI)
+- [ ] `scripts/e2e/syllabus_e2e.sh` + `docs/api/syllabus.md`
+
+### Wave 2 — Attempts backend
+
+- [ ] Migration 0010 `attempts` / `attempt_questions` / `attempt_responses`
+- [ ] API module `attempts`: available/start/questions(sanitized)/save/submit/result/results
+- [ ] Deterministic synchronous grading; deadline auto-submit; closes WR-06
+- [ ] `scripts/e2e/attempts_e2e.sh` + `docs/api/attempts.md`
+
+### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui)
+
+- [ ] Scaffold: Next.js 15 App Router, TS strict, Tailwind v4, shadcn/ui (selective install)
+- [ ] Centralized `lib/` (api/auth/tenant/jobs)
+- [ ] Teacher UI (login→dashboard→subjects→syllabus→materials→questions→assessments→results)
+- [ ] Student UI (dashboard→available→attempt→timer→submit→result)
+
+### Wave 4 — Integration & close
+
+- [ ] `scripts/e2e/demo_e2e.sh` full journey
+- [ ] Browser walkthrough; validation sweep
+- [ ] Docs close + `.planning` updates (frontend-gate override recorded)
+
+--
+
 ## Priority Revision (2026-08-19)
 
 Development priority shifted to the **AI-Assisted Learning and Examination

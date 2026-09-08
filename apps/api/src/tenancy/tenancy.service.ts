@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
-import { memberships, membershipRoles } from '@catlium/database';
+import { eq, and, inArray } from 'drizzle-orm';
+import { memberships, membershipRoles, institutes } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 
@@ -9,6 +9,14 @@ export interface MembershipWithRoles {
   id: string;
   userId: string;
   instituteId: string;
+  status: string;
+  roles: string[];
+}
+
+export interface MembershipListItem {
+  instituteId: string;
+  instituteName: string;
+  slug: string;
   status: string;
   roles: string[];
 }
@@ -57,5 +65,36 @@ export class TenancyService {
 
   async addRole(membershipId: string, role: string): Promise<void> {
     await this.db.insert(membershipRoles).values({ membershipId, role });
+  }
+
+  /** List every membership a user holds, with institute info + roles (institute picker). */
+  async listMemberships(userId: string): Promise<MembershipListItem[]> {
+    const rows = await this.db
+      .select({
+        membershipId: memberships.id,
+        membershipStatus: memberships.status,
+        instituteId: institutes.id,
+        instituteName: institutes.name,
+        slug: institutes.slug,
+      })
+      .from(memberships)
+      .innerJoin(institutes, eq(institutes.id, memberships.instituteId))
+      .where(eq(memberships.userId, userId));
+
+    if (rows.length === 0) return [];
+
+    const membershipIds = rows.map((r) => r.membershipId);
+    const roleRows = await this.db
+      .select()
+      .from(membershipRoles)
+      .where(inArray(membershipRoles.membershipId, membershipIds));
+
+    return rows.map((r) => ({
+      instituteId: r.instituteId,
+      instituteName: r.instituteName,
+      slug: r.slug,
+      status: r.membershipStatus,
+      roles: roleRows.filter((rr) => rr.membershipId === r.membershipId).map((rr) => rr.role),
+    }));
   }
 }

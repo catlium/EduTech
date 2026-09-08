@@ -791,6 +791,47 @@ merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
 
 ---
 
+## Demo Milestone — Wave 0 (Bootstrap: seed + memberships)
+
+Status: `[x]` All Wave 0 items passed 2026-09-08 against the dockerized stack
+(postgres/rabbitmq/redis/api/ocr/worker-material/worker-ai up; `p8_e2e.sh`
+regression PASS=86 FAIL=0).
+
+### DEMO-W0-01 — Seed is idempotent and reproducible
+
+- **Setup:** stack up; `pnpm db:seed` run twice.
+- **Expected:** second run succeeds (no errors); DB state unchanged apart from
+  timestamps; institutes/users/subjects re-used (no duplicates).
+
+### DEMO-W0-02 — Teacher membership + roles
+
+- **Endpoint:** `POST /api/v1/auth/login` — payload
+  `{"email":"teacher@catlium.dev","password":"Password123!"}`
+- **Expected:** `200` with `user.email === teacher@catlium.dev`.
+- **Endpoint:** `GET /api/v1/memberships`
+- **Expected:** `200` → one membership `catlium-demo`
+  (`99999999-9999-9999-9999-999999999999`) with roles
+  `["INSTITUTE_ADMIN","TEACHER"]`.
+
+### DEMO-W0-03 — Student membership + role
+
+- **Endpoint:** `POST /api/v1/auth/login` — payload
+  `{"email":"student@catlium.dev","password":"Password123!"}`
+- **Expected:** `200`; `GET /memberships` → one membership `catlium-demo` with
+  roles `["STUDENT"]`.
+
+### DEMO-W0-04 — Memberships authorization
+
+- **Endpoint:** `GET /api/v1/memberships` with no session cookie
+- **Expected:** `401`.
+
+### DEMO-W0-05 — Injectable institute header path still works
+
+- **Endpoint:** `GET /api/v1/academic/subjects` with teacher session + headers
+  `x-institute-id: 99999999-9999-9999-9999-999999999999`
+- **Expected:** `200` `{"subjects":[{...Mathematics...}]}` (seed subject
+  present, proves the tenant-scoped read path against the demo institute).
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete
