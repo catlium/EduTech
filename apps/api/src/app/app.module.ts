@@ -11,6 +11,7 @@ import { ContentModule } from '../content/content.module.js';
 import { MaterialsModule } from '../materials/materials.module.js';
 import { QuestionsModule } from '../questions/questions.module.js';
 import { ExaminationsModule } from '../examinations/examinations.module.js';
+import { SyllabusModule } from '../syllabus/syllabus.module.js';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { RabbitMQService } from '../common/services/rabbitmq.service.js';
@@ -41,6 +42,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     MaterialsModule,
     QuestionsModule,
     ExaminationsModule,
+    SyllabusModule,
   ],
   providers: [
     {

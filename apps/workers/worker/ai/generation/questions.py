@@ -21,7 +21,7 @@ _SYSTEM_TEMPLATE = (
     "{difficulty} difficulty. Respond with ONLY a JSON object and nothing else "
     "(no markdown code fences) matching exactly this schema:\n"
     '{{ "questions": [\n'
-    '  {{\n'
+    "  {{\n"
     '    "stem": string,\n'
     '    "questionType": "MCQ" | "TRUE_FALSE" | "FILL_IN_BLANK",\n'
     '    "difficulty": "EASY" | "MEDIUM" | "HARD",\n'

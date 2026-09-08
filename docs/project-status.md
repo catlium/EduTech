@@ -2,7 +2,7 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
-**Status: IN PROGRESS — Wave 3a scaffold + teacher shell complete, Build Mode active.** A user-directed prioritization
+**Status: IN PROGRESS — Wave 1 (syllabus) done E2E, Wave 2 next.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -26,11 +26,32 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 
 **Database changes:** none (seed only; no migrations).
 
+**Wave 1 — Syllabus backend + UI complete (2026-09-08):**
+- `syllabus_proposals` table (unique per subject) via migration 0009; `AI_GENERATE_SYLLABUS`
+  added to the active-job dedup index.
+- Worker op `AI_GENERATE_SYLLABUS`: Pydantic SyllabusTopic/Chapter/Payload mirrors, one-shot
+  chat-completions call, strict JSON parse + Zod-style validation, upsert proposal. AI writes
+  proposals only — chapters/topics are created only by teacher confirm.
+- API module `apps/api/src/syllabus` (RouteGroup guard roles INSTITUTE_ADMIN/TEACHER for writes):
+  `POST generate` (202, job queued; optional `materialId`, else latest READY material),
+  `GET jobs/:jobId`, `GET` (proposal or 404), `PATCH` (Zod-validated structure → 400 on invalid),
+  `POST confirm` (201, transactional chapter/topic creation with kebab-slug dedup).
+- Fixed pre-existing RTBL: `apps/api/src/materials/storage/` interface + local provider were
+  referenced but never committed — this blocked the whole API from compiling.
+- Contracts `GenerateSyllabusRequest/Response`, `UpdateSyllabusRequest`, `SyllabusResponse` in
+  `@catlium/contracts`; `docs/api/syllabus.md`.
+- Frontend: `/subjects/[subjectId]/syllabus` (shadcn components only): pick source material →
+  generate with `waitForJob` + progress → PENDING_REVIEW editor (add/edit/remove chapters and
+  topics) → PATCH save → confirm dialog → confirmed view reusing `ChapterTree`. Linked from the
+  subject detail page. `next build` PASS (14 routes), web `tsc` PASS.
+- Validation: `scripts/e2e/syllabus_e2e.sh` **PASS=39 FAIL=0** (SYL-01..11) against a live
+  Postgres + RabbitMQ + mock-AI-provider stack; `p8_e2e.sh` regression green; API typecheck+lint
+  green; worker ruff + mypy green.
+
 **Next tasks (in priority order):**
-1. **Wave 1 — Syllabus backend** (migration 0009, worker `AI_GENERATE_SYLLABUS`, syllabus API module)
-2. **Wave 2 — Attempts backend** (migration 0010, attempts API module, grading)
-3. **Wave 3a/3b — Teacher syllabus pages + Student UI** (against new APIs)
-4. **Wave 4 — Full integration & demo validation**
+1. **Wave 2 — Attempts backend** (migration 0010, attempts API module, grading)
+2. **Wave 3b — Student attempt/result UI** (against new APIs)
+3. **Wave 4 — Full integration & demo validation**
 
 **Wave 3a scaffold complete (2026-09-08):**
 - `apps/web` Next.js 15 + React 19 + TS strict + Tailwind v4 + shadcn/ui (26 components, new-york, zinc).

@@ -20,12 +20,19 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 - [x] Verified live: teacher roles INSTITUTE_ADMIN+TEACHER, student STUDENT, anon 401
 - [x] Regression: `p8_e2e.sh` PASS=86 FAIL=0
 
-### Wave 1 — Syllabus backend (NEXT)
+### Wave 1 — Syllabus backend + UI ✓
 
-- [ ] Migration 0009 `syllabus_proposals`
-- [ ] Worker: `AI_GENERATE_SYLLABUS` (Pydantic mirrors + proposal upsert)
-- [ ] API module `syllabus`: generate/get/patch/confirm (proposal-only AI)
-- [ ] `scripts/e2e/syllabus_e2e.sh` + `docs/api/syllabus.md`
+- [x] Migration 0009 `syllabus_proposals`
+- [x] Worker: `AI_GENERATE_SYLLABUS` (Pydantic mirrors + proposal upsert)
+- [x] API module `syllabus`: generate/get/patch/confirm (proposal-only AI)
+- [x] `scripts/e2e/syllabus_e2e.sh` + `docs/api/syllabus.md`
+- [x] Fixed pre-existing RTBL: `apps/api/src/materials/storage/` (interface + local
+      provider) were referenced but never committed — blocked the entire API build
+- [x] E2E validation: `syllabus_e2e.sh` PASS=39 FAIL=0 (SYL-01..11), `p8_e2e.sh`
+      regression green, `pnpm typecheck` + `pnpm lint` green, worker ruff/mypy green
+- [x] Frontend: `/subjects/[subjectId]/syllabus` (source-material picker → generate
+      with job polling → proposal editor add/edit/remove chapters+topics → PATCH
+      save → confirm dialog → confirmed ChapterTree); linked from subject detail
 
 ### Wave 2 — Attempts backend
 
@@ -46,7 +53,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   - [x] Materials list + create text material
   - [x] Questions list + approve/reject + AI generation poll
   - [x] Assessments list + create + detail + publish
-  - [ ] Syllabus pages (after Wave 1 backend)
+  - [x] Syllabus pages (after Wave 1 backend)
   - [ ] Student attempt/result pages (after Wave 2 backend)
 - [ ] Student UI (dashboard→available→attempt→timer→submit→result)
 

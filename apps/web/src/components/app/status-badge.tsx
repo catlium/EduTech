@@ -16,6 +16,8 @@ const variantMap: Record<string, string> = {
   FAILED: "bg-red-50 text-red-700 hover:bg-red-50",
   ARCHIVED: "bg-zinc-100 text-zinc-600 hover:bg-zinc-100",
   REJECTED: "bg-red-50 text-red-700 hover:bg-red-50",
+  PENDING_REVIEW: "bg-amber-50 text-amber-700 hover:bg-amber-50",
+  CONFIRMED: "bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
 };
 
 export function StatusBadge({ status }: { status: string }) {

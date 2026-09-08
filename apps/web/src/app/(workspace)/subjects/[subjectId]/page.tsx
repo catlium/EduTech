@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft, BookMarked } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
 import { useTenant, canManage } from "@/lib/tenant";
@@ -86,6 +86,11 @@ export default function SubjectDetailPage() {
           <StatusBadge status={subject.status} />
           <span>{subject.description ?? subject.slug}</span>
         </div>
+        {isTeacher && (
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => router.push(`/subjects/${subjectId}/syllabus`)}>
+            <BookMarked className="mr-1 size-3.5" /> Syllabus
+          </Button>
+        )}
       </div>
 
       <section className="space-y-4">

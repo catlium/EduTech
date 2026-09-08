@@ -10,8 +10,8 @@ build/
 .next/
 out/
 
-# Local file storage (learning materials)
-storage/
+# Local file storage (learning materials) — runtime dir at repo root only.
+/storage/
 
 # Environment
 .env

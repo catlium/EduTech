@@ -37,6 +37,8 @@ QA_OPERATION = "AI_GENERATE_QUESTIONS"
 VALID_QUESTION_TYPES = {"MCQ", "TRUE_FALSE", "FILL_IN_BLANK"}
 VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
 
+SYLLABUS_OPERATION = "AI_GENERATE_SYLLABUS"
+
 
 class GenerationError(Exception):
     """Carries a safe, user-facing error message for the failed job."""
@@ -93,6 +95,14 @@ OPERATIONS: dict[str, Operation] = {
         model=schemas.GeneratedQuestions,
         default_title="AI-generated questions",
     ),
+    SYLLABUS_OPERATION: Operation(
+        operation=SYLLABUS_OPERATION,
+        content_type="SYLLABUS_PROPOSAL",
+        build_messages=generation.syllabus.build_messages,
+        parse=generation.syllabus.parse_syllabus_json,
+        model=schemas.SyllabusPayload,
+        default_title="AI-generated syllabus",
+    ),
 }
 
 
@@ -107,6 +117,10 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
             _generate_questions(
                 job_id, institute_id, operation, source, materials, context, payload
             )
+            return
+
+        if operation.operation == SYLLABUS_OPERATION:
+            _generate_syllabus(job_id, institute_id, operation, source, materials, context, payload)
             return
 
         provider = create_provider()
@@ -198,10 +212,60 @@ def _generate_questions(
             "materialIds": [str(m["id"]) for m in materials],
         },
     )
-    logger.info(
-        "AI questions generated: job=%s count=%s", job_id, len(question_ids)
-    )
+    logger.info("AI questions generated: job=%s count=%s", job_id, len(question_ids))
 
+
+def _generate_syllabus(
+    job_id: str,
+    institute_id: str,
+    operation: Operation,
+    source: dict[str, str],
+    materials: list[dict[str, Any]],
+    context: str,
+    payload: dict[str, Any],
+) -> None:
+    """Generate a syllabus proposal for a subject and persist it PENDING_REVIEW.
+
+    The AI only ever writes a *proposal* to ``syllabus_proposals`` (never
+    chapters/topics). A teacher/admin confirms it through the API, which
+    transactionally creates the real academic hierarchy. Regeneration refreshes
+    the proposal but never silently overwrites a CONFIRMED one.
+    """
+    subject_id = payload.get("subjectId")
+    if not isinstance(subject_id, str) or not _is_uuid(subject_id):
+        raise GenerationError("Invalid job payload")
+
+    subject = db.get_subject(subject_id, institute_id)
+    if subject is None:
+        raise GenerationError("Subject not found")
+
+    provider = create_provider()
+    raw = provider.complete(operation.build_messages(context, _source_label(source, materials)))
+    output = _validate_output(operation, raw)
+
+    proposal_id = db.upsert_syllabus_proposal(
+        institute_id,
+        subject_id=subject_id,
+        structure=output,
+        source_material_id=source["id"],
+        created_by=source["requestedBy"],
+    )
+    chapters = output.get("chapters") or []
+    topic_count = sum(len(chapter.get("topics") or []) for chapter in chapters)
+    db.update_job_status(
+        job_id,
+        "completed",
+        result={
+            "proposalId": proposal_id,
+            "status": "PENDING_REVIEW",
+            "chapterCount": len(chapters),
+            "topicCount": topic_count,
+            "sourceType": source["type"],
+            "sourceId": source["id"],
+            "materialIds": [str(m["id"]) for m in materials],
+        },
+    )
+    logger.info("AI syllabus generated: job=%s proposal=%s", job_id, proposal_id)
 
 
 def _fail(job_id: str, exc: Exception) -> None:

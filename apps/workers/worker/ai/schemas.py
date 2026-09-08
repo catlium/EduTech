@@ -77,6 +77,7 @@ class ImportantConceptsPayload(BaseModel):
 
 # ── AI question generation ─────────────────────────────────
 
+
 class McqChoice(BaseModel):
     id: str = Field(min_length=1, max_length=128)
     text: str = Field(min_length=1, max_length=1000)
@@ -128,9 +129,7 @@ class GeneratedQuestion(BaseModel):
         elif self.questionType == "TRUE_FALSE":
             self.payload = TrueFalseQuestionPayload.model_validate(payload).model_dump()
         elif self.questionType == "FILL_IN_BLANK":
-            self.payload = FillInBlankQuestionPayload.model_validate(
-                payload
-            ).model_dump()
+            self.payload = FillInBlankQuestionPayload.model_validate(payload).model_dump()
         else:  # pragma: no cover - Literal excludes this
             raise ValueError("Unsupported questionType")
         return self
@@ -138,3 +137,21 @@ class GeneratedQuestion(BaseModel):
 
 class GeneratedQuestions(BaseModel):
     questions: list[GeneratedQuestion] = Field(min_length=1)
+
+
+# ── AI syllabus generation ─────────────────────────────────
+
+
+class SyllabusTopic(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class SyllabusChapter(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=1000)
+    topics: list[SyllabusTopic] = Field(default_factory=list, max_length=200)
+
+
+class SyllabusPayload(BaseModel):
+    chapters: list[SyllabusChapter] = Field(min_length=1, max_length=100)

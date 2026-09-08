@@ -64,6 +64,13 @@
       "when": 1788581614675,
       "tag": "0008_awesome_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788862952337,
+      "tag": "0009_sad_kronos",
+      "breakpoints": true
     }
   ]
 }

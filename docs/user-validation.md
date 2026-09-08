@@ -15,6 +15,35 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Demo Milestone — Wave 1 AI Syllabus (E2E)
+
+Status: `[x]` **PASS=39 FAIL=0 (2026-09-08)** via
+`bash scripts/e2e/syllabus_e2e.sh` — SYL-01..SYL-11 against a live local stack
+(Postgres + RabbitMQ via `infrastructure/compose/docker-compose.yml`, API on
+:3000, local OpenAI-compatible AI worker on `WORKER_AI_PROVIDER_URL=http://127.0.0.1:8899/v1`
+returning a fixed 3-chapter JSON via `scripts/e2e/mock_ai_provider.py` — no real LLM).
+The harness logs each check with PASS/FAIL and cleans up its own workers.
+
+- **Setup required** — postgres/rabbitmq up; seeded demo institute
+  (`99999999-9999-9999-9999-999999999999`), `teacher@catlium.dev` /
+  `student@catlium.dev` (`Password123!`); API dev server running on :3000.
+- **Endpoint** — `POST/GET/PATCH /api/v1/academic/subjects/:subjectId/syllabus`,
+  `POST .../syllabus/confirm`, `GET .../syllabus/jobs/:jobId`, headers
+  `x-institute-id` + access cookie.
+- **Payloads** — generate: `{"materialId":"<uuid>"}`; patch:
+  `{"structure":{"chapters":[{"name","description","topics":[{"name","description"}]}]}}`.
+- **Expected output** — generate `202 {generation:{jobId,status:'QUEUED'}}`; job
+  completes with `result.proposalId`; proposal `PENDING_REVIEW`; invalid structure
+  → `400`; confirm → `201 CONFIRMED` and the academic `chapters`/`topics` endpoints
+  return the confirmed hierarchy; writes after confirm → `409`; generate with no
+  material → `400`; student writes → `403`, student read → `200`; foreign tenant
+  → `403`; no cookie → `401`.
+- **Manual UI check (equivalent paths, apps/web on :3001)** — teacher: Subjects →
+  Mathematics → Syllabus → pick material → Generate → review/edit structure →
+  Save → Confirm & Create → confirmed tree with the new chapters/topics.
+
+---
+
 ## Phase 5 — AI Learning Content Generation (E2E)
 
 Status: `[x]` All tests passed 2026-09-02 against the dockerized stack

@@ -8,6 +8,7 @@ from worker.ai.generation import (
     prompt,
     questions,
     summary,
+    syllabus,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "prompt",
     "questions",
     "summary",
+    "syllabus",
 ]

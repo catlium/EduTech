@@ -27,6 +27,14 @@ def get_material(material_id: str, institute_id: str) -> dict[str, Any] | None:
         ).fetchone()
 
 
+def get_subject(subject_id: str, institute_id: str) -> dict[str, Any] | None:
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT * FROM subjects WHERE id = %s AND institute_id = %s",
+            (subject_id, institute_id),
+        ).fetchone()
+
+
 def update_material_status(material_id: str, status: str) -> None:
     with psycopg.connect(settings.database_url) as conn:
         conn.execute(
@@ -192,3 +200,59 @@ def insert_generated_questions(
                 raise RuntimeError("questions insert returned no row")
             ids.append(str(row[0]))
     return ids
+
+
+def upsert_syllabus_proposal(
+    institute_id: str,
+    *,
+    subject_id: str,
+    structure: dict[str, Any],
+    source_material_id: str,
+    created_by: str,
+) -> str:
+    """Insert or refresh the AI-generated proposal for a subject (PENDING_REVIEW).
+
+    The worker is the only writer of proposal structure/status. A CONFIRMED
+    proposal is never silently overwritten — regeneration first requires the
+    API to open the subject (no endpoint does that today, so confirming is a
+    terminal state for a subject's syllabus; the API also blocks generate on a
+    CONFIRMED proposal).
+    """
+    with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, status FROM syllabus_proposals WHERE subject_id = %s AND institute_id = %s",
+            (subject_id, institute_id),
+        )
+        existing = cur.fetchone()
+        now = _now()
+        if existing is None:
+            cur.execute(
+                "INSERT INTO syllabus_proposals"
+                " (institute_id, subject_id, status, structure, source_material_id,"
+                "  created_by, updated_by, updated_at)"
+                " VALUES (%s, %s, 'PENDING_REVIEW', %s, %s, %s, %s, %s)"
+                " RETURNING id",
+                (
+                    institute_id,
+                    subject_id,
+                    Jsonb(structure),
+                    source_material_id,
+                    created_by,
+                    created_by,
+                    now,
+                ),
+            )
+            row = cur.fetchone()
+        else:
+            if existing[1] == "CONFIRMED":
+                raise RuntimeError("syllabus already confirmed")
+            cur.execute(
+                "UPDATE syllabus_proposals SET structure = %s, source_material_id = %s,"
+                " status = 'PENDING_REVIEW', updated_by = %s, confirmed_at = NULL,"
+                " updated_at = %s WHERE id = %s RETURNING id",
+                (Jsonb(structure), source_material_id, created_by, now, existing[0]),
+            )
+            row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("syllabus_proposals upsert returned no row")
+    return str(row[0])

@@ -690,3 +690,67 @@ export const AssessmentQuestionSchema = z.object({
   question: QuestionResponseSchema,
 });
 export type AssessmentQuestion = z.infer<typeof AssessmentQuestionSchema>;
+
+// ── Syllabus Contracts ─────────────────────
+//
+// A syllabus proposal is the AI-generated (or teacher-edited) academic
+// structure for a subject: ordered chapters, each with optional topics. It
+// stays `PENDING_REVIEW` until a teacher/admin confirms it; confirmation
+// transactionally creates the real chapters/topics via the academic module.
+// AI (workers) only ever writes proposals — never chapters/topics directly.
+
+export const SyllabusStatusEnum = z.enum(['PENDING_REVIEW', 'CONFIRMED']);
+export type SyllabusStatus = z.infer<typeof SyllabusStatusEnum>;
+
+export const SyllabusTopicSchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().max(1000).nullable().optional(),
+});
+export type SyllabusTopic = z.infer<typeof SyllabusTopicSchema>;
+
+export const SyllabusChapterSchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().max(1000).nullable().optional(),
+  topics: z.array(SyllabusTopicSchema).max(200),
+});
+export type SyllabusChapter = z.infer<typeof SyllabusChapterSchema>;
+
+export const SyllabusStructureSchema = z.object({
+  chapters: z.array(SyllabusChapterSchema).min(1).max(100),
+});
+export type SyllabusStructure = z.infer<typeof SyllabusStructureSchema>;
+
+export const GenerateSyllabusRequestSchema = z.object({
+  materialId: z.string().uuid().optional(),
+});
+export type GenerateSyllabusRequest = z.infer<typeof GenerateSyllabusRequestSchema>;
+
+export const GenerateSyllabusResponseSchema = z.object({
+  jobId: z.string().uuid(),
+  operation: z.literal('AI_GENERATE_SYLLABUS'),
+  sourceType: z.literal('MATERIAL'),
+  sourceId: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  status: z.literal('QUEUED'),
+});
+export type GenerateSyllabusResponse = z.infer<typeof GenerateSyllabusResponseSchema>;
+
+export const UpdateSyllabusRequestSchema = z.object({
+  structure: SyllabusStructureSchema,
+});
+export type UpdateSyllabusRequest = z.infer<typeof UpdateSyllabusRequestSchema>;
+
+export const SyllabusResponseSchema = z.object({
+  id: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  status: SyllabusStatusEnum,
+  structure: SyllabusStructureSchema,
+  sourceMaterialId: z.string().uuid().nullable(),
+  createdBy: z.string().uuid(),
+  updatedBy: z.string().uuid().nullable(),
+  confirmedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type SyllabusResponse = z.infer<typeof SyllabusResponseSchema>;
