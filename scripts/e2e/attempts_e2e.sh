@@ -232,6 +232,7 @@ SU=$(req POST "/attempts/$ATTID/submit")
 ok "$SU" 200 "AT-08a submit 200"
 body_has '"status":"SUBMITTED"' "AT-08b SUBMITTED"
 body_has '"submittedAt"' "AT-08c submittedAt set"
+body_has '"score":3' "AT-08h graded score populated after submit"
 SU2=$(req POST "/attempts/$ATTID/submit")
 ok "$SU2" 200 "AT-08d re-submit idempotent 200"
 body_has '"status":"SUBMITTED"' "AT-08e still SUBMITTED"
@@ -239,8 +240,8 @@ LOCK=$(req PUT "/attempts/$ATTID/questions/$AQ2" -H 'Content-Type: application/j
 ok "$LOCK" 400 "AT-08f answer after submit -> 400"
 FIN=$(req GET "/attempts/$ATTID")
 ok "$FIN" 200 "AT-08g final detail 200"
-body_has "\"answer\":{\"choiceId\":\"$MC1B\"}" "AT-08h student sees own saved answer after submit"
-body_not_has "correctChoiceId|correctAnswer|acceptableAnswers|explanation" "AT-08i NO answer-key leakage after submit"
+body_has "\"answer\":{\"choiceId\":\"$MC1B\"}" "AT-08i student sees own saved answer after submit"
+body_not_has "correctChoiceId|correctAnswer|acceptableAnswers|explanation" "AT-08j NO answer-key leakage in detail after submit"
 
 echo "== AT-09 cross-student isolation =="
 S2_EMAIL="att.s2.$RAND@test.com"
@@ -266,10 +267,11 @@ TL=$(req GET "/assessments/$A_OPEN/attempts")
 ok "$TL" 200 "AT-10a teacher ledger 200"
 body_has "student@catlium.dev" "AT-10b ledger shows student email"
 body_has '"status":"SUBMITTED"' "AT-10c ledger shows SUBMITTED"
-body_has '"score":null' "AT-10d ledger score null until evaluation"
+body_not_has '"score":null' "AT-10d ledger score populated after evaluation"
+body_has '"score":3' "AT-10e ledger shows graded score 3"
 JAR="$CJS"
 TFB=$(req GET "/assessments/$A_OPEN/attempts")
-ok "$TFB" 403 "AT-10e student forbidden from teacher ledger -> 403"
+ok "$TFB" 403 "AT-10f student forbidden from teacher ledger -> 403"
 
 echo "== AT-11 tenant isolation =="
 JAR="$CJS2"
@@ -293,13 +295,42 @@ body_has '"submittedAt"' "AT-12e submittedAt set (= deadline)"
 EXS=$(req POST "/attempts/$ATT2/submit")
 ok "$EXS" 200 "AT-12f submit on expired is idempotent 200"
 body_has '"status":"EXPIRED"' "AT-12g stays EXPIRED"
+RES2=$(req GET "/attempts/$ATT2/result")
+ok "$RES2" 200 "AT-12h expired result 200"
+body_has '"score":0' "AT-12i expired attempt graded 0 (no saved answers)"
+body_has '"status":"EXPIRED"' "AT-12j result shows EXPIRED"
 
 echo "== AT-13 no-duplicate-concurrent-start =="
 JAR="$CJS"
 START13=$(req POST /attempts -H 'Content-Type: application/json' -d "{\"assessmentId\":\"$A_OPEN\"}")
 ok "$START13" 201 "AT-13a fresh start 201"
+AT13=$(jget id)
 DUP=$(req POST /attempts -H 'Content-Type: application/json' -d "{\"assessmentId\":\"$A_OPEN\"}")
 ok "$DUP" 409 "AT-13b duplicate IN_PROGRESS start -> 409"
+
+echo "== AT-14 result review (Phase 10) =="
+JAR="$CJS"
+RES=$(req GET "/attempts/$ATTID/result")
+ok "$RES" 200 "AT-14a student result 200"
+body_has '"score":3' "AT-14b graded score 3"
+body_has '"totalMarks":4' "AT-14c totalMarks 4"
+CORRC=$(jq '[.result.questions[].isCorrect] | map(select(. == true)) | length' "$BODY_FILE")
+[ "$CORRC" = "3" ] && PASS=$((PASS+1)) && echo "  ok AT-14d 3 correct questions" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-14d: expected 3 correct, got $CORRC"); echo "  FAIL AT-14d (correct=$CORRC)"; }
+SUMM=$(jq '[.result.questions[].marksAwarded] | add' "$BODY_FILE")
+[ "$SUMM" = "3" ] && PASS=$((PASS+1)) && echo "  ok AT-14e marksAwarded sums to 3" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-14e: expected sum 3, got $SUMM"); echo "  FAIL AT-14e (sum=$SUMM)"; }
+UNANS=$(jq '[.result.questions[].marksAwarded] | map(select(. == 0)) | length' "$BODY_FILE")
+[ "$UNANS" = "1" ] && PASS=$((PASS+1)) && echo "  ok AT-14f unanswered question scored 0" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-14f: expected 1 zero-mark question, got $UNANS"); echo "  FAIL AT-14f (zero=$UNANS)"; }
+body_has '"correctAnswer"' "AT-14g correct answer revealed for review"
+body_has "\"answer\":{\"choiceId\":\"$MC1B\"}" "AT-14h student saved answer shown"
+body_has "\"correctAnswer\":{\"choiceId\":\"$MC1B\"}" "AT-14i MCQ correct answer revealed"
+INP=$(req GET "/attempts/$AT13/result")
+ok "$INP" 400 "AT-14j IN_PROGRESS result -> 400"
+JAR="$CJS2"
+XR=$(req GET "/attempts/$ATTID/result")
+ok "$XR" 404 "AT-14k cross-student result -> 404"
 
 echo
 echo "==========================================="

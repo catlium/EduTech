@@ -816,6 +816,23 @@ export const AttemptDetailSchema = AttemptMetaSchema.extend({
 });
 export type AttemptDetail = z.infer<typeof AttemptDetailSchema>;
 
+// Phase 10 result review — only for the student's OWN terminal attempt
+// (SUBMITTED / EXPIRED). Deliberately separate from AttemptDetailSchema: the
+// detail endpoint stays answer-key-free (sanitized payload, no correctness),
+// while this route reveals the correct answer for post-submission review.
+export const AttemptResultQuestionSchema = StudentAttemptQuestionSchema.extend({
+  answer: z.record(z.string(), z.unknown()).nullable(),
+  isCorrect: z.boolean(),
+  marksAwarded: z.number().int(),
+  correctAnswer: z.record(z.string(), z.unknown()),
+});
+export type AttemptResultQuestion = z.infer<typeof AttemptResultQuestionSchema>;
+
+export const AttemptResultSchema = AttemptMetaSchema.extend({
+  questions: z.array(AttemptResultQuestionSchema),
+});
+export type AttemptResult = z.infer<typeof AttemptResultSchema>;
+
 // Student-facing "available assessment" card — sanitized, answer-free.
 export const AvailableAssessmentSchema = z.object({
   id: z.string().uuid(),
@@ -841,7 +858,8 @@ export const SaveAttemptAnswerRequestSchema = z.object({
 });
 export type SaveAttemptAnswerRequest = z.infer<typeof SaveAttemptAnswerRequestSchema>;
 
-// Teacher/admin attempt listing per assessment (score still null until Phase 10).
+// Teacher/admin attempt listing per assessment (score populated once the
+// attempt is evaluated — SUBMITTED/EXPIRED).
 export const AttemptListItemSchema = z.object({
   id: z.string().uuid(),
   studentId: z.string().uuid(),

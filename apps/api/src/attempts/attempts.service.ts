@@ -18,6 +18,7 @@ import {
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { gradeAnswer } from './attempts.grade.js';
 
 const ATTEMPTABLE_STATUSES = ['PUBLISHED', 'ACTIVE'] as const;
 type AttemptRow = typeof attempts.$inferSelect;
@@ -98,7 +99,8 @@ export class AttemptsService {
   /**
    * Server-side deadline enforcement — never trust the frontend timer. When an
    * IN_PROGRESS attempt has passed its deadline it is atomically transitioned
-   * to EXPIRED (submittedAt = deadline). Callers check `status` afterwards.
+   * to EXPIRED (submittedAt = deadline) and evaluated against whatever was
+   * saved. Callers check `status` afterwards.
    */
   private async refreshAndExpire(row: AttemptRow): Promise<AttemptRow> {
     if (row.status !== 'IN_PROGRESS' || !row.deadline) return row;
@@ -108,7 +110,45 @@ export class AttemptsService {
       .set({ status: 'EXPIRED', submittedAt: row.deadline, updatedAt: new Date() })
       .where(eq(attempts.id, row.id))
       .returning();
+    if (updated) {
+      await this.evaluateAttempt(updated.id);
+      const [fresh] = await this.db.select().from(attempts).where(eq(attempts.id, updated.id));
+      return fresh ?? updated;
+    }
     return updated ?? row;
+  }
+
+  /**
+   * Phase 10 automatic evaluation. Deterministic, server-side: grades each
+   * snapshotted question against the saved response (unanswered = 0 marks),
+   * persists per-response correctness, and writes the attempt's total score.
+   * Runs exactly once per attempt, at the IN_PROGRESS -> terminal transition.
+   */
+  private async evaluateAttempt(attemptId: string): Promise<void> {
+    const [aqRows, resRows] = await Promise.all([
+      this.db.select().from(attemptQuestions).where(eq(attemptQuestions.attemptId, attemptId)),
+      this.db.select().from(attemptResponses).where(eq(attemptResponses.attemptId, attemptId)),
+    ]);
+    const responses = new Map(resRows.map((r) => [r.attemptQuestionId, r]));
+
+    const graded = aqRows.map((aq) => {
+      const res = responses.get(aq.id);
+      const { isCorrect } = res
+        ? gradeAnswer(aq.questionType, aq.payload, res.answer)
+        : { isCorrect: false };
+      return { attemptQuestionId: aq.id, isCorrect, marksAwarded: isCorrect ? aq.marks : 0 };
+    });
+
+    await this.db.transaction(async (tx) => {
+      for (const g of graded) {
+        await tx
+          .update(attemptResponses)
+          .set({ isCorrect: g.isCorrect, marksAwarded: g.marksAwarded, evaluatedAt: new Date() })
+          .where(eq(attemptResponses.attemptQuestionId, g.attemptQuestionId));
+      }
+      const score = graded.reduce((sum, g) => sum + g.marksAwarded, 0);
+      await tx.update(attempts).set({ score, updatedAt: new Date() }).where(eq(attempts.id, attemptId));
+    });
   }
 
   // ── Student endpoints ──────────────────────
@@ -269,7 +309,7 @@ export class AttemptsService {
     return { attemptQuestionId: aq.id, saved: true };
   }
 
-  /** Explicit, idempotent submit. Already-submitted/expired returns unchanged. */
+  /** Explicit, idempotent submit. Once submitted (or expired) returns unchanged. */
   async submit(instituteId: string, attemptId: string, studentId: string) {
     let attempt = await this.refreshAndExpire(await this.loadOwn(instituteId, attemptId, studentId));
 
@@ -280,9 +320,55 @@ export class AttemptsService {
         .where(eq(attempts.id, attemptId))
         .returning();
       attempt = updated ?? attempt;
+      await this.evaluateAttempt(attemptId);
+      const [fresh] = await this.db.select().from(attempts).where(eq(attempts.id, attemptId));
+      attempt = fresh ?? attempt;
     }
 
     return this.serializeMeta(attempt);
+  }
+
+  /**
+   * Phase 10 result review. The student's OWN terminal attempt only — the
+   * detail endpoint stays answer-key-free, while this route reveals the
+   * correct answer for post-submission review.
+   */
+  async result(instituteId: string, attemptId: string, studentId: string) {
+    const attempt = await this.refreshAndExpire(await this.loadOwn(instituteId, attemptId, studentId));
+    if (attempt.status === 'IN_PROGRESS') {
+      throw new BadRequestException('Attempt has not been submitted yet');
+    }
+
+    const aqRows = await this.db
+      .select()
+      .from(attemptQuestions)
+      .where(eq(attemptQuestions.attemptId, attempt.id))
+      .orderBy(asc(attemptQuestions.sortOrder), asc(attemptQuestions.id));
+    const resRows = await this.db
+      .select()
+      .from(attemptResponses)
+      .where(eq(attemptResponses.attemptId, attempt.id));
+    const responses = new Map(resRows.map((r) => [r.attemptQuestionId, r]));
+
+    const questionsOut = aqRows.map((aq) => {
+      const res = responses.get(aq.id);
+      const { isCorrect, correctAnswer } = gradeAnswer(aq.questionType, aq.payload, res?.answer ?? {});
+      return {
+        attemptQuestionId: aq.id,
+        questionId: aq.questionId,
+        questionType: aq.questionType,
+        stem: aq.stem,
+        payload: this.sanitizePayload(aq.payload, aq.questionType),
+        sortOrder: aq.sortOrder,
+        marks: aq.marks,
+        answer: res?.answer ?? null,
+        isCorrect,
+        marksAwarded: isCorrect ? aq.marks : 0,
+        correctAnswer,
+      };
+    });
+
+    return { result: { ...this.serializeMeta(attempt), questions: questionsOut } };
   }
 
   // ── Teacher endpoints ──────────────────────

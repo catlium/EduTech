@@ -865,9 +865,10 @@ regression PASS=86 FAIL=0).
 
 **Setup required:** live stack (Postgres + RabbitMQ + API on :3000) with the
 idempotent demo seed applied; run `rm -f /tmp/opencode/att_*.txt && bash
-scripts/e2e/attempts_e2e.sh`. Expected **PASS=60 FAIL=0**. Regressions re-run
-green: `syllabus_e2e.sh` PASS=39, `p8_e2e.sh` PASS=86 (p8 fixtures recreated —
-the DB was reseeded demo-only after the Wave 1 checkpoint).
+scripts/e2e/attempts_e2e.sh`. Expected **PASS=76 FAIL=0** (AT-01..14, incl.
+Phase 10 grading). Regressions re-run green: `syllabus_e2e.sh` PASS=39,
+`p8_e2e.sh` PASS=86 (p8 fixtures recreated — the DB was reseeded demo-only
+after the Wave 1 checkpoint).
 
 ### DEMO-W2-01 — Student sees available assessments
 
@@ -904,8 +905,52 @@ the DB was reseeded demo-only after the Wave 1 checkpoint).
 - **Endpoint:** second student on `GET /attempts/:id` / `PUT .../submit` of
   another student's attempt
 - **Expected:** `404`; non-member institute header → `403`; teacher ledger
-  `GET /assessments/:id/attempts` shows student email + `score: null`; student
-  on the ledger route → `403`.
+  `GET /assessments/:id/attempts` shows student email + graded `score` *(not
+  null — automatic evaluation since Phase 10)*; student on the ledger route →
+  `403`.
+
+## Demo Milestone — Phase 10 (Automatic Evaluation & Results, E2E-run 2026-09-08) [x]
+
+**Setup required:** same as Wave 2 (demo seed + attempts_e2e.sh). Covered by
+the AT-14 block: a mixed attempt (MCQ correct, TRUE_FALSE correct,
+FILL_IN_BLANK correct, one unanswered MCQ) must grade to **3/4**.
+
+### DEMO-W10-01 — Submit grades the attempt
+
+- **Endpoint:** `POST /api/v1/attempts/:id/submit`
+- **Expected:** `200`; response now carries `"score":3` (was `0`-implicitly-null
+  before). Unanswered questions score 0; FIB graded trimmed + case-insensitive.
+
+### DEMO-W10-02 — Teacher sees scores in the ledger
+
+- **Endpoint:** `GET /api/v1/assessments/:id/attempts` (teacher)
+- **Expected:** `200` with `"score":3` per evaluated attempt, never `null` for
+  terminal attempts.
+
+### DEMO-W10-03 — Student result review (correct answers revealed)
+
+- **Endpoint:** `GET /api/v1/attempts/:id/result` (student, own terminal attempt)
+- **Expected:** `200` `{ result: { score: 3, totalMarks: 4, questions: [ … ] } }`;
+  3 of 4 questions `"isCorrect":true` with `"marksAwarded"`, the unanswered one
+  `0`; every question carries `"correctAnswer"`; a still-IN_PROGRESS attempt →
+  `400`; another student's attempt → `404`. The `detail` endpoint still shows
+  **no** answer-key fields (AT-08j).
+
+### DEMO-W10-04 — Expired attempt is graded
+
+- **Endpoint:** `GET /api/v1/attempts/:id/result` after the attempt expired
+  (deadline moved to the past)
+- **Expected:** `200`, `"score":0`, `"status":"EXPIRED"` — expired attempts are
+  evaluated from whatever was saved before the deadline.
+
+### DEMO-W10-05 — UI
+
+- **Student result page:** `/student/attempts/:attemptId/result` shows
+  `Score 3 / 4`, per-question correct/incorrect badges, and the correct answer
+  on wrong ones.
+- **Teacher results page:** `/assessments/:assessmentId/results` (linked as
+  "Results" on the assessment detail page) lists student, status, score/total,
+  submitted time.
 
 ## Conventions
 

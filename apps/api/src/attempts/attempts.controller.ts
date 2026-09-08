@@ -85,6 +85,15 @@ export class AttemptsController {
     return { attempt };
   }
 
+  @Get('attempts/:attemptId/result')
+  async result(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('attemptId', ParseUUIDPipe) attemptId: string,
+  ) {
+    return this.attemptsService.result(tenant.instituteId, attemptId, user.userId);
+  }
+
   @Get('assessments/:assessmentId/attempts')
   @RequiredRoles(...TEACHER_ROLES)
   async listForAssessment(

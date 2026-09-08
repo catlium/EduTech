@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Send, Trash2 } from "lucide-react";
+import { ArrowLeft, ClipboardList, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { api, ApiError } from "@/lib/api";
@@ -112,16 +112,24 @@ export default function AssessmentDetailPage() {
         title={assessment.title}
         description={assessment.description ?? undefined}
         actions={
-          isTeacher &&
-          (assessment.status === "DRAFT" ? (
-            <Button onClick={onPublish} disabled={working}>
-              <Send className="mr-1 size-4" /> Publish
-            </Button>
-          ) : assessment.status === "PUBLISHED" ? (
-            <Button variant="outline" onClick={onDelete} disabled={working}>
-              <Trash2 className="mr-1 size-4" /> Delete
-            </Button>
-          ) : null)
+          isTeacher && (
+            <div className="flex items-center gap-2">
+              {assessment.status === "DRAFT" ? (
+                <Button onClick={onPublish} disabled={working}>
+                  <Send className="mr-1 size-4" /> Publish
+                </Button>
+              ) : assessment.status === "PUBLISHED" ? (
+                <Button variant="outline" onClick={onDelete} disabled={working}>
+                  <Trash2 className="mr-1 size-4" /> Delete
+                </Button>
+              ) : null}
+              <Button variant="outline" asChild>
+                <Link href={`/assessments/${assessment.id}/results`}>
+                  <ClipboardList className="mr-1 size-4" /> Results
+                </Link>
+              </Button>
+            </div>
+          )
         }
       />
 

@@ -2,7 +2,7 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
-**Status: IN PROGRESS — architecture boundary checkpoint complete; next: Phase 10.** A user-directed prioritization
+**Status: IN PROGRESS — Phase 10 (automatic evaluation) complete; next: Wave 4 full integration & demo validation.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -47,7 +47,7 @@ commit `feat(architecture): enforce single public API and AI/OCR boundaries`,
 push, and deliver the 7-section checkpoint report to the user. Do NOT start
 Phase 10 until the user confirms this checkpoint.
 
-- **Commit:** `feat(architecture): enforce single public API and AI/OCR boundaries` (pending push)
+- **Commit:** `feat(architecture): enforce single public API and AI/OCR boundaries` (pushed, `0ec1e79`)
 
 ## Demo roadmap (summary)
 
@@ -90,9 +90,8 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   green; worker ruff + mypy green.
 
 **Next tasks (in priority order):**
-1. **Architecture boundary — single public API entry** (docker-compose port audit;
-   frontend only calls NestJS; internal services not publicly exposed; ADR + docs)
-2. **Phase 10 — Automatic evaluation** (grading against retained attempt snapshots + result UI)
+1. **Architecture boundary — single public API entry** ✓ (2026-09-08, commit `0ec1e79`)
+2. **Phase 10 — Automatic evaluation** ✓ (2026-09-08, commit below)
 3. **Wave 4 — Full integration & demo validation**
 
 **Wave 2 — attempts backend + student UI complete (2026-09-08):**
@@ -117,10 +116,41 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   `/student/assessments/[assessmentId]` (instructions + start, 409-aware),
   `/student/attempts/[attemptId]` (player: per-type answer, auto-save + FIB
   debounce, question navigator, countdown timer, submit dialog, auto-submit on expiry),
-  `/student/attempts/[attemptId]/result` (status + "not evaluated yet" until Phase 10).
+  `/student/attempts/[attemptId]/result` (Phase 10: score + per-question
+  correct/incorrect + correct-answer reveal).
   Uses only existing shadcn components. `next build` PASS (18 routes), web `tsc` PASS.
 - Validation: `scripts/e2e/attempts_e2e.sh` **PASS=60 FAIL=0** (AT-01..13); regressions
   **syllabus PASS=39 FAIL=0** and **p8 PASS=86 FAIL=0** re-run green; API `typecheck`+`lint` green.
+
+**Phase 10 — Automatic Evaluation & Results ✓ (2026-09-08):**
+- Grading closes the Wave 2 gap (`submit` flips status only, `score` always
+  null). Deterministic, synchronous, server-side — no job queue, no AI:
+  `apps/api/src/attempts/attempts.grade.ts` pure `gradeAnswer(type,payload,answer)`
+  (MCQ exact choiceId, TRUE_FALSE exact value, FILL_IN_BLANK trimmed +
+  case-insensitive against any `acceptableAnswers`; unanswered = 0).
+- Evaluated exactly once on the IN_PROGRESS → terminal transition: `submit`
+  (→ SUBMITTED) and server-side deadline expiry (`refreshAndExpire` → EXPIRED,
+  graded from whatever was saved). Persists per-response `isCorrect` /
+  `marksAwarded` / `evaluatedAt` and `attempts.score` (sum of marksAwarded) in
+  one transaction; both paths refresh the row after grading so responses carry
+  the real score.
+- New `GET /attempts/:attemptId/result`: student's own attempt, `SUBMITTED` /
+  `EXPIRED` only (400 while IN_PROGRESS), per-question review with `isCorrect`,
+  `marksAwarded`, student answer and `correctAnswer` reveal. Detail endpoint
+  stays sanitized — the correct answer is never in detail (AT-08j enforces).
+- Contracts: `AttemptResultSchema` / `AttemptResultQuestionSchema`.
+- Student result UI: `/student/attempts/[attemptId]/result` now renders
+  `Score n / m`, correct-count, per-question correct/incorrect badges with
+  marks, and the correct answer on wrong questions (replaces "not evaluated
+  yet"). Teacher results UI: `/assessments/[assessmentId]/results` ledger table
+  (student, status, score/total, submitted) linked as "Results" from the
+  assessment detail page (teacher-only routes).
+- Validation: `attempts_e2e.sh` **PASS=76 FAIL=0** (AT-01..14; new AT-14 result
+  review: 3/4 score, marks sum, unanswered=0, correct-answer reveal,
+  IN_PROGRESS result → 400, cross-student → 404, EXPIRED graded 0). Regressions
+  green: syllabus PASS=39, p8 PASS=86. API + web typecheck/lint, `next build`
+  PASS, live routes `/student/attempts/[id]/result` and
+  `/assessments/[id]/results` → 200.
 
 **Wave 3a scaffold complete (2026-09-08):**
 - `apps/web` Next.js 15 + React 19 + TS strict + Tailwind v4 + shadcn/ui (26 components, new-york, zinc).

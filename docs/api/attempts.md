@@ -1,11 +1,12 @@
-# Attempts API (Wave 2)
+# Attempts API (Wave 2 + Phase 10)
 
 Student examination attempts against published assessments. Question sets are
 snapshotted at start, so later edits to the assessment link or source questions
 never affect in-flight attempts. Student-facing payloads are **sanitized**: the
 server retains answer fields (`correctChoiceId` / `correctAnswer` /
-`acceptableAnswers`, and the question payload) internally for Phase 10
-evaluation, but they are never serialized in student responses.
+`acceptableAnswers`, and the question payload) internally for server-side
+evaluation, but they are never serialized in student responses — except in the
+dedicated Phase 10 `result` review after the attempt is submitted/expired.
 
 Base URL: `http://localhost:3000/api/v1` — all non-`/health` routes require the
 session cookie + `x-institute-id` header; writes also require `x-csrf-token`.
@@ -18,8 +19,9 @@ session cookie + `x-institute-id` header; writes also require `x-csrf-token`.
 | POST | `/attempts` | any member | Start an attempt (201) on an available assessment |
 | GET | `/attempts/:attemptId` | own attempt | Student's own attempt detail (sanitized, with saved answers) |
 | PUT | `/attempts/:attemptId/questions/:attemptQuestionId` | own attempt | Save/overwrite answer (200); validated per question type |
-| POST | `/attempts/:attemptId/submit` | own attempt | Idempotent submit (200); already-submitted/expired returns unchanged |
-| GET | `/assessments/:assessmentId/attempts` | INSTITUTE_ADMIN / TEACHER | Attempt ledger for an assessment (score null until Phase 10) |
+| POST | `/attempts/:attemptId/submit` | own attempt | Idempotent submit (200); grades saved answers, sets `score` |
+| GET | `/attempts/:attemptId/result` | own attempt | Graded result review (correct answers revealed) — SUBMITTED/EXPIRED only, else 400 |
+| GET | `/assessments/:assessmentId/attempts` | INSTITUTE_ADMIN / TEACHER | Attempt ledger for an assessment (scores populated once evaluated) |
 
 ## POST /attempts
 
@@ -73,8 +75,39 @@ deadline enforcement), then the save is rejected.
 ## POST /attempts/:attemptId/submit
 
 Idempotent: an attempt already `SUBMITTED`/`EXPIRED` returns its current meta
-unchanged. `score` is `null` until Phase 10 (automatic evaluation), which will
-grade saved answers against the retained snapshot payloads.
+unchanged. On the first submit the attempt is **automatically evaluated**:
+each saved answer is graded against the retained snapshot payload
+(`apps/api/src/attempts/attempts.grade.ts`) and `attempts.score` is written.
+Unanswered questions score 0. An attempt whose deadline passes while
+`IN_PROGRESS` is transitioned to `EXPIRED` and evaluated the same way with
+whatever was saved.
+
+Grading rules:
+| questionType | correct |
+|---|---|
+| `MCQ` | answer `choiceId` === snapshot `correctChoiceId` |
+| `TRUE_FALSE` | answer `value` === snapshot `correctAnswer` |
+| `FILL_IN_BLANK` | answer `value` matches any `acceptableAnswers` (trimmed, case-insensitive) |
+
+## GET /attempts/:attemptId/result
+
+The student's own **graded** review for a terminal attempt (`SUBMITTED` /
+`EXPIRED`); 400 while `IN_PROGRESS`. Unlike the sanitized `detail`, this route
+reveals the correct answer per question for post-submission review. Response:
+
+```json
+{
+  "result": {
+    "id": "…", "status": "SUBMITTED", "score": 3, "totalMarks": 4,
+    "questions": [
+      { "attemptQuestionId": "…", "questionId": "…", "questionType": "MCQ",
+        "stem": "…", "payload": { "choices": [ … ] }, "marks": 1,
+        "answer": { "choiceId": "…" }, "isCorrect": true,
+        "marksAwarded": 1, "correctAnswer": { "choiceId": "…" } }
+    ]
+  }
+}
+```
 
 ## Security invariants
 
@@ -83,10 +116,14 @@ grade saved answers against the retained snapshot payloads.
 - Student endpoints have **no** answer-key data: `sanitizePayload` is the single
   serialization point and `attempts_e2e.sh` asserts farewell to
   correctChoiceId / correctAnswer / acceptableAnswers / explanation in every
-  student payload.
+  student payload — including `detail` *after* submit. Answer keys are revealed
+  only by `GET /attempts/:attemptId/result`, which is the student's own
+  terminal attempt (and the student's answer is theirs anyway).
 - The frontend timer is UX-only; deadlines are enforced server-side.
 
 ## Validation
 
-`scripts/e2e/attempts_e2e.sh` — PASS=60 FAIL=0 (AT-01..13). Regressions kept
-green after changes: `syllabus_e2e.sh` PASS=39, `p8_e2e.sh` PASS=86.
+`scripts/e2e/attempts_e2e.sh` — PASS=76 FAIL=0 (AT-01..14, incl. Phase 10
+grading: score populated on submit, ledger scores, expired grading, result
+review + sanitization). Regressions kept green after changes:
+`syllabus_e2e.sh` PASS=39, `p8_e2e.sh` PASS=86.

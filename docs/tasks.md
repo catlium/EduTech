@@ -2,6 +2,38 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
+## Phase 10 — Automatic Evaluation & Results (started 2026-09-08)
+
+Grading gaps left by Wave 2: `submit` flips status only; `attempts.score` stays
+null; result page shows "not evaluated yet". Schema was already Phase-10-ready
+(`attempt_responses.isCorrect/marksAwarded/evaluatedAt`, full answer payload
+snapshotted server-side). Deterministic, synchronous, server-side grading.
+
+- [x] Contract `AttemptResultSchema` (review view: score + per-question
+      `isCorrect` / `marksAwarded` / `correctAnswer`); detail stays sanitized
+- [x] `apps/api/src/attempts/attempts.grade.ts` — pure `gradeAnswer(type,payload,answer)`
+      + `correctAnswerOf(type,payload)`; MCQ exact, TRUE_FALSE exact,
+      FILL_IN_BLANK trimmed-case-insensitive; unanswered = 0
+- [x] Service: evaluate on SUBMITTED (submit) AND on EXPIRED (deadline
+      auto-evaluation at refresh); persist per-response grading + `attempts.score`
+- [x] `GET /attempts/:attemptId/result` — student own attempt, terminal only
+      (400 for IN_PROGRESS); per-question review with correct answer reveal
+- [x] Web: student result page shows score + per-question correct/incorrect +
+      correct-answer reveal (replaces "not evaluated yet")
+- [x] Web: teacher results page `/assessments/[assessmentId]/results` (ledger:
+      student, score, total, status, submitted) + link from assessment detail
+- [x] E2E `attempts_e2e.sh`: AT-08 submit score populated; AT-10d ledger score
+      non-null; new AT-14 result review (score 3/4, per-question isCorrect,
+      correct answer reveal, IN_PROGRESS result -> 400, EXPIRED result graded 0)
+- [x] Docs: `docs/api/attempts.md`, `docs/user-validation.md`,
+      `docs/project-status.md` (Phase 10 complete)
+- [x] Validation: typecheck/lint/web build + attempts/syllabus/p8 E2E + live
+      route check for teacher results
+- [x] Commit `feat(attempts): phase 10 automatic evaluation and result review`
+      + push + checkpoint report
+
+### Wave 0 — Bootstrap (seed + memberships) ✓
+
 ### Architecture checkpoint — enforce single public API + AI/OCR boundaries ✓
 
 Master plan: `docs/architecture/demo-milestone.md` (source of truth). User
