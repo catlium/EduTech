@@ -2,7 +2,7 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
-**Status: IN PROGRESS — Wave 1 (syllabus) done E2E, Wave 2 next.** A user-directed prioritization
+**Status: IN PROGRESS — Wave 1 + Wave 2 backend/UI done E2E; next: architecture boundary + Phase 10.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -49,9 +49,37 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   green; worker ruff + mypy green.
 
 **Next tasks (in priority order):**
-1. **Wave 2 — Attempts backend** (migration 0010, attempts API module, grading)
-2. **Wave 3b — Student attempt/result UI** (against new APIs)
+1. **Architecture boundary — single public API entry** (docker-compose port audit;
+   frontend only calls NestJS; internal services not publicly exposed; ADR + docs)
+2. **Phase 10 — Automatic evaluation** (grading against retained attempt snapshots + result UI)
 3. **Wave 4 — Full integration & demo validation**
+
+**Wave 2 — attempts backend + student UI complete (2026-09-08):**
+- `attempts` / `attempt_questions` / `attempt_responses` via migration 0010
+  (question set snapshotted at start — full payload retained server-side for
+  Phase 10 grading; `attempt_responses` unique on (attemptId, attemptQuestionId)
+  for duplicate-write-safe upserts).
+- API module `apps/api/src/attempts` (student routes member-scoped, teacher ledger
+  INSTITUTE_ADMIN/TEACHER): `GET /attempts/available` (status + schedule window),
+  `POST /attempts` (snapshot + deadline, duplicate concurrent start → 409),
+  `GET /attempts/:id` + `PUT /attempts/:id/questions/:aqId` (per-type validated:
+  MCQ choiceId ∈ snapshot choices, TF boolean, FIB ≤500 chars), `POST /attempts/:id/submit`
+  (idempotent), `GET /assessments/:id/attempts` (teacher ledger).
+- **No answer-key leakage:** single `sanitizePayload` point drops
+  correctChoiceId / correctAnswer / acceptableAnswers / explanation from every
+  student-facing payload; enforced by attempts E2E `body_not_has` assertions.
+- Server-side deadline enforcement: IN_PROGRESS → EXPIRED atomically with
+  submittedAt = deadline (never trusts the frontend timer).
+- Contracts appended to `@catlium/contracts` (AttemptStatusEnum,
+  StudentAttemptQuestion/Answer, AttemptMeta/Detail, AvailableAssessment, ...).
+- Student UI (role-aware sidebar): `/student/dashboard` (available assessments),
+  `/student/assessments/[assessmentId]` (instructions + start, 409-aware),
+  `/student/attempts/[attemptId]` (player: per-type answer, auto-save + FIB
+  debounce, question navigator, countdown timer, submit dialog, auto-submit on expiry),
+  `/student/attempts/[attemptId]/result` (status + "not evaluated yet" until Phase 10).
+  Uses only existing shadcn components. `next build` PASS (18 routes), web `tsc` PASS.
+- Validation: `scripts/e2e/attempts_e2e.sh` **PASS=60 FAIL=0** (AT-01..13); regressions
+  **syllabus PASS=39 FAIL=0** and **p8 PASS=86 FAIL=0** re-run green; API `typecheck`+`lint` green.
 
 **Wave 3a scaffold complete (2026-09-08):**
 - `apps/web` Next.js 15 + React 19 + TS strict + Tailwind v4 + shadcn/ui (26 components, new-york, zinc).

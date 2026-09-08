@@ -861,6 +861,52 @@ regression PASS=86 FAIL=0).
 - **Expected:** `200` `{"subjects":[{...Mathematics...}]}` (seed subject
   present, proves the tenant-scoped read path against the demo institute).
 
+## Demo Milestone — Wave 2 (Student Examination Attempts, E2E-run 2026-09-08) [x]
+
+**Setup required:** live stack (Postgres + RabbitMQ + API on :3000) with the
+idempotent demo seed applied; run `rm -f /tmp/opencode/att_*.txt && bash
+scripts/e2e/attempts_e2e.sh`. Expected **PASS=60 FAIL=0**. Regressions re-run
+green: `syllabus_e2e.sh` PASS=39, `p8_e2e.sh` PASS=86 (p8 fixtures recreated —
+the DB was reseeded demo-only after the Wave 1 checkpoint).
+
+### DEMO-W2-01 — Student sees available assessments
+
+- **Endpoint:** `GET /api/v1/attempts/available` (student cookie, header
+  `x-institute-id: 99999999-9999-9999-9999-999999999999`)
+- **Expected:** `200` with `{ assessments: [...] }`, listing only PUBLISHED/ACTIVE
+  assessments currently inside their window; each entry has `questionCount` and
+  **no** `correctChoiceId`/`correctAnswer`/`acceptableAnswers`/`explanation`.
+
+### DEMO-W2-02 — Start attempt (snapshot + deadline)
+
+- **Endpoint:** `POST /api/v1/attempts` — payload `{ "assessmentId": "<open>" }`
+- **Expected:** `201` with `{ attempt: { status: "IN_PROGRESS", totalMarks,
+  deadline, questions: [...] } }`; ticking a deadline transition even after
+  refresh; duplicate concurrent start → `409`.
+
+### DEMO-W2-03 — Save answers per type, then submit idempotently
+
+- **Endpoint:** `PUT /api/v1/attempts/:id/questions/:attemptQuestionId` with
+  `{ "answer": { "choiceId": "…" } }` / `{ "value": true }` / `{ "value": "…" }`
+- **Endpoint:** `POST /api/v1/attempts/:id/submit`
+- **Expected:** saves `200` (`{ saved: true }`), overwrite-safe; submit `200`
+  idempotent; after submit saves → `400`.
+
+### DEMO-W2-04 — Server-side expiry + no answer-key leakage
+
+- **Endpoint:** detail `GET /api/v1/attempts/:id` after its deadline
+  (`UPDATE attempts SET deadline = now() - interval '1 minute'`)
+- **Expected:** `200` and the attempt is `EXPIRED` with `submittedAt` set to the
+  deadline — and no answer-key field ever appears in the student response body.
+
+### DEMO-W2-05 — Isolation
+
+- **Endpoint:** second student on `GET /attempts/:id` / `PUT .../submit` of
+  another student's attempt
+- **Expected:** `404`; non-member institute header → `403`; teacher ledger
+  `GET /assessments/:id/attempts` shows student email + `score: null`; student
+  on the ledger route → `403`.
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete

@@ -34,12 +34,18 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       with job polling → proposal editor add/edit/remove chapters+topics → PATCH
       save → confirm dialog → confirmed ChapterTree); linked from subject detail
 
-### Wave 2 — Attempts backend
+### Wave 2 — Attempts backend + Student UI ✓
 
-- [ ] Migration 0010 `attempts` / `attempt_questions` / `attempt_responses`
-- [ ] API module `attempts`: available/start/questions(sanitized)/save/submit/result/results
-- [ ] Deterministic synchronous grading; deadline auto-submit; closes WR-06
-- [ ] `scripts/e2e/attempts_e2e.sh` + `docs/api/attempts.md`
+- [x] Migration 0010 `attempts` / `attempt_questions` / `attempt_responses`
+- [x] API module `attempts`: available / start (snapshot+deadline) / sanitized
+      detail / save (per-type validated, upsert) / submit (idempotent) /
+      teacher ledger per assessment. No answer-key data ever serialized.
+- [x] Server-side deadline enforcement (IN_PROGRESS → EXPIRED, submittedAt=deadline);
+      duplicate concurrent start → 409
+- [x] `scripts/e2e/attempts_e2e.sh` PASS=60 FAIL=0 + `docs/api/attempts.md`
+- [x] Student UI (dashboard→intro/start→attempt player with timer→submit→result;
+      result shows score placeholder until evaluation)
+- [-] Deterministic synchronous auto-grading (MCQ/TF/FIB) + live score UI — Phase 10
 
 ### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui) (PARALLELIZABLE)
 
@@ -54,8 +60,8 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   - [x] Questions list + approve/reject + AI generation poll
   - [x] Assessments list + create + detail + publish
   - [x] Syllabus pages (after Wave 1 backend)
-  - [ ] Student attempt/result pages (after Wave 2 backend)
-- [ ] Student UI (dashboard→available→attempt→timer→submit→result)
+  - [x] Student attempt/result pages (after Wave 2 backend)
+- [x] Student UI (dashboard→available→attempt→timer→submit→result)
 
 ### Wave 4 — Integration & close
 

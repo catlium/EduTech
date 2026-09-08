@@ -55,9 +55,17 @@ New user requirements must be appended here before implementation starts.
 
 ### Wave 2 — Student attempts + results + student UI (Phase 9/10/11)
 
-- [ ] Student attempts on ACTIVE assessments, auto-grading MCQ/TF/fill-blank, result + score UI.
-- [ ] Student-facing pages in the same web app (role-aware).
-- [ ] Continue Wave 1-style validation + docs checkpointing.
+- [x] Student attempts on ACTIVE/PUBLISHED assessments within their schedule window:
+      start snapshots the question set (immutable), server-side deadline enforcement,
+      per-type answer validation (MCQ/TF/fill-blank), idempotent save + submit,
+      duplicate concurrent start → 409. Student-facing payloads are sanitized — no
+      answer key/explanation ever leaves the API.
+- [x] Student-facing pages in the same web app (role-aware sidebar):
+      dashboard (available assessments) → intro/start → attempt player (timer,
+      question navigator, auto-save) → submit → result page.
+- [ ] Auto-grading (MCQ/TF/fill-blank scoring) + score in result UI — Phase 10.
+- [x] Continue Wave 1-style validation + docs checkpointing (attempts E2E green +
+      syllabus + p8 regressions re-run green).
 
 ### Wave 4 — Demo flow hardening
 

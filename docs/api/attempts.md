@@ -1,0 +1,92 @@
+# Attempts API (Wave 2)
+
+Student examination attempts against published assessments. Question sets are
+snapshotted at start, so later edits to the assessment link or source questions
+never affect in-flight attempts. Student-facing payloads are **sanitized**: the
+server retains answer fields (`correctChoiceId` / `correctAnswer` /
+`acceptableAnswers`, and the question payload) internally for Phase 10
+evaluation, but they are never serialized in student responses.
+
+Base URL: `http://localhost:3000/api/v1` — all non-`/health` routes require the
+session cookie + `x-institute-id` header; writes also require `x-csrf-token`.
+
+## Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/attempts/available` | any member | Assessments currently in the open window (PUBLISHED/ACTIVE) |
+| POST | `/attempts` | any member | Start an attempt (201) on an available assessment |
+| GET | `/attempts/:attemptId` | own attempt | Student's own attempt detail (sanitized, with saved answers) |
+| PUT | `/attempts/:attemptId/questions/:attemptQuestionId` | own attempt | Save/overwrite answer (200); validated per question type |
+| POST | `/attempts/:attemptId/submit` | own attempt | Idempotent submit (200); already-submitted/expired returns unchanged |
+| GET | `/assessments/:assessmentId/attempts` | INSTITUTE_ADMIN / TEACHER | Attempt ledger for an assessment (score null until Phase 10) |
+
+## POST /attempts
+
+Request:
+
+```json
+{ "assessmentId": "76ebf5cb-9d68-4677-9bee-37f68b4c6120" }
+```
+
+Behavior:
+- Assessment must be in `PUBLISHED` or `ACTIVE` and inside its
+  `startsAt`/`endsAt` window (else 400).
+- A concurrent duplicate start (existing `IN_PROGRESS` attempt for the same
+  student + assessment) returns **409**.
+- On success the question set is snapshotted (`attempt_questions`) inside one
+  transaction; `totalMarks` = Σ linked question marks; `deadline` =
+  startedAt + `durationMinutes`, else `endsAt`.
+
+Response `201` (abridged; questions sanitized):
+
+```json
+{
+  "attempt": {
+    "id": "…", "assessmentId": "…", "status": "IN_PROGRESS",
+    "startedAt": "2026-09-08T…", "deadline": "2026-09-08T…",
+    "submittedAt": null, "score": null, "totalMarks": 100,
+    "questions": [
+      { "attemptQuestionId": "…", "questionId": "…", "questionType": "MCQ",
+        "stem": "…", "payload": { "choices": [ { "id": "…", "text": "…" } ] },
+        "sortOrder": 1, "marks": 1, "answer": null }
+    ]
+  }
+}
+```
+
+## PUT /attempts/:attemptId/questions/:attemptQuestionId
+
+Answer shape is type-bound (else 400):
+
+| questionType | answer |
+|---|---|
+| `MCQ` | `{ "choiceId": "<uuid>" }` — must be a choice id from the snapshot |
+| `TRUE_FALSE` | `{ "value": true \| false }` |
+| `FILL_IN_BLANK` | `{ "value": "<string, ≤500 chars>" }` |
+
+Writes are duplicate-safe (upsert on `(attemptId, attemptQuestionId)`).
+Rejected with 400 once the attempt is `SUBMITTED`/`EXPIRED`; a past-deadline
+`IN_PROGRESS` attempt is first transitioned to `EXPIRED` (server-side
+deadline enforcement), then the save is rejected.
+
+## POST /attempts/:attemptId/submit
+
+Idempotent: an attempt already `SUBMITTED`/`EXPIRED` returns its current meta
+unchanged. `score` is `null` until Phase 10 (automatic evaluation), which will
+grade saved answers against the retained snapshot payloads.
+
+## Security invariants
+
+- Institute isolation everywhere (`TenantGuard`; non-members 403); another
+  student's attempt id → 404 (no existence leak).
+- Student endpoints have **no** answer-key data: `sanitizePayload` is the single
+  serialization point and `attempts_e2e.sh` asserts farewell to
+  correctChoiceId / correctAnswer / acceptableAnswers / explanation in every
+  student payload.
+- The frontend timer is UX-only; deadlines are enforced server-side.
+
+## Validation
+
+`scripts/e2e/attempts_e2e.sh` — PASS=60 FAIL=0 (AT-01..13). Regressions kept
+green after changes: `syllabus_e2e.sh` PASS=39, `p8_e2e.sh` PASS=86.

@@ -71,6 +71,13 @@
       "when": 1788862952337,
       "tag": "0009_sad_kronos",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788865318998,
+      "tag": "0010_legal_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }

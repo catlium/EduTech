@@ -754,3 +754,104 @@ export const SyllabusResponseSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 export type SyllabusResponse = z.infer<typeof SyllabusResponseSchema>;
+
+// ── Student Attempt Contracts ────────────────
+//
+// The attempt snapshots the assessment question set at start; later edits to
+// the assessment's question links or source questions never affect an in-flight
+// attempt. Student-facing payloads are SANITIZED: the server retains answer
+// fields (correctChoiceId / correctAnswer / acceptableAnswers) internally for
+// Phase 10 evaluation, but every contract in this section omits them.
+
+export const AttemptStatusEnum = z.enum(['IN_PROGRESS', 'SUBMITTED', 'EXPIRED']);
+export type AttemptStatus = z.infer<typeof AttemptStatusEnum>;
+
+// Student-safe question payload. Deliberately `record` (no typed answer field
+// exists on purpose): shape depends on `questionType` and the answer-bearing
+// field is dropped at serialization time. The single source of truth for
+// sanitization is attempts.service's sanitizeQuestionPayload() — never add
+// answer fields to this contract.
+export const StudentQuestionPayloadSchema = z.record(z.string(), z.unknown());
+export type StudentQuestionPayload = z.infer<typeof StudentQuestionPayloadSchema>;
+
+export const StudentAttemptQuestionSchema = z.object({
+  attemptQuestionId: z.string().uuid(),
+  questionId: z.string().uuid(),
+  questionType: QuestionTypeEnum,
+  stem: z.string(),
+  payload: StudentQuestionPayloadSchema,
+  sortOrder: z.number(),
+  marks: z.number(),
+});
+export type StudentAttemptQuestion = z.infer<typeof StudentAttemptQuestionSchema>;
+
+// Student's saved answer value. Typed by questionType at the service boundary:
+//   MCQ          { choiceId: uuid }
+//   TRUE_FALSE   { value: boolean }
+//   FILL_IN_BLANK{ value: string }
+export const StudentAttemptAnswerSchema = z.object({
+  attemptQuestionId: z.string().uuid(),
+  answer: z.record(z.string(), z.unknown()),
+});
+export type StudentAttemptAnswer = z.infer<typeof StudentAttemptAnswerSchema>;
+
+export const AttemptMetaSchema = z.object({
+  id: z.string().uuid(),
+  assessmentId: z.string().uuid(),
+  status: AttemptStatusEnum,
+  startedAt: z.string().datetime(),
+  deadline: z.string().datetime().nullable(),
+  submittedAt: z.string().datetime().nullable(),
+  score: z.number().int().nullable(),
+  totalMarks: z.number().int().nullable(),
+});
+export type AttemptMeta = z.infer<typeof AttemptMetaSchema>;
+
+export const AttemptDetailSchema = AttemptMetaSchema.extend({
+  questions: z.array(
+    StudentAttemptQuestionSchema.extend({
+      answer: z.record(z.string(), z.unknown()).nullable(),
+    }),
+  ),
+});
+export type AttemptDetail = z.infer<typeof AttemptDetailSchema>;
+
+// Student-facing "available assessment" card — sanitized, answer-free.
+export const AvailableAssessmentSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string().nullable(),
+  durationMinutes: z.number().int().nullable(),
+  maxMarks: z.number().int().nullable(),
+  instructions: z.record(z.string(), z.unknown()).nullable(),
+  startsAt: z.string().datetime().nullable(),
+  endsAt: z.string().datetime().nullable(),
+  status: AssessmentStatusEnum,
+  questionCount: z.number().int(),
+});
+export type AvailableAssessment = z.infer<typeof AvailableAssessmentSchema>;
+
+export const StartAttemptRequestSchema = z.object({
+  assessmentId: z.string().uuid(),
+});
+export type StartAttemptRequest = z.infer<typeof StartAttemptRequestSchema>;
+
+export const SaveAttemptAnswerRequestSchema = z.object({
+  answer: z.record(z.string(), z.unknown()),
+});
+export type SaveAttemptAnswerRequest = z.infer<typeof SaveAttemptAnswerRequestSchema>;
+
+// Teacher/admin attempt listing per assessment (score still null until Phase 10).
+export const AttemptListItemSchema = z.object({
+  id: z.string().uuid(),
+  studentId: z.string().uuid(),
+  studentName: z.string().nullable(),
+  studentEmail: z.string(),
+  status: AttemptStatusEnum,
+  startedAt: z.string().datetime(),
+  deadline: z.string().datetime().nullable(),
+  submittedAt: z.string().datetime().nullable(),
+  score: z.number().int().nullable(),
+  totalMarks: z.number().int().nullable(),
+});
+export type AttemptListItem = z.infer<typeof AttemptListItemSchema>;

@@ -50,3 +50,7 @@ coverage/
 
 # Docker
 docker-compose.override.yml
+
+# Knowledge graph artifacts
+.graphify_*
+graphify-out/
