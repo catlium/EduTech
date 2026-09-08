@@ -87,7 +87,28 @@ These are the planned logical modules for the API. Do NOT implement them now:
 - Heavy computation runs in worker processes, not the API.
 - The API must never block on long-running operations.
 
-### 6. Environment Variables
+### 6. Single Public API Boundary
+
+- The NestJS API is the **only public entry point**. The browser/frontend
+  talks to the API (`/api/v1`) only.
+- Postgres, Redis, RabbitMQ, the OCR service, the async workers, and the
+  OmniRoute AI gateway are INTERNAL, reachable only over the private Docker
+  network. Their ports are never published on the host except in the
+  development-only `docker-compose.dev.yml` override (127.0.0.1 loopback).
+- **AI goes only through OmniRoute** (internal OpenAI-compatible gateway).
+  No local LLM / Ollama; no direct cloud-provider SDK calls from the API or
+  workers. `WORKER_AI_PROVIDER_URL`/`WORKER_AI_API_KEY` configure it.
+- **OCR stays generic and local**: `apps/ocr` is a FastAPI service with no
+  business-domain knowledge. PDFs use PyMuPDF embedded text first with
+  per-page PaddleOCR fallback; images/handwriting use PaddleOCR;
+  normalization is a deterministic character pass (no LLM).
+- Internal HTTP calls use the **`x-internal-api-key`** header convention
+  (`INTERNAL_API_KEY` env; workers → OCR). Worker → OmniRoute uses standard
+  `Authorization: Bearer <endpoint key>`.
+- Browser-visible behavior must never depend on an internal service being
+  publicly reachable.
+
+### 7. Environment Variables
 
 - All configuration via environment variables.
 - Use `.env.example` as the template.

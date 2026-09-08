@@ -53,7 +53,9 @@ export async function api<T>(
   { method = "GET", body, signal, json = true }: ApiOptions = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (body !== undefined && !(body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
 
   const instituteId = getActiveInstituteId();
   if (instituteId) headers["x-institute-id"] = instituteId;
@@ -65,7 +67,7 @@ export async function api<T>(
     method,
     headers,
     credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     signal,
   });
 

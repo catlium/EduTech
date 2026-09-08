@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech - DEVELOPMENT-ONLY Docker Compose override
+# ─────────────────────────────────────────────────────────────
+#
+# OPT-IN local-development convenience: publishes the INTERNAL services
+# (postgres, redis, rabbitmq, ocr, omniroute) bound to 127.0.0.1 ONLY so
+# host-based tooling (drizzle studio, psql, redis-cli, OCR/AI workers run
+# outside Docker, E2E suites) can reach them.
+#
+# ⚠️  THIS FILE MUST NEVER BE USED IN PRODUCTION. The base compose file
+#     enforces the single public API boundary; this override re-exposes
+#     internal services for local debugging only.
+#
+#     The browser/frontend must STILL only talk to the API (port 3000).
+#     Loopback binding keeps these unreachable from other machines; the
+#     web app knows only the API URL.
+#
+# Usage:
+#   docker compose -f infrastructure/compose/docker-compose.yml \
+#                  -f infrastructure/compose/docker-compose.dev.yml up --build
+#
+# Run without this override for a production-like private-network stack.
+
+services:
+  postgres:
+    ports:
+      - '127.0.0.1:5432:5432'
+
+  redis:
+    ports:
+      - '127.0.0.1:6379:6379'
+
+  rabbitmq:
+    ports:
+      - '127.0.0.1:5672:5672'
+      - '127.0.0.1:15672:15672'
+
+  ocr:
+    ports:
+      - '127.0.0.1:8000:8000'
+
+  omniroute:
+    ports:
+      - '127.0.0.1:20128:20128'
+    environment:
+      # Dev defaults bound to loopback only; real .env values win.
+      # Production must never use the fallbacks (use the base file only).
+      INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-omniroute-dev-password}
+      JWT_SECRET: ${OMNIROUTE_JWT_SECRET:-dev-only-insecure-secret-change-me}

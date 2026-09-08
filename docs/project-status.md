@@ -2,13 +2,54 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
-**Status: IN PROGRESS — Wave 1 + Wave 2 backend/UI done E2E; next: architecture boundary + Phase 10.** A user-directed prioritization
+**Status: IN PROGRESS — architecture boundary checkpoint complete; next: Phase 10.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
 source of truth): `docs/architecture/demo-milestone.md`. The original Phase 17
 frontend-gate checkpoint is deliberately overridden for this milestone
 (recorded in `.planning/STATE.md` and `.planning/ROADMAP.md`).
+
+## Architecture checkpoint — single public API + AI/OCR boundaries ✓ (2026-09-08)
+
+Implementing the user's 11-section mandate BEFORE Phase 10. Full context in
+`docs/tasks.md`. Notable content:
+
+- **Boundary:** compose now publishes ONLY the API (port 3000). Postgres,
+  Redis, RabbitMQ, OCR, OmniRoute are internal; a new dev-only override
+  (`infrastructure/compose/docker-compose.dev.yml`) re-exposes them on
+  127.0.0.1 for host tooling/host-run workers. `docker compose config --quiet`
+  valid for both base and base+dev.
+- **AI:** workers now default to the internal **OmniRoute** gateway
+  (`http://omniroute:20128/v1`, `diegosouzapw/omniroute`; dev override also
+  publishes 20128 on loopback). Ollama default and `host-gateway` extras
+  removed. **Honest finding:** grep found ZERO pre-existing OmniRoute
+  integration — the worker only had an OpenAI-compatible httpx client whose
+  compose default pointed at a host Ollama. The gateway is genuinely new.
+- **OCR:** tiered local extraction (`apps/ocr/app/extraction.py`) — PyMuPDF
+  embedded text first, per-page PaddleOCR fallback for scanned/sparse pages,
+  PaddleOCR for images/handwriting; deterministic `normalize_text` (no LLM);
+  still a generic service with no domain knowledge. Paddle 3.x CPU fixed via
+  `enable_mkldnn=False`. Models persist via `paddle_models` volume.
+- **Workers:** chunked AI (`chunk_text`, 12k chars / 400 overlap, semantic
+  boundaries) with deterministic per-op aggregation; `ai_context.chunkCount`.
+- **Auth:** internal `x-internal-api-key` convention (`INTERNAL_API_KEY`);
+  worker→OCR; OCR 401s when configured.
+- **Tests:** OCR 11/11 pass (fast + engine paths, 21.8s), workers 16/16,
+  ruff+mypy clean. Web upload UI + FormData `api.ts` added (typecheck green).
+- **Known limitation:** API `ALLOWED_FILE_TYPES` still admits doc/xls/gif →
+  those uploads 422→`FAILED` at extraction (loud, retryable); tightening the
+  allow-list is deferred.
+
+**Recommended next task:** run the final validation pass (API/web builds, the
+3 E2E suites, mock-AI check, live UI route table, container port audit), then
+commit `feat(architecture): enforce single public API and AI/OCR boundaries`,
+push, and deliver the 7-section checkpoint report to the user. Do NOT start
+Phase 10 until the user confirms this checkpoint.
+
+- **Commit:** `feat(architecture): enforce single public API and AI/OCR boundaries` (pending push)
+
+## Demo roadmap (summary)
 
 **CRITICAL PRIORITY:** Get a working end-to-end model with a real, polished UI as soon as possible.
 Frontend is NOT optional or deferred. Start building the frontend as soon as the required APIs are stable enough.

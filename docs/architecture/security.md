@@ -94,6 +94,20 @@ roles }` to the request.
   from `membership_roles`. No current handler uses roles yet; the guard is
   wired and ready.
 
+## Internal Service Authentication (`x-internal-api-key`)
+
+Internal HTTP services (workers → OCR, and any future API-internal callers)
+authenticate with the **`x-internal-api-key`** header convention:
+
+- The API and OCR read the shared secret from env (`INTERNAL_API_KEY`,
+  `OCR_INTERNAL_API_KEY` in compose). Empty in local dev = open (loopback
+  only); production **must** set it.
+- The OCR service rejects `POST /extract` with `401` when a key is configured
+  and the header is missing or mismatched.
+- Workers send the key only when configured — they never assume it exists.
+- Worker → OmniRoute is NOT part of this convention: it uses OmniRoute's
+  native OpenAI-compatible `Authorization: Bearer <endpoint key>`.
+
 ## Validated Flows (2026-08-19)
 
 All flows were exercised against a clean PostgreSQL 17 and the running API:

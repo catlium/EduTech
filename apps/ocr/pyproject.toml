@@ -9,8 +9,15 @@ dependencies = [
     "pydantic>=2.11.0",
     "pydantic-settings>=2.9.0",
     "httpx>=0.28.0",
-    "pypdf>=6.0.0",
     "python-multipart>=0.0.12",
+    "numpy>=1.26.0",
+    "pillow>=10.0.0",
+    "pymupdf>=1.24.0",
+    # Local OCR engine (CPU build). PaddleOCR is a document component, not an
+    # LLM; it runs entirely on-device. GPU builds swap `paddlepaddle` for
+    # `paddlepaddle-gpu` at deploy time.
+    "paddlepaddle>=3.0.0",
+    "paddleocr>=3.0.0",
 ]
 
 [project.optional-dependencies]

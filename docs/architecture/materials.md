@@ -278,18 +278,80 @@ Internal HTTP contract between the worker and the OCR service
 The OCR service is a generic extraction service with **no knowledge** of
 materials, notes, question papers, examinations, OMR/OSM, or AI generation.
 
+### Normalized source plaintext (this checkpoint)
+
+The `materials.text_content` (TEXT) column is the single place normalized
+plaintext lives on a material:
+
+- `TEXT` materials store their supplied text here at creation.
+- `UPLOAD` materials: the worker stores the OCR service's extracted text here.
+  A reprocessing simply replaces it — materials are not versioned (an
+  extraction table was evaluated and rejected for the current MVP).
+
+### Tiered local extraction (implemented)
+
+`apps/ocr/app/extraction.py` implements a deterministic, **local** pipeline
+(no external OCR vendor):
+
+```
+input file
+   ├─ text/*              → decode UTF-8 (replacement for invalid bytes)
+   ├─ image/* (PNG/JPEG/WEBP)
+   │        → PyMuPDF rasterize (2x) → PaddleOCR (2026 model)  [handwriting-capable]
+   └─ application/pdf
+            → per page:
+               PyMuPDF get_text(page)          ← preferred: embedded/selectable text
+                 │ missing (scanned, < 5 chars/page) → rasterize page (2x) → PaddleOCR
+                 ▼
+            concat pages (paragraph spaces, single \n join)
+metadata: { "pages": N, "sources": { "pymupdf": N, "paddleocr": M } }
+```
+
+- **PyMuPDF first** for PDFs; PaddleOCR is the per-page fallback for scanned
+  or sparse pages — never OCR the whole document up front.
+- Normalization is a deterministic character pass (`normalize_text`): collapse
+  whitespace runs to single spaces inside a line, join lines with `\n`, drop
+  form-feed/page markers, trim trailing space per line, collapse `\r\n`,
+  zero-width chars, nbsp → space. Idempotent by construction. **No LLM is
+  involved in extraction** (normalization is not "AI").
+- PaddleOCR runs CPU with `enable_mkldnn=False` (required on paddle 3.x CPU
+  to avoid `ConvertPirAttribute2RuntimeAttribute` failures). Models cache to
+  `~/.paddlex/official_models` (persisted in compose via the `paddle_models`
+  volume at `/root/.paddlex`).
+- The worker (and API) never see the OCR internals: it stays a black-box
+  `POST /extract`.
+
 ### Supported extraction formats (this checkpoint)
 
 | Content type                                 | Behavior                                                            |
 | -------------------------------------------- | ------------------------------------------------------------------- |
-| `application/pdf`                            | Embedded text extracted via `pypdf` (`metadata.pages` = page count) |
-| `text/plain`, `text/markdown`                | File bytes decoded as UTF-8 (replacement for invalid bytes)         |
-| Images (`image/*`)                           | **Unsupported** — no OCR engine installed; processing fails clearly |
-| Office documents (`doc`/`docx`/`xls`/`xlsx`) | **Unsupported** — processing fails clearly                          |
+| `application/pdf`                            | PyMuPDF embedded text first; per-page PaddleOCR fallback for scanned/sparse pages (`metadata.pages` = page count) |
+| `text/plain`, `text/markdown`                | File bytes decoded as UTF-8 with replacement for invalid bytes      |
+| `image/png`, `image/jpeg`, `image/webp`      | Rasterize → PaddleOCR (handwriting included; accuracy varies)       |
+| Office documents (`doc`/`docx`/`xls`/`xlsx`) | **Unsupported** — `422` → material `FAILED` (`.rtf`, `.gif` same)   |
+
+Known limitation: the API's `ALLOWED_FILE_TYPES` still lists the office/gif
+types, so such uploads pass the API then fail extraction. Tightening the API
+allow-list is deferred; the failure is loud and retryable.
 
 Empty extraction is treated as failure (`422`), never returned as success.
-Deferred OCR capabilities: image OCR (tesseract), scanned-PDF OCR, layout
-blocks/lines/confidence, document intelligence.
+
+### AI reads chunks, never raw blobs
+
+Before any AI generation (see `apps/workers/worker/ai/`), the worker splits
+the normalized source text on **semantic boundaries** (paragraph → line →
+hard split) with overlap carrying context:
+
+```
+normalized text
+   └─ chunk_text(text, CHUNK_SIZE_CHARS=12000, CHUNK_OVERLAP_CHARS=400)
+         ├─ ≤ chunk size  → single chunk (unchanged fast path, "" notes)
+         └─ otherwise     → N overlapping chunks
+```
+The existing `ai_context.sourceText` is still stored once (the full
+normalized text) so regenerations read the whole source; the chunker is what
+feeds each AI call. Chunk labels include `(part i of N)` so aggregations can
+deduplicate.
 
 ## Planned relationship between materials and generated content
 
@@ -304,19 +366,3 @@ The existing `content_versions` columns remain compatible:
 Material → content linkage is therefore a stable UUID reference from
 `content_versions.source_reference.materialId`. The content domain is **not**
 redesigned.
-
-## Normalized source plaintext (decision)
-
-Minimal approach, no document-intelligence system:
-
-- The `materials.text_content` (TEXT) column is the single place normalized
-  plaintext lives on a material.
-- `TEXT` materials store their supplied text here at creation.
-- For `UPLOAD` materials it is `NULL` today; OCR/AI extraction is **deferred**
-  to the processing checkpoint and will populate this column (a reprocessing
-  simply replaces it — materials are not versioned).
-
-A separate extraction table was evaluated and rejected for now: a single
-current normalized text per material matches the current MVP, avoids
-premature complexity, and can be introduced later if multiple extraction
-artifacts per material ever become a real requirement.

@@ -2,6 +2,46 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
+### Architecture checkpoint — enforce single public API + AI/OCR boundaries ✓
+
+Master plan: `docs/architecture/demo-milestone.md` (source of truth). User
+mandate BEFORE Phase 10: enforce the single public API boundary (NestJS only;
+browser never reaches OCR/workers/RabbitMQ/Postgres), AI only via the internal
+OmniRoute gateway, tiered local OCR (PyMuPDF → PaddleOCR), deterministic
+normalization, chunking before AI. Honest finding: no OmniRoute integration
+existed before; the worker defaulted to a host Ollama. Now:
+
+- [x] Compose (`infrastructure/compose/docker-compose.yml`): only `api` publishes
+      a host port; postgres/redis/rabbitmq/ocr/omniroute are network-internal
+- [x] New dev-only override `infrastructure/compose/docker-compose.dev.yml`
+      (internal services on 127.0.0.1 loopback for host tooling + host workers)
+- [x] Internal `omniroute` service (image `diegosouzapw/omniroute:latest`,
+      port 20128) + healthcheck; worker-ai default → `http://omniroute:20128/v1`,
+      Ollama default/`extra_hosts` removed
+- [x] Internal-auth convention: `x-internal-api-key` (`INTERNAL_API_KEY`;
+      worker → OCR; OCR 401 if key configured and header missing)
+- [x] OCR rewrite (`apps/ocr`): PyMuPDF selectable-text FIRST, per-page
+      PaddleOCR fallback for scanned/sparse PDF pages; images/handwriting →
+      PaddleOCR; `normalize_text` deterministic pass (no LLM); generic service
+      (no domain knowledge); deps numpy/pillow/pymupdf/paddlepaddle/paddleocr
+      (`enable_mkldnn=False` required on paddle 3.x CPU)
+- [x] Workers: `AI_GENERATE_*` per-chunk calls via `chunk_text` (semantic
+      boundaries + overlap, `CHUNK_SIZE_CHARS=12000`/`CHUNK_OVERLAP_CHARS=400`)
+      + deterministic aggregation (dedupe; questions capped at count; notes
+      re-keyed; syllabus chapters merged); `ai_context` adds `chunkCount`
+- [x] Tests: OCR 11/11 (incl. paddle engine paths), workers 16/16 (chunking,
+      aggregation, processing failures), ruff+mypy clean
+- [x] Web UI: `/materials` file-upload form + FormData pass-through in `api.ts`
+- [x] Docs updated: AGENTS.md (§6 boundary), infrastructure.md, materials.md
+      (tiered pipeline + chunking), security.md (`x-internal-api-key`)
+- [x] `.env.example`: `INTERNAL_API_KEY`, `OMNIROUTE_*`, chunk envs; dropped
+      Ollama/`MAX_SOURCE_CHARS`; `compose config --quiet` valid (base + dev)
+- [ ] Final validation pass (host: API/web builds + 3 E2E suites + mock AI +
+      live UI route table + container network/browser-access check)
+- [ ] Commit + push `feat(architecture): enforce single public API and AI/OCR boundaries`
+
+### Wave 0 — Bootstrap (seed + memberships) ✓
+
 Master plan: `docs/architecture/demo-milestone.md` (source of truth). This
 milestone intentionally overrides the sequential roadmap gate: a working
 teacher→syllabus→notes→questions→quiz→student→attempt→result demo ships first

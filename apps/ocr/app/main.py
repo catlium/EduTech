@@ -1,22 +1,27 @@
-from io import BytesIO
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.extraction import SUPPORTED_MIME_TYPES, extract_image, extract_pdf, normalize_text
 
 app = FastAPI(
     title="CatLium OCR Service",
-    version="0.0.1",
+    version="0.0.3",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
 # The OCR service is a generic text-extraction service. It has NO knowledge of
 # study materials, notes, question papers, examinations, OMR/OSM, or AI
-# generation. Its only contract is: INPUT -> TEXT EXTRACTION -> OUTPUT.
-SUPPORTED_MIME_TYPES = {"application/pdf", "text/plain", "text/markdown"}
+# generation. Its only contract is: INPUT -> EXTRACTION -> NORMALIZED TEXT.
+# Extraction is tiered and fully local:
+#   PDF   -> PyMuPDF selectable text first; pages without usable text are
+#            rasterized and OCR'd by LOCAL PaddleOCR (page-level fallback).
+#   Image -> local PaddleOCR.
+#   text  -> direct decode (no OCR).
+# PaddleOCR is a document component (NOT an LLM) and runs entirely on-device.
 
 
 @app.get("/health")
@@ -30,7 +35,15 @@ async def health_check() -> JSONResponse:
 
 
 @app.post("/extract")
-async def extract(file: Annotated[UploadFile, File()]) -> dict[str, object]:
+async def extract(
+    file: Annotated[UploadFile, File()],
+    x_internal_api_key: Annotated[str | None, Header(alias="x-internal-api-key")] = None,
+) -> dict[str, object]:
+    # Internal-auth convention (`x-internal-api-key`): enforced only when
+    # configured (dev default empty); MUST be set in production.
+    if settings.internal_api_key and x_internal_api_key != settings.internal_api_key:
+        raise HTTPException(status_code=401, detail="Invalid internal api key")
+
     content = await file.read()
     mime_type = (file.content_type or "").lower()
 
@@ -41,42 +54,25 @@ async def extract(file: Annotated[UploadFile, File()]) -> dict[str, object]:
         )
 
     if mime_type == "application/pdf":
-        text, pages = _extract_pdf(content)
+        text, pages, sources = extract_pdf(content)
+    elif mime_type.startswith("image/"):
+        text, sources = extract_image(content)
+        pages = 1
     else:
-        text = content.decode("utf-8", errors="replace")
+        text = normalize_text(content.decode("utf-8", errors="replace"))
         pages = max(text.count("\n") + 1, 0)
+        sources = {"pymupdf": 0, "paddleocr": 0}
 
-    stripped = text.strip()
-    if not stripped:
+    if not text:
         raise HTTPException(status_code=422, detail="No text extracted")
 
     return {
-        "text": stripped,
-        "metadata": {"pages": pages},
+        "text": text,
+        "metadata": {
+            "pages": pages,
+            "sources": sources,
+        },
     }
-
-
-def _extract_pdf(content: bytes) -> tuple[str, int]:
-    from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
-
-    try:
-        reader = PdfReader(BytesIO(content))
-    except PdfReadError as exc:
-        raise HTTPException(status_code=422, detail="Invalid or unreadable PDF") from exc
-
-    pages = len(reader.pages)
-    parts: list[str] = []
-    for page in reader.pages:
-        try:
-            extracted = page.extract_text()
-        except Exception as exc:  # malformed page content must not crash extraction
-            raise HTTPException(
-                status_code=422, detail="PDF text extraction failed"
-            ) from exc
-        if extracted:
-            parts.append(extracted)
-    return "\n".join(parts), pages
 
 
 if __name__ == "__main__":

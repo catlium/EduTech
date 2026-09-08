@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,8 +28,12 @@ export default function MaterialsListPage() {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [subjectId, setSubjectId] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadSubjectId, setUploadSubjectId] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!institute) return;
     const ctrl = new AbortController();
     api<{ materials: MaterialResponse[] }>("/materials", { signal: ctrl.signal })
@@ -38,6 +42,34 @@ export default function MaterialsListPage() {
       .finally(() => setLoading(false));
     return () => ctrl.abort();
   }, [institute]);
+
+  useEffect(() => {
+    return refresh();
+  }, [refresh]);
+
+  async function onUpload(e: React.FormEvent) {
+    e.preventDefault();
+    if (!institute || !uploadFile) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", uploadFile);
+      if (uploadSubjectId) form.append("subjectId", uploadSubjectId);
+      await api<{ material: MaterialResponse }>("/materials/upload", {
+        method: "POST",
+        body: form,
+      });
+      toast.success("File uploaded — processing started");
+      setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setUploadSubjectId("");
+      refresh();
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Failed to upload file");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -157,6 +189,57 @@ export default function MaterialsListPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {creating && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Upload File</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              PDF, image or text file — processed locally (PyMuPDF + PaddleOCR),
+              then ready for AI generation.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={onUpload} className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="file">File</Label>
+                <Input
+                  id="file"
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg,image/webp,text/plain,text/markdown"
+                  ref={fileInputRef}
+                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="uploadSubjectId">Subject ID</Label>
+                <Input
+                  id="uploadSubjectId"
+                  value={uploadSubjectId}
+                  onChange={(e) => setUploadSubjectId(e.target.value)}
+                  placeholder="Optional subject id"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setCreating(false);
+                    setUploadFile(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={uploading}>
+                  {uploading ? "Uploading..." : "Upload"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

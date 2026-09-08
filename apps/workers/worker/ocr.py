@@ -13,10 +13,14 @@ class OcrError(Exception):
 
 def extract_text(data: bytes, mime_type: str, file_name: str | None = None) -> dict[str, Any]:
     files = {"file": (file_name or "upload", data, mime_type or "application/octet-stream")}
+    headers = {}
+    if settings.internal_api_key:
+        headers["x-internal-api-key"] = settings.internal_api_key
     try:
         response = httpx.post(
             f"{settings.ocr_url}/extract",
             files=files,
+            headers=headers,
             timeout=60.0,
         )
     except httpx.HTTPError as exc:

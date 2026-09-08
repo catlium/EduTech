@@ -3,27 +3,37 @@
 # ─────────────────────────────────────────────────────────────
 #
 # Runs the full stack: backing infrastructure (Postgres/Redis/RabbitMQ)
-# plus the application (API, OCR service, DB migrations, and both
-# async workers — material + AI generation).
+# plus the application (API, OCR service, DB migrations, both async
+# workers — material + AI generation, and the OmniRoute AI gateway).
+#
+# SINGLE PUBLIC API BOUNDARY
+#   The only port published to the host is the API (`3000`). Postgres,
+#   Redis, RabbitMQ, the OCR service, the workers and OmniRoute are
+#   INTERNAL services reachable only over the private Docker network.
+#   The browser/frontend must never call them directly.
+#
+#   For LOCAL DEVELOPMENT, `docker-compose.dev.yml` (an explicit opt-in
+#   override) publishes the internal services bound to 127.0.0.1 only.
+#   Production deployments must NOT use that override.
 #
 # Usage (from the repo root):
 #   1. Copy the root env template, then tune it:
 #        cp .env.example .env
 #      (The app services load the root .env via env_file — compose requires it.)
 #   2. docker compose -f infrastructure/compose/docker-compose.yml up --build
+#      Dev: add `-f infrastructure/compose/docker-compose.dev.yml`.
 #
 # The root `.env` is loaded into each app container (env_file). Settings
-# that must point at container hostnames (postgres/rabbitmq/redis/ocr)
-# are overridden under each service's `environment` block so you don't
-# have to rewrite your local `.env` URLs.
+# that must point at container hostnames (postgres/rabbitmq/redis/ocr/
+# omniroute) are overridden under each service's `environment` block so
+# you don't have to rewrite your local `.env` URLs.
 
 services:
-  # ── Backing infrastructure ─────────────────────────────────
+  # ── Backing infrastructure (INTERNAL) ──────────────────────
   postgres:
     image: postgres:17-alpine
     container_name: catlium-postgres
-    ports:
-      - '5432:5432'
+    # No host port mapping: reachable only via the Docker network.
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-catlium_dev}
       POSTGRES_USER: ${POSTGRES_USER:-catlium}
@@ -39,8 +49,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: catlium-redis
-    ports:
-      - '6379:6379'
+    # No host port mapping.
     volumes:
       - redis_data:/data
     healthcheck:
@@ -52,9 +61,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: catlium-rabbitmq
-    ports:
-      - '5672:5672'
-      - '15672:15672'
+    # No host port mapping (management UI included).
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-catlium}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-catlium_dev_secret}
@@ -82,6 +89,7 @@ services:
         condition: service_healthy
 
   # ── Application ────────────────────────────────────────────
+  # The ONLY public entry point. Everything else is internal.
   api:
     build:
       context: ../..
@@ -106,20 +114,49 @@ services:
       redis:
         condition: service_healthy
 
+  # ── Internal AI gateway (OmniRoute) ────────────────────────
+  # No local LLM ever: the AI worker only talks to this internal,
+  # OpenAI-compatible gateway, never to a browser-facing endpoint.
+  omniroute:
+    image: diegosouzapw/omniroute:latest
+    container_name: catlium-omniroute
+    # No host port mapping: reachable only via the Docker network.
+    environment:
+      PORT: '20128'
+      # MUST be set in .env (see .env.example). Dev override supplies local
+      # defaults bound to 127.0.0.1.
+      INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-}
+      JWT_SECRET: ${OMNIROUTE_JWT_SECRET:-}
+    volumes:
+      - omniroute_data:/app/data
+    healthcheck:
+      # 401 (auth required) proves the gateway is serving; only 5xx/crash = down.
+      test: ['CMD-SHELL', 'node -e "fetch(\"http://localhost:20128/v1/models\").then(r=>process.exit(r.status>=500?1:0)).catch(()=>process.exit(1))"']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ── Internal OCR service (local PaddleOCR) ─────────────────
   ocr:
     build:
       context: ../..
       dockerfile: infrastructure/compose/Dockerfile.python
     container_name: catlium-ocr
     command: ['uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000']
-    ports:
-      - '${OCR_PORT:-8000}:8000'
+    # No host port mapping.
     env_file:
       - ../../.env
     environment:
       OCR_HOST: 0.0.0.0
       OCR_PORT: 8000
       OCR_RELOAD: 'false'
+      # Shared secret for the internal-auth header convention
+      # (`x-internal-api-key`). Empty in local dev; MUST be set in
+      # production so only workers can call /extract.
+      OCR_INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+    volumes:
+      # Persist the PaddleOCR model cache so downloads survive rebuilds.
+      - paddle_models:/root/.paddlex
 
   worker-material:
     build:
@@ -134,6 +171,7 @@ services:
       WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
       WORKER_DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
       WORKER_OCR_URL: http://ocr:8000
+      WORKER_INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
       WORKER_STORAGE_DIR: /storage
     volumes:
       - storage_data:/storage
@@ -145,9 +183,11 @@ services:
       ocr:
         condition: service_started
 
-  # AI generation worker. By default it reaches a local Ollama on the host
-  # (host-gateway). Point WORKER_AI_PROVIDER_URL at any OpenAI-compatible
-  # endpoint (e.g. a cloud provider) and set WORKER_AI_API_KEY to override.
+  # AI generation worker. AI goes ONLY through the internal OmniRoute
+  # gateway (OpenAI-compatible /v1). No local LLM (no Ollama/llama.cpp)
+  # and no direct-to-provider browser calls. WORKER_AI_PROVIDER_URL may
+  # still be overridden to any OpenAI-compatible endpoint and
+  # WORKER_AI_API_KEY to the matching credential.
   worker-ai:
     build:
       context: ../..
@@ -161,15 +201,18 @@ services:
       WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
       WORKER_DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
       WORKER_STORAGE_DIR: /storage
-      WORKER_AI_PROVIDER_URL: ${WORKER_AI_PROVIDER_URL:-http://host.docker.internal:11434/v1}
+      WORKER_AI_PROVIDER_URL: ${WORKER_AI_PROVIDER_URL:-http://omniroute:20128/v1}
+      # OmniRoute endpoint key (issued in the OmniRoute dashboard). Sent
+      # to the gateway as `Authorization: Bearer <key>`.
+      WORKER_AI_API_KEY: ${WORKER_AI_API_KEY:-}
     volumes:
       - storage_data:/storage
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
     depends_on:
       migrate:
         condition: service_completed_successfully
       rabbitmq:
+        condition: service_healthy
+      omniroute:
         condition: service_healthy
 
 volumes:
@@ -177,3 +220,5 @@ volumes:
   redis_data:
   rabbitmq_data:
   storage_data:
+  omniroute_data:
+  paddle_models:

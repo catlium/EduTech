@@ -7,6 +7,11 @@ output against the canonical Pydantic payload mirror, and persists it as an
 ``AI_GENERATED`` ``DRAFT`` content item with provenance. Every path terminates
 the job (``completed`` or ``failed``) — a job is never left ``processing``.
 
+Large documents are chunked before any provider call (``worker.ai.chunking``);
+each chunk is processed through OmniRoute and the per-chunk results are folded
+together deterministically (never ignored, never invented). The final
+aggregate is re-validated against the canonical schema before persisting.
+
 Safe one-line error messages are stored on the job; full tracebacks stay in
 the worker log (same policy as material processing).
 """
@@ -14,6 +19,7 @@ the worker log (same policy as material processing).
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -23,6 +29,7 @@ from pydantic import BaseModel, ValidationError
 
 from worker import db
 from worker.ai import generation, schemas
+from worker.ai.chunking import chunk_text
 from worker.ai.provider import create_provider
 from worker.config import settings
 
@@ -39,9 +46,140 @@ VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
 
 SYLLABUS_OPERATION = "AI_GENERATE_SYLLABUS"
 
+MAX_QUESTION_COUNT = 50
+
 
 class GenerationError(Exception):
     """Carries a safe, user-facing error message for the failed job."""
+
+
+def _ordered_unique(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        trimmed = item.strip()
+        if not trimmed or trimmed in seen:
+            continue
+        seen.add(trimmed)
+        out.append(trimmed)
+    return out
+
+
+def _aggregate_note(results: list[dict[str, Any]], _limit: int | None = None) -> dict[str, Any]:
+    title = next((r["title"] for r in results if r.get("title")), None)
+    blocks: list[dict[str, Any]] = []
+    for index, result in enumerate(results):
+        for block in result.get("blocks") or []:
+            # Re-key blocks per chunk so ids stay unique after concatenation.
+            if isinstance(block, dict) and block.get("id"):
+                block = {**block, "id": f"c{index}-{block['id']}"}
+            blocks.append(block)
+    return {"title": title, "blocks": blocks}
+
+
+def _aggregate_summary(results: list[dict[str, Any]], _limit: int | None = None) -> dict[str, Any]:
+    title = next((r["title"] for r in results if r.get("title")), None)
+    summary = "\n\n".join(
+        r["summary"].strip() for r in results if (r.get("summary") or "").strip()
+    )
+    key_concepts = _ordered_unique(
+        [item for r in results for item in (r.get("keyConcepts") or []) if isinstance(item, str)]
+    )
+    important_points = _ordered_unique(
+        [
+            item
+            for r in results
+            for item in (r.get("importantPoints") or [])
+            if isinstance(item, str)
+        ]
+    )
+    return {
+        "title": title,
+        "summary": summary,
+        "keyConcepts": key_concepts,
+        "importantPoints": important_points,
+    }
+
+
+def _aggregate_flashcards(
+    results: list[dict[str, Any]], _limit: int | None = None
+) -> dict[str, Any]:
+    title = next((r["title"] for r in results if r.get("title")), None)
+    description = next((r["description"] for r in results if r.get("description")), None)
+    cards: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for result in results:
+        for card in result.get("cards") or []:
+            if not isinstance(card, dict):
+                continue
+            key = (str(card.get("front") or "").strip(), str(card.get("back") or "").strip())
+            if key in seen:
+                continue
+            seen.add(key)
+            cards.append(card)
+    return {"title": title, "description": description, "cards": cards}
+
+
+def _aggregate_concepts(results: list[dict[str, Any]], _limit: int | None = None) -> dict[str, Any]:
+    title = next((r["title"] for r in results if r.get("title")), None)
+    concepts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for result in results:
+        for concept in result.get("concepts") or []:
+            if not isinstance(concept, dict):
+                continue
+            name = str(concept.get("name") or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            concepts.append(concept)
+    return {"title": title, "concepts": concepts}
+
+
+def _aggregate_questions(results: list[dict[str, Any]], limit: int | None = None) -> dict[str, Any]:
+    questions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for result in results:
+        for question in result.get("questions") or []:
+            if not isinstance(question, dict):
+                continue
+            stem = str(question.get("stem") or "").strip()
+            if not stem or stem in seen:
+                continue
+            seen.add(stem)
+            questions.append(question)
+    if limit is not None:
+        questions = questions[: max(limit, 0)]
+    return {"questions": questions}
+
+
+def _aggregate_syllabus(results: list[dict[str, Any]], _limit: int | None = None) -> dict[str, Any]:
+    chapters: dict[str, dict[str, Any]] = {}
+    for result in results:
+        for chapter in result.get("chapters") or []:
+            if not isinstance(chapter, dict):
+                continue
+            name = str(chapter.get("name") or "").strip()
+            if not name:
+                continue
+            existing = chapters.get(name)
+            if existing is None:
+                chapters[name] = {
+                    "name": name,
+                    "description": chapter.get("description"),
+                    "topics": list(chapter.get("topics") or []),
+                }
+                continue
+            topics = existing["topics"]
+            for topic in chapter.get("topics") or []:
+                if not isinstance(topic, dict):
+                    continue
+                topic_name = str(topic.get("name") or "").strip()
+                if not topic_name:
+                    continue
+                if not any(str(t.get("name") or "").strip() == topic_name for t in topics):
+                    topics.append(topic)
+    return {"chapters": list(chapters.values())[:100]}
 
 
 @dataclass(frozen=True)
@@ -52,6 +190,7 @@ class Operation:
     parse: Callable[[str], dict[str, Any]]
     model: type[BaseModel]
     default_title: str
+    aggregate: Callable[..., dict[str, Any]]
 
 
 OPERATIONS: dict[str, Operation] = {
@@ -62,6 +201,7 @@ OPERATIONS: dict[str, Operation] = {
         parse=generation.note.parse_note_json,
         model=schemas.NotePayload,
         default_title="AI-generated note",
+        aggregate=_aggregate_note,
     ),
     "AI_GENERATE_SUMMARY": Operation(
         operation="AI_GENERATE_SUMMARY",
@@ -70,6 +210,7 @@ OPERATIONS: dict[str, Operation] = {
         parse=generation.summary.parse_summary_json,
         model=schemas.SummaryPayload,
         default_title="AI-generated summary",
+        aggregate=_aggregate_summary,
     ),
     "AI_GENERATE_FLASHCARDS": Operation(
         operation="AI_GENERATE_FLASHCARDS",
@@ -78,6 +219,7 @@ OPERATIONS: dict[str, Operation] = {
         parse=generation.flashcards.parse_flashcards_json,
         model=schemas.FlashcardSetPayload,
         default_title="AI-generated flashcards",
+        aggregate=_aggregate_flashcards,
     ),
     "AI_GENERATE_CONCEPTS": Operation(
         operation="AI_GENERATE_CONCEPTS",
@@ -86,14 +228,16 @@ OPERATIONS: dict[str, Operation] = {
         parse=generation.concepts.parse_concepts_json,
         model=schemas.ImportantConceptsPayload,
         default_title="AI-generated important concepts",
+        aggregate=_aggregate_concepts,
     ),
     QA_OPERATION: Operation(
         operation=QA_OPERATION,
-        content_type="QUESTION_SET",
+        content_type="QUESTION",
         build_messages=generation.questions.build_messages,
         parse=generation.questions.parse_questions_json,
         model=schemas.GeneratedQuestions,
         default_title="AI-generated questions",
+        aggregate=_aggregate_questions,
     ),
     SYLLABUS_OPERATION: Operation(
         operation=SYLLABUS_OPERATION,
@@ -102,6 +246,7 @@ OPERATIONS: dict[str, Operation] = {
         parse=generation.syllabus.parse_syllabus_json,
         model=schemas.SyllabusPayload,
         default_title="AI-generated syllabus",
+        aggregate=_aggregate_syllabus,
     ),
 }
 
@@ -111,21 +256,32 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
     try:
         operation, source = _validate_payload(payload)
         materials = _resolve_materials(institute_id, source)
-        context, context_meta = _build_context(materials)
+        chunks, context_meta = _build_context_chunks(materials)
 
         if operation.operation == QA_OPERATION:
             _generate_questions(
-                job_id, institute_id, operation, source, materials, context, payload
+                job_id, institute_id, operation, source, materials, chunks, payload, context_meta
             )
             return
 
         if operation.operation == SYLLABUS_OPERATION:
-            _generate_syllabus(job_id, institute_id, operation, source, materials, context, payload)
+            _generate_syllabus(
+                job_id, institute_id, operation, source, materials, chunks, payload, context_meta
+            )
             return
 
         provider = create_provider()
-        raw = provider.complete(operation.build_messages(context, _source_label(source, materials)))
-        output = _validate_output(operation, raw)
+        outputs: list[dict[str, Any]] = []
+        for index, chunk in enumerate(chunks):
+            label = _part_label(_source_label(source, materials), chunks, index)
+            raw = provider.complete(operation.build_messages(chunk, label))
+            outputs.append(_validate_output(operation, raw))
+
+        output = (
+            outputs[0]
+            if len(outputs) == 1
+            else operation.model.model_validate(operation.aggregate(outputs)).model_dump()
+        )
         content_id = _persist(
             institute_id, job_id, operation, source, materials, context_meta, output
         )
@@ -141,10 +297,11 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
             },
         )
         logger.info(
-            "AI %s generated: job=%s content=%s",
+            "AI %s generated: job=%s content=%s chunks=%s",
             operation.content_type,
             job_id,
             content_id,
+            context_meta["chunkCount"],
         )
     except Exception as exc:
         _fail(job_id, exc)
@@ -156,8 +313,9 @@ def _generate_questions(
     operation: Operation,
     source: dict[str, str],
     materials: list[dict[str, Any]],
-    context: str,
+    chunks: list[str],
     payload: dict[str, Any],
+    context_meta: dict[str, Any],
 ) -> None:
     """Generate objective questions and persist each as a PENDING question row."""
     params = payload.get("params") or {}
@@ -175,25 +333,34 @@ def _generate_questions(
         count_int = int(count_value)
     except (TypeError, ValueError):
         raise GenerationError("Invalid question count in job payload") from None
-    if not 1 <= count_int <= 50:
+    if not 1 <= count_int <= MAX_QUESTION_COUNT:
         raise GenerationError("Question count must be between 1 and 50")
 
+    # Ask per chunk so a large document does not over-generate, then cap the
+    # deterministic aggregate back at the requested count.
+    per_chunk_count = max(1, math.ceil(count_int / max(len(chunks), 1)))
     provider = create_provider()
-    raw = provider.complete(
-        operation.build_messages(
-            context,
-            _source_label(source, materials),
-            type_=type_,
-            count=count_int,
-            difficulty=difficulty,
+    outputs: list[dict[str, Any]] = []
+    for index, chunk in enumerate(chunks):
+        label = _part_label(_source_label(source, materials), chunks, index)
+        raw = provider.complete(
+            operation.build_messages(
+                chunk,
+                label,
+                type_=type_,
+                count=per_chunk_count,
+                difficulty=difficulty,
+            )
         )
-    )
-    output = _validate_output(operation, raw)
+        outputs.append(_validate_output(operation, raw))
 
+    aggregated = operation.model.model_validate(
+        operation.aggregate(outputs, count_int)
+    ).model_dump()
     scope = _resolve_scope(source, materials)
     question_ids = db.insert_generated_questions(
         institute_id,
-        questions=output["questions"],
+        questions=aggregated["questions"],
         subject_id=scope["subjectId"],
         chapter_id=scope["chapterId"],
         topic_id=scope["topicId"],
@@ -210,6 +377,7 @@ def _generate_questions(
             "sourceType": source["type"],
             "sourceId": source["id"],
             "materialIds": [str(m["id"]) for m in materials],
+            "chunks": context_meta["chunkCount"],
         },
     )
     logger.info("AI questions generated: job=%s count=%s", job_id, len(question_ids))
@@ -221,8 +389,9 @@ def _generate_syllabus(
     operation: Operation,
     source: dict[str, str],
     materials: list[dict[str, Any]],
-    context: str,
+    chunks: list[str],
     payload: dict[str, Any],
+    context_meta: dict[str, Any],
 ) -> None:
     """Generate a syllabus proposal for a subject and persist it PENDING_REVIEW.
 
@@ -240,17 +409,22 @@ def _generate_syllabus(
         raise GenerationError("Subject not found")
 
     provider = create_provider()
-    raw = provider.complete(operation.build_messages(context, _source_label(source, materials)))
-    output = _validate_output(operation, raw)
+    outputs: list[dict[str, Any]] = []
+    for index, chunk in enumerate(chunks):
+        label = _part_label(_source_label(source, materials), chunks, index)
+        raw = provider.complete(operation.build_messages(chunk, label))
+        outputs.append(_validate_output(operation, raw))
+
+    aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
 
     proposal_id = db.upsert_syllabus_proposal(
         institute_id,
         subject_id=subject_id,
-        structure=output,
+        structure=aggregated,
         source_material_id=source["id"],
         created_by=source["requestedBy"],
     )
-    chapters = output.get("chapters") or []
+    chapters = aggregated.get("chapters") or []
     topic_count = sum(len(chapter.get("topics") or []) for chapter in chapters)
     db.update_job_status(
         job_id,
@@ -263,9 +437,16 @@ def _generate_syllabus(
             "sourceType": source["type"],
             "sourceId": source["id"],
             "materialIds": [str(m["id"]) for m in materials],
+            "chunks": context_meta["chunkCount"],
         },
     )
     logger.info("AI syllabus generated: job=%s proposal=%s", job_id, proposal_id)
+
+
+def _part_label(base: str, chunks: list[str], index: int) -> str:
+    if len(chunks) <= 1:
+        return base
+    return f"{base} (part {index + 1} of {len(chunks)})"
 
 
 def _fail(job_id: str, exc: Exception) -> None:
@@ -332,35 +513,52 @@ def _resolve_materials(institute_id: str, source: dict[str, str]) -> list[dict[s
     return materials
 
 
-def _build_context(materials: list[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
-    """Deterministically bound the source text fed to the model."""
-    per_material_cap = settings.ai_max_source_chars_per_material
+def _build_context_chunks(materials: list[dict[str, Any]]) -> tuple[list[str], dict[str, Any]]:
+    """Deterministically bound the source fed to the model.
+
+    Small sources stay a single chunk (one provider call, unchanged fast
+    path). Large sources are split on semantic boundaries via
+    ``chunk_text`` so an unbounded document is never sent to OmniRoute in a
+    single request.
+    """
     budget = settings.ai_max_context_chars
-    chunks: list[str] = []
+    chunk_size = settings.ai_chunk_size_chars
+    overlap = settings.ai_chunk_overlap_chars
+
+    texts: list[str] = []
     included: list[str] = []
     total_chars = 0
-
     for material in materials:
         text = (material.get("text_content") or "").strip()
         if not text:
             continue
         if budget <= 0:
             break
-        chunk = text[:per_material_cap]
-        chunk = chunk[:budget]
-        chunks.append(chunk)
+        texts.append(text)
         included.append(str(material["id"]))
-        total_chars += len(chunk)
-        budget -= len(chunk)
+        total_chars += len(text)
+        budget -= len(text)
 
-    context = "\n\n---\n\n".join(chunks)
+    if not texts:
+        return [], {
+            "includedCount": 0,
+            "excludedCount": len(materials),
+            "includedMaterialIds": [],
+            "totalChars": 0,
+            "chunkCount": 0,
+        }
+
+    full = "\n\n---\n\n".join(texts)
+    chunks = [full] if len(full) <= chunk_size else chunk_text(full, chunk_size, overlap)
+
     meta = {
         "includedCount": len(included),
         "excludedCount": len(materials) - len(included),
         "includedMaterialIds": included,
         "totalChars": total_chars,
+        "chunkCount": len(chunks),
     }
-    return context, meta
+    return chunks, meta
 
 
 def _source_label(source: dict[str, str], materials: list[dict[str, Any]]) -> str:
@@ -430,6 +628,7 @@ def _persist(
         "includedMaterialCount": context_meta["includedCount"],
         "excludedMaterialCount": context_meta["excludedCount"],
         "sourceChars": context_meta["totalChars"],
+        "chunkCount": context_meta["chunkCount"],
     }
 
     return db.insert_ai_content(

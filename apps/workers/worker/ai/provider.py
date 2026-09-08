@@ -3,8 +3,10 @@
 Generation calls providers through the small :class:`AIProvider` interface so
 future providers (Anthropic, Google, ...) can be added without touching the
 generation service. The only concrete implementation is an OpenAI-compatible
-HTTP client (httpx), which covers OpenAI, Groq, OpenRouter, and local Ollama
-(`/v1/chat/completions`). Credentials come from environment variables only.
+HTTP client (httpx), which covers the internal OmniRoute AI gateway
+(`/v1/chat/completions`) as well as OpenAI-style cloud endpoints. No local
+LLM is used; the default provider is the internal OmniRoute gateway.
+Credentials come from environment variables only.
 """
 
 from __future__ import annotations
