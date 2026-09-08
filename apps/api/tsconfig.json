@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "baseUrl": "./",
+    "allowImportingTsExtensions": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {

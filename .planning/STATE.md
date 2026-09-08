@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-current_phase: demo-milestone
-current_phase_name: demo-milestone
+current_phase: phase-12-examination-analytics
+current_phase_name: Phase 12 — Examination Analytics
 status: completed
-stopped_at: "Demo milestone COMPLETE — all Waves (0-4) + Phases 9-11 delivered; demo_e2e.sh PASS=52 FAIL=0. Next: Phase 12 — Examination Analytics (later backend phases)."
-last_updated: "2026-09-08T18:00:00.000Z"
-state_head: 0c99867
+stopped_at: "Phase 12 — Examination Analytics COMPLETE (2026-09-08): GET /assessments/:assessmentId/analytics (summary, exact-score distribution, question accuracy, topic + difficulty performance), computed on demand; 12 node:test unit cases + attempts_e2e.sh PASS=96; teacher results UI shows Overview/distribution/question/topic/difficulty. Next: Phase 13 — Practice System."
+last_updated: "2026-09-08T21:30:00.000Z"
+state_head: 7f21f4e
 progress:
   total_phases: 17
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 11
   completed_plans: 11
-  percent: 65
+  percent: 71
 ---
 
 # STATE.md
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 ## Project State
 
 **Sequence:** Demo-first vertical-slice (user-directed override)
-**Phase:** Demo Milestone — Waves 0-4
-**Status:** COMPLETE — closed 2026-09-08 (full-journey E2E green, all waves + Phases 9-11 delivered)
+**Phase:** Phase 12 — Examination Analytics
+**Status:** COMPLETE — closed 2026-09-08 (on-demand examination analytics; backend phases 13-17 pending)
 
 ## Phase State
 
@@ -49,10 +49,11 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 - Phase 11 — Results: delivered with Phase 10 + Wave 4 (`GET /attempts/:id/result` review, teacher `/assessments/:id/results` ledger, graded student result UI, result review in attempts + demo E2E).
 - Demo Wave 3 — Frontend `apps/web` (Next.js 15 + shadcn/ui): teacher + student UI, syllabus/attempt/result pages, `next build` PASS.
 - Demo Wave 4 — Full integration & docs close: `scripts/e2e/demo_e2e.sh` full teacher→syllabus→AI→notes→questions→quiz→student→attempt→result journey against the live stack. **E2E validated 2026-09-08 (PASS=52 FAIL=0)**; regressions attempts 76 / syllabus 39 / p8 86; typecheck/lint/build green; roadmap + state + tasks + validation docs closed.
+- Phase 12 — Examination Analytics (`GET /assessments/:assessmentId/analytics`, teacher/institute-admin): summary (average/highest/lowest + evaluated attempts + total marks), exact-score distribution, per-question accuracy (correct/incorrect/unanswered, works across mixed question types), topic + difficulty performance. Computed ON DEMAND in the API — a single grouped Postgres query over `attempt_questions`/`attempt_responses`/`attempts`/`questions`/`topics`; pure `buildAnalytics()` module (`apps/api/src/attempts/analytics.ts`, dependency-free) tested with 12 node:test cases (`pnpm --filter @catlium/api test:analytics`). Only EVALUATED attempts count (SUBMITTED/EXPIRED, non-null score); IN_PROGRESS/unevaluated excluded. Teacher results UI now renders Overview stats, score distribution, and question/topic/difficulty tables. **E2E validated 2026-09-08 (`attempts_e2e.sh` PASS=96 FAIL=0, AT-15..17: expected metrics, role/tenant/anon gates, empty case)**. Reqs ANL-01..03 ✓. No analytics DB/warehouse/precompute/cache.
 
 **Not started / pending:**
 
-- Later backend phases (12-17): Phase 12 — Examination Analytics is the recommended next task.
+- Later backend phases (13-17): Phase 13 — Practice System is the recommended next task.
 - Frontend integration phases (18-25): DEFERRED (demo milestone frontend delivered via Wave 3)
 
 ## Phase Plans
@@ -75,8 +76,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 | 9 | Student Examination Attempts | ✓ completed (via demo Wave 2) |
 | 10 | Automatic Evaluation | ✓ completed (E2E 2026-09-08, ATTEMPTS PASS=76) |
 | 11 | Results | ✓ completed (with Phase 10 + Wave 4) |
-| 12 | Examination Analytics | ○ NEXT |
-| 13 | Practice System | ○ deferred |
+| 12 | Examination Analytics | ✓ completed (E2E 2026-09-08, attempts_e2e.sh PASS=96, node:test 12/12, |
+| 13 | Practice System | ○ NEXT |
 | 14 | Cross-Module Validation & Security | ○ deferred |
 | 15 | API Contract Verification | ○ deferred |
 | 16 | Testing & Demonstration Readiness | ○ deferred |
@@ -85,22 +86,23 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Current Task
 
-**Demo Milestone — COMPLETE (closed 2026-09-08). Next task per roadmap:**
+**Phase 12 — Examination Analytics — COMPLETE (closed 2026-09-08). Next per roadmap:**
 
-**Phase 12 — Examination Analytics** (average/highest/lowest score, question
-accuracy, topic & difficulty performance; computed on demand — no unnecessary
-analytics infrastructure). Phases 13-17 follow. Frontend integration phases
-(18-25) remain deferred per the demo-first override (frontend delivered inside
-the milestone as Wave 3).
+**Phase 13 — Practice System** (ungraded flashcards + question practice: start
+session, review/answer, record response, complete, history; excluded from
+formal exam scoring). Phases 14-17 follow. Frontend integration phases (18-25)
+remain deferred per the demo-first override (frontend delivered inside the
+milestone as Wave 3).
 
 ## Session Continuity
 
 Last session: 2026-09-08 (closed)
-Stopped at: Demo milestone complete — Waves 0-4 + Phases 9-11 all delivered and
-validated (`demo_e2e.sh` PASS=52 FAIL=0; regressions attempts 76 / syllabus 39 /
-p8 86; typecheck/lint/build green). Roadmap/state/tasks/user-validation docs
-rewritten to reflect the closed milestone. Clean tree, checkpoint pushed.
-Resume file: `.planning/ROADMAP.md` (Phase 12 — Examination Analytics next)
+Stopped at: Phase 12 completed — on-demand examination analytics
+(`GET /assessments/:assessmentId/analytics`) with 12 node:test unit cases,
+`attempts_e2e.sh` PASS=96 FAIL=0 (AT-15..17), teacher results UI analytics
+sections, regressions demo 52 / syllabus 39 / p8 86, typecheck/lint/build green.
+Clean tree, checkpoint pushed.
+Resume file: `.planning/ROADMAP.md` (Phase 13 — Practice System next)
 
 ## Verification
 
@@ -115,7 +117,8 @@ Resume file: `.planning/ROADMAP.md` (Phase 12 — Examination Analytics next)
 - Phase 10: `attempts_e2e.sh` PASS=76 FAIL=0 (AT-01..14 incl. result review, score, correctness, reveal), 2026-09-08
 - Wave 3: API + web typecheck/lint, `next build` PASS, live route table, 2026-09-08
 - Wave 4 (demo close): `demo_e2e.sh` PASS=52 FAIL=0 full teacher→syllabus→AI→quiz→student→attempt→result journey (mock AI v2 on 127.0.0.1:8899, live dockerized stack). Regressions re-run green: attempts 76, syllabus 39, p8 86. API + web typecheck/lint + `next build` PASS. UI route smoke 200 on all demo routes. 2026-09-08
-- Known: zero automated test coverage across the codebase (manual E2E via shell scripts)
+- Phase 12 (analytics): `pnpm --filter @catlium/api test:analytics` 12/12 PASS (node:test — summary/averages/distribution/per-question/topic/difficulty/zero-marks/empty/privacy), `attempts_e2e.sh` PASS=96 FAIL=0 (AT-15 analytics metrics + AT-16 role/tenant/anon gates + AT-17 empty case), regressions `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API + web typecheck/lint + `next build` PASS, results route 200 on live dev web. 2026-09-08
+- Known: zero automated test coverage across the codebase (manual E2E via shell scripts) — Phase 12 analytics logic has the project's first node:test unit coverage
 
 ## Decisions
 
@@ -133,7 +136,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 12 — Examination Analytics next)
 
 ## Blocked
 
-- None. Demo milestone closed; nothing blocks Phase 12 (Examination Analytics).
+- None. Analytics complete; nothing blocks Phase 13 (Practice System).
 
 ## Performance Metrics
 

@@ -332,6 +332,54 @@ JAR="$CJS2"
 XR=$(req GET "/attempts/$ATTID/result")
 ok "$XR" 404 "AT-14k cross-student result -> 404"
 
+echo "== AT-15 examination analytics (Phase 12, teacher) =="
+JAR="$CJ"
+AN=$(req GET "/assessments/$A_OPEN/analytics")
+ok "$AN" 200 "AT-15a teacher analytics 200"
+body_has '"evaluatedAttempts":2' "AT-15b only evaluated attempts counted (SUB+MEXPIRED, IN_PROGRESS excluded)"
+body_has '"averageScore":1.5' "AT-15c average of 3 and 0 is 1.5"
+body_has '"highestScore":3' "AT-15d highest score"
+body_has '"lowestScore":0' "AT-15e lowest score"
+body_has '"totalMarks":4' "AT-15f total marks 4"
+SCD=$(jq -c '[.analytics.scoreDistribution[] | {score, count}]' "$BODY_FILE")
+[ "$SCD" = '[{"score":0,"count":1},{"score":3,"count":1}]' ] && PASS=$((PASS+1)) && echo "  ok AT-15g score distribution [{0,1},{3,1}]" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-15g: bad score distribution $SCD"); echo "  FAIL AT-15g (distribution=$SCD)"; }
+Q1ACC=$(jq -r '.analytics.questionAccuracy[] | select(.questionId == "'$Q1'") | "\(.correctCount)/\(.unansweredCount)/\(.accuracy)"' "$BODY_FILE")
+[ "$Q1ACC" = "1/1/1" ] && PASS=$((PASS+1)) && echo "  ok AT-15h Q1 1 correct 1 unanswered" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-15h: Q1 metrics $Q1ACC"); echo "  FAIL AT-15h (Q1=$Q1ACC)"; }
+Q2ACC=$(jq -r '.analytics.questionAccuracy[] | select(.questionId == "'$Q2'") | "\(.correctCount)/\(.incorrectCount)/\(.unansweredCount)/\(.accuracy)"' "$BODY_FILE")
+[ "$Q2ACC" = "0/0/2/null" ] && PASS=$((PASS+1)) && echo "  ok AT-15i Q2 unanswered across both attempts, accuracy null" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-15i: Q2 metrics $Q2ACC"); echo "  FAIL AT-15i (Q2=$Q2ACC)"; }
+QFBACC=$(jq -r '.analytics.questionAccuracy[] | select(.questionId == "'$QFB'") | "\(.correctCount)/\(.unansweredCount)"' "$BODY_FILE")
+[ "$QFBACC" = "1/1" ] && PASS=$((PASS+1)) && echo "  ok AT-15j QFB 1 correct 1 unanswered" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-15j: QFB metrics $QFBACC"); echo "  FAIL AT-15j (QFB=$QFBACC)"; }
+TOP=$(jq -r '[.analytics.topicPerformance[] | "\(.questionCount)/\(.responses)/\(.correctResponses)/\(.marksEarned)/\(.marksAvailable)"] | .[0]' "$BODY_FILE")
+[ "$TOP" = "4/3/3/3/8" ] && PASS=$((PASS+1)) && echo "  ok AT-15k single-topic: 4 questions 3 correct 3/8 marks" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-15k: topic metrics $TOP"); echo "  FAIL AT-15k (topic=$TOP)"; }
+DIFF=$(jq -r '.analytics.difficultyPerformance[] | "\(.difficulty)/\(.questionCount)/\(.correctResponses)/\(.marksEarned)"' "$BODY_FILE" | tr '\n' ' ')
+[ "$DIFF" = "EASY/3/2/2 MEDIUM/1/1/1 " ] && PASS=$((PASS+1)) && echo "  ok AT-15l difficulty performance EASY 3q, MEDIUM 1q" \
+  || { FAIL=$((FAIL+1)); FAILURES+=("AT-15l: difficulty metrics $DIFF"); echo "  FAIL AT-15l (difficulty=$DIFF)"; }
+body_not_has "correctChoiceId|correctAnswer|acceptableAnswers|explanation" "AT-15m analytics: NO answer-key leakage"
+body_not_has "studentEmail|studentName" "AT-15n analytics: aggregate only, no per-student data"
+
+echo "== AT-16 analytics access control =="
+JAR="$CJS"
+AN_S=$(req GET "/assessments/$A_OPEN/analytics")
+ok "$AN_S" 403 "AT-16a student forbidden from analytics -> 403"
+JAR="$CJS2"; INST="$IA"
+AN_I=$(req GET "/assessments/$A_OPEN/analytics")
+ok "$AN_I" 403 "AT-16b foreign-institute user forbidden -> 403"
+INST="$DI"; JAR="$CJ"
+AN_N=$(curl -s -X GET "$BASE/assessments/$A_OPEN/analytics" -o "$BODY_FILE" -w '%{http_code}')
+ok "$AN_N" 401 "AT-16c no authenticated cookie -> 401"
+
+echo "== AT-17 analytics empty case (assessment with no attempts) =="
+JAR="$CJ"
+AN_E=$(req GET "/assessments/$A_DRAFT/analytics")
+ok "$AN_E" 200 "AT-17a analytics on unused assessment 200"
+body_has '"evaluatedAttempts":0' "AT-17b zero evaluated attempts"
+body_has '"scoreDistribution":[]' "AT-17c empty score distribution"
+
 echo
 echo "==========================================="
 echo "ATTEMPTS E2E: PASS=$PASS FAIL=$FAIL"

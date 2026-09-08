@@ -3,9 +3,9 @@
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
 **Status: COMPLETE — Demo milestone closed 2026-09-08; full-journey E2E green
-(`demo_e2e.sh` PASS=52 FAIL=0), all Waves 0-4 + Phases 9-11 delivered. Next:
-later backend phases (Phases 12-17) starting with Phase 12 — Examination
-Analytics.** A user-directed prioritization
+(`demo_e2e.sh` PASS=52 FAIL=0), all Waves 0-4 + Phases 9-11 delivered, then
+Phase 12 — Examination Analytics (2026-09-08). Next: later backend phases
+(Phases 13-17) starting with Phase 13 — Practice System.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -154,6 +154,56 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   green: syllabus PASS=39, p8 PASS=86. API + web typecheck/lint, `next build`
   PASS, live routes `/student/attempts/[id]/result` and
   `/assessments/[id]/results` → 200.
+
+## Phase 12 — Examination Analytics (2026-09-08)
+
+**Status: COMPLETE.** Teacher-facing, on-demand examination analytics.
+Reqs ANL-01..03 ✓. No analytics DB / warehouse / precompute / caching — a
+single grouped Postgres query + a pure totalization module in the API.
+
+- **Endpoint:** `GET /assessments/:assessmentId/analytics`
+  (INSTITUTE_ADMIN/TEACHER only, tenant-scoped like the teacher ledger).
+  Response wrapped `{ analytics: ... }`. Only **evaluated** attempts count
+  (SUBMITTED/EXPIRED with non-null score — IN_PROGRESS and unevaluated are
+  excluded, matching the ledger/grading semantics).
+- **Computed:** `summary` (evaluatedAttempts, average/highest/lowest score,
+  totalMarks), `scoreDistribution` (exact-score histogram, ascending),
+  `questionAccuracy` (per question: correct/incorrect/**unanswered**,
+  accuracy ratio or null when no responses, marks earned/available; works
+  across MCQ/TF/FIB), `topicPerformance` and `difficultyPerformance`
+  (questionCount/responses/correct/accuracy/marks, null-topic questions
+  omitted from topic grouping).
+- **Implementation:** `apps/api/src/attempts/analytics.ts` — a pure,
+  dependency-free `buildAnalytics(attempts, questions)` (no NestJS/Zod
+  imports, erasable-only TS); `AttemptsService.getAnalytics` runs the two
+  selects in parallel; `AttemptsController` exposes the route. Zod schemas
+  appended to `@catlium/contracts` (ScoreDistributionBucket,
+  AnalyticsSummary, QuestionAccuracyMetric, Topic/DifficultyPerformance,
+  AssessmentAnalytics). Unanswered = evaluatedAttempts − saved responses,
+  so it is never negative and never double-counts.
+- **Tests:** `pnpm --filter @catlium/api test:analytics` — 12 node:test cases
+  (empty / all-excluded / single / multiple attempts, mixed types, correct+
+  incorrect, unanswered, topic, difficulty order, zero-marks, privacy — no
+  answer keys or student identifiers in output). This is the project's first
+  unit-test coverage (runs without any test framework via Node 24 type
+  stripping; Node ≥22.6 needed).
+- **E2E:** `scripts/e2e/attempts_e2e.sh` **PASS=96 FAIL=0** — new AT-15
+  (exact summary/distribution/per-question/topic/difficulty values on a live
+  graded dataset), AT-16 (student → 403, foreign institute → 403, no cookie →
+  401), AT-17 (assessment with no attempts → valid empty response).
+- **UI:** teacher results page
+  (`apps/web/.../assessments/[assessmentId]/results/page.tsx`) now renders,
+  alongside the existing ledger, an Overview stat row, a score-distribution
+  progress list, and question / topic / difficulty performance tables — all
+  shadcn/ui, empty states preserved.
+- **Regressions green (all FAIL=0):** attempts **96**, demo **52**, syllabus
+  **39**, p8 **86**; API + web typecheck/lint, `next build` PASS, results
+  route 200 on the live dev web.
+
+**Commit:** `feat(analytics): add examination analytics`
+
+**Recommended next task:** Phase 13 — Practice System (ungraded flashcards +
+question practice; excluded from formal exam scoring).
 
 **Wave 4 — Full integration & demo validation ✓ (2026-09-08):**
 - `scripts/e2e/mock_ai_provider.py` v2 (model-keyed outputs: `syllabus-mock` /

@@ -204,10 +204,10 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 **Goal:** Generate result after submission; student/teacher retrieval with correct auth (students: own; teachers: managed assessments); individual + question-level correct/incorrect; score calculation.
 **Status:** COMPLETE (2026-09-08, with Phase 10 + Wave 4). Reqs: RES-01..06 ✓.
 
-### Phase 12 — Examination Analytics (NEXT)
+### Phase 12 — Examination Analytics ✓ COMPLETE
 
 **Goal:** Average/highest/lowest score, question accuracy, topic & difficulty performance. Computed on demand; no unnecessary analytics infrastructure for MVP.
-**Status:** DEFERRED. Reqs: ANL-01..03.
+**Status:** COMPLETE (2026-09-08). `GET /assessments/:assessmentId/analytics` (teacher/institute-admin) aggregates EVALUATED attempts (SUBMITTED/EXPIRED, non-null score) on demand in the API — summary, exact-score distribution, per-question accuracy, topic + difficulty performance. Single grouped Postgres query joined against question/topic/difficulty; pure `buildAnalytics()` in `apps/api/src/attempts/analytics.ts`; 12 node:test unit cases; `attempts_e2e.sh` PASS=96 (AT-15..17 analytics block); teacher results UI now shows Overview / score distribution / question / topic / difficulty sections. No analytics DB, warehouse, precompute, or caching. Reqs: ANL-01..03 ✓.
 
 ### Phase 13 — Practice System
 
@@ -299,9 +299,9 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 ## Coverage
 
 - Backend phases: 17
-- Backend ✓ Complete: 11 (Phases 1-11)
+- Backend ✓ Complete: 12 (Phases 1-12)
 - Demo milestone waves: 4 (Waves 0-4 ✓ complete, closed 2026-09-08)
-- Later backend phases: 6 (Phases 12-17), Phase 12 next
+- Later backend phases: 5 (Phases 13-17), Phase 13 next
 - Frontend/integration phases: 8 (Phases 18-25), deferred (demo milestone frontend shipped as Wave 3)
 - Frontend is part of the master roadmap (NOT out of scope)
 - Monorepo retained for both backend and frontend
@@ -313,8 +313,9 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 1. ✅ Phase 1-8 completion (backend foundation complete)
 2. ✅ Wave 0-4 demo milestone (syllabus, attempts, frontend, integration — closed 2026-09-08)
 3. ✅ Phases 9-11 delivered inside the demo milestone
+4. ✅ Phase 12 examination analytics (closed 2026-09-08)
 
-**→ NEXT: Phase 12 — Examination Analytics** (average/highest/lowest score,
-question accuracy, topic & difficulty performance; computed on demand — no
-unnecessary analytics infrastructure for MVP). Then Phases 13-17, then
-frontend integration phases 18-25.
+**→ NEXT: Phase 13 — Practice System** (ungraded flashcards + question
+practice: start session, review/answer, record response, complete, history;
+excluded from formal exam scoring). Then Phases 14-17, then frontend
+integration phases 18-25.

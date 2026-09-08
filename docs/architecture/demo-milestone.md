@@ -232,8 +232,10 @@ password/profile management; unnecessary Institute CRUD; nonessential UI extras.
 - Phase 9 — Student Examination Attempts ✓ (delivered as demo Wave 2)
 - Phase 10 — Automatic Evaluation ✓ (delivered 2026-09-08)
 - Phase 11 — Results ✓ (delivered with Phase 10 + Wave 4)
-- Phase 12 — Examination Analytics (NEXT)
-- Phase 13 — Practice System
+- Phase 12 — Examination Analytics ✓ (delivered 2026-09-08, `GET
+  /assessments/:assessmentId/analytics`, on-demand; node:test 12/12,
+  attempts_e2e.sh PASS=96, teacher results UI)
+- Phase 13 — Practice System (NEXT)
 - Phase 14 — Cross-Module Validation & Security
 - Phase 15 — API Contract Verification
 - Phase 16 — Testing & Demonstration Readiness
@@ -241,7 +243,7 @@ password/profile management; unnecessary Institute CRUD; nonessential UI extras.
 
 These are NOT abandoned. The complete roadmap remains documented. The demo
 milestone (the critical vertical slice) is now closed; later backend phases
-continue from Phase 12.
+continue from Phase 13.
 
 ## Validation Discipline
 

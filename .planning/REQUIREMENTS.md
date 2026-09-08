@@ -120,11 +120,11 @@
 - [ ] **RES-05**: Score calculation
 - [ ] **RES-06**: Authorization (students: own only; teachers: managed assessments only)
 
-### Phase 12 — Examination Analytics (NOT STARTED)
+### Phase 12 — Examination Analytics (COMPLETE)
 
-- [ ] **ANL-01**: Average / highest / lowest score
-- [ ] **ANL-02**: Question accuracy
-- [ ] **ANL-03**: Topic performance + difficulty performance where supported
+- [x] **ANL-01**: Average / highest / lowest score
+- [x] **ANL-02**: Question accuracy
+- [x] **ANL-03**: Topic performance + difficulty performance where supported
 
 ### Phase 13 — Practice System (NOT STARTED)
 
@@ -239,10 +239,10 @@
 | QBN-01..07 | 6 | [ ] not started |
 | AIGQ-01..08 | 7 | [ ] not started |
 | EXAM-01..08 | 8 | ✓ complete (EXAM-01..04 via 08-01/08-02; EXAM-05..08 via 08-03) |
-| ATMPT-01..08 | 9 | [ ] not started |
-| EVAL-01..04 | 10 | [ ] not started |
-| RES-01..06 | 11 | [ ] not started |
-| ANL-01..03 | 12 | [ ] not started |
+| ATMPT-01..08 | 9 | ✓ complete |
+| EVAL-01..04 | 10 | ✓ complete |
+| RES-01..06 | 11 | ✓ complete |
+| ANL-01..03 | 12 | ✓ complete |
 | PRAC-01..03 | 13 | [ ] not started |
 | SEC-01..05 | 14 | [ ] not started |
 | CON-01..03 | 15 | [ ] not started |

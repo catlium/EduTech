@@ -12,6 +12,7 @@
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "jest",
+    "test:analytics": "node --test src/attempts/analytics.test.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

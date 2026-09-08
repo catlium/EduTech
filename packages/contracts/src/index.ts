@@ -873,3 +873,70 @@ export const AttemptListItemSchema = z.object({
   totalMarks: z.number().int().nullable(),
 });
 export type AttemptListItem = z.infer<typeof AttemptListItemSchema>;
+
+// Phase 12 — Examination analytics (teacher-facing, computed on demand from
+// EVALUATED attempts only — SUBMITTED/EXPIRED with a non-null score).
+// Accuracy is a 0..1 ratio, or null when there were no responses to base it on.
+export const ScoreDistributionBucketSchema = z.object({
+  score: z.number().int(),
+  count: z.number().int(),
+});
+export type ScoreDistributionBucket = z.infer<typeof ScoreDistributionBucketSchema>;
+
+export const AnalyticsSummarySchema = z.object({
+  evaluatedAttempts: z.number().int(),
+  averageScore: z.number().nullable(),
+  highestScore: z.number().int().nullable(),
+  lowestScore: z.number().int().nullable(),
+  totalMarks: z.number().int().nullable(),
+});
+export type AnalyticsSummary = z.infer<typeof AnalyticsSummarySchema>;
+
+export const QuestionAccuracyMetricSchema = z.object({
+  questionId: z.string().uuid(),
+  stem: z.string(),
+  sortOrder: z.number().int(),
+  marks: z.number().int(),
+  questionType: QuestionTypeEnum,
+  difficulty: QuestionDifficultyEnum,
+  responses: z.number().int(),
+  correctCount: z.number().int(),
+  incorrectCount: z.number().int(),
+  unansweredCount: z.number().int(),
+  accuracy: z.number().nullable(),
+  marksAwarded: z.number().int(),
+  marksAvailable: z.number().int(),
+});
+export type QuestionAccuracyMetric = z.infer<typeof QuestionAccuracyMetricSchema>;
+
+export const TopicPerformanceMetricSchema = z.object({
+  topicId: z.string().uuid(),
+  topicName: z.string(),
+  questionCount: z.number().int(),
+  responses: z.number().int(),
+  correctResponses: z.number().int(),
+  accuracy: z.number().nullable(),
+  marksEarned: z.number().int(),
+  marksAvailable: z.number().int(),
+});
+export type TopicPerformanceMetric = z.infer<typeof TopicPerformanceMetricSchema>;
+
+export const DifficultyPerformanceMetricSchema = z.object({
+  difficulty: QuestionDifficultyEnum,
+  questionCount: z.number().int(),
+  responses: z.number().int(),
+  correctResponses: z.number().int(),
+  accuracy: z.number().nullable(),
+  marksEarned: z.number().int(),
+  marksAvailable: z.number().int(),
+});
+export type DifficultyPerformanceMetric = z.infer<typeof DifficultyPerformanceMetricSchema>;
+
+export const AssessmentAnalyticsSchema = z.object({
+  summary: AnalyticsSummarySchema,
+  scoreDistribution: z.array(ScoreDistributionBucketSchema),
+  questionAccuracy: z.array(QuestionAccuracyMetricSchema),
+  topicPerformance: z.array(TopicPerformanceMetricSchema),
+  difficultyPerformance: z.array(DifficultyPerformanceMetricSchema),
+});
+export type AssessmentAnalytics = z.infer<typeof AssessmentAnalyticsSchema>;

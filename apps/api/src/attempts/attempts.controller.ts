@@ -102,4 +102,13 @@ export class AttemptsController {
   ) {
     return this.attemptsService.listForAssessment(tenant.instituteId, assessmentId);
   }
+
+  @Get('assessments/:assessmentId/analytics')
+  @RequiredRoles(...TEACHER_ROLES)
+  async analytics(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    return this.attemptsService.getAnalytics(tenant.instituteId, assessmentId);
+  }
 }

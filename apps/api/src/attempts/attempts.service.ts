@@ -5,7 +5,7 @@ import {
   NotFoundException,
   Inject,
 } from '@nestjs/common';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 
 import {
   assessments,
@@ -14,11 +14,13 @@ import {
   attempts,
   attemptQuestions,
   attemptResponses,
+  topics,
   users,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { gradeAnswer } from './attempts.grade.js';
+import { buildAnalytics } from './analytics.js';
 
 const ATTEMPTABLE_STATUSES = ['PUBLISHED', 'ACTIVE'] as const;
 type AttemptRow = typeof attempts.$inferSelect;
@@ -396,6 +398,75 @@ export class AttemptsService {
       .orderBy(asc(attempts.startedAt));
 
     return { attempts: rows };
+  }
+
+  /**
+   * Phase 12 examination analytics, computed on demand. Only EVALUATED attempts
+   * count (SUBMITTED/EXPIRED with a non-null score — IN_PROGRESS and
+   * unevaluated attempts are excluded). One grouped query per question drives
+   * question accuracy plus topic/difficulty aggregation; no analytics tables.
+   * Never exposes answer keys or per-student data (aggregates only).
+   */
+  async getAnalytics(instituteId: string, assessmentId: string) {
+    await this.getAssessment(instituteId, assessmentId);
+
+    const evaluated = ['SUBMITTED', 'EXPIRED'];
+    const scope = and(
+      eq(attempts.assessmentId, assessmentId),
+      eq(attempts.instituteId, instituteId),
+      inArray(attempts.status, evaluated),
+      isNotNull(attempts.score),
+    );
+
+    const [attemptRows, questionRows] = await Promise.all([
+      this.db
+        .select({ score: attempts.score, totalMarks: attempts.totalMarks })
+        .from(attempts)
+        .where(scope)
+        .orderBy(asc(attempts.score)),
+      this.db
+        .select({
+          questionId: attemptQuestions.questionId,
+          stem: attemptQuestions.stem,
+          sortOrder: attemptQuestions.sortOrder,
+          marks: attemptQuestions.marks,
+          questionType: attemptQuestions.questionType,
+          difficulty: questions.difficulty,
+          topicId: questions.topicId,
+          topicName: topics.name,
+          responses: sql<number>`count(${attemptResponses.id})::int`,
+          correct: sql<number>`count(*) filter (where ${attemptResponses.isCorrect})::int`,
+          incorrect: sql<number>`count(*) filter (where ${attemptResponses.isCorrect} = false)::int`,
+          marksAwarded: sql<number>`coalesce(sum(${attemptResponses.marksAwarded}), 0)::int`,
+        })
+        .from(attemptQuestions)
+        .innerJoin(attempts, eq(attempts.id, attemptQuestions.attemptId))
+        .innerJoin(questions, eq(questions.id, attemptQuestions.questionId))
+        .leftJoin(topics, eq(topics.id, questions.topicId))
+        .leftJoin(attemptResponses, eq(attemptResponses.attemptQuestionId, attemptQuestions.id))
+        .where(scope)
+        .groupBy(
+          attemptQuestions.questionId,
+          attemptQuestions.stem,
+          attemptQuestions.sortOrder,
+          attemptQuestions.marks,
+          attemptQuestions.questionType,
+          questions.difficulty,
+          questions.topicId,
+          topics.name,
+        ),
+    ]);
+
+    return {
+      analytics: buildAnalytics(
+        attemptRows.map((r) => ({ score: r.score as number, totalMarks: r.totalMarks })),
+        questionRows.map((r) => ({
+          ...r,
+          topicId: r.topicId,
+          topicName: r.topicName,
+        })),
+      ),
+    };
   }
 
   // ── Serializers ────────────────────────────

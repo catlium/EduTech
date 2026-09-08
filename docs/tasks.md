@@ -153,7 +153,11 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       `feat(attempts): phase 10 automatic evaluation and result review`)
 - [x] Phase 11 — Results (delivered as part of Phase 10 + Wave 4: result
       endpoint, teacher ledger, graded result UI, demo E2E)
-- [ ] Phase 12 — Examination Analytics
+- [x] Phase 12 — Examination Analytics (delivered 2026-09-08,
+      `feat(analytics): add examination analytics`: `GET
+      /assessments/:assessmentId/analytics`, on-demand summary / score
+      distribution / question accuracy / topic + difficulty performance;
+      node:test 12/12, `attempts_e2e.sh` PASS=96, teacher results UI)
 - [ ] Phase 13 — Practice System
 - [ ] Phase 14 — Cross-Module Validation & Security
 - [ ] Phase 15 — API Contract Verification

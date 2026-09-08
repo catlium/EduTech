@@ -981,6 +981,55 @@ FILL_IN_BLANK correct, one unanswered MCQ) must grade to **3/4**.
   "Results" on the assessment detail page) lists student, status, score/total,
   submitted time.
 
+## Demo Milestone — Phase 12 (Examination Analytics, E2E-run 2026-09-08) [x]
+
+**Setup required:** demo seed + `scripts/e2e/attempts_e2e.sh` (AT-15..17).
+Dataset: one assessment with two evaluated attempts (student A SUBMITTED
+3/4 — Q1 MCQ correct, Q2 MCQ unanswered, Q3 TRUE_FALSE correct, Q4
+FILL_IN_BLANK correct; student B EXPIRED 0/4 all unanswered) and one
+IN_PROGRESS attempt (excluded).
+
+### DEMO-W12-01 — Analytics endpoint (teacher)
+
+- **Endpoint:** `GET /api/v1/assessments/:assessmentId/analytics`
+- **Payload:** none (authenticated teacher + `x-institute-id`)
+- **Expected:** `200` `{ analytics: { summary: { evaluatedAttempts: 2,
+  averageScore: 1.5, highestScore: 3, lowestScore: 0, totalMarks: 4 },
+  scoreDistribution: [{score:0,count:1},{score:3,count:1}], … } }`.
+  Q1 `correctCount: 1 / unansweredCount: 1 / accuracy: 1`; Q2
+  `correctCount: 0 / unansweredCount: 2 / accuracy: null`; single topic →
+  `questionCount: 4, correctResponses: 3, marksEarned: 3, marksAvailable: 8`;
+  difficulty EASY 3 questions / MEDIUM 1.
+
+### DEMO-W12-02 — Access control
+
+- **Endpoint:** same, as student / foreign-institute user / anonymous
+- **Expected:** student → `403` (RolesGuard), foreign `x-institute-id` →
+  `403` (TenantGuard), no cookie → `401`.
+
+### DEMO-W12-03 — Empty case + privacy
+
+- **Endpoint:** analytics on an assessment with no attempts; inspect response
+- **Expected:** `200` with `evaluatedAttempts: 0` and empty `scoreDistribution`;
+  response never contains `correctChoiceId` / `correctAnswer` /
+  `acceptableAnswers` / `explanation` / `studentEmail` / `studentName`.
+
+### DEMO-W12-04 — Unit coverage
+
+- **Command:** `pnpm --filter @catlium/api test:analytics` (Node ≥22.6)
+- **Expected:** 12/12 node:test cases pass (summary / distribution /
+  per-question / unanswered ≠ correct / topic / difficulty order /
+  zero-marks / empty / consistency invariant / multi-count distribution /
+  rounding / privacy).
+
+### DEMO-W12-05 — UI
+
+- **Teacher results page:** `/assessments/:assessmentId/results` now also
+  renders Overview (evaluated, average, highest, lowest), a score-distribution
+  progress list, and Question / Topic / Difficulty performance tables.
+- Expected: route returns `200`; sections visible on an assessment with
+  evaluated attempts; page still renders cleanly with an empty assessment.
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete
