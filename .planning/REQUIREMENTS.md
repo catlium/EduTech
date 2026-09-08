@@ -1,8 +1,14 @@
 # Requirements: CatLium EduTech — AI-Assisted Learning and Examination System
 
 **Defined:** 2026-09-01 (authoritative backend roadmap)
+**Updated:** 2026-09-08 (demo-first vertical-slice override)
 **Core Value:** A teacher takes a source material through upload → async OCR/AI processing → AI-generated, reviewable content/questions → a published, approved-question-only examination, and a student takes it and receives an automatically-computed, reproducible result.
 **Legend:** `[x]` completed (verified against codebase) · `[ ]` not completed (remaining backend v1 work) · `[-]` deferred
+
+> **Demo-first override (2026-09-08):** the Phase 17 backend-complete checkpoint
+> is overridden for the demo milestone. Frontend (`apps/web`) is NOT gated —
+> Wave 3 (frontend) runs in parallel with backend Waves 1–2. See
+> `docs/architecture/demo-milestone.md` and `.planning/ROADMAP.md`.
 
 ## Backend v1 Requirements
 
@@ -253,10 +259,10 @@
 
 **Coverage:**
 
-- Backend v1: 17 phases mapped (1–4 complete, 5 partial, 6–17 not started)
-- Frontend & integration: 8 phases (18–25), gated behind the Phase 17 backend-complete checkpoint
+- Backend v1: 17 phases mapped (1–8 complete, 9–17 deferred/demo-wave-superseded)
+- Frontend & integration: 8 phases (18–25) — the Phase 17 gate is overridden for the demo milestone (frontend `apps/web` ships in demo Wave 3)
 - Frontend is part of the master roadmap (full-stack monorepo), NOT out of scope
 
 ---
 *Requirements defined: 2026-09-01*
-*Last updated: 2026-09-01 after full-stack roadmap reconciliation*
+*Last updated: 2026-09-08 after demo-first vertical-slice reconciliation*

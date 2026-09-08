@@ -7,7 +7,10 @@ milestone intentionally overrides the sequential roadmap gate: a working
 teacher→syllabus→notes→questions→quiz→student→attempt→result demo ships first
 (with a first-class `apps/web` frontend).
 
-### Wave 0 — Bootstrap (seed + memberships)
+**CRITICAL PRIORITY:** Get a working end-to-end model with a real, polished UI as soon as possible.
+Frontend is NOT optional or deferred. Start building the frontend as soon as the required APIs are stable enough.
+
+### Wave 0 — Bootstrap (seed + memberships) ✓
 
 - [x] Idempotent demo seed (`packages/database/scripts/seed-demo.ts`, `pnpm db:seed`)
       — institute `catlium-demo` (99999999-...), teacher@catlium.dev + student@catlium.dev
@@ -17,7 +20,7 @@ teacher→syllabus→notes→questions→quiz→student→attempt→result demo 
 - [x] Verified live: teacher roles INSTITUTE_ADMIN+TEACHER, student STUDENT, anon 401
 - [x] Regression: `p8_e2e.sh` PASS=86 FAIL=0
 
-### Wave 1 — Syllabus backend
+### Wave 1 — Syllabus backend (NEXT)
 
 - [ ] Migration 0009 `syllabus_proposals`
 - [ ] Worker: `AI_GENERATE_SYLLABUS` (Pydantic mirrors + proposal upsert)
@@ -31,7 +34,7 @@ teacher→syllabus→notes→questions→quiz→student→attempt→result demo 
 - [ ] Deterministic synchronous grading; deadline auto-submit; closes WR-06
 - [ ] `scripts/e2e/attempts_e2e.sh` + `docs/api/attempts.md`
 
-### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui)
+### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui) (PARALLELIZABLE)
 
 - [ ] Scaffold: Next.js 15 App Router, TS strict, Tailwind v4, shadcn/ui (selective install)
 - [ ] Centralized `lib/` (api/auth/tenant/jobs)
@@ -43,6 +46,18 @@ teacher→syllabus→notes→questions→quiz→student→attempt→result demo 
 - [ ] `scripts/e2e/demo_e2e.sh` full journey
 - [ ] Browser walkthrough; validation sweep
 - [ ] Docs close + `.planning` updates (frontend-gate override recorded)
+
+### Later Backend Phases (deferred, not blocking demo)
+
+- [ ] Phase 9 — Student Examination Attempts (after Wave 2)
+- [ ] Phase 10 — Automatic Evaluation (after Phase 9)
+- [ ] Phase 11 — Results (after Phase 10)
+- [ ] Phase 12 — Examination Analytics
+- [ ] Phase 13 — Practice System
+- [ ] Phase 14 — Cross-Module Validation & Security
+- [ ] Phase 15 — API Contract Verification
+- [ ] Phase 16 — Testing & Demonstration Readiness
+- [ ] Phase 17 — Backend-Complete Checkpoint
 
 --
 
@@ -151,9 +166,9 @@ System priority order:
 - [x] 08-07 E2E + docs close: `p8_e2e.sh` PASS=86 FAIL=0 (two back-to-back
       runs); user-validation.md zero unchecked markers; project-status.md
       Phase 8 gap-closure complete (2026-09-07)
-- [-] WR-06 (answer-key exposure via open questions read) deferred to Phase 9
-      — Phase 9 projection/serialization gate owns the fix; must close before
-      student attempts ship (08-VERIFICATION.md deferral)
+- [x] WR-06 (answer-key exposure via open questions read) closed through the
+      student-attempt design — students use a sanitized attempt-question
+      projection (demo Wave 2); assessment read stays teacher/admin-gated
 
 ## Phase 6 — Question Bank
 

@@ -1,43 +1,41 @@
 {
   "version": "1.0",
-  "timestamp": "2026-09-05T08:40:22.037Z",
-  "phase": 8,
-  "phase_name": "quiz-examination-management",
-  "phase_dir": ".planning/phases/08-quiz-examination-management",
-  "plan": 6,
-  "task": 0,
-  "total_tasks": 3,
-  "status": "paused",
-  "completed_tasks": [
-    {"id": 1, "name": "Publish gate filters ACTIVE status + addQuestions blocks ARCHIVED links (EXAM-08)", "status": "done", "commit": "577e944"},
-    {"id": 2, "name": "E2E ARCHIVED gate cases in p8_e2e.sh + docs/user-validation.md EXAM-08 update (EXAM-08)", "status": "done", "commit": "8d5f226"},
-    {"id": 3, "name": "Plan 08-05 metadata (SUMMARY + STATE/ROADMAP/REQUIREMENTS tracking)", "status": "done", "commit": "469aebf"}
+  "timestamp": "2026-09-08T00:00:00.000Z",
+  "phase": "demo-milestone",
+  "phase_name": "demo-milestone",
+  "phase_dir": ".planning",
+  "status": "active",
+  "completed_waves": [
+    {"id": 0, "name": "Bootstrap (seed + memberships)", "status": "done", "commit": "5929170"},
+    {"id": 1, "name": "Phase 8 gap closures (08-06, 08-07, WR-01..WR-05)", "status": "done", "commit": "ca5519c"}
   ],
-  "remaining_tasks": [
-    {"id": 1, "name": "Plan 08-06 (WR-01/WR-02): merged-schedule re-validation on update + DTO title/questionIds validation — Wave 6", "status": "not_started"},
-    {"id": 2, "name": "Plan 08-07 (WR-04/WR-05): sortOrder max-offset + resync script + DRAFT-only DELETE guard + phase docs closure — Wave 7", "status": "not_started"},
-    {"id": 3, "name": "Post-wave verification + code review + update_roadmap (phase gates)", "status": "not_started"}
+  "remaining_waves": [
+    {"id": 1, "name": "Wave 1 — Syllabus backend (migration 0009, AI_GENERATE_SYLLABUS, syllabus API)", "status": "not_started"},
+    {"id": 2, "name": "Wave 2 — Attempts backend (migration 0010, attempts API, grading)", "status": "not_started"},
+    {"id": 3, "name": "Wave 3 — Frontend apps/web (Next.js + shadcn/ui, teacher + student UI)", "status": "not_started"},
+    {"id": 4, "name": "Wave 4 — Full integration & demo validation", "status": "not_started"}
   ],
-  "blockers": [
-    {"description": "None technical. Orchestrator worktree auto-degraded to sequential (ISOLATION=none) because HEAD 683c1f06 differs from origin/HEAD 18e63c92 — parallel worktrees return once HEAD is merged/pushed.", "type": "technical", "workaround": "Continue sequential execution on main branch; or merge/push main so origin/HEAD matches then re-enable worktrees."}
+  "later_backend_phases": [
+    {"id": 9, "name": "Student Examination Attempts", "status": "deferred"},
+    {"id": 10, "name": "Automatic Evaluation", "status": "deferred"},
+    {"id": 11, "name": "Results", "status": "deferred"},
+    {"id": 12, "name": "Examination Analytics", "status": "deferred"},
+    {"id": 13, "name": "Practice System", "status": "deferred"},
+    {"id": 14, "name": "Cross-Module Validation & Security", "status": "deferred"},
+    {"id": 15, "name": "API Contract Verification", "status": "deferred"},
+    {"id": 16, "name": "Testing & Demonstration Readiness", "status": "deferred"},
+    {"id": 17, "name": "Backend-Complete Checkpoint", "status": "deferred"}
   ],
+  "blockers": [],
   "async_jobs": [],
   "human_actions_pending": [],
   "decisions": [
-    {"decision": "A-08-G1: ARCHIVED (non-ACTIVE) questions unlinkable at addQuestions AND unpublishable at publishAssessment (defense in depth)", "rationale": "Docs already promised ARCHIVED fails validation; linking-a-doomed-question is a teacher trap", "phase": "8"},
-    {"decision": "Publish 400 message composes 'not APPROVED' + 'not ACTIVE' into one clause so both gates share one message", "rationale": "Keeps existing E2E grep (not APPROVED) matching while covering ARCHIVED", "phase": "8"},
-    {"decision": "addQuestions check order: institute-scope existence FIRST (exact Pitfall-3 400 preserved), status check second", "rationale": "No new cross-tenant oracle (T-08-22)", "phase": "8"},
-    {"decision": "E2E EXAM-05 status asserts converted from FAIL-only to PASS-counting to reconcile documented PASS=56 baseline", "rationale": "Symmetric with EXAM-06; no new checks added", "phase": "8"},
-    {"decision": "A-08-G2: WR-06 (answer-key exposure) stays deferred to Phase 9", "rationale": "VERIFICATION.md deferred block", "phase": "8"}
+    {"decision": "Demo-first vertical-slice (user-directed override)", "rationale": "Working end-to-end model with real polished UI ASAP; frontend is NOT optional or deferred", "phase": "demo"},
+    {"decision": "Frontend first-class (apps/web, Next.js 15 + shadcn/ui)", "rationale": "Modern SaaS/EdTech appearance; shadcn primitives + CatLium-specific components on top", "phase": "demo"},
+    {"decision": "Wave 3a (teacher UI) parallelizable with Wave 1-2 backend", "rationale": "Frontend can develop against already-stable APIs while backend work continues", "phase": "demo"},
+    {"decision": "Later backend phases (9-17) deferred", "rationale": "Mark non-essential work as later/deferred rather than implementing before demo-critical vertical slice", "phase": "demo"},
+    {"decision": "Frontend communicates ONLY with the NestJS API", "rationale": "Never directly calls PostgreSQL, RabbitMQ, OCR, AI worker, or internal worker APIs", "phase": "demo"}
   ],
-  "uncommitted_files": [
-    ".planning/HANDOFF.json (this file, intentionally uncommitted until pause commit)",
-    ".planning/config.json (_auto_chain_active: false — clears stale --auto chain flag; safe to leave or commit)",
-    ".gsd/ (tooling output)",
-    ".planning/milestone.lock",
-    ".planning/state.json",
-    "session-ses_f947.md"
-  ],
-  "next_action": "Run /gsd-execute-phase 8 --gaps-only from repo root. It resumes with Wave 6 (plan 08-06) — 08-05 is complete (has SUMMARY) and skipped.",
-  "context_notes": "Gap-closure execution of Phase 8: plans 08-05..08-07 close VERIFICATION gaps WR-01..WR-05 (WR-06 deferred). Executor for 08-05 was 'cancelled' by the harness but completed all work before cancellation — verified via git commits + E2E logs, metadata committed manually. E2E harness /tmp/opencode/p8_e2e.sh (OUTSIDE repo, untracked) now at PASS=60 FAIL=0 after 08-05 added 4 ARCHIVED gate cases + reconciled EXAM-05 asserts. CRITICAL: the API runs from a baked Docker image (no source mount) — after any service change the executor MUST `docker compose -f infrastructure/compose/docker-compose.yml build api && up -d api` and re-issue fixture cookies (stale-cookie hazard documented). 08-06 expects baseline PASS=60, targets PASS=65. 08-07 expects PASS=65, targets PASS=70 + resync script + DRAFT-only delete guard. Execution must be SEQUENTIAL (dependency chain 08-05→08-06→08-07, all touch examinations.service.ts)."
+  "next_action": "Implement Wave 1 (Syllabus backend: migration 0009, AI_GENERATE_SYLLABUS worker, syllabus API module) and Wave 3 (Frontend apps/web) in parallel. After syllabus backend, implement Wave 2 (Attempts backend). Then Wave 3b (student UI) after attempt APIs. Integrate and validate in Wave 4.",
+  "context_notes": "CRITICAL PRIORITY: Get a working end-to-end model with a real, polished UI as soon as possible. Do NOT interpret the roadmap as requiring us to finish every backend phase before building the UI. Use a demo-first vertical-slice strategy. The entire flow must use the actual NestJS backend and database. No fake data or hardcoded success states except intentional demo seed data."
 }

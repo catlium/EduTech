@@ -2,13 +2,16 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
-**Status: IN PROGRESS — Wave 0 complete.** A user-directed prioritization
+**Status: IN PROGRESS — Wave 0 complete, Build Mode active.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
 source of truth): `docs/architecture/demo-milestone.md`. The original Phase 17
 frontend-gate checkpoint is deliberately overridden for this milestone
 (recorded in `.planning/STATE.md` and `.planning/ROADMAP.md`).
+
+**CRITICAL PRIORITY:** Get a working end-to-end model with a real, polished UI as soon as possible.
+Frontend is NOT optional or deferred. Start building the frontend as soon as the required APIs are stable enough.
 
 **Wave 0 done:**
 
@@ -23,9 +26,27 @@ frontend-gate checkpoint is deliberately overridden for this milestone
 
 **Database changes:** none (seed only; no migrations).
 
-**Next task:** Wave 1 — Syllabus backend (migration 0009, worker
-`AI_GENERATE_SYLLABUS`, syllabus API module, syllabus E2E). See
-`docs/tasks.md` and `docs/architecture/demo-milestone.md`.
+**Next tasks (in priority order):**
+1. **Frontend foundation** (`apps/web`) — Next.js 15, App Router, React 19, TypeScript strict, Tailwind CSS v4, shadcn/ui, Radix UI, lucide-react, react-hook-form, Zod contracts
+2. **Wave 1 — Syllabus backend** (migration 0009, worker `AI_GENERATE_SYLLABUS`, syllabus API module)
+3. **Wave 2 — Attempts backend** (migration 0010, attempts API module, grading)
+4. **Wave 3a — Teacher UI** (against existing stable APIs)
+5. **Wave 3b — Student UI** (after attempt APIs available)
+6. **Wave 4 — Full integration & demo validation**
+
+**Frontend stack (authoritative):**
+- Next.js 15, App Router, React 19, TypeScript strict
+- Tailwind CSS v4, shadcn/ui, Radix UI primitives
+- lucide-react, react-hook-form, @hookform/resolvers
+- Zod contracts from `@catlium/contracts`
+- Server Components by default, `"use client"` only for interactivity
+- Modern SaaS/EdTech appearance, not basic CRUD/admin template
+
+**Demo-first vertical-slice strategy:**
+- Do NOT wait for all backend phases before building UI
+- Frontend can develop against already-stable APIs while backend work continues
+- Prioritize working end-to-end demo path over non-essential features
+- Keep complete roadmap documented, mark non-essential work as later/deferred
 
 ---
 
@@ -103,9 +124,10 @@ deterministic 1..n order. No new migrations, no schema diffs — schema-gate
 held.
 
 **Known issues:** WR-06 (answer-key exposure via the open
-`GET /assessments/:id/questions` read) is explicitly deferred to Phase 9 —
-the Phase 9 projection/serialization gate owns it per 08-VERIFICATION.md; must
-be closed before student attempts ship. No other open defects.
+`GET /assessments/:id/questions` read) is intentionally closed through the
+**student-attempt design** rather than exposing answer keys in the assessment
+API: students use a sanitized attempt-question projection (Phase 2 / demo Wave
+2), and the assessment read stays teacher/admin-gated. No other open defects.
 
 **Validation status:** all `docs/user-validation.md` Phase 8 items `[x]`
 (2026-09-07, live dockerized stack, `p8_e2e.sh` PASS=86 FAIL=0, two
@@ -118,12 +140,12 @@ Verification gaps WR-01..WR-05 all resolved; 5 of 5.
 **Last Checkpoint:** Phase 8 gap-closure close (2026-09-07, plan 08-07;
 commits `aae746f`/`93f74a2`/`8ed3656`/`ed49b8f`/`b6d14cb` + SUMMARY).
 
-**Recommended next task:** run `/gsd-verify-phase 08` for the post-close phase
-verification, then plan Phase 9 — Student Examination Attempts (a student
-takes a PUBLISHED/ACTIVE assessment within its schedule window; the locked
-question set + `marks` from Phase 8 are the input; response serialization must
-never expose correct answers — closes WR-06). Per orchestrator, not
-auto-continued (AGENTS.md Rule 10).
+**Recommended next task:** demo-first vertical-slice — **Wave 1** (Syllabus
+backend: migration 0009, worker `AI_GENERATE_SYLLABUS`, syllabus API module)
+plus **Wave 3** (Frontend `apps/web`: Next.js 15 + shadcn/ui, teacher UI,
+parallelizable against stable APIs), then **Wave 2** (Attempts backend:
+migration 0010, attempts API module, sanitized projection closes WR-06,
+deterministic grading). Full flow and waves in `docs/architecture/demo-milestone.md`.
 
 For the prior phases see the historical entries below.
 
@@ -747,15 +769,20 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Recommended Next Task
 
-**Phase 5 is closed. Plan Phase 6 — Question Bank (no implementation yet):**
+**Demo-first vertical-slice (see the Demo Milestone section at the top of this
+file for full detail):**
 
-1. Follow the checkpoint/continuity rules: after this checkpoint is pushed,
-   run `/gsd-plan-phase` (or the project's phase planning flow) for the Question
-   Bank phase, capturing the roadmap decision about how questions attach to the
-   academic tree, JSONB contract shapes, and whether generation/checking flows
-   are in scope.
-2. Implementation of Question Bank comes after its plan is agreed, per
-   AGENTS.md "What NOT to Implement Yet".
+1. **Wave 1 — Syllabus backend**: migration 0009 `syllabus_proposals`, worker
+   op `AI_GENERATE_SYLLABUS` (Pydantic mirrors + proposal upsert, proposal-only
+   AI), API module `apps/api/src/syllabus` (generate/get/patch/confirm),
+   `scripts/e2e/syllabus_e2e.sh` + `docs/api/syllabus.md`.
+2. **Wave 3 — Frontend `apps/web`** (Next.js 15 + shadcn/ui) — parallelizable
+   against the stable Phase 1–8 APIs.
+3. **Wave 2 — Attempts backend**: migration 0010, API module
+   `apps/api/src/attempts` (available/start/questions-sanitized/save/submit/
+   result), deterministic grading, closes WR-06.
+4. **Wave 4 — Full integration & demo validation** (`demo_e2e.sh`, browser
+   walkthrough).
 
 The dockerized stack (`infrastructure/compose/docker-compose.yml`) is the
 validation harness for any follow-on testing.

@@ -11,12 +11,16 @@ attempts that are automatically evaluated into results and analytics.
 Built as a modular-monolith NestJS API with separately deployable Python
 async workers (RabbitMQ) and a FastAPI OCR service.
 
-**Backend-first, full-stack monorepo strategy:** This is a full-stack monorepo
-containing both backend and frontend. The backend is developed first as a
-complete, independently runnable academic application; frontend feature
-development begins only after the **backend-complete checkpoint**. The API
-contract under `docs/api/` is the source of truth for the backend and the
-contract between backend and frontend.
+**Demo-first, full-stack monorepo strategy (user-directed, 2026-09-08):** This
+is a full-stack monorepo containing both backend and frontend. Frontend is
+**NOT optional or deferred**. Use a **demo-first vertical-slice strategy**: get
+a working end-to-end model with a real, polished UI as soon as possible. The
+original "backend-complete checkpoint" gate (Phase 17) is overridden for the
+demo milestone. Backend foundation (Phases 1–8) is complete; the demo milestone
+(Waves 0–4) ships a working teacher→syllabus→AI→questions→quiz→student→attempt→result
+journey with a first-class `apps/web` frontend. The API contract under
+`docs/api/` remains the source of truth and the contract between backend and
+frontend.
 
 ## Core Value
 
@@ -30,8 +34,24 @@ result. Grounded, reviewable, and deterministic.
 
 - **Customer**: Educational institutions (institutes) and their teachers/students
 - **Revenue model**: SaaS (multi-tenant; billing/subscriptions deferred)
-- **Success metric**: A demonstrable, independently-runnable backend covering the full teacher→material→AI→exam and student→attempt→evaluation→result loop
-- **Strategy notes**: See `ROADMAP.md` (authoritative 17-phase backend roadmap)
+- **Success metric**: A demonstrable, independently-runnable backend covering the full teacher→material→AI→exam and student→attempt→evaluation→result loop, WITH a polished first-class frontend (`apps/web`) demonstrating the complete journey
+- **Strategy notes**: See `ROADMAP.md` (authoritative demo-first vertical-slice roadmap) and `docs/architecture/demo-milestone.md` (master execution plan)
+
+## Demo-First Vertical-Slice
+
+**CRITICAL PRIORITY:** Get a working end-to-end model with a real, polished UI as soon as possible.
+
+Prioritization order when deciding what to implement next:
+
+1. Working end-to-end demo path
+2. Frontend/UI for that path
+3. Backend APIs required by that path
+4. Security and tenant isolation required for that path
+5. Automated tests/E2E validation
+6. Polish and UX improvements
+7. Non-essential roadmap features
+
+Do NOT spend excessive time completing backend features that are not required for the working demonstration while the application has no usable UI. Do NOT wait until every backend phase is complete before building the UI.
 
 ## Requirements
 
@@ -59,13 +79,14 @@ Current scope, in progress:
 ### Roadmap Requirements
 
 All authoritative scope is defined by the user-provided roadmap in
-`ROADMAP.md` (Phases 1–17 = backend v1; Phases 18–25 = frontend &
-integration, gated behind the backend-complete checkpoint). See
-`REQUIREMENTS.md` for checkable, phase-traced requirements derived from it.
+`ROADMAP.md` (demo-first vertical-slice: Phases 1–17 = backend v1, later
+phases deferred; demo Waves 0–4 = immediate priority; Phases 18–25 =
+frontend & integration — the Phase 17 gate is overridden for the demo
+milestone). See `REQUIREMENTS.md` for checkable, phase-traced requirements
+derived from it.
 
 ### Out of Scope
 
-- **Frontend feature development BEFORE the backend-complete checkpoint** — sequenced backend-first (frontend itself is in scope, just gated)
 - **Institute CRUD / onboarding / invitations / billing / subscriptions** — SaaS management deferred
 - **External product/platform requirements** — no features introduced from outside this roadmap
 - **AI for objective-question evaluation** — must be deterministic/reproducible
@@ -96,17 +117,19 @@ integration, gated behind the backend-complete checkpoint). See
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Modular monolith + separate workers/OCR | Avoid premature microservices; heavy work off the API | ✓ Good |
-| Full-stack monorepo (backend + frontend), backend-first | Backend runs independently first; frontend gated behind backend-complete checkpoint; monorepo retained | ✓ Good |
+| Full-stack monorepo (backend + frontend), demo-first vertical-slice | Frontend NOT deferred; working demo with polished UI ASAP | ✓ Good |
 | API contract (`docs/api/`) is authoritative (contract between BE and FE) | Prevents silent contract drift | ✓ Good |
 | Deterministic objective evaluation (no AI) | Required for reproducibility | ✓ Good |
 | AI-generated questions → PENDING, never auto-approve | Prevents unvalidated questions reaching official exams | ✓ Good |
 | RabbitMQ async + direct pika workers + JSON payloads | API never blocks; plain-JSON contract (per earlier decisions) | ✓ Good |
 | Content payloads canonical in JSONB | Drag-free structured content | ✓ Good |
 | Local storage behind `StorageProvider` | Replaceable with S3 later | ✓ Good |
+| Frontend: `apps/web` (Next.js 15 + shadcn/ui) | Polished SaaS/EdTech appearance; shadcn primitives + CatLium components | ✓ Good |
+| AI syllabus generation → PENDING_REVIEW proposal only | Teacher confirmation is the only path that mutates academic hierarchy | ✓ Good |
 
 ---
 
-*Last updated: 2026-09-01 after authoritative backend roadmap provided by user*
+*Last updated: 2026-09-08 after demo-first vertical-slice strategy confirmed by user*
 
 ## Evolution
 
