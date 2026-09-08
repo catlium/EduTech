@@ -36,9 +36,18 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 
 ### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui) (PARALLELIZABLE)
 
-- [ ] Scaffold: Next.js 15 App Router, TS strict, Tailwind v4, shadcn/ui (selective install)
-- [ ] Centralized `lib/` (api/auth/tenant/jobs)
-- [ ] Teacher UI (login→dashboard→subjects→syllabus→materials→questions→assessments→results)
+- [x] Scaffold: Next.js 15 App Router, TS strict, Tailwind v4, shadcn/ui (selective install)
+- [x] Centralized `lib/` (api/auth/tenant/jobs)
+- [~] Teacher UI (login→dashboard→subjects→syllabus→materials→questions→assessments→results)
+  - [x] Auth pages (login/register) + institute picker + auth/tenant guards
+  - [x] Workspace shell (AppSidebar + top header) with role-aware nav
+  - [x] Dashboard (counts + recent subjects)
+  - [x] Subjects list + create + detail (chapter/topic tree)
+  - [x] Materials list + create text material
+  - [x] Questions list + approve/reject + AI generation poll
+  - [x] Assessments list + create + detail + publish
+  - [ ] Syllabus pages (after Wave 1 backend)
+  - [ ] Student attempt/result pages (after Wave 2 backend)
 - [ ] Student UI (dashboard→available→attempt→timer→submit→result)
 
 ### Wave 4 — Integration & close

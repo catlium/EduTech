@@ -7,6 +7,8 @@ dist/
 build/
 .turbo/
 *.tsbuildinfo
+.next/
+out/
 
 # Local file storage (learning materials)
 storage/

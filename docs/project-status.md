@@ -2,7 +2,7 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
-**Status: IN PROGRESS — Wave 0 complete, Build Mode active.** A user-directed prioritization
+**Status: IN PROGRESS — Wave 3a scaffold + teacher shell complete, Build Mode active.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -27,12 +27,19 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 **Database changes:** none (seed only; no migrations).
 
 **Next tasks (in priority order):**
-1. **Frontend foundation** (`apps/web`) — Next.js 15, App Router, React 19, TypeScript strict, Tailwind CSS v4, shadcn/ui, Radix UI, lucide-react, react-hook-form, Zod contracts
-2. **Wave 1 — Syllabus backend** (migration 0009, worker `AI_GENERATE_SYLLABUS`, syllabus API module)
-3. **Wave 2 — Attempts backend** (migration 0010, attempts API module, grading)
-4. **Wave 3a — Teacher UI** (against existing stable APIs)
-5. **Wave 3b — Student UI** (after attempt APIs available)
-6. **Wave 4 — Full integration & demo validation**
+1. **Wave 1 — Syllabus backend** (migration 0009, worker `AI_GENERATE_SYLLABUS`, syllabus API module)
+2. **Wave 2 — Attempts backend** (migration 0010, attempts API module, grading)
+3. **Wave 3a/3b — Teacher syllabus pages + Student UI** (against new APIs)
+4. **Wave 4 — Full integration & demo validation**
+
+**Wave 3a scaffold complete (2026-09-08):**
+- `apps/web` Next.js 15 + React 19 + TS strict + Tailwind v4 + shadcn/ui (26 components, new-york, zinc).
+- Centralized `src/lib/`: `api.ts` (credentials include, `x-institute-id`, CSRF header, 401→login, job polling), `auth.tsx` (session restore via `GET /auth/me` + memberships, logout), `tenant.tsx` (institute picker state, role helpers).
+- Teacher shell: role-aware `AppSidebar` + workspace layout with auth/tenant guards.
+- Pages (client components, against existing Phase 1–8 APIs; dev server on port 3001 to match default `CORS_ORIGIN`):
+  login / register / institutes picker / dashboard / subjects (list+create+detail with chapter tree) / materials (list+create text) / questions (list+approve+reject+AI generate poll) / assessments (list+create+detail+publish).
+- Validation: `pnpm --filter @catlium/web typecheck` PASS, `next build` PASS (13 routes), dev server smoke-tested (root 307→dashboard, login 200).
+- `@catlium/contracts` resolved via tsconfig path alias to `packages/contracts/src` (no dist build needed for dev).
 
 **Frontend stack (authoritative):**
 - Next.js 15, App Router, React 19, TypeScript strict
@@ -137,13 +144,12 @@ DELETE guard, and a student-403 / institute-B-404 / mass-assignment / auth
 security sweep). `pnpm typecheck && pnpm lint` green (9/9 turbo tasks).
 Verification gaps WR-01..WR-05 all resolved; 5 of 5.
 
-**Last Checkpoint:** Phase 8 gap-closure close (2026-09-07, plan 08-07;
-commits `aae746f`/`93f74a2`/`8ed3656`/`ed49b8f`/`b6d14cb` + SUMMARY).
+**Last Checkpoint:** Wave 3a scaffold + frontend foundation (2026-09-08,
+`apps/web` teacher shell + auth/tenant guards; see Demo Milestone section).
 
 **Recommended next task:** demo-first vertical-slice — **Wave 1** (Syllabus
-backend: migration 0009, worker `AI_GENERATE_SYLLABUS`, syllabus API module)
-plus **Wave 3** (Frontend `apps/web`: Next.js 15 + shadcn/ui, teacher UI,
-parallelizable against stable APIs), then **Wave 2** (Attempts backend:
+backend: migration 0009, worker `AI_GENERATE_SYLLABUS`, syllabus API module),
+then **Wave 2** (Attempts backend:
 migration 0010, attempts API module, sanitized projection closes WR-06,
 deterministic grading). Full flow and waves in `docs/architecture/demo-milestone.md`.
 
@@ -776,8 +782,8 @@ file for full detail):**
    op `AI_GENERATE_SYLLABUS` (Pydantic mirrors + proposal upsert, proposal-only
    AI), API module `apps/api/src/syllabus` (generate/get/patch/confirm),
    `scripts/e2e/syllabus_e2e.sh` + `docs/api/syllabus.md`.
-2. **Wave 3 — Frontend `apps/web`** (Next.js 15 + shadcn/ui) — parallelizable
-   against the stable Phase 1–8 APIs.
+2. **Wave 3a next — Teacher syllabus pages** in `apps/web` (SyllabusProposalEditor)
+   once `syllabus` API exists; student UI (Wave 3b) after Wave 2.
 3. **Wave 2 — Attempts backend**: migration 0010, API module
    `apps/api/src/attempts` (available/start/questions-sanitized/save/submit/
    result), deterministic grading, closes WR-06.
@@ -785,4 +791,5 @@ file for full detail):**
    walkthrough).
 
 The dockerized stack (`infrastructure/compose/docker-compose.yml`) is the
-validation harness for any follow-on testing.
+validation harness for any follow-on testing. `apps/web` dev server runs on
+port 3001 (`next dev -p 3001`) to match the API's default `CORS_ORIGIN`.
