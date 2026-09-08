@@ -68,9 +68,9 @@ existed before; the worker defaulted to a host Ollama. Now:
       (tiered pipeline + chunking), security.md (`x-internal-api-key`)
 - [x] `.env.example`: `INTERNAL_API_KEY`, `OMNIROUTE_*`, chunk envs; dropped
       Ollama/`MAX_SOURCE_CHARS`; `compose config --quiet` valid (base + dev)
-- [ ] Final validation pass (host: API/web builds + 3 E2E suites + mock AI +
+- [x] Final validation pass (host: API/web builds + 4 E2E suites + mock AI +
       live UI route table + container network/browser-access check)
-- [ ] Commit + push `feat(architecture): enforce single public API and AI/OCR boundaries`
+- [x] Commit + push `feat(architecture): enforce single public API and AI/OCR boundaries` (`0ec1e79`)
 
 ### Wave 0 — Bootstrap (seed + memberships) ✓
 
@@ -135,17 +135,24 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   - [x] Student attempt/result pages (after Wave 2 backend)
 - [x] Student UI (dashboard→available→attempt→timer→submit→result)
 
-### Wave 4 — Integration & close
+### Wave 4 — Integration & close ✓
 
-- [ ] `scripts/e2e/demo_e2e.sh` full journey
-- [ ] Browser walkthrough; validation sweep
-- [ ] Docs close + `.planning` updates (frontend-gate override recorded)
+- [x] `scripts/e2e/demo_e2e.sh` full journey (mock AI provider v2:
+      model-keyed syllabus/note/questions; 3 distinct MCQs)
+- [x] Full-journey validation: PASS=52 FAIL=0; regressions attempts 76,
+      syllabus 39, p8 86; typecheck/lint/build green; live UI route table
+- [x] Docs close + `.planning` updates (frontend-gate override recorded):
+      project-status, tasks, user-validation (DEMO journey), STATE.md,
+      ROADMAP.md (Waves 0-4 + Phases 9-11 complete); commit + push
 
-### Later Backend Phases (deferred, not blocking demo)
+### Later Backend Phases (next, not blocking demo)
 
-- [ ] Phase 9 — Student Examination Attempts (after Wave 2)
-- [ ] Phase 10 — Automatic Evaluation (after Phase 9)
-- [ ] Phase 11 — Results (after Phase 10)
+- [x] Phase 9 — Student Examination Attempts (delivered as demo Wave 2,
+      `feat(attempts): student examination attempts and student exam UI`)
+- [x] Phase 10 — Automatic Evaluation (delivered 2026-09-08,
+      `feat(attempts): phase 10 automatic evaluation and result review`)
+- [x] Phase 11 — Results (delivered as part of Phase 10 + Wave 4: result
+      endpoint, teacher ledger, graded result UI, demo E2E)
 - [ ] Phase 12 — Examination Analytics
 - [ ] Phase 13 — Practice System
 - [ ] Phase 14 — Cross-Module Validation & Security

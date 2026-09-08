@@ -15,6 +15,35 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Demo Milestone — Full Journey E2E (Wave 4 close)
+
+Status: `[x]` **PASS=52 FAIL=0 (2026-09-08)** via
+`bash scripts/e2e/demo_e2e.sh` (mock AI provider
+`scripts/e2e/mock_ai_provider.py` on `http://127.0.0.1:8899/v1`, model-keyed
+syllabus/note/questions — no real LLM). Mirrors the complete browser journey
+on the live dockerized stack (Postgres + RabbitMQ + API :3000 + web :3001).
+The harness cleans up its own workers. Regressions after the run: attempts 76,
+syllabus 39, p8 86; `pnpm typecheck` + `pnpm lint` + `next build` PASS.
+
+- **Setup required** — postgres/rabbitmq up; seeded demo institute
+  (`99999999-9999-9999-9999-999999999999`), `teacher@catlium.dev` /
+  `student@catlium.dev` (`Password123!`); API dev server on :3000.
+- **Journey exercised (DEMO-01..19)** — teacher login → create subject →
+  syllabus generate/mock-AI/confirm (chapters+topics) → topic-scoped text
+  material (READY) → note generate (job completed, `contentId`) → questions
+  generate (job completed, 3 `questionIds`) → batch approve → per-question
+  correct/wrong map from teacher question read → create quiz (future `startsAt`,
+  window SQL-backdated) → link/publish/activate → student login → quiz in
+  available → start attempt (IN_PROGRESS, 3 questions) → answer 2 correct 1
+  wrong → submit → graded `score:2` → result review reveals correct answers on
+  wrong question → teacher ledger shows `student@catlium.dev`, score 2,
+  SUBMITTED; cross-tenant 403; answer-key absence in student reads.
+- **Expected output** — every step returns the documented status code;
+  score `2` of `totalMarks 3`; result page exposes `correctAnswer` only on the
+  student's own terminal attempt; student ledger read → 403.
+
+---
+
 ## Demo Milestone — Wave 1 AI Syllabus (E2E)
 
 Status: `[x]` **PASS=39 FAIL=0 (2026-09-08)** via

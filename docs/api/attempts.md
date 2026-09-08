@@ -126,4 +126,6 @@ reveals the correct answer per question for post-submission review. Response:
 `scripts/e2e/attempts_e2e.sh` — PASS=76 FAIL=0 (AT-01..14, incl. Phase 10
 grading: score populated on submit, ledger scores, expired grading, result
 review + sanitization). Regressions kept green after changes:
-`syllabus_e2e.sh` PASS=39, `p8_e2e.sh` PASS=86.
+`syllabus_e2e.sh` PASS=39, `p8_e2e.sh` PASS=86. Full-journey integration:
+`scripts/e2e/demo_e2e.sh` PASS=52 FAIL=0 (teacher→AI→quiz→student→answer
+2-correct-1-wrong→submit→score 2/3→result reveal, cross-tenant 403).

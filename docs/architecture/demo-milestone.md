@@ -204,17 +204,21 @@ backend waves.
 Checkpoints: `feat(web): teacher UI (academic, syllabus, materials, notes,
 questions, assessments)` then `feat(web): student UI (attempts, results)`.
 
-### Wave 4 — Full integration & docs close
+### Wave 4 — Full integration & docs close ✓ (2026-09-08)
 
-- `scripts/e2e/demo_e2e.sh` mirroring the full browser journey.
-- Browser walkthrough on the dockerized stack.
-- Validation sweep: typecheck, lint, ruff/mypy, backend + syllabus + attempts +
-  demo E2E, tenant isolation, authz, answer-key protection, async job
-  completion, error handling.
+- `scripts/e2e/demo_e2e.sh` mirroring the full browser journey — PASS=52 FAIL=0.
+- Mock AI provider v2 (`scripts/e2e/mock_ai_provider.py`, model-keyed:
+  syllabus / note / questions with 3 distinct MCQs).
+- Browser walkthrough on the dockerized stack (full route table smoke + live
+  journey harness on 127.0.0.1:8899 mock AI).
+- Validation sweep: typecheck, lint, API + web builds, backend + syllabus +
+  attempts + demo E2E (76 / 39 / 86 / 52), tenant isolation, authz,
+  answer-key protection, async job completion, error handling.
 - Docs updated: `docs/project-status.md`, `docs/tasks.md`,
-  `docs/user-validation.md`, `docs/api/{auth,syllabus,attempts,academic}.md`,
-  `docs/architecture/*`, `.planning/STATE.md`, `.planning/ROADMAP.md`.
-- Record the frontend-gate override (demo UI before Phase 17 checkpoint).
+  `docs/user-validation.md`, `docs/api/attempts.md`,
+  `docs/architecture/demo-milestone.md`, `.planning/STATE.md`,
+  `.planning/ROADMAP.md`.
+- Frontend-gate override recorded (demo UI delivered before Phase 17).
 - Checkpoint: `docs(demo): close demo milestone — full-journey E2E + docs`.
 
 ## Deferred (do not build unless required as a dependency)
@@ -223,20 +227,21 @@ Advanced analytics; practice system; exhaustive contract sweep; formal Phase
 16/17 completion; image/scanned OCR expansion; attempt resume across devices;
 password/profile management; unnecessary Institute CRUD; nonessential UI extras.
 
-## Later Backend Phases (deferred, not blocking demo)
+## Later Backend Phases (next after demo milestone)
 
-- Phase 9 — Student Examination Attempts (after Wave 2)
-- Phase 10 — Automatic Evaluation (after Phase 9)
-- Phase 11 — Results (after Phase 10)
-- Phase 12 — Examination Analytics
+- Phase 9 — Student Examination Attempts ✓ (delivered as demo Wave 2)
+- Phase 10 — Automatic Evaluation ✓ (delivered 2026-09-08)
+- Phase 11 — Results ✓ (delivered with Phase 10 + Wave 4)
+- Phase 12 — Examination Analytics (NEXT)
 - Phase 13 — Practice System
 - Phase 14 — Cross-Module Validation & Security
 - Phase 15 — API Contract Verification
 - Phase 16 — Testing & Demonstration Readiness
 - Phase 17 — Backend-Complete Checkpoint
 
-These are NOT abandoned. The complete roadmap remains documented. They are
-deferred until after the demo-critical vertical slice is complete.
+These are NOT abandoned. The complete roadmap remains documented. The demo
+milestone (the critical vertical slice) is now closed; later backend phases
+continue from Phase 12.
 
 ## Validation Discipline
 

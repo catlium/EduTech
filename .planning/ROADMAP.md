@@ -1,29 +1,29 @@
 # ROADMAP: CatLium EduTech — AI-Assisted Learning and Examination System
 
-**Version:** 4
-**Created:** 2026-09-08 (supersedes v3; demo-first vertical-slice roadmap)
-**Strategy:** **Demo-first vertical-slice** — get a working end-to-end model with a real, polished UI as soon as possible. Frontend is NOT optional or deferred. Start building the frontend as soon as the required APIs are stable enough.
+**Version:** 5
+**Created:** 2026-09-08 (supersedes v4; demo milestone now CLOSED)
+**Strategy:** **Demo-first vertical-slice** — shipped a working end-to-end model with a real, polished UI (Waves 0-4 + Phases 9-11, delivered and closed 2026-09-08).
 
-## Master Dependency Sequence (Demo-First)
+## Master Dependency Sequence (Demo-First) — ALL COMPLETE
 
 ```text
 Backend foundation (Phases 1-8) ✓ COMPLETE
-→ Frontend foundation (apps/web) — START IMMEDIATELY
-→ Backend syllabus (Wave 1) — parallel with frontend foundation
-→ Backend attempts (Wave 2) — after syllabus
-→ Frontend teacher UI (Wave 3a) — against existing stable APIs
-→ Frontend student UI (Wave 3b) — after attempt APIs
-→ Integration & demo validation (Wave 4)
-→ Complete working demo model
+→ Frontend foundation (apps/web) ✓ COMPLETE (Wave 3)
+→ Backend syllabus (Wave 1) ✓ COMPLETE
+→ Backend attempts (Wave 2) ✓ COMPLETE
+→ Frontend teacher UI (Wave 3a) ✓ COMPLETE
+→ Frontend student UI (Wave 3b) ✓ COMPLETE
+→ Integration & demo validation (Wave 4) ✓ COMPLETE (demo_e2e.sh PASS=52 FAIL=0)
+→ Complete working demo model ✓ CLOSED 2026-09-08
 ```
 
-Frontend is part of the master roadmap and has its own implementation phases (not out of scope). Demo-first, frontend parallel, backend vertical slice.
+Frontend is part of the master roadmap and has its own implementation phases (not out of scope). Demo-first delivered the frontend inside the milestone (Wave 3).
 
 ## Completion Summary (verified against codebase)
 
-- ✓ Complete: Phases 1–8 (backend foundation through quiz/examination)
-- ◆ In progress: Demo milestone (frontend + syllabus + attempts)
-- ○ Not started: Later backend phases (9-17), then frontend integration phases (18-25)
+- ✓ Complete: Phases 1-11 + demo milestone Waves 0-4 (demo-first vertical slice delivered and closed 2026-09-08)
+- ◆ Next: Phase 12 — Examination Analytics (later backend phases 12-17)
+- ○ Not started: Frontend integration phases (18-25), deferred
 
 ## Phase 1 — Backend Foundation & Authentication ✓
 
@@ -75,7 +75,7 @@ Frontend is part of the master roadmap and has its own implementation phases (no
 - Contracts `MembershipListItemSchema`; docs in `docs/api/auth.md`.
 - Checkpoint: `feat(demo): seed bootstrap + memberships endpoint`.
 
-### Wave 1 — Syllabus backend (NEXT)
+### Wave 1 — Syllabus backend ✓ COMPLETE (2026-09-08)
 
 - Migration `0009`: `syllabus_proposals`.
 - Worker op `AI_GENERATE_SYLLABUS` (Pydantic mirrors + `insert_syllabus_proposal`
@@ -84,10 +84,11 @@ Frontend is part of the master roadmap and has its own implementation phases (no
   (transactional chapter+topic insert; 409 guards for ACCEPTED/concurrent).
 - Contracts: ProposalStatusEnum, SyllabusTopic/Chapter/Proposal,
   GenerateSyllabusRequest, UpdateSyllabusRequest.
-- E2E: `scripts/e2e/syllabus_e2e.sh` + `docs/api/syllabus.md`.
-- Checkpoint: `feat(syllabus): AI syllabus structuring with teacher review`.
+- E2E: `scripts/e2e/syllabus_e2e.sh` PASS=39 FAIL=0 + `docs/api/syllabus.md` +
+  syllabus editor UI (`/subjects/[subjectId]/syllabus`).
+- Checkpoint: `feat(syllabus): Wave 1 AI syllabus backend, E2E, and web UI` (`1241676`).
 
-### Wave 2 — Attempts / evaluation / results
+### Wave 2 — Attempts / evaluation / results ✓ COMPLETE (2026-09-08)
 
 - Migration `0010`: `attempts` (unique assessment+user), `attempt_questions`
   (snapshot JSONB, questionId w/o FK), `attempt_responses` (unique attempt+
@@ -97,12 +98,15 @@ Frontend is part of the master roadmap and has its own implementation phases (no
   (synchronous deterministic grading) / result / teacher results.
 - Sanitized projection is the WR-06 closure. `GET /assessments/:id/questions`
   unchanged (p8 suite keeps PASS=86); students must use attempt questions.
-- E2E: `scripts/e2e/attempts_e2e.sh` (incl. answer-absence greps, deadline
-  auto-submit, tenant isolation, duplicate 409).
-- Checkpoint: `feat(attempts): student attempts, deterministic evaluation,
-  results — closes WR-06`.
+- Phase 10 grading added post-Wave 2: `attempts.grade.ts`, evaluate on
+  SUBMITTED + EXPIRED, `GET /attempts/:id/result` review. Phases 9/10/11 reqs
+  (ATMPT/EVAL/RES) met here.
+- E2E: `scripts/e2e/attempts_e2e.sh` PASS=76 FAIL=0 (incl. answer-absence greps,
+  deadline auto-submit, tenant isolation, duplicate 409, result review).
+- Checkpoints: `feat(attempts): student examination attempts and student exam UI`,
+  `feat(attempts): phase 10 automatic evaluation and result review` — closes WR-06.
 
-### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui) (PARALLELIZABLE)
+### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui) ✓ COMPLETE (2026-09-08)
 
 Authoritative stack (user-mandated):
 
@@ -168,37 +172,39 @@ backend waves.
 Checkpoints: `feat(web): teacher UI (academic, syllabus, materials, notes,
 questions, assessments)` then `feat(web): student UI (attempts, results)`.
 
-### Wave 4 — Full integration & docs close
+### Wave 4 — Full integration & docs close ✓ COMPLETE (2026-09-08)
 
-- `scripts/e2e/demo_e2e.sh` mirroring the full browser journey.
-- Browser walkthrough on the dockerized stack.
-- Validation sweep: typecheck, lint, ruff/mypy, backend + syllabus + attempts +
-  demo E2E, tenant isolation, authz, answer-key protection, async job
-  completion, error handling.
+- `scripts/e2e/demo_e2e.sh` mirroring the full browser journey — PASS=52 FAIL=0.
+- Mock AI provider v2 (`scripts/e2e/mock_ai_provider.py`, model-keyed: syllabus /
+  note / questions with 3 distinct MCQs).
+- Browser walkthrough equivalent on the dockerized stack (full route table +
+  live journey harness; UI route smoke 200 on all demo routes).
+- Validation sweep: typecheck, lint, API + web builds, backend + syllabus +
+  attempts + demo E2E (76 / 39 / 86 / 52), tenant isolation, authz,
+  answer-key protection, async job completion, error handling.
 - Docs updated: `docs/project-status.md`, `docs/tasks.md`,
-  `docs/user-validation.md`, `docs/api/{auth,syllabus,attempts,academic}.md`,
-  `docs/architecture/*`, `.planning/STATE.md`, `.planning/ROADMAP.md`.
-- Record the frontend-gate override (demo UI before Phase 17 checkpoint).
+  `docs/user-validation.md`, `.planning/STATE.md`, `.planning/ROADMAP.md`.
+- Frontend-gate override recorded (demo UI delivered before Phase 17).
 - Checkpoint: `docs(demo): close demo milestone — full-journey E2E + docs`.
 
-## Later Backend Phases (deferred, not blocking demo)
+## Later Backend Phases (next after demo milestone)
 
-### Phase 9 — Student Examination Attempts
+### Phase 9 — Student Examination Attempts ✓ COMPLETE
 
 **Goal:** Available exam → start attempt → answer → update → submit; duplicate-attempt prevention; retrieve own attempts; validate availability/state; time tracking; never expose correct answers/answer key/teacher-only info during an active exam (projection/serialization).
-**Status:** DEFERRED (after Wave 2). Reqs: ATMPT-01..08.
+**Status:** COMPLETE — delivered as demo Wave 2 (2026-09-08), `attempts_e2e.sh` PASS=60. Reqs: ATMPT-01..08 ✓.
 
-### Phase 10 — Automatic Evaluation
+### Phase 10 — Automatic Evaluation ✓ COMPLETE
 
 **Goal:** Deterministic objective evaluation (MCQ, True/False, Fill-in-the-Blank) → correct/incorrect → marks → score; compute score, max score, percentage, correct/incorrect, time. NO AI.
-**Status:** DEFERRED (after Phase 9). Reqs: EVAL-01..04.
+**Status:** COMPLETE (2026-09-08), `attempts_e2e.sh` PASS=76 (AT-14 result review). Reqs: EVAL-01..04 ✓.
 
-### Phase 11 — Results
+### Phase 11 — Results ✓ COMPLETE
 
 **Goal:** Generate result after submission; student/teacher retrieval with correct auth (students: own; teachers: managed assessments); individual + question-level correct/incorrect; score calculation.
-**Status:** DEFERRED (after Phase 10). Reqs: RES-01..06.
+**Status:** COMPLETE (2026-09-08, with Phase 10 + Wave 4). Reqs: RES-01..06 ✓.
 
-### Phase 12 — Examination Analytics
+### Phase 12 — Examination Analytics (NEXT)
 
 **Goal:** Average/highest/lowest score, question accuracy, topic & difficulty performance. Computed on demand; no unnecessary analytics infrastructure for MVP.
 **Status:** DEFERRED. Reqs: ANL-01..03.
@@ -226,7 +232,7 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 ### Phase 17 — Backend-Complete Checkpoint
 
 **Goal:** The backend is complete only when all criteria hold (endpoints, DB ops, auth, AI, background processing, approval workflow, exam workflow, evaluation, results, analytics, practice, security, contract verification, tests, independent runnability). This is the `BACKEND COMPLETE CHECKPOINT` gate — frontend feature development begins only after this.
-**Status:** DEFERRED. Reqs: DONE-01..15.
+**Status:** DEFERRED. Reqs: DONE-01..15. *Note: the demo-first vertical-slice (user-directed override) delivered a first-class frontend earlier as demo Wave 3; this gate applies to the remaining Phase-17 completeness criteria, not to the demo UI.*
 
 ---
 
@@ -293,33 +299,22 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 ## Coverage
 
 - Backend phases: 17
-- Backend ✓ Complete: 8 (Phases 1–8)
-- Demo milestone waves: 4 (Wave 0 ✓, Wave 1 NEXT, Wave 2 pending, Wave 3 parallelizable)
-- Later backend phases: 9 (Phases 9–17), deferred
-- Frontend/integration phases: 8 (Phases 18–25), deferred (demo milestone frontend takes priority)
+- Backend ✓ Complete: 11 (Phases 1-11)
+- Demo milestone waves: 4 (Waves 0-4 ✓ complete, closed 2026-09-08)
+- Later backend phases: 6 (Phases 12-17), Phase 12 next
+- Frontend/integration phases: 8 (Phases 18-25), deferred (demo milestone frontend shipped as Wave 3)
 - Frontend is part of the master roadmap (NOT out of scope)
 - Monorepo retained for both backend and frontend
 
 ## Recommended Next Task
 
-**Demo-first vertical-slice strategy — execute in this order:**
+**Demo-first vertical-slice — COMPLETE (all executed):**
 
-1. ✅ Phase 1–8 completion (backend foundation complete)
-2. ✅ Wave 0 bootstrap (seed + memberships)
-3. **→ Wave 1 — Syllabus backend** (migration 0009, worker AI_GENERATE_SYLLABUS, syllabus API module)
-4. **→ Wave 2 — Attempts backend** (migration 0010, attempts API module, grading)
-5. **→ Wave 3a — Frontend foundation + teacher UI** (against existing stable APIs, parallel with Wave 1-2)
-6. **→ Wave 3b — Student UI** (after attempt APIs available)
-7. **→ Wave 4 — Full integration & demo validation**
+1. ✅ Phase 1-8 completion (backend foundation complete)
+2. ✅ Wave 0-4 demo milestone (syllabus, attempts, frontend, integration — closed 2026-09-08)
+3. ✅ Phases 9-11 delivered inside the demo milestone
 
-**Definition of immediate success milestone:**
-
-Teacher can use real UI to:
-- Create Subject → Upload Syllabus → Generate/confirm Chapters & Topics
-- Upload Material → Process Material → Generate Notes
-- Manage Questions → Create Quiz → Publish Quiz
-
-Student can use real UI to:
-- Login → See Quiz → Start Attempt → Answer Questions → Submit → Receive Evaluated Result
-
-**The entire flow must use the actual NestJS backend and database. No fake data or hardcoded success states except intentional demo seed data.**
+**→ NEXT: Phase 12 — Examination Analytics** (average/highest/lowest score,
+question accuracy, topic & difficulty performance; computed on demand — no
+unnecessary analytics infrastructure for MVP). Then Phases 13-17, then
+frontend integration phases 18-25.

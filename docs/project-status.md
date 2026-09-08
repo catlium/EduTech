@@ -2,7 +2,10 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
-**Status: IN PROGRESS — Phase 10 (automatic evaluation) complete; next: Wave 4 full integration & demo validation.** A user-directed prioritization
+**Status: COMPLETE — Demo milestone closed 2026-09-08; full-journey E2E green
+(`demo_e2e.sh` PASS=52 FAIL=0), all Waves 0-4 + Phases 9-11 delivered. Next:
+later backend phases (Phases 12-17) starting with Phase 12 — Examination
+Analytics.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -91,8 +94,8 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 
 **Next tasks (in priority order):**
 1. **Architecture boundary — single public API entry** ✓ (2026-09-08, commit `0ec1e79`)
-2. **Phase 10 — Automatic evaluation** ✓ (2026-09-08, commit below)
-3. **Wave 4 — Full integration & demo validation**
+2. **Phase 10 — Automatic evaluation** ✓ (2026-09-08, commit `0c99867`)
+3. **Wave 4 — Full integration & demo validation** ✓ (2026-09-08, commit below)
 
 **Wave 2 — attempts backend + student UI complete (2026-09-08):**
 - `attempts` / `attempt_questions` / `attempt_responses` via migration 0010
@@ -151,6 +154,35 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   green: syllabus PASS=39, p8 PASS=86. API + web typecheck/lint, `next build`
   PASS, live routes `/student/attempts/[id]/result` and
   `/assessments/[id]/results` → 200.
+
+**Wave 4 — Full integration & demo validation ✓ (2026-09-08):**
+- `scripts/e2e/mock_ai_provider.py` v2 (model-keyed outputs: `syllabus-mock` /
+  `note-mock` / `questions-mock`; 3 distinct MCQs so question aggregation is
+  meaningful); `scripts/e2e/demo_e2e.sh` mirrors the full browser journey —
+  teacher creates subject → generates+confirms syllabus (chapters/topics) →
+  topic-scoped material → AI note job → AI questions job (202) → approve →
+  builds a correct/wrong answer map from the teacher question read → creates
+  quiz (future `startsAt`, then SQL-backdates the window into the present) →
+  link/publish/activate → student logs in → sees quiz → starts attempt → answers
+  3 (2 correct, 1 wrong) → submit → automatic grading → result review reveals
+  correct answers → teacher ledger shows evaluated score; cross-tenant / 403 /
+  answer-key-absence assertions throughout.
+- **PASS=52 FAIL=0** against the live dockerized stack (Postgres + RabbitMQ +
+  host worker + mock AI provider on 127.0.0.1:8899). Regressions green:
+  attempts **76**, syllabus **39**, p8 **86** (run with mock v2). API + web
+  typecheck/lint + `next build` PASS. UI route table: login/dashboard/subjects/
+  materials/questions/assessments + teacher results + student result → 200.
+- `docs/tasks.md` (Wave 4 `[x]`, Phases 9-11 promoted to completed),
+  `.planning/STATE.md` + `.planning/ROADMAP.md` (Waves 0-4 + Phases 9-11
+  complete, demo milestone closed), `docs/user-validation.md` (DEMO journey
+  items `[x]`).
+- **Known issue (latent, not demo-blocking):** detail pages keyed by a
+  nonexistent UUID (`/assessments/<missing>`, `/student/attempts/<missing>`,
+  `/subjects/<missing>/syllabus`) return 500 from the Next.js error boundary
+  instead of a clean 404 — pre-existing notFound-deref; fix deferred to a
+  later frontend/integration phase.
+
+**Commit:** `docs(demo): close demo milestone — full-journey E2E + docs` (pushed)
 
 **Wave 3a scaffold complete (2026-09-08):**
 - `apps/web` Next.js 15 + React 19 + TS strict + Tailwind v4 + shadcn/ui (26 components, new-york, zinc).
