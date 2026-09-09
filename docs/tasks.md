@@ -256,9 +256,20 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       new `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01..10),
       regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 /
       sec14 22 all FAIL=0, typecheck/lint/build green)
-- [x] Phase 16 — Testing & Demonstration Readiness (closed 2026-09-09,
-      505/505 regression green, see top of this file)
-- [ ] Phase 17 — Backend-Complete Checkpoint
+- [x] Phase 17 — Backend-Complete Checkpoint (PASSED 2026-09-09: 4-subagent
+      gate — module inventory + workflow traces, security audit, concurrency/
+      integrity audit, AI/OCR/worker boundary audit; fixed AI_GENERATE_QUESTIONS
+      dedup index (migration 0013 + insertJob/409) and POST /jobs type
+      allowlist (unknown type 400); mock_ai dispatch-by-operation for the
+      dockerized demo; 11-suite regression 508/508 FAIL=0; typecheck/lint/build
+      PASS; DONE-01..15 ✓)
+
+## Phase 18 — Frontend Foundation (NOT STARTED — gate open 2026-09-09)
+
+- [ ] FE-01 — app shell/navigation, routing, auth screens
+- [ ] FE-02 — authenticated API client, session/role handling
+- [ ] FE-03 — error/loading/empty-state primitives, environment wiring
+      (Phase 17 backend-complete gate PASSED; frontend feature phases may begin)
 
 --
 

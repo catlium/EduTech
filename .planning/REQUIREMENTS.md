@@ -48,10 +48,14 @@
 - [x] **PROC-03**: Text extraction (PDF/document processing)
 - [x] **PROC-04**: Failure handling + retry
 - [x] **PROC-05**: Update material processing state
-- [ ] **PROC-06**: Image OCR (tesseract) where included in the agreed implementation
-- [ ] **PROC-07**: HTTP request never blocks during long-running processing (verified for supported formats; expand coverage to image OCR)
+- [x] **PROC-06**: Image OCR where included in the agreed implementation — satisfied via
+      PaddleOCR for PNG/JPEG/WebP + per-page PDF fallback (`apps/ocr/app/extraction.py`);
+      OCR tests cover the image branch. GIF/office formats remain out of agreed scope
+      (documented; API admissions fail loudly at extraction).
+- [x] **PROC-07**: HTTP request never blocks during long-running processing — processing
+      is always an async job (RabbitMQ worker) for all supported formats incl. images.
 
-### Phase 5 — AI Learning Content Generation (IN PROGRESS — partial)
+### Phase 5 — AI Learning Content Generation (COMPLETE 2026-09-02 E2E)
 
 - [x] **AI-01**: AI provider logic behind an internal service/interface (isolated from controllers/DB)
 - [x] **AI-02**: Job flow (API request → create AI job → queue → AI processing → store result → COMPLETED/FAILED)
@@ -61,26 +65,26 @@
 - [x] **AI-08**: AI content can be requested, processed asynchronously, stored, retrieved, updated per API contract
 - [x] **AI-09**: Reconcile existing `AI_GENERATE_NOTE` worker with Phase 5 Summary/Flashcards/Concepts scope + authoritative `docs/api/` contract
 
-### Phase 6 — Question Bank (NOT STARTED)
+### Phase 6 — Question Bank (COMPLETE 2026-09-02 E2E)
 
-- [ ] **QBN-01**: Create/list/retrieve/update/delete question
-- [ ] **QBN-02**: Filtering (difficulty, question type, subject/chapter/topic)
-- [ ] **QBN-03**: Manual question creation
-- [ ] **QBN-04**: Question explanations + source (MANUAL | AI_GENERATED)
-- [ ] **QBN-05**: Approval status (PENDING | APPROVED | REJECTED)
-- [ ] **QBN-06**: Manual questions auto-approved
-- [ ] **QBN-07**: AI-generated questions begin PENDING
+- [x] **QBN-01**: Create/list/retrieve/update/delete question
+- [x] **QBN-02**: Filtering (difficulty, question type, subject/chapter/topic)
+- [x] **QBN-03**: Manual question creation
+- [x] **QBN-04**: Question explanations + source (MANUAL | AI_GENERATED)
+- [x] **QBN-05**: Approval status (PENDING | APPROVED | REJECTED)
+- [x] **QBN-06**: Manual questions auto-approved
+- [x] **QBN-07**: AI-generated questions begin PENDING
 
-### Phase 7 — AI Question Generation & Review (NOT STARTED)
+### Phase 7 — AI Question Generation & Review (COMPLETE 2026-09-03 E2E)
 
-- [ ] **AIGQ-01**: Teacher specifies subject/chapter/topic, question type, count, difficulty distribution
-- [ ] **AIGQ-02**: AI generates questions with required question-bank fields
-- [ ] **AIGQ-03**: Track generation job
-- [ ] **AIGQ-04**: Retrieve generated results
-- [ ] **AIGQ-05**: Edit generated questions
-- [ ] **AIGQ-06**: Approve/reject generated questions
-- [ ] **AIGQ-07**: Batch approval/rejection where defined
-- [ ] **AIGQ-08**: AI-generated questions NEVER automatically become official exam questions
+- [x] **AIGQ-01**: Teacher specifies subject/chapter/topic, question type, count, difficulty distribution
+- [x] **AIGQ-02**: AI generates questions with required question-bank fields
+- [x] **AIGQ-03**: Track generation job
+- [x] **AIGQ-04**: Retrieve generated results
+- [x] **AIGQ-05**: Edit generated questions
+- [x] **AIGQ-06**: Approve/reject generated questions
+- [x] **AIGQ-07**: Batch approval/rejection where defined
+- [x] **AIGQ-08**: AI-generated questions NEVER automatically become official exam questions
 
 ### Phase 8 — Quiz & Examination Management (COMPLETE)
 
@@ -93,32 +97,32 @@
 - [x] **EXAM-07**: Backend enforces valid state transitions
 - [x] **EXAM-08**: Only APPROVED questions usable in official assessments (incl. ARCHIVED+APPROVED → publish 400, ARCHIVED → link 400 — WR-03 closed 08-05, E2E PASS=60)
 
-### Phase 9 — Student Examination Attempts (NOT STARTED)
+### Phase 9 — Student Examination Attempts (COMPLETE 2026-09-08 E2E)
 
-- [ ] **ATMPT-01**: Start attempt
-- [ ] **ATMPT-02**: Prevent duplicate attempts per MVP rules
-- [ ] **ATMPT-03**: Retrieve student's attempts
-- [ ] **ATMPT-04**: Save/update answers
-- [ ] **ATMPT-05**: Submit attempt
-- [ ] **ATMPT-06**: Validate exam availability + attempt state
-- [ ] **ATMPT-07**: Track time taken
-- [ ] **ATMPT-08**: During active exam, responses never expose correct answer / answer key / teacher-only info (serialization/projection)
+- [x] **ATMPT-01**: Start attempt
+- [x] **ATMPT-02**: Prevent duplicate attempts per MVP rules
+- [x] **ATMPT-03**: Retrieve student's attempts
+- [x] **ATMPT-04**: Save/update answers
+- [x] **ATMPT-05**: Submit attempt
+- [x] **ATMPT-06**: Validate exam availability + attempt state
+- [x] **ATMPT-07**: Track time taken
+- [x] **ATMPT-08**: During active exam, responses never expose correct answer / answer key / teacher-only info (serialization/projection)
 
-### Phase 10 — Automatic Evaluation (NOT STARTED)
+### Phase 10 — Automatic Evaluation (COMPLETE 2026-09-08)
 
-- [ ] **EVAL-01**: Evaluate MCQ / True-False / Fill-in-the-Blank
-- [ ] **EVAL-02**: Score + max score + percentage
-- [ ] **EVAL-03**: Correct + incorrect answers + time taken
-- [ ] **EVAL-04**: Deterministic, reproducible (NO AI for objective scoring)
+- [x] **EVAL-01**: Evaluate MCQ / True-False / Fill-in-the-Blank
+- [x] **EVAL-02**: Score + max score + percentage
+- [x] **EVAL-03**: Correct + incorrect answers + time taken
+- [x] **EVAL-04**: Deterministic, reproducible (NO AI for objective scoring)
 
-### Phase 11 — Results (NOT STARTED)
+### Phase 11 — Results (COMPLETE 2026-09-08)
 
-- [ ] **RES-01**: Generate result after submission
-- [ ] **RES-02**: Student retrieves own results
-- [ ] **RES-03**: Teacher retrieves results for assessments they manage
-- [ ] **RES-04**: Individual result retrieval + question-level correct/incorrect info
-- [ ] **RES-05**: Score calculation
-- [ ] **RES-06**: Authorization (students: own only; teachers: managed assessments only)
+- [x] **RES-01**: Generate result after submission
+- [x] **RES-02**: Student retrieves own results
+- [x] **RES-03**: Teacher retrieves results for assessments they manage
+- [x] **RES-04**: Individual result retrieval + question-level correct/incorrect info
+- [x] **RES-05**: Score calculation
+- [x] **RES-06**: Authorization (students: own only; teachers: managed assessments only)
 
 ### Phase 12 — Examination Analytics (COMPLETE)
 
@@ -132,47 +136,47 @@
 - [x] **PRAC-02**: Question practice (start session, answer, complete, history)
 - [x] **PRAC-03**: Practice excluded from formal examination scoring
 
-### Phase 14 — Cross-Module Validation & Security (NOT STARTED)
+### Phase 14 — Cross-Module Validation & Security (COMPLETE 2026-09-09)
 
-- [ ] **SEC-01**: Auth / authorization / input validation / ownership / data isolation review
-- [ ] **SEC-02**: Question approval rules, exam state transitions, attempt restrictions
-- [ ] **SEC-03**: Student answer security, AI job failures, file validation
-- [ ] **SEC-04**: Error responses, DB constraints, transaction boundaries
-- [ ] **SEC-05**: Race conditions around exam attempts/submission
+- [x] **SEC-01**: Auth / authorization / input validation / ownership / data isolation review
+- [x] **SEC-02**: Question approval rules, exam state transitions, attempt restrictions
+- [x] **SEC-03**: Student answer security, AI job failures, file validation
+- [x] **SEC-04**: Error responses, DB constraints, transaction boundaries
+- [x] **SEC-05**: Race conditions around exam attempts/submission
 
-### Phase 15 — API Contract Verification (NOT STARTED)
+### Phase 15 — API Contract Verification (COMPLETE 2026-09-09)
 
-- [ ] **CON-01**: Verify every endpoint under `docs/api/` (method, path, auth, authorization, request/response format, status codes, validation, error format, pagination, filtering, IDs, date/time)
-- [ ] **CON-02**: Do not silently change the API contract; document and resolve inconsistencies deliberately
-- [ ] **CON-03**: Extend `docs/api/` contract coverage for all phases (currently only academic, content, jobs, materials)
+- [x] **CON-01**: Verify every endpoint under `docs/api/` (method, path, auth, authorization, request/response format, status codes, validation, error format, pagination, filtering, IDs, date/time)
+- [x] **CON-02**: Do not silently change the API contract; document and resolve inconsistencies deliberately
+- [x] **CON-03**: Extend `docs/api/` contract coverage for all phases (currently only academic, content, jobs, materials)
 
-### Phase 16 — Testing & Demonstration Readiness (NOT STARTED)
+### Phase 16 — Testing & Demonstration Readiness (COMPLETE 2026-09-09)
 
-- [ ] **TST-01**: Auth tests (registration, login, unauthorized access, role restrictions)
-- [ ] **TST-02**: Academic tests (subject, chapter, topic, ordering)
-- [ ] **TST-03**: Materials tests (upload, processing, success, failure)
-- [ ] **TST-04**: AI tests (summary, flashcard, concept, question generation, job failure)
-- [ ] **TST-05**: Questions tests (manual creation, AI generation, approve, reject)
-- [ ] **TST-06**: Examination tests (creation, publish, start attempt, answer, submit, evaluate, result)
-- [ ] **TST-07**: Security tests (cross-tenant result access, correct-answer leak, invalid attempts, unauthorized resource modification)
+- [x] **TST-01**: Auth tests (registration, login, unauthorized access, role restrictions)
+- [x] **TST-02**: Academic tests (subject, chapter, topic, ordering)
+- [x] **TST-03**: Materials tests (upload, processing, success, failure)
+- [x] **TST-04**: AI tests (summary, flashcard, concept, question generation, job failure)
+- [x] **TST-05**: Questions tests (manual creation, AI generation, approve, reject)
+- [x] **TST-06**: Examination tests (creation, publish, start attempt, answer, submit, evaluate, result)
+- [x] **TST-07**: Security tests (cross-tenant result access, correct-answer leak, invalid attempts, unauthorized resource modification)
 
-### Phase 17 — Backend Completion (NOT STARTED)
+### Phase 17 — Backend Completion (COMPLETE 2026-09-09)
 
-- [ ] **DONE-01**: All API endpoints implemented
-- [ ] **DONE-02**: Core DB operations work
-- [ ] **DONE-03**: Auth + authorization work
-- [ ] **DONE-04**: AI workflows work
-- [ ] **DONE-05**: Background processing works
-- [ ] **DONE-06**: Question approval workflow works
-- [ ] **DONE-07**: Examination workflow works
-- [ ] **DONE-08**: Automatic evaluation works
-- [ ] **DONE-09**: Results work
-- [ ] **DONE-10**: Analytics work
-- [ ] **DONE-11**: Practice functionality works
-- [ ] **DONE-12**: Critical security rules enforced
-- [ ] **DONE-13**: API contract verification passes
-- [ ] **DONE-14**: Critical tests pass
-- [ ] **DONE-15**: Backend runs independently from frontend
+- [x] **DONE-01**: All API endpoints implemented
+- [x] **DONE-02**: Core DB operations work
+- [x] **DONE-03**: Auth + authorization work
+- [x] **DONE-04**: AI workflows work
+- [x] **DONE-05**: Background processing works
+- [x] **DONE-06**: Question approval workflow works
+- [x] **DONE-07**: Examination workflow works
+- [x] **DONE-08**: Automatic evaluation works
+- [x] **DONE-09**: Results work
+- [x] **DONE-10**: Analytics work
+- [x] **DONE-11**: Practice functionality works
+- [x] **DONE-12**: Critical security rules enforced
+- [x] **DONE-13**: API contract verification passes
+- [x] **DONE-14**: Critical tests pass
+- [x] **DONE-15**: Backend runs independently from frontend
 
 ## Frontend & Integration Requirements (after Backend-Complete Checkpoint)
 
@@ -232,22 +236,21 @@
 | AUTH-01..07 | 1 | ✓ complete |
 | ACAD-01..07 | 2 | ✓ complete |
 | MAT-01..05 | 3 | ✓ complete |
-| PROC-01..05 | 4 | ✓ complete |
-| PROC-06..07 | 4 | [ ] not started |
+| PROC-01..07 | 4 | ✓ complete (image OCR via PaddleOCR; HTTP never blocks) |
 | AI-01..02 | 5 | ✓ complete |
-| AI-05..09 | 5 | ✓ complete (E2E validation pending infrastructure) |
-| QBN-01..07 | 6 | [ ] not started |
-| AIGQ-01..08 | 7 | [ ] not started |
-| EXAM-01..08 | 8 | ✓ complete (EXAM-01..04 via 08-01/08-02; EXAM-05..08 via 08-03) |
+| AI-05..09 | 5 | ✓ complete |
+| QBN-01..07 | 6 | ✓ complete |
+| AIGQ-01..08 | 7 | ✓ complete |
+| EXAM-01..08 | 8 | ✓ complete |
 | ATMPT-01..08 | 9 | ✓ complete |
 | EVAL-01..04 | 10 | ✓ complete |
 | RES-01..06 | 11 | ✓ complete |
 | ANL-01..03 | 12 | ✓ complete |
 | PRAC-01..03 | 13 | ✓ complete |
-| SEC-01..05 | 14 | [ ] not started |
-| CON-01..03 | 15 | [ ] not started |
-| TST-01..07 | 16 | [ ] not started |
-| DONE-01..15 | 17 | [ ] not started |
+| SEC-01..05 | 14 | ✓ complete |
+| CON-01..03 | 15 | ✓ complete |
+| TST-01..07 | 16 | ✓ complete |
+| DONE-01..15 | 17 | ✓ complete (backend-complete gate passed 2026-09-09) |
 | FE-01..02 | 18 | [ ] gated (after backend complete) |
 | FE-03..05 | 19 | [ ] gated |
 | FE-06..07 | 20 | [ ] gated |
@@ -259,10 +262,11 @@
 
 **Coverage:**
 
-- Backend v1: 17 phases mapped (1–8 complete, 9–17 deferred/demo-wave-superseded)
-- Frontend & integration: 8 phases (18–25) — the Phase 17 gate is overridden for the demo milestone (frontend `apps/web` ships in demo Wave 3)
+- Backend v1: 17 phases mapped (1–17 all ✓ complete — backend-complete gate passed)
+- Frontend & integration: 8 phases (18–25) — the Phase 17 gate is now PASSED;
+  frontend feature development may begin
 - Frontend is part of the master roadmap (full-stack monorepo), NOT out of scope
 
 ---
 *Requirements defined: 2026-09-01*
-*Last updated: 2026-09-08 after demo-first vertical-slice reconciliation*
+*Last updated: 2026-09-09 — backend-complete gate passed (Phase 17, DONE-01..15 all ✓)*

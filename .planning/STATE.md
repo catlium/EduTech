@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-16-testing-demo-readiness
-current_phase_name: Phase 16 — Testing & Demonstration Readiness
+current_phase: phase-17-backend-complete
+current_phase_name: Phase 17 — Backend-Complete Checkpoint
 status: completed
-stopped_at: "Phase 16 — Testing & Demonstration Readiness COMPLETE (2026-09-09): compose moved to repo root; web (:3001) added as a public entry point behind the server-side auth guard; infra bug fixes (seed loadEnvFile guard, mock-ai GET /health, web pnpm→next start); env audit (Web/OmniRoute/Demo sections, internal API keys, no Ollama); 4 NEW e2e suites — auth (15), materials worker-boundary (21), web smoke (20), docker readiness (32, seeded, worker-ai+material through RabbitMQ) — plus login_user jar-staleness hardening across 8 suites and p8 fixtures added to seed-demo.ts; FULL regression on the dockerized stack: attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 / syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32 — all FAIL=0 (total 505 assertions); typecheck/lint/build green; docs aligned (STATE/ROADMAP/tasks/project-status/user-validation/infrastructure/development/AGENTS). Next: Phase 17 — Backend-Complete Checkpoint."
-last_updated: "2026-09-09T19:00:00.000Z"
-state_head: 5c4fcba
+stopped_at: "Phase 17 — Backend-Complete Checkpoint PASSED (2026-09-09): 4-subagent backend gate (module/route inventory + workflow traces, security/tenancy/RBAC/projection audit, concurrency/integrity audit incl. DB constraints, AI/OCR/worker boundary + incomplete-work + env audit); 2 real defects fixed — (1) AI_GENERATE_QUESTIONS missing from the jobs_active_generation_unique partial index (concurrent question-gen could enqueue duplicate jobs → now schema+migration 0013 includes it and the service maps the violation to 409 like content generation), (2) generic POST /jobs accepted arbitrary types that workers ack-and-skip (→ stuck queued) — now allowlisted via ALLOWED_JOB_TYPES + IsIn validation (unknown type 400); +3 contract asserts (CT-09f unknown type 400, CT-10a/b question-generation dedup 202/409); mock_ai_provider.py now dispatches by operation keywords when WORKER_AI_MODEL=auto → full 3-op AI demo reproducible on the dockerized stack; FULL regression 508/508 (attempts 96 / practice 73 / sec14 22 / api_contract 52 / demo 52 / syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32); typecheck/lint/build PASS; REQUIREMENTS.md DONE-01..15 all ✓; docs/jobs.md allowlist contract; non-blocking limitations documented (live OmniRoute needs operator credentials, CSRF-on-auth-only under SameSite=Lax, OCR key fail-open-when-unset, GIF/office extraction out of scope). Next: frontend integration phases 18-25 (Phase 18 — Frontend Foundation) or Paper Pattern/Blueprint as next product capability."
+last_updated: "2026-09-09T22:00:00.000Z"
+state_head: 4f07977
 progress:
   total_phases: 17
-  completed_phases: 16
+  completed_phases: 17
   total_plans: 11
   completed_plans: 11
-  percent: 94
+  percent: 100
 ---
 
 # STATE.md
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 ## Project State
 
 **Sequence:** Demo-first vertical-slice (user-directed override)
-**Phase:** Phase 16 — Testing & Demonstration Readiness
-**Status:** COMPLETE — closed 2026-09-09 (full 11-suite regression green on the dockerized stack, 505 assertions, typecheck/lint/build PASS)
+**Phase:** Phase 17 — Backend-Complete Checkpoint
+**Status:** COMPLETE — PASSED 2026-09-09 (4-subagent gate, 2 defects fixed with migration+regression, full 11-suite regression 508 assertions green on the dockerized stack, typecheck/lint/build PASS, DONE-01..15 all ✓)
 
 ## Phase State
 
@@ -55,11 +55,12 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 - Phase 14 — Cross-Module Validation & Security (migration 0012 partial unique indexes `attempts_one_in_progress_unique` + `practice_open_sessions_unique`, atomic submit/refreshAndExpire/saveResponse/answer with FOR UPDATE row locks + fresh post-evaluation re-reads, shared `isUniqueViolation` cause-chain helper for drizzle-wrapped 23505, student 403 on question-bank/assessment/jobs reads). **E2E validated 2026-09-09 (`sec14_e2e.sh` PASS=22 FAIL=0)**; regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86; typecheck/lint/build green. Reqs SEC-01..07 ✓.
 - Phase 15 — API Contract Verification (verified every endpoint in all 11 `docs/api/*.md` against the live API; aligned 10 doc discrepancies: questions wrong-job-type 400 (not 404), jobs ADMIN|TEACHER gating + 201/200, attempts CSRF scope narrowed to refresh/logout + analytics 12/12, practice no `updatedAt` + HTTP-validation wording, auth refresh 5/min rate limit, ai 500 on RabbitMQ publish failure, syllabus extra 400s, content/materials archive/activate 201, AGENTS.md health route `GET /api/v1/health` under global prefix; 2 code fixes: removed dead 20MB size check in `materials.service.ts validateFile` (multer 413 fires first) + deleted unused empty `examinations/dto/assessment-query.dto.ts`; new `scripts/e2e/api_contract_e2e.sh` CT-01..10). **E2E validated 2026-09-09 (`api_contract_e2e.sh` PASS=49 FAIL=0 — health, auth CSRF refresh/logout + me, memberships, academic create/patch/slug-409, materials text lifecycle + upload MIME/size validation (400/400/413), content versioning v1→v2 + wrong-type 400 + archive/activate 201, questions list + DELETE 204, jobs create/poll/roles/404)**; regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 / sec14 22 all FAIL=0; API typecheck/lint/build green.
+- Phase 17 — Backend-Complete Checkpoint (PASSED 2026-09-09): 4-subagent backend gate — (a) module/route inventory + teacher/student/practice/jobs workflow traces (no dead ends), (b) security audit (no BLOCKER; CSRF-on-auth-only under SameSite=Lax, OCR internal key fail-open-when-unset, materials storageKey visibility — all documented non-blocking), (c) concurrency/integrity audit (attempts/practice/start/submit/deadline/publish all safe), (d) AI/OCR/worker boundary + incomplete-work + env audit (Paper Pattern/Blueprint recorded as next product capability, out of scope). **2 real defects found and FIXED**: (1) `AI_GENERATE_QUESTIONS` missing from `jobs_active_generation_unique` partial index + service did not map unique violations → concurrent question-gen could enqueue duplicate active jobs; fixed in `schema/jobs.ts` + migration `0013_thin_rogue.sql` + `question-generation.service.ts` insertJob/isUniqueViolation→409 (mirrors content generation); (2) generic `POST /jobs` accepted arbitrary types the worker ack-and-skips → stuck `queued`; fixed via `ALLOWED_JOB_TYPES` + `@IsIn` validation → unknown type 400. **+3 contract asserts** (CT-09f unknown type 400, CT-10a/b question-gen 202/409 with workers stopped). **Mock AI now dispatches by operation keywords when `WORKER_AI_MODEL=auto`** → full 3-op AI demo reproducible on the dockerized stack (demo_e2e.sh PASS=52 FAIL=0). **FULL regression 508/508 FAIL=0** — attempts 96 / practice 73 / sec14 22 / api_contract 52 / demo 52 / syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32 (seeded). typecheck/lint/build PASS. REQUIREMENTS.md DONE-01..15 all ✓ (PROC-06/07 + TST/SEC/CON traceability reconciled); `docs/api/jobs.md` allowlist contract. Reqs DONE-01..15 ✓.
 
 **Not started / pending:**
 
-- Later backend phase (17): Phase 17 — Backend-Complete Checkpoint is the recommended next task.
-- Frontend integration phases (18-25): DEFERRED (demo milestone frontend delivered via Wave 3)
+- Frontend integration phases (18-25): DEFERRED — demo milestone frontend delivered (Wave 3); Phase 17 backend-complete gate now PASSED, so frontend feature development may begin.
+- Next product capability (out of Phase-17 scope, recorded): Paper Pattern / Blueprint system.
 
 ## Phase Plans
 
@@ -86,37 +87,34 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 | 14 | Cross-Module Validation & Security | ✓ completed (E2E 2026-09-09, sec14_e2e.sh PASS=22) |
 | 15 | API Contract Verification | ✓ completed (E2E 2026-09-09, api_contract_e2e.sh PASS=49) |
 | 16 | Testing & Demonstration Readiness | ✓ completed (E2E 2026-09-09, 11-suite regression 505 assertions FAIL=0) |
-| 17 | Backend-Complete Checkpoint | ○ NEXT |
-| 18–25 | Frontend + Integration + Polish | ○ deferred (demo milestone frontend takes priority) |
+| 17 | Backend-Complete Checkpoint | ✓ completed (PASSED 2026-09-09, regression 508 assertions FAIL=0) |
+| 18–25 | Frontend + Integration + Polish | ○ deferred (demo milestone frontend delivered via Wave 3; gate now passed) |
 
 ## Current Task
 
-**Phase 16 — Testing & Demonstration Readiness — COMPLETE (closed 2026-09-09).
-Next per roadmap:**
-
-**Phase 17 — Backend-Complete Checkpoint** (validate the whole backend surface
-one more time; verify nothing deferred remains; record closed-loop coverage).
-Frontend integration phases (18-25) remain deferred per the demo-first
-override (frontend delivered inside the milestone as Wave 3 + web smoke
-coverage in Phase 16).
+**Phase 17 — Backend-Complete Checkpoint — PASSED (closed 2026-09-09).**
+The backend surface is inventoried, audited, and fully green. Next per
+roadmap: **Phase 18 — Frontend Foundation** (or, as the next product
+capability, the Paper Pattern / Blueprint system — explicitly out of Phase-17
+scope).
 
 ## Session Continuity
 
-Last session: 2026-09-09 (Phase 16 closed)
-Stopped at: Phase 16 completed — Testing & Demonstration Readiness
-(compose moved from `infrastructure/compose/` to the repo root; web `apps/web`
-now a public entry point :3001 behind the middleware auth guard; demo profile
-`docker-compose.demo.yml` with mock-AI + idempotent seed carrying the demo AND
-all p8 fixture users/institutes; infra bugs fixed — seed `loadEnvFile` guard,
-mock-ai `GET /health`, web `node .../next` command; `.env`/`.env.example`
-audited with Web/OmniRoute/Demo sections and internal API keys; 4 new E2E
-suites — auth 15, materials 21 (worker boundary), web smoke 20, docker
-readiness 32 (seeded) — plus `login_user` jar-staleness hardening in 8 suites;
-full 11-suite regression on the dockerized stack 505/505 green;
-typecheck/lint/build PASS; docs aligned; disk-full (96%) resolved via
-`docker builder prune`.
+Last session: 2026-09-09 (Phase 17 closed)
+Stopped at: Phase 17 — Backend-Complete Checkpoint PASSED
+(4-subagent backend gate: module inventory + workflow traces, security audit,
+concurrency/integrity audit, boundary + incomplete-work audit; 2 defects
+fixed — AI_GENERATE_QUESTIONS dedup index (migration 0013) + service 409
+mapping, and POST /jobs type allowlist (unknown type 400) — each with
+contract-suite regression (CT-09f, CT-10a/b); mock_ai_provider.py operation-
+keyword dispatch so the full 3-op AI demo runs on the dockerized stack;
+full 11-suite regression 508/508 FAIL=0; typecheck/lint/build PASS;
+REQUIREMENTS.md DONE-01..15 all ✓ + traceability reconciled; docs/api/jobs.md
+allowlist documented; non-blocking limitations recorded (live OmniRoute needs
+operator credentials, CSRF-on-auth-only under SameSite=Lax, OCR key
+fail-open-when-unset, GIF/office extraction out of agreed scope).
 Clean tree, checkpoint pushed.
-Resume file: `.planning/ROADMAP.md` (Phase 17 — Backend-Complete Checkpoint next)
+Resume file: `.planning/ROADMAP.md` (Phase 18 — Frontend Foundation next)
 
 ## Verification
 

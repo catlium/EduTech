@@ -1,5 +1,93 @@
 # Project Status
 
+## Phase 17 — Backend-Complete Checkpoint ✓ (2026-09-09)
+
+**Status: PASSED — closed 2026-09-09.** The whole backend surface was
+inventoried and audited by 4 subagents, two real defects were fixed with
+regressions, and the full 11-suite regression went **508/508 FAIL=0** on the
+dockerized stack. `pnpm typecheck`/`lint`/`build` PASS. Clean tree, checkpoint
+pushed.
+
+### What landed
+
+- **Backend gate audits (4 subagents):**
+  1. Module/route inventory + teacher/student/practice/jobs workflow traces —
+     every flow connected, no dead ends (full module map + `file:line` traces
+     delivered).
+  2. Security — no BLOCKER (CSRF-on-auth-only mitigated by SameSite=Lax; OCR
+     internal key fail-open only when unset; materials `storageKey` visibility
+     — all documented). Tenancy/RBAC/sensitive projection verified everywhere.
+  3. Concurrency/integrity — attempts/practice start, submit, deadline,
+     publish gates all safe (partial unique indexes + FOR UPDATE locks).
+  4. AI/OCR/worker boundary + incomplete-work audit — OCR generic/local,
+     AI → OmniRoute only, unknown job types ack-and-skip; Paper Pattern/
+     Blueprint recorded as the next product capability (out of scope).
+- **Defect fix 1 — question-generation dedup.** `AI_GENERATE_QUESTIONS` was
+  missing from the `jobs_active_generation_unique` partial index, and the
+  service didn't map unique violations, so concurrent question-gen could
+  enqueue duplicate active jobs. Fixed: `schema/jobs.ts` index coverage +
+  migration `0013_thin_rogue.sql` + `question-generation.service.ts` now uses
+  `insertJob` + `isUniqueViolation` → `409` (mirrors content generation).
+- **Defect fix 2 — POST /jobs allowlist.** Generic job creation accepted
+  arbitrary types that workers ack-and-skip → rows stuck `queued`. Fixed:
+  `ALLOWED_JOB_TYPES` (`MATERIAL_PROCESS` + all `AI_GENERATE_*`) +
+  `@IsIn` validation → unknown type `400`.
+- **Demo AI on the dockerized stack.** `mock_ai_provider.py` now dispatches by
+  operation keywords when `WORKER_AI_MODEL=auto` (the container default), so
+  the full 3-op AI demo (syllabus + notes + questions) is reproducible from the
+  single docker command — previously only syllabus worked via the container.
+- **Contract regression added:** CT-09f (unsupported job type → 400) and
+  CT-10a/b (question generate → 202, duplicate active → 409) in
+  `api_contract_e2e.sh`. `docs/api/jobs.md` documents the allowlist.
+- **Requirements reconciled:** `REQUIREMENTS.md` DONE-01..15 all ✓; stale
+  markers for Phase 4 (PROC-06/07) and Phases 6-16 updated; traceability table
+  now complete through Phase 17.
+
+### Regression (all on the dockerized stack, 2026-09-09)
+
+| Suite | PASS | FAIL |
+|---|---|---|
+| attempts_e2e.sh | 96 | 0 |
+| practice_e2e.sh | 73 | 0 |
+| sec14_e2e.sh | 22 | 0 |
+| api_contract_e2e.sh | **52** | 0 |
+| demo_e2e.sh | 52 | 0 |
+| syllabus_e2e.sh | 39 | 0 |
+| p8_e2e.sh | 86 | 0 |
+| auth_e2e.sh | 15 | 0 |
+| materials_e2e.sh | 21 | 0 |
+| web_smoke_e2e.sh | 20 | 0 |
+| docker_readiness_e2e.sh | 32 | 0 |
+| **TOTAL** | **508** | **0** |
+
+### DONE criteria status (Phase 17 gate)
+
+- DONE-01 all endpoints implemented → PASS; DONE-02 core DB ops → PASS;
+  DONE-03 auth+authorization → PASS; DONE-04 AI workflows → PASS;
+  DONE-05 background processing → PASS; DONE-06 question approval → PASS;
+  DONE-07 examination workflow → PASS; DONE-08 automatic evaluation → PASS;
+  DONE-09 results → PASS; DONE-10 analytics → PASS; DONE-11 practice → PASS;
+  DONE-12 critical security rules → PASS; DONE-13 API contract verification →
+  PASS; DONE-14 critical tests → PASS (508/508); DONE-15 backend runs
+  independently from frontend → PASS (dockerized stack, readiness seeded).
+
+### Known non-blocking limitations (documented)
+
+- **Live AI via OmniRoute** requires operator-supplied OmniRoute credentials;
+  the API/worker/OmniRoute integration is wired but live-cloud generation is
+  unproven in this env (demo uses the bundled mock).
+- **CSRF token only on auth endpoints** — mitigated by `SameSite=Lax` cookies;
+  a full CSRF token strategy is a hardening item.
+- **OCR internal key fail-open when unset** — config-dependent; production must
+  set `INTERNAL_API_KEY`/`OCR_INTERNAL_API_KEY` (compose passes them).
+- **GIF/office-document extraction** is out of agreed scope — such uploads pass
+  the API but fail loudly at extraction (supported: PDF, PNG, JPEG, WebP, text).
+- **No background sweep for stale `IN_PROGRESS` attempts** — lazy expiry on
+  read is correctness-safe; a sweep worker is a future hardening item.
+
+**Recommended next task:** Phase 18 — Frontend Foundation (backend-complete
+gate is OPEN), or Paper Pattern / Blueprint as the next product capability.
+
 ## Phase 16 — Testing & Demonstration Readiness ✓ (2026-09-09)
 
 **Status: COMPLETE — closed 2026-09-09.** Full 11-suite regression green on
@@ -52,16 +140,19 @@ Validation: attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 /
 syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32 —
 all FAIL=0; typecheck/lint/build PASS.
 
-**Recommended next task:** Phase 17 — Backend-Complete Checkpoint.
+**Recommended next task (then):** Phase 17 — Backend-Complete Checkpoint
+(now PASSED — see top of this file).
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
 **Status: COMPLETE — Demo milestone closed 2026-09-08; full-journey E2E green
 (`demo_e2e.sh` PASS=52 FAIL=0), all Waves 0-4 + Phases 9-11 delivered, then
 Phase 12 — Examination Analytics (2026-09-08), Phase 13 — Practice System
-(2026-09-08), Phase 14 — Cross-Module Validation & Security (2026-09-09), and
-Phase 15 — API Contract Verification (2026-09-09). Next: later backend phases
-(Phases 16-17) starting with Phase 16 — Testing & Demonstration Readiness.** A user-directed prioritization
+(2026-09-08), Phase 14 — Cross-Module Validation & Security (2026-09-09),
+Phase 15 — API Contract Verification (2026-09-09), Phase 16 — Testing &
+Demonstration Readiness (2026-09-09), and Phase 17 — Backend-Complete
+Checkpoint (2026-09-09, gate PASSED 508/508). Next: frontend feature phases
+(18-25) or Paper Pattern/Blueprint.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the

@@ -15,6 +15,46 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Phase 17 — Backend-Complete Checkpoint
+
+Status: `[x]` **PASS (2026-09-09)** — four-subagent backend gate (module
+inventory + workflow traces, security, concurrency/integrity, boundary +
+incomplete-work) completed; two defects fixed with regressions; full 11-suite
+regression **508/508 FAIL=0** on the dockerized stack; `pnpm typecheck` +
+`pnpm lint` + `pnpm build` PASS; DONE-01..15 all ✓ in `REQUIREMENTS.md`.
+
+### New checks added by this phase
+
+- **Job-type allowlist (CT-09f)** — `[x]` passed 2026-09-09 via
+  `bash scripts/e2e/api_contract_e2e.sh`.
+  - Setup: dockerized stack up; both compose workers STOPPED
+    (`docker stop catlium-worker-ai catlium-worker-material`), teacher cookie.
+  - Endpoint: `POST /api/v1/jobs`
+  - Payload: `{"type":"BOGUS_JOB","payload":{}}`
+  - Expected: `400` (unknown type rejected at the API; previously accepted and
+    ack-and-skipped by the worker → stuck `queued`).
+- **Question-generation dedup (CT-10a/b)** — `[x]` passed 2026-09-09 via
+  `bash scripts/e2e/api_contract_e2e.sh` (workers stopped; first job queued).
+  - Setup: teacher cookie, demo institute, a question-generable topic.
+  - Endpoint: `POST /api/v1/questions/generate`
+  - Payload: `{"type_":"mcq","count":2,"source":{"topicId":"<demo topic>"}}`
+  - Expected: first call `202` (job queued); immediate duplicate call `409`
+    (active generation already exists — enforced by the
+    `jobs_active_generation_unique` partial index, now including
+    `AI_GENERATE_QUESTIONS`).
+
+### Phase 17 regression (all suites, dockerized stack, 2026-09-09)
+
+- `[x]` attempts_e2e.sh **96/0**, practice_e2e.sh **73/0**, sec14_e2e.sh **22/0**,
+  api_contract_e2e.sh **52/0** (incl. CT-09f + CT-10), demo_e2e.sh **52/0**
+  (full 3-op AI now reproducible on the dockerized stack — mock dispatches by
+  operation keyword when `WORKER_AI_MODEL=auto`), syllabus_e2e.sh **39/0**,
+  p8_e2e.sh **86/0**, auth_e2e.sh **15/0**, materials_e2e.sh **21/0**,
+  web_smoke_e2e.sh **20/0**, docker_readiness_e2e.sh **32/0**.
+- `[x]` `pnpm typecheck` / `pnpm lint` / `pnpm build` PASS.
+
+---
+
 ## Demo Milestone — Full Journey E2E (Wave 4 close)
 
 Status: `[x]` **PASS=52 FAIL=0 (2026-09-08)** via

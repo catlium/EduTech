@@ -16,9 +16,17 @@ carry internal processing payloads).
 POST /jobs
 ```
 
-Creates a job row, publishes a message to the RabbitMQ `jobs` queue, and
-returns the job (`201`). Intended for generic/manual job creation; material
-processing uses the dedicated endpoint `POST /materials/:id/process` instead.
+Creates a job row, publishes a message to the RabbitMQ `jobs` / `ai_generation`
+queue (routed by type), and returns the job (`201`). Intended for
+generic/manual job creation; material processing uses the dedicated endpoint
+`POST /materials/:id/process` instead.
+
+`type` is restricted to the job types a worker actually consumes:
+`MATERIAL_PROCESS`, `AI_GENERATE_NOTE`, `AI_GENERATE_SUMMARY`,
+`AI_GENERATE_FLASHCARDS`, `AI_GENERATE_CONCEPTS`, `AI_GENERATE_QUESTIONS`,
+`AI_GENERATE_SYLLABUS`. Any other type is rejected with `400` (Phase 17
+allowlist) — an unknown type would otherwise be acknowledged and skipped by
+the worker, leaving the row stuck `queued`.
 
 Body:
 
@@ -30,6 +38,10 @@ Body:
 ```
 
 Response: `{ "job": Job }`
+
+Validation:
+
+- `type` unknown → `400`
 
 ## Get job (polling)
 
