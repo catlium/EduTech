@@ -3,6 +3,7 @@ import { pgTable, uuid, varchar, text, jsonb, timestamp, integer, unique } from 
 import { institutes } from './institutes.js';
 import { users } from './users.js';
 import { questions } from './questions.js';
+import { paperPatterns } from './paper-patterns.js';
 
 export const assessments = pgTable('assessments', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -17,6 +18,11 @@ export const assessments = pgTable('assessments', {
   startsAt: timestamp('starts_at', { withTimezone: true }),
   endsAt: timestamp('ends_at', { withTimezone: true }),
   status: varchar('status', { length: 20 }).notNull().default('DRAFT'),
+  // Provenance: when an assessment was created from an approved paper pattern,
+  // the pattern id is recorded here (set null if the pattern is ever removed).
+  blueprintId: uuid('blueprint_id').references(() => paperPatterns.id, {
+    onDelete: 'set null',
+  }),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => users.id),

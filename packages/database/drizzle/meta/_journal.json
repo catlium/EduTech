@@ -99,6 +99,13 @@
       "when": 1788945826870,
       "tag": "0013_thin_rogue",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788949222609,
+      "tag": "0014_polite_agent_zero",
+      "breakpoints": true
     }
   ]
 }
