@@ -61,6 +61,11 @@ material of the subject is used — `400` if none exists):
 { "materialId": "uuid" }
 ```
 
+Additional `400`s when a `materialId` is supplied: `Material not found for this
+subject`, `Material is not ready to generate from` (not `READY`/`ACTIVE`), or
+`Material has no extracted text`. `500` if the job could not be enqueued
+(RabbitMQ publish failure).
+
 Returns `202 Accepted`:
 
 ```json

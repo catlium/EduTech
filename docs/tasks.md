@@ -2,6 +2,35 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
+## Phase 15 — API Contract Verification (started/closed 2026-09-09)
+
+Verify every endpoint against every `docs/api/*.md` doc; resolve
+inconsistencies deliberately; add a contract E2E suite.
+
+- [x] Inventory all endpoints + contracts (`@catlium/contracts` usage) via
+      3-subagent review of all 11 `docs/api/*.md` and `packages/contracts`
+- [x] Reconcile each API doc against live code/behavior; keep code as source
+      of truth except where docs state intent the code got wrong
+- [x] Doc fixes: questions wrong-job-type 404→`400`; jobs ADMIN|TEACHER gating
+      + `201`/`200` codes; attempts CSRF narrowed to refresh/logout +
+      analytics `12/12`; practice no `updatedAt` + class-validator wording;
+      auth refresh `5/min`; ai `500` on RabbitMQ publish failure; syllabus
+      extra `400` cases + `500`; content/materials archive/activate `201`;
+      AGENTS.md health route `GET /api/v1/health`
+- [x] Code fixes: drop dead 20MB check in `materials.service.ts validateFile`
+      (multer 413 first) + unused `MAX_FILE_SIZE` import; delete unused
+      `examinations/dto/assessment-query.dto.ts`
+- [x] New `scripts/e2e/api_contract_e2e.sh` CT-01..10 covering health, auth
+      CSRF refresh/logout/me, memberships, academic move, materials text
+      lifecycle + upload 400/400/413, content versioning, questions
+      list/DELETE, jobs create/poll/roles/404
+- [x] E2E run `api_contract_e2e.sh` PASS=49 FAIL=0
+- [x] Regression all suites (attempts 96 / practice 73 / demo 52 / syllabus 39
+      / p8 86 / sec14 22 all FAIL=0) + typecheck/lint/build green
+- [x] Docs: `.planning/STATE.md`, `.planning/ROADMAP.md`, `docs/tasks.md`,
+      `docs/project-status.md`, `docs/user-validation.md`
+- [x] Commit `feat(api): verify and align API contracts` + push + report
+
 ## Phase 10 — Automatic Evaluation & Results (started 2026-09-08)
 
 Grading gaps left by Wave 2: `submit` flips status only; `attempts.score` stays
@@ -172,7 +201,20 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       locks and post-evaluation re-reads, `isUniqueViolation` cause-chain
       helper; `sec14_e2e.sh` PASS=22 FAIL=0, regressions attempts 96 /
       practice 73 / demo 52 / syllabus 39 / p8 86, typecheck/lint/build green)
-- [ ] Phase 15 — API Contract Verification
+- [x] Phase 15 — API Contract Verification (delivered 2026-09-09: every
+      endpoint in all 11 `docs/api/*.md` inventoried (3-subagent) and
+      reconciled against the live API; doc fixes: questions wrong-job-type
+      404→400, jobs ADMIN|TEACHER gating + 201/200, attempts CSRF scope
+      narrowed (refresh/logout only) + analytics 12/12, practice no
+      `updatedAt` + HTTP-validation wording, auth refresh 5/min, ai 500 on
+      RabbitMQ publish failure, syllabus extra 400s, content/materials
+      archive/activate 201, AGENTS.md health route `GET /api/v1/health`;
+      code fixes: removed dead 20MB check in `materials.service.ts
+      validateFile` (multer 413 fires first; unused `MAX_FILE_SIZE` import
+      dropped), deleted unused `examinations/dto/assessment-query.dto.ts`;
+      new `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01..10),
+      regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 /
+      sec14 22 all FAIL=0, typecheck/lint/build green)
 - [ ] Phase 16 — Testing & Demonstration Readiness
 - [ ] Phase 17 — Backend-Complete Checkpoint
 

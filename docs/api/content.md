@@ -266,7 +266,7 @@ POST /content/:contentId/archive
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. Sets status to `ARCHIVED`. Does not create
-a new version.
+a new version. Returns `201`.
 
 Response: `{ "content": ContentItem }`
 
@@ -277,6 +277,7 @@ POST /content/:contentId/activate
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. Sets status to `ACTIVE` (e.g. publish a
-DRAFT or restore an archived item). Does not create a new version.
+DRAFT or restore an archived item). Does not create a new version. Returns
+`201`.
 
 Response: `{ "content": ContentItem }`

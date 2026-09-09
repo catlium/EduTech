@@ -9,7 +9,9 @@ evaluation, but they are never serialized in student responses — except in the
 dedicated Phase 10 `result` review after the attempt is submitted/expired.
 
 Base URL: `http://localhost:3000/api/v1` — all non-`/health` routes require the
-session cookie + `x-institute-id` header; writes also require `x-csrf-token`.
+session cookie + `x-institute-id` header. The CSRF double-submit check
+(`x-csrf-token`) applies only to `POST /auth/refresh` and `POST /auth/logout`
+(see `docs/api/auth.md`), not to these routes.
 
 ## Endpoints
 
@@ -158,7 +160,7 @@ and null summary fields. Zod contracts: `AssessmentAnalyticsSchema` et al. in
 deadline/sanitization/accounting + Phase 10 grading + Phase 12 AT-15 analytics
 metrics against a live graded dataset, AT-16 role/tenant/anon gates, AT-17
 empty case). Node unit tests: `pnpm --filter @catlium/api test:analytics`
-(9/9). Regressions kept green after changes: `syllabus_e2e.sh` PASS=39,
+(12/12). Regressions kept green after changes: `syllabus_e2e.sh` PASS=39,
 `p8_e2e.sh` PASS=86. Full-journey integration:
 `scripts/e2e/demo_e2e.sh` PASS=52 FAIL=0 (teacher→AI→quiz→student→answer
 2-correct-1-wrong→submit→score 2/3→result reveal, cross-tenant 403).

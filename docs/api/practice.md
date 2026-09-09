@@ -24,7 +24,9 @@ institute members are 404 on any own-session lookup of that session.
 
 ### `POST /api/v1/practice/sessions` — start a session
 
-Auth: member. Request (zod `PracticeCreateRequestSchema`):
+Auth: member. Request (`PracticeCreateRequestSchema` in `@catlium/contracts`
+defines the shape; the HTTP layer validates with an equivalent class-validator
+DTO):
 
 ```json
 { "mode": "FLASHCARD", "contentId": "<content item id>" }
@@ -44,7 +46,7 @@ Auth: member. Request (zod `PracticeCreateRequestSchema`):
 ### `GET /api/v1/practice/sessions` — history
 
 Auth: member. 200 `{ sessions: PracticeSessionListItem[] }`, newest first.
-Each: id, mode, status, started/updated/completed timestamps, itemCount,
+Each: id, mode, status, started/completed timestamps, itemCount,
 answeredCount, correctCount (correctCount via `count(*) filter` — `0` for
 flashcard sessions).
 
@@ -59,7 +61,8 @@ questionType, payload (MCQ → `{ choices }` only), and per-item state:
 ### `PUT /api/v1/practice/sessions/:sessionId/items/:itemId` — record response
 
 Auth: member, own session, session `IN_PROGRESS`. Body
-(`PracticeSaveAnswerRequestSchema`):
+(`PracticeSaveAnswerRequestSchema` in `@catlium/contracts` defines the shape;
+the HTTP layer validates with an equivalent class-validator DTO):
 
 ```json
 { "answer": { "choiceId": "<choice id>" } }        // question item

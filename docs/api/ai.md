@@ -48,6 +48,7 @@ Validation (all return `409 Conflict` unless noted):
 - `409` if a generation job is already active (`queued` or `processing`) for the
   same operation on the same source. Different operations on the same source
   may run concurrently.
+- `500` if the job could not be enqueued (RabbitMQ publish failure).
 
 Response:
 

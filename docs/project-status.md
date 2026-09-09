@@ -5,9 +5,9 @@
 **Status: COMPLETE — Demo milestone closed 2026-09-08; full-journey E2E green
 (`demo_e2e.sh` PASS=52 FAIL=0), all Waves 0-4 + Phases 9-11 delivered, then
 Phase 12 — Examination Analytics (2026-09-08), Phase 13 — Practice System
-(2026-09-08), and Phase 14 — Cross-Module Validation & Security (2026-09-09).
-Next: later backend phases (Phases 15-17) starting with Phase 15 — API
-Contract Verification.** A user-directed prioritization
+(2026-09-08), Phase 14 — Cross-Module Validation & Security (2026-09-09), and
+Phase 15 — API Contract Verification (2026-09-09). Next: later backend phases
+(Phases 16-17) starting with Phase 16 — Testing & Demonstration Readiness.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -257,12 +257,8 @@ Web practice UI deliberately deferred to the frontend integration phases
 
 **Commit:** `feat(practice): add ungraded flashcard and question practice`
 
-**Recommended next task:** Phase 15 — API Contract Verification (verify every
-endpoint against every `docs/api/` document — method, path, auth,
-authorization, request/response, status codes, validation, error format,
-pagination, filtering, IDs, date/time — resolve inconsistencies deliberately;
-Phases 16-17 follow).
-DB constraints, transactions, race conditions around attempts/submission).
+**Recommended next task:** Phase 16 — Testing & Demonstration Readiness (expand
+automated coverage; Phases 17 then follow).
 
 **Wave 4 — Full integration & demo validation ✓ (2026-09-08):**
 - `scripts/e2e/mock_ai_provider.py` v2 (model-keyed outputs: `syllabus-mock` /
@@ -1076,14 +1072,61 @@ authorization emphasis. Reqs SEC-01..05 ✓.
 
 **Commit:** `feat(security): complete cross-module validation and security hardening`
 
+## Phase 15 — API Contract Verification (2026-09-09)
+
+**Status: COMPLETE.** Every endpoint across all 11 `docs/api/*.md` documents
+inventoried (three parallel subagents) and reconciled against the live API;
+inconsistencies resolved deliberately — docs where the code is the source of
+truth, code only where the doc stated intent the code got wrong. Reqs
+CON-01..03 ✓.
+
+- **Doc fixes (impl = source of truth):** `questions.md` wrong-type job on
+  `GET /questions/generate/:jobId` → **400** (not 404; matches syllabus
+  precedent, `question-generation.service.ts:61`); `jobs.md` gained the
+  ADMIN|TEACHER gating note + `201` (POST) / `200` (GET) codes; `attempts.md`
+  CSRF claim narrowed to refresh/logout only (CsrfGuard lives only on
+  `POST /auth/refresh` + `POST /auth/logout`) and analytics test count
+  `9/9` → `12/12`; `practice.md` dropped the nonexistent `updatedAt`
+  timestamp (schemas + code have only startedAt/completedAt) + reworded the
+  two "zod X" request claims (payload shape lives in `@catlium/contracts`;
+  the HTTP layer validates with equivalent class-validator DTOs); `auth.md`
+  added the refresh endpoint's 5/min rate limit; `ai.md` added the 500 on
+  RabbitMQ publish failure; `syllabus.md` added the extra 400 cases (material
+  not in subject / not ready / no extracted text) + a 500 note; `content.md`
+  + `materials.md` now document archive/activate → **201** (Nest default, no
+  `@HttpCode`); **AGENTS.md** health route corrected to `GET /api/v1/health`
+  (the global `api/v1` prefix applies; no bare `/health` route — nothing in
+  compose depends on it).
+- **Code fixes (2, nothing else touched):** removed the dead 20MB size check
+  in `materials.service.ts` `validateFile` (multer's 413 fires first; the
+  check could never fire) + dropped the now-unused `MAX_FILE_SIZE` import from
+  the service (still enforced in the controller); deleted the unused empty
+  `apps/api/src/examinations/dto/assessment-query.dto.ts` (no barrel or
+  import references).
+- **New contract suite `scripts/e2e/api_contract_e2e.sh` PASS=49 FAIL=0**
+  (CT-01..10): health (public 200), auth CSRF refresh (wrong→403, right→200,
+  me-after-refresh 200) + logout (CSRF 200, me-after-logout 401) on fresh
+  scratch sessions (rotation-safe, re-runnable), memberships, academic
+  create/patch/slug-409, materials text lifecycle (201 + 409 on re-activate
+  when active + archive/activate 201), upload validation (unsupported MIME
+  400, MIME/extension mismatch 400, >20MB 413, invalid enum filter 400),
+  content versioning (v1→v2, versions list, missing-version 404, wrong
+  payload-type 400, archive/activate 201), questions list 200 + invalid enum
+  400 + DELETE 204 + deleted 404, jobs (create 201, get 200, unknown 404,
+  student 403).
+- **Regressions green (all FAIL=0):** attempts **96**, practice **73**, demo
+  **52**, syllabus **39**, p8 **86**, sec14 **22**, contract **49**; API
+  typecheck/lint/build green. (Workers stopped while regression suites spawn
+  their own job-consuming processes; stack restored to full compose after.)
+
+**Commit:** `feat(api): verify and align API contracts`
+
 ## Recommended Next Task
 
-**Phase 15 — API Contract Verification** (verify every endpoint against every
-`docs/api/` document: method, path, auth, authorization, request/response,
-status codes, validation, error format, pagination, filtering, IDs, date/time;
-resolve inconsistencies deliberately; extend `docs/api/` coverage to all
-phases). Then Phases 16-17 (testing & demonstration readiness, backend-
-complete checkpoint), then frontend integration phases 18-25.
+**Phase 16 — Testing & Demonstration Readiness** (expand automated coverage for
+critical workflows: auth, academic, materials, AI, questions, examination,
+security). Then Phase 17 (backend-complete checkpoint), then frontend
+integration phases 18-25.
 
 The dockerized stack (`infrastructure/compose/docker-compose.yml`) is the
 validation harness for any follow-on testing. `apps/web` dev server runs on

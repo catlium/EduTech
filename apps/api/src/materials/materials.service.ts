@@ -17,7 +17,7 @@ import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface.js';
 import type { StorageProvider } from './storage/storage-provider.interface.js';
-import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from './materials.constants.js';
+import { ALLOWED_FILE_TYPES } from './materials.constants.js';
 
 type ScopeKind = 'subject' | 'chapter' | 'topic';
 type MaterialStatus = 'ACTIVE' | 'ARCHIVED';
@@ -306,10 +306,6 @@ export class MaterialsService {
   // ── Helpers ───────────────────────────────
 
   private validateFile(file: Express.Multer.File): { materialType: string } {
-    if (file.size > MAX_FILE_SIZE) {
-      throw new BadRequestException('File exceeds the 20 MB limit');
-    }
-
     const allowed = ALLOWED_FILE_TYPES.get(file.mimetype);
     if (!allowed) {
       throw new BadRequestException(`Unsupported file type: ${file.mimetype}`);

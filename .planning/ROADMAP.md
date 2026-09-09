@@ -219,17 +219,15 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 **Goal:** Full backend review: auth, authorization, input validation, ownership, data isolation, approval rules, exam state transitions, attempt restrictions, student answer security, AI job failures, file validation, error responses, DB constraints, transactions, race conditions around attempts/submission. Emphasis on server-side authorization.
 **Status:** COMPLETE (2026-09-09). Student reads of the question bank and assessment metadata/questions closed (`@RequiredRoles(...WRITE_ROLES)`; students get 403); generic job create/fetch gated to institute admins/teachers. Migration 0012: partial unique indexes `attempts_one_in_progress_unique` and `practice_open_sessions_unique` enforce single open attempt/session at the DB level. Attempts: atomic submit (guarded update + synchronous evaluation in one tx, post-evaluation re-read), atomic refreshAndExpire, FOR UPDATE row-locked saveResponse with owner + in-tx deadline/status checks; practice answer likewise row-locked. Shared `isUniqueViolation` helper (cause-chain walk) fixes drizzle-wrapped 23505 → 409 mapping across attempts/practice/examinations/generation. `sec14_e2e.sh` PASS=22 (SC-01..07 concurrency + access-closure); regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86. Reqs: SEC-01..05 ✓.
 
-### Phase 15 — API Contract Verification
-
-### Phase 15 — API Contract Verification
+### Phase 15 — API Contract Verification ✓ COMPLETE
 
 **Goal:** Verify every endpoint against every `docs/api/` document (method, path, auth, authorization, request/response, status codes, validation, error format, pagination, filtering, IDs, date/time). Do not silently change the contract; resolve inconsistencies deliberately. Extend `docs/api/` coverage to all phases.
-**Status:** DEFERRED. Reqs: CON-01..03.
+**Status:** COMPLETE (2026-09-09). Three-subagent inventory of every endpoint over all 11 `docs/api/*.md` plus `@catlium/contracts` usage, reconciled against the live API. Doc fixes: questions wrong-job-type → 400 (not 404); jobs ADMIN|TEACHER gating + 201/200 codes; attempts CSRF scope narrowed (refresh/logout only) + analytics 12/12; practice has no `updatedAt` + HTTP-validation class-validator wording; auth refresh 5/min; ai 500 on RabbitMQ publish failure; syllabus extra 400 (material not in subject / not ready / no extracted text) + 500; content/materials archive/activate 201; AGENTS.md health route corrected to `GET /api/v1/health` (global prefix). Code fixes: removed dead 20MB check in `materials.service.ts validateFile` (multer 413 fires first; unused `MAX_FILE_SIZE` import dropped from service), deleted unused empty `examinations/dto/assessment-query.dto.ts`. New `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01..10: health, auth CSRF refresh/logout+me, memberships, academic create/patch/slug-409, materials text lifecycle + upload 400/400/413, content versioning v1→v2 + wrong-type 400, questions list/DELETE 204, jobs create/poll/roles/404). Regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 / sec14 22 all FAIL=0. Reqs: CON-01..03 ✓.
 
 ### Phase 16 — Testing & Demonstration Readiness
 
 **Goal:** Automated/integration tests for critical workflows: auth, academic, materials, AI, questions, examination, security.
-**Status:** DEFERRED (zero tests today). Reqs: TST-01..07.
+**Status:** DEFERRED (see Phase 12 node:test analytics unit coverage + growing `scripts/e2e` suite; TST-01..07).
 
 ### Phase 17 — Backend-Complete Checkpoint
 
@@ -301,9 +299,9 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 ## Coverage
 
 - Backend phases: 17
-- Backend ✓ Complete: 12 (Phases 1-12)
+- Backend ✓ Complete: 15 (Phases 1-15)
 - Demo milestone waves: 4 (Waves 0-4 ✓ complete, closed 2026-09-08)
-- Later backend phases: 5 (Phases 13-17), Phase 13 next
+- Later backend phases: 2 (Phases 16-17), Phase 16 next
 - Frontend/integration phases: 8 (Phases 18-25), deferred (demo milestone frontend shipped as Wave 3)
 - Frontend is part of the master roadmap (NOT out of scope)
 - Monorepo retained for both backend and frontend
@@ -316,10 +314,11 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 2. ✅ Wave 0-4 demo milestone (syllabus, attempts, frontend, integration — closed 2026-09-08)
 3. ✅ Phases 9-11 delivered inside the demo milestone
 4. ✅ Phase 12 examination analytics (closed 2026-09-08)
+5. ✅ Phase 13 practice system (closed 2026-09-08)
+6. ✅ Phase 14 cross-module validation & security (closed 2026-09-09)
+7. ✅ Phase 15 API contract verification & alignment (closed 2026-09-09)
 
-**→ NEXT: Phase 15 — API Contract Verification** (verify every endpoint
-against every `docs/api/` document: method, path, auth, authorization,
-request/response, status codes, validation, error format, pagination,
-filtering, IDs, date/time; resolve inconsistencies deliberately; extend
-`docs/api/` coverage to all phases). Then Phases 16-17, then frontend
-integration phases 18-25.
+**→ NEXT: Phase 16 — Testing & Demonstration Readiness** (expand automated
+coverage for critical workflows, tighten test/demo tooling and checkpoints).
+Then Phase 17 (backend-complete checkpoint), then frontend integration phases
+18-25.

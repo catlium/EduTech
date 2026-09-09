@@ -108,7 +108,7 @@ docker compose -f <base + dev as above> down -v
 | Service        | URL                          | Note                            |
 | -------------- | ---------------------------- | ------------------------------- |
 | API            | http://localhost:3000        | PUBLIC                          |
-| API Health     | http://localhost:3000/health | PUBLIC                          |
+| API Health     | http://localhost:3000/api/v1/health | PUBLIC                          |
 | OCR Service    | http://localhost:8000        | loopback-only (dev override)    |
 | OmniRoute UI   | http://localhost:20128       | loopback-only (dev override)    |
 | RabbitMQ UI    | http://localhost:15672       | loopback-only (dev override)    |

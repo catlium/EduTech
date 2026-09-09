@@ -185,7 +185,8 @@ Response: `{ "material": Material }`
 POST /materials/:materialId/archive
 ```
 
-Roles: `INSTITUTE_ADMIN`, `TEACHER`. Sets `status` to `ARCHIVED`.
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Sets `status` to `ARCHIVED`. Returns
+`201`.
 
 Response: `{ "material": Material }`
 
@@ -196,7 +197,7 @@ POST /materials/:materialId/activate
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. Sets `status` to `ACTIVE` (restore an
-archived material).
+archived material). Returns `201`.
 
 Response: `{ "material": Material }`
 

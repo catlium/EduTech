@@ -36,6 +36,7 @@ email, `400` invalid input. Rate limited (5/min).
 
 Rotates the refresh session and refreshes cookies. Requires `CsrfGuard`
 (`x-csrf-token` header matching the `csrf_token` cookie). `200` → `{ user }`.
+Rate limited (5/min).
 
 ## `POST /auth/logout`
 

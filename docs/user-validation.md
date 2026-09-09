@@ -1068,6 +1068,35 @@ IN_PROGRESS attempt (excluded).
 - **Regression:** `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 /
   `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0.
 
+### CT-01..10 — API Contract Verification (Phase 15, 2026-09-09)
+
+- **Command:** `bash scripts/e2e/api_contract_e2e.sh` against the live stack
+  (API on :3000; seed applied). Run with the compose workers stopped
+  (`docker stop catlium-worker-ai catlium-worker-material`) so the single
+  `POST /jobs` fixture job is not consumed; restart after.
+- **Expected:** `API CONTRACT E2E: PASS=49 FAIL=0` (CT-01 `GET /health` public
+  → 200 + `{"status":"ok"}`; CT-02 auth on fresh scratch sessions — refresh
+  wrong CSRF → 403, right CSRF → 200, me → 200, logout with CSRF → 200,
+  me-after-logout → 401, me teacher → 200; CT-03 `GET /memberships` → 200 /
+  anon 401; CT-04 academic create → 201, patch → 200, duplicate slug → 409;
+  CT-05 materials text lifecycle 201 + active-archive + re-activate 409 +
+  archive/activate 201; CT-06 upload validation — unsupported MIME → 400,
+  MIME/extension mismatch → 400, >20MB → 413, invalid enum filter → 400;
+  CT-07 content versioning — v1 → 201, update → 200 (version 2), versions
+  list, missing version → 404, wrong payload type on update → 400, archive/
+  activate → 201; CT-08 `GET /questions` → 200, invalid enum filter → 400,
+  `DELETE /questions/:id` → 204, deleted read → 404; CT-09 `POST /jobs` →
+  201, `GET /jobs/:id` → 200, unknown → 404, student → 403).
+- **Endpoint examples:** `GET /api/v1/health` → 200; `POST
+  /api/v1/auth/refresh` with wrong `x-csrf-token` → 403; `POST
+  /api/v1/materials/:id/upload` with `type=text/plain` file >20MB → 413;
+  `PATCH /api/v1/content/:id` with the wrong payload type → 400.
+- **Docs:** all 11 `docs/api/*.md` verified + `AGENTS.md` health route now
+  `GET /api/v1/health`.
+- **Regression:** `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 /
+  `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 /
+  `sec14_e2e.sh` 22 / `api_contract_e2e.sh` 49 all FAIL=0.
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete

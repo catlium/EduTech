@@ -172,8 +172,9 @@ docker compose -f infrastructure/compose/docker-compose.yml up -d
 
 ### Health Endpoints
 
-- API: `GET /health`
-- OCR: `GET /health`
+- API: `GET /api/v1/health` (the API applies the global `api/v1` prefix to all
+  controllers; there is no bare `/health` route)
+- OCR: `GET /health` (no prefix)
 
 ### What NOT to Implement Yet
 

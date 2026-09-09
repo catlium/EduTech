@@ -6,7 +6,9 @@ The jobs API exposes the generic async-processing tracker. Jobs are consumed
 by the Python worker via RabbitMQ (see `docs/architecture/materials.md`).
 
 All endpoints require an authenticated session cookie (`access_token`) and the
-`x-institute-id` header.
+`x-institute-id` header, and both routes additionally require the
+`INSTITUTE_ADMIN` or `TEACHER` role (Phase 14 gating: generic job rows may
+carry internal processing payloads).
 
 ## Create job
 
@@ -15,8 +17,8 @@ POST /jobs
 ```
 
 Creates a job row, publishes a message to the RabbitMQ `jobs` queue, and
-returns the job. Intended for generic/manual job creation; material processing
-uses the dedicated endpoint `POST /materials/:id/process` instead.
+returns the job (`201`). Intended for generic/manual job creation; material
+processing uses the dedicated endpoint `POST /materials/:id/process` instead.
 
 Body:
 
@@ -35,7 +37,7 @@ Response: `{ "job": Job }`
 GET /jobs/:jobId
 ```
 
-Returns a single job. `404` if not in the active institute.
+Returns a single job (`200`). `404` if not in the active institute.
 
 Response: `{ "job": Job }`
 

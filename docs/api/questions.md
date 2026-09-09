@@ -329,7 +329,7 @@ Roles: `INSTITUTE_ADMIN`, `TEACHER`.
 Returns the tracked generation job and its `result` (the generated `questionIds`
 array, `count`, `questionType`, `difficulty`, and source) once `status` is
 `completed`, or `error` when `failed`. `404` if the job is not in the active
-institute or is not a question-generation job.
+institute; `400` if the job is not a question-generation job.
 
 Response:
 

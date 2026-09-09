@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-14-validation-security
-current_phase_name: Phase 14 — Cross-Module Validation & Security
+current_phase: phase-15-api-contract-verification
+current_phase_name: Phase 15 — API Contract Verification
 status: completed
-stopped_at: "Phase 14 — Cross-Module Validation & Security COMPLETE (2026-09-09): audit of auth/RBAC/ownership/isolation/validation/transactions/races; student reads of question bank + assessment metadata closed (WRITE_ROLES 403), generic job endpoints gated, partial unique indexes attempts_one_in_progress_unique + practice_open_sessions_unique (migration 0012), atomic submit/refreshAndExpire/saveResponse/answer with row locks + fresh re-reads, isUniqueViolation cause-chain helper unifies drizzle-wrapped 23505 mapping (attempts/practice/examinations/generation), sec14_e2e.sh PASS=22, regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86, typecheck/lint/build green. Next: Phase 15 — API Contract Verification."
-last_updated: "2026-09-09T00:00:00.000Z"
-state_head: a9f7ecf
+stopped_at: "Phase 15 — API Contract Verification COMPLETE (2026-09-09): every docs/api/*.md verified against the live API; 10 doc fixes aligned (questions 404→400 job-type, jobs roles + 201/200 codes, attempts CSRF scope + analytics 12/12, practice no-updatedAt + class-validator wording, auth refresh rate limit, ai 500 on publish, syllabus extra 400s, content/materials 201 transitions, AGENTS.md health route /api/v1/health); 2 code fixes (removed dead size check in materials.validateFile + deleted unused assessment-query.dto.ts); new api_contract_e2e.sh PASS=49 covering health/auth-CSRF/memberships/academic/materials/content versioning/questions/jobs; regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 / sec14 22 all FAIL=0; typecheck/lint/build green. Next: Phase 16 — Testing & Demonstration Readiness."
+last_updated: "2026-09-09T12:00:00.000Z"
+state_head: <TBD-COMMIT>
 progress:
   total_phases: 17
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 11
   completed_plans: 11
-  percent: 82
+  percent: 88
 ---
 
 # STATE.md
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 ## Project State
 
 **Sequence:** Demo-first vertical-slice (user-directed override)
-**Phase:** Phase 13 — Practice System
-**Status:** COMPLETE — closed 2026-09-08 (backend-only ungraded flashcard + question practice; phases 14-17 pending)
+**Phase:** Phase 15 — API Contract Verification
+**Status:** COMPLETE — closed 2026-09-09 (every documented endpoint verified against the live API; docs/robots aligned; contract suite added)
 
 ## Phase State
 
@@ -53,9 +53,12 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 - Phase 13 — Practice System (migration 0011 `practice_sessions` / `practice_session_items` / `practice_session_responses` snapshot tables, `apps/api/src/practice` module: POST/GET `/practice/sessions`, detail, PUT items response (answer graded with the attempts grader / flashcard rating), complete; zod contracts in `@catlium/contracts`; PRAC-03 — practice never writes `attempts`; answer keys server-side until answered, flashcard back face always revealed; 201/400/401/403/404/409 gates; `docs/api/practice.md`). **E2E validated 2026-09-08 (`practice_e2e.sh` PASS=73 FAIL=0, PR-01..12 + PR-05x)**; regressions attempts 96 / demo 52 / syllabus 39 / p8 86; API typecheck/lint/build green. Reqs PRAC-01..03 ✓. Backend-only; web practice UI deferred to frontend phases 18-25.
 
+- Phase 14 — Cross-Module Validation & Security (migration 0012 partial unique indexes `attempts_one_in_progress_unique` + `practice_open_sessions_unique`, atomic submit/refreshAndExpire/saveResponse/answer with FOR UPDATE row locks + fresh post-evaluation re-reads, shared `isUniqueViolation` cause-chain helper for drizzle-wrapped 23505, student 403 on question-bank/assessment/jobs reads). **E2E validated 2026-09-09 (`sec14_e2e.sh` PASS=22 FAIL=0)**; regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86; typecheck/lint/build green. Reqs SEC-01..07 ✓.
+- Phase 15 — API Contract Verification (verified every endpoint in all 11 `docs/api/*.md` against the live API; aligned 10 doc discrepancies: questions wrong-job-type 400 (not 404), jobs ADMIN|TEACHER gating + 201/200, attempts CSRF scope narrowed to refresh/logout + analytics 12/12, practice no `updatedAt` + HTTP-validation wording, auth refresh 5/min rate limit, ai 500 on RabbitMQ publish failure, syllabus extra 400s, content/materials archive/activate 201, AGENTS.md health route `GET /api/v1/health` under global prefix; 2 code fixes: removed dead 20MB size check in `materials.service.ts validateFile` (multer 413 fires first) + deleted unused empty `examinations/dto/assessment-query.dto.ts`; new `scripts/e2e/api_contract_e2e.sh` CT-01..10). **E2E validated 2026-09-09 (`api_contract_e2e.sh` PASS=49 FAIL=0 — health, auth CSRF refresh/logout + me, memberships, academic create/patch/slug-409, materials text lifecycle + upload MIME/size validation (400/400/413), content versioning v1→v2 + wrong-type 400 + archive/activate 201, questions list + DELETE 204, jobs create/poll/roles/404)**; regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 / sec14 22 all FAIL=0; API typecheck/lint/build green.
+
 **Not started / pending:**
 
-- Later backend phases (15-17): Phase 15 — API Contract Verification is the recommended next task.
+- Later backend phases (16-17): Phase 16 — Testing & Demonstration Readiness is the recommended next task.
 - Frontend integration phases (18-25): DEFERRED (demo milestone frontend delivered via Wave 3)
 
 ## Phase Plans
@@ -78,39 +81,40 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 | 9 | Student Examination Attempts | ✓ completed (via demo Wave 2) |
 | 10 | Automatic Evaluation | ✓ completed (E2E 2026-09-08, ATTEMPTS PASS=76) |
 | 11 | Results | ✓ completed (with Phase 10 + Wave 4) |
-| 12 | Examination Analytics | ✓ completed (E2E 2026-09-08, attempts_e2e.sh PASS=96, node:test 12/12, |
+| 12 | Examination Analytics | ✓ completed (E2E 2026-09-08, attempts_e2e.sh PASS=96, node:test 12/12) |
 | 13 | Practice System | ✓ completed (E2E 2026-09-08, practice_e2e.sh PASS=73) |
-| 14 | Cross-Module Validation & Security | ○ NEXT |
-| 15 | API Contract Verification | ○ deferred |
-| 16 | Testing & Demonstration Readiness | ○ deferred |
+| 14 | Cross-Module Validation & Security | ✓ completed (E2E 2026-09-09, sec14_e2e.sh PASS=22) |
+| 15 | API Contract Verification | ✓ completed (E2E 2026-09-09, api_contract_e2e.sh PASS=49) |
+| 16 | Testing & Demonstration Readiness | ○ NEXT |
 | 17 | Backend-Complete Checkpoint | ○ deferred |
 | 18–25 | Frontend + Integration + Polish | ○ deferred (demo milestone frontend takes priority) |
 
 ## Current Task
 
-**Phase 14 — Cross-Module Validation & Security — COMPLETE (closed 2026-09-09). Next per roadmap:**
+**Phase 15 — API Contract Verification — COMPLETE (closed 2026-09-09). Next per roadmap:**
 
-**Phase 15 — API Contract Verification** (verify every endpoint against every
-`docs/api/` document: method, path, auth, authorization, request/response,
-status codes, validation, error format, pagination, filtering, IDs, date/time;
-resolve inconsistencies deliberately; extend `docs/api/` coverage to all
-phases). Phases 16-17 follow. Frontend integration phases (18-25) remain
-deferred per the demo-first override (frontend delivered inside the milestone
-as Wave 3).
+**Phase 16 — Testing & Demonstration Readiness** (expand automated coverage,
+tighten test/demo tooling and checkpoints). Phase 17 (backend-complete
+checkpoint) follows. Frontend integration phases (18-25) remain deferred per
+the demo-first override (frontend delivered inside the milestone as Wave 3).
 
 ## Session Continuity
 
 Last session: 2026-09-09 (closed)
-Stopped at: Phase 14 completed — cross-module validation & security hardening
-(role gating of question-bank/assessment/jobs reads, migration 0012 partial
-unique indexes for attempts + practice sessions, atomic
-submit/refreshAndExpire/saveResponse/answer with FOR UPDATE row locks and
-fresh post-evaluation re-reads, shared `isUniqueViolation` helper fixing
-drizzle-wrapped 23505 mapping, `sec14_e2e.sh` PASS=22 with concurrency +
-access-closure coverage), regressions attempts 96 / practice 73 / demo 52 /
-syllabus 39 / p8 86 / sec14 22, API typecheck/lint/build green.
+Stopped at: Phase 15 completed — API contract verification & alignment
+(3-subagent inventory of all endpoints over all 11 `docs/api/*.md`; doc fixes:
+questions 404→400 job-type, jobs roles + 201/200, attempts CSRF scope +
+analytics 12/12, practice no-updatedAt + class-validator wording, auth refresh
+rate limit, ai 500 on publish, syllabus extra 400s, content/materials 201
+transitions, AGENTS.md health route `GET /api/v1/health`; code fixes: removed
+dead 20MB check in materials.validateFile + deleted unused
+assessment-query.dto.ts; new `api_contract_e2e.sh` PASS=49 covering
+health/auth-CSRF refresh+logout+me/memberships/academic/materials/content
+versioning/questions/jobs), regressions attempts 96 / practice 73 / demo 52 /
+syllabus 39 / p8 86 / sec14 22 / contract 49 all FAIL=0, API
+typecheck/lint/build green.
 Clean tree, checkpoint pushed.
-Resume file: `.planning/ROADMAP.md` (Phase 15 — API Contract Verification next)
+Resume file: `.planning/ROADMAP.md` (Phase 16 — Testing & Demonstration Readiness next)
 
 ## Verification
 
@@ -128,6 +132,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 15 — API Contract Verification next
 - Phase 12 (analytics): `pnpm --filter @catlium/api test:analytics` 12/12 PASS (node:test — summary/averages/distribution/per-question/topic/difficulty/zero-marks/empty/privacy), `attempts_e2e.sh` PASS=96 FAIL=0 (AT-15 analytics metrics + AT-16 role/tenant/anon gates + AT-17 empty case), regressions `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API + web typecheck/lint + `next build` PASS, results route 200 on live dev web. 2026-09-08
 - Phase 13 (practice): `practice_e2e.sh` PASS=73 FAIL=0 (PR-01..12 + PR-05x — snapshot/sanitization, duplicate-open 409, start guards, grading/reveal/rating, flashcard back-face, complete idempotency, history stats, cross-student 404, tenant/anon gates, PRAC-03: 0 attempts written), regressions `attempts_e2e.sh` 96 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API typecheck/lint/build green, GlobalExceptionFilter now logs unhandled 500s. 2026-09-08
 - Phase 14 (validation & security): `sec14_e2e.sh` PASS=22 FAIL=0 (SC-01/02 student 403 on question-bank + assessment reads, SC-03 6-way attempt start single-winner 201 + 5×409, SC-04 parallel submit atomic evaluation, SC-05 answer-after-submit 400, SC-06 practice start single-winner + 409, SC-07 answer-after-complete 409), regressions `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API typecheck/lint/build green. 2026-09-09
+- Phase 15 (API contract verification): `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01 health public, CT-02 refresh/logout CSRF 403/200 + me + logout closes session, CT-03 memberships, CT-04 academic create/patch/slug-409, CT-05 materials text lifecycle 201/409/201, CT-06 upload validation MIME 400/mismatch 400/>20MB 413/invalid enum 400, CT-07 content versioning v1→v2 + versions + missing-version 404 + wrong-payload-type 400 + archive/activate 201, CT-08 questions list + invalid enum 400 + DELETE 204 + deleted 404, CT-09 jobs create 201/poll 200/unknown 404/student 403); all 11 `docs/api/*.md` + `AGENTS.md` verified and aligned; regressions `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 / `sec14_e2e.sh` 22 all FAIL=0; API typecheck/lint/build green. 2026-09-09
 - Known: zero automated test coverage across the codebase (manual E2E via shell scripts) — Phase 12 analytics logic has the project's first node:test unit coverage
 
 ## Decisions
@@ -146,7 +151,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 15 — API Contract Verification next
 
 ## Blocked
 
-- None. Phase 14 complete; nothing blocks Phase 15 (API Contract Verification).
+- None. Phase 15 complete; nothing blocks Phase 16 (Testing & Demonstration Readiness).
 
 ## Performance Metrics
 
