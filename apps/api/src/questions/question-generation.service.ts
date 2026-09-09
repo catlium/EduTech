@@ -2,12 +2,15 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
 import { topics, chapters, subjects } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 
 const OPERATION = 'AI_GENERATE_QUESTIONS';
@@ -44,7 +47,26 @@ export class QuestionGenerationService {
       },
     };
 
-    const job = await this.jobs.createJob(instituteId, OPERATION, payload);
+    // Same partial-unique-index + isUniqueViolation -> 409 pattern as content
+    // generation: only one active AI_GENERATE_QUESTIONS job per topic.
+    let job: Job;
+    try {
+      job = await this.jobs.insertJob(instituteId, OPERATION, payload);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('A generation is already in progress for this source');
+      }
+      throw error;
+    }
+
+    try {
+      await this.jobs.publishJob(job);
+    } catch {
+      await this.jobs.updateJobStatus(job.id, 'failed', undefined, {
+        message: 'Failed to enqueue generation job',
+      });
+      throw new InternalServerErrorException('Failed to enqueue generation job');
+    }
 
     return {
       jobId: job.id,

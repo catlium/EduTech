@@ -31,6 +31,13 @@ const JOB_QUEUE_BY_TYPE: Record<string, string> = {
   AI_GENERATE_SYLLABUS: 'ai_generation',
 };
 
+// Types the generic `POST /jobs` endpoint accepts. Anything else is rejected
+// up front instead of being consumed (acked) and never progressed by a worker.
+export const ALLOWED_JOB_TYPES = [
+  'MATERIAL_PROCESS',
+  ...Object.keys(JOB_QUEUE_BY_TYPE),
+] as const;
+
 @Injectable()
 export class JobsService {
   constructor(

@@ -92,6 +92,13 @@
       "when": 1788923364193,
       "tag": "0012_complete_blink",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788945826870,
+      "tag": "0013_thin_rogue",
+      "breakpoints": true
     }
   ]
 }

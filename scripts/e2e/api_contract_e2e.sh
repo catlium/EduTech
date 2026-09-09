@@ -3,7 +3,8 @@
 # Exercises the documented surface that the earlier per-phase suites do not
 # touch: health, auth refresh/logout CSRF, memberships, academic PATCH/slug
 # conflicts, the full materials lifecycle (including upload 400/413 paths),
-# content versioning, generic jobs, questions list validation + DELETE 204.
+# content versioning, generic jobs, questions list validation + DELETE 204,
+# question-generation dedup + job-type allowlist.
 # Behavior-only assertions cross-check the docs/api/*.md contracts (CT-01..):
 #   each endpoint asserts method, path, auth/roles, and status codes only, so
 #   the suite is stable against the mock-provider-dependent suites.
@@ -175,17 +176,24 @@ ok "$(req 'GET' '/questions?questionType=BOGUS')" 400 "CT-08b invalid enum filte
 ok "$(req DELETE "/questions/$Q1")" 204 "CT-08c delete question -> 204"
 ok "$(req GET "/questions/$Q1")" 404 "CT-08d deleted question -> 404"
 
-echo "== CT-09 jobs: create + poll + roles + 404 =="
+echo "== CT-09 jobs: create + poll + roles + 404 + type allowlist =="
 JAR="$CJ"
 ok "$(req POST /jobs -H 'Content-Type: application/json' -d "{\"type\":\"MATERIAL_PROCESS\",\"payload\":{\"materialId\":\"$MAT\"}}")" 201 "CT-09a create job -> 201"
 JID=$(jget id)
 ok "$(req GET "/jobs/$JID")" 200 "CT-09b get job -> 200"
 body_has 'MATERIAL_PROCESS' "CT-09c job type echoed"
 ok "$(req GET "/jobs/00000000-0000-4000-8000-000000000000")" 404 "CT-09d unknown job -> 404"
+ok "$(req POST /jobs -H 'Content-Type: application/json' -d '{"type":"BOGUS_JOB","payload":{}}')" 400 "CT-09f unsupported job type -> 400"
 JAR="$CJS"
 ok "$(req GET "/jobs/$JID")" 403 "CT-09e student get job -> 403"
 
-echo "== CT-10 logout exercise lives in CT-02 (scratch sessions); nothing here =="
+echo "== CT-10 question generation dedup (worker stopped -> first job stays queued) =="
+JAR="$CJ"
+QG1=$(req POST /questions/generate -H 'Content-Type: application/json' \
+  -d "{\"topicId\":\"$TOPIC\",\"questionType\":\"MCQ\",\"count\":2}")
+ok "$QG1" 202 "CT-10a question generate -> 202"
+ok "$(req POST /questions/generate -H 'Content-Type: application/json' \
+  -d "{\"topicId\":\"$TOPIC\",\"questionType\":\"MCQ\",\"count\":2}")" 409 "CT-10b duplicate active generation -> 409"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

@@ -92,12 +92,24 @@ MOCK_QUESTIONS = [
 QUESTIONS = {"questions": MOCK_QUESTIONS}
 
 
-def _pick(model: str) -> dict:
+def _pick(model: str, messages: list | None = None) -> dict:
     if "syllabus" in model:
         return SYLLABUS
     if "note" in model:
         return NOTE
     if "question" in model:
+        return QUESTIONS
+    # WORKER_AI_MODEL=auto (the dockerized demo default): the worker embeds the
+    # operation into its prompt, so dispatch deterministically on that instead
+    # of silently returning the syllabus payload for every operation.
+    probe = " ".join(
+        str(m.get("content", "")) for m in (messages or [])
+    ).lower()
+    if "study notes" in probe:
+        return NOTE
+    if "syllabus structure" in probe:
+        return SYLLABUS
+    if "questions" in probe:
         return QUESTIONS
     return SYLLABUS
 
@@ -116,11 +128,16 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
         model = "syllabus-mock"
+        messages: list | None = None
         try:
-            model = json.loads(raw).get("model", "syllabus-mock")
+            payload = json.loads(raw)
+            model = str(payload.get("model", "syllabus-mock"))
+            messages = payload.get("messages")
         except (ValueError, TypeError):
             pass
-        body = json.dumps({"choices": [{"message": {"content": json.dumps(_pick(model))}}]}).encode()
+        body = json.dumps(
+            {"choices": [{"message": {"content": json.dumps(_pick(model, messages))}}]}
+        ).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
