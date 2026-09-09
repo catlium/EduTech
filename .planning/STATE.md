@@ -5,7 +5,7 @@ current_phase_name: Phase 15 — API Contract Verification
 status: completed
 stopped_at: "Phase 15 — API Contract Verification COMPLETE (2026-09-09): every docs/api/*.md verified against the live API; 10 doc fixes aligned (questions 404→400 job-type, jobs roles + 201/200 codes, attempts CSRF scope + analytics 12/12, practice no-updatedAt + class-validator wording, auth refresh rate limit, ai 500 on publish, syllabus extra 400s, content/materials 201 transitions, AGENTS.md health route /api/v1/health); 2 code fixes (removed dead size check in materials.validateFile + deleted unused assessment-query.dto.ts); new api_contract_e2e.sh PASS=49 covering health/auth-CSRF/memberships/academic/materials/content versioning/questions/jobs; regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 / sec14 22 all FAIL=0; typecheck/lint/build green. Next: Phase 16 — Testing & Demonstration Readiness."
 last_updated: "2026-09-09T12:00:00.000Z"
-state_head: <TBD-COMMIT>
+state_head: 501d92b
 progress:
   total_phases: 17
   completed_phases: 15
