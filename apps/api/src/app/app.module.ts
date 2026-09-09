@@ -12,6 +12,7 @@ import { MaterialsModule } from '../materials/materials.module.js';
 import { QuestionsModule } from '../questions/questions.module.js';
 import { ExaminationsModule } from '../examinations/examinations.module.js';
 import { SyllabusModule } from '../syllabus/syllabus.module.js';
+import { PaperPatternsModule } from '../paper-patterns/paper-patterns.module.js';
 import { AttemptsModule } from '../attempts/attempts.module.js';
 import { PracticeModule } from '../practice/practice.module.js';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter.js';
@@ -45,6 +46,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     QuestionsModule,
     ExaminationsModule,
     SyllabusModule,
+    PaperPatternsModule,
     AttemptsModule,
     PracticeModule,
   ],

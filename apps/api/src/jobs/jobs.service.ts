@@ -29,6 +29,7 @@ const JOB_QUEUE_BY_TYPE: Record<string, string> = {
   AI_GENERATE_CONCEPTS: 'ai_generation',
   AI_GENERATE_QUESTIONS: 'ai_generation',
   AI_GENERATE_SYLLABUS: 'ai_generation',
+  AI_GENERATE_BLUEPRINT: 'ai_generation',
 };
 
 // Types the generic `POST /jobs` endpoint accepts. Anything else is rejected

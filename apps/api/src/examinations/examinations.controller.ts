@@ -171,6 +171,7 @@ export class ExaminationsController {
       tenant.instituteId,
       assessmentId,
       dto.questionIds,
+      dto.marks,
     );
     return { added };
   }

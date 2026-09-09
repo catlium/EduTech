@@ -6,7 +6,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { eq, and, desc, asc, inArray, count, max } from 'drizzle-orm';
-import { assessments, assessmentQuestions, questions } from '@catlium/database';
+import { assessments, assessmentQuestions, paperPatterns, questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import type { AssessmentStatus } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
@@ -29,6 +29,7 @@ export interface CreateAssessmentInput {
   instructions?: Record<string, unknown>;
   startsAt?: string;
   endsAt?: string;
+  blueprintId?: string;
 }
 
 export interface UpdateAssessmentInput {
@@ -78,6 +79,22 @@ export class ExaminationsService {
       input.startsAt !== undefined,
     );
 
+    // Provenance guard: an explicit blueprint reference must be an APPROVED,
+    // in-institute paper pattern before we persist it. Assessments created
+    // from a blueprint always pass a valid one (POST /paper-patterns/:id/assessment).
+    if (input.blueprintId) {
+      const [pattern] = await this.db
+        .select({ id: paperPatterns.id, status: paperPatterns.status })
+        .from(paperPatterns)
+        .where(
+          and(eq(paperPatterns.id, input.blueprintId), eq(paperPatterns.instituteId, instituteId)),
+        )
+        .limit(1);
+      if (!pattern || pattern.status !== 'APPROVED') {
+        throw new BadRequestException('Blueprint must be an approved paper pattern');
+      }
+    }
+
     const [assessment] = await this.db
       .insert(assessments)
       .values({
@@ -89,6 +106,7 @@ export class ExaminationsService {
         instructions: input.instructions ?? null,
         startsAt: input.startsAt ? new Date(input.startsAt) : null,
         endsAt: input.endsAt ? new Date(input.endsAt) : null,
+        blueprintId: input.blueprintId ?? null,
         status: 'DRAFT',
         createdBy,
         updatedBy: createdBy,
@@ -293,7 +311,12 @@ export class ExaminationsService {
     }));
   }
 
-  async addQuestions(instituteId: string, assessmentId: string, questionIds: string[]) {
+  async addQuestions(
+    instituteId: string,
+    assessmentId: string,
+    questionIds: string[],
+    marksOverride?: Record<string, number>,
+  ) {
     const existing = await this.getAssessment(instituteId, assessmentId);
 
     // Research "question set is locked after PUBLISHED" + T-08-17 — only a
@@ -318,8 +341,18 @@ export class ExaminationsService {
       }
       // T-08-21 — an ARCHIVED (non-ACTIVE) question cannot be linked at all;
       // defense in depth with the publish gate (WR-03/EXAM-08).
-      if (question.status !== 'ACTIVE') {
+if (question.status !== 'ACTIVE') {
         throw new BadRequestException(`Question ${id} is not ACTIVE`);
+      }
+    }
+
+    // Marks override validated before the transaction: a teacher can
+    // overweight any question, integer marks 1..1000, defaulting to 1 (A5).
+    for (const [id, marks] of Object.entries(marksOverride ?? {})) {
+      if (!Number.isInteger(marks) || marks < 1 || marks > 1000) {
+        throw new BadRequestException(
+          `Marks for question ${id} must be an integer between 1 and 1000`,
+        );
       }
     }
 
@@ -336,7 +369,8 @@ export class ExaminationsService {
           .where(eq(assessmentQuestions.assessmentId, assessmentId));
 
         const added: Array<typeof assessmentQuestions.$inferSelect> = [];
-        // sortOrder continues after the existing max; marks defaults to 1 (A5).
+        // sortOrder continues after the existing max; marks defaults to the
+        // override for that question, else 1 (A5).
         for (let i = 0; i < questionIds.length; i++) {
           const [row] = await tx
             .insert(assessmentQuestions)
@@ -344,7 +378,7 @@ export class ExaminationsService {
               assessmentId,
               questionId: questionIds[i]!,
               sortOrder: (agg?.maxSort ?? 0) + i + 1,
-              marks: 1,
+              marks: marksOverride?.[questionIds[i]!] ?? 1,
             })
             .returning();
           added.push(row!);

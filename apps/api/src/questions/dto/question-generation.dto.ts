@@ -20,6 +20,10 @@ export class GenerateQuestionsDto {
   @IsOptional()
   @IsIn(['EASY', 'MEDIUM', 'HARD'])
   difficulty?: QuestionDifficulty;
+
+  @IsOptional()
+  @IsUUID()
+  blueprintId?: string;
 }
 
 export class BatchQuestionActionDto {

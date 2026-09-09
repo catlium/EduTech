@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:analytics": "node --test src/attempts/analytics.test.ts",
+    "test:paper-patterns": "node --test src/paper-patterns/paper-patterns.validation.test.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

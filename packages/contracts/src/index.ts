@@ -1001,3 +1001,109 @@ export const PracticeSessionListItemSchema = z.object({
   completedAt: z.string().nullable(),
 });
 export type PracticeSessionListItem = z.infer<typeof PracticeSessionListItemSchema>;
+
+// ── Paper Pattern Contracts (Phase 18 — paper patterns / blueprint) ─────────
+//
+// A paper pattern is a reusable, tenant-scoped exam blueprint: total marks,
+// duration, instructions and an ordered set of sections. Each section declares
+// a question type (reusing the existing objective QuestionTypeEnum — no new
+// question types), question count, marks per question, whether it is
+// compulsory ("attempt all") or offers a choice ("attempt N of M"), and
+// optional difficulty/topic *percentage* distributions. Nullable fields
+// represent explicit uncertainty — e.g. an AI analysis that could not infer a
+// difficulty split must leave it null rather than invent one.
+//
+// Lifecycle: DRAFT (manual) / REVIEW (AI draft awaiting teacher review) →
+// APPROVED (after deterministic validation). Only APPROVED patterns may drive
+// question generation or assessment creation. Edits to APPROVED patterns are
+// rejected; drafts carry an optimistic `version` counter.
+
+export const PaperPatternStatusEnum = z.enum(['DRAFT', 'REVIEW', 'APPROVED']);
+export type PaperPatternStatus = z.infer<typeof PaperPatternStatusEnum>;
+
+export const PaperPatternSourceTypeEnum = z.enum([
+  'MANUAL',
+  'TEXT',
+  'MATERIAL',
+  'PREVIOUS_YEAR_PAPER',
+]);
+export type PaperPatternSourceType = z.infer<typeof PaperPatternSourceTypeEnum>;
+
+export const PaperPatternDifficultyDistributionSchema = z.object({
+  EASY: z.number().int().min(0).max(100),
+  MEDIUM: z.number().int().min(0).max(100),
+  HARD: z.number().int().min(0).max(100),
+});
+export type PaperPatternDifficultyDistribution = z.infer<
+  typeof PaperPatternDifficultyDistributionSchema
+>;
+
+export const PaperPatternTopicDistributionSchema = z.object({
+  name: z.string().min(1).max(255),
+  /* null percentage = explicit "unknown", never a fabricated value */
+  percentage: z.number().min(0).max(100).nullable().optional(),
+});
+export type PaperPatternTopicDistribution = z.infer<
+  typeof PaperPatternTopicDistributionSchema
+>;
+
+export const PaperPatternSectionSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  /* absent/undefined = unspecified or mixed-type section (no descriptive type exists yet) */
+  questionType: QuestionTypeEnum.optional(),
+  /* null = unknown (teacher/AI could not state it) */
+  count: z.number().int().min(1).nullable().optional(),
+  marksPerQuestion: z.number().int().min(1).nullable().optional(),
+  totalMarks: z.number().int().min(1).nullable().optional(),
+  compulsory: z.boolean().default(true),
+  /* "attempt N of M" — for non-compulsory sections */
+  attemptCount: z.number().int().min(1).nullable().optional(),
+  difficultyDistribution: PaperPatternDifficultyDistributionSchema.nullable().optional(),
+  topicDistribution: z
+    .array(PaperPatternTopicDistributionSchema)
+    .max(100)
+    .nullable()
+    .optional(),
+});
+export type PaperPatternSection = z.infer<typeof PaperPatternSectionSchema>;
+
+export const PaperPatternStructureSchema = z.object({
+  totalMarks: z.number().int().min(1),
+  durationMinutes: z.number().int().min(1),
+  instructions: z.array(z.string().max(2000)).max(50).default([]),
+  sections: z.array(PaperPatternSectionSchema).min(1).max(50),
+});
+export type PaperPatternStructure = z.infer<typeof PaperPatternStructureSchema>;
+
+export const PaperPatternSchema = z.object({
+  id: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  title: z.string().min(1).max(255),
+  description: z.string().max(1000).nullable(),
+  status: PaperPatternStatusEnum,
+  version: z.number().int().min(1),
+  sourceType: PaperPatternSourceTypeEnum,
+  sourceMaterialId: z.string().uuid().nullable(),
+  structure: PaperPatternStructureSchema.nullable(),
+  createdBy: z.string().uuid(),
+  updatedBy: z.string().uuid().nullable(),
+  validatedAt: z.string().datetime().nullable(),
+  approvedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type PaperPattern = z.infer<typeof PaperPatternSchema>;
+
+export const AnalyzePaperPatternSourceSchema = z.object({
+  type: PaperPatternSourceTypeEnum,
+  id: z.string().uuid().optional(),
+  text: z.string().min(1).max(1_000_000).optional(),
+});
+export type AnalyzePaperPatternSource = z.infer<typeof AnalyzePaperPatternSourceSchema>;
+
+export const GenerateQuestionsWithBlueprintSchema = z.object({
+  blueprintId: z.string().uuid().optional(),
+});
+export type GenerateQuestionsWithBlueprint = z.infer<typeof GenerateQuestionsWithBlueprintSchema>;

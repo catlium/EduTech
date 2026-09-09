@@ -9,6 +9,7 @@ import {
   IsISO8601,
   IsDefined,
   MinLength,
+  IsUUID,
 } from 'class-validator';
 
 export class CreateAssessmentDto {
@@ -46,4 +47,9 @@ export class CreateAssessmentDto {
   @IsOptional()
   @IsISO8601()
   endsAt?: string;
+
+  // Provenance: approved paper pattern this assessment was built from.
+  @IsOptional()
+  @IsUUID()
+  blueprintId?: string;
 }

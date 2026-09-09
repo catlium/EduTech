@@ -7,7 +7,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
-import { topics, chapters, subjects } from '@catlium/database';
+import { topics, chapters, subjects, paperPatterns } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
@@ -20,6 +20,7 @@ interface GenerateQuestionsInput {
   questionType: 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
   count: number;
   difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+  blueprintId?: string;
 }
 
 @Injectable()
@@ -34,9 +35,9 @@ export class QuestionGenerationService {
     userId: string,
     input: GenerateQuestionsInput,
   ) {
-    await this.assertTopicInInstitute(instituteId, input.topicId);
+    const topic = await this.assertTopicInInstitute(instituteId, input.topicId);
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       operation: OPERATION,
       source: { type: 'TOPIC', id: input.topicId },
       requestedBy: userId,
@@ -46,6 +47,35 @@ export class QuestionGenerationService {
         difficulty: input.difficulty ?? 'MEDIUM',
       },
     };
+
+    // Blueprint-constrained generation: the approved pattern's structure is
+    // attached to the job so the worker can target it and report satisfaction.
+    if (input.blueprintId) {
+      const [pattern] = await this.db
+        .select()
+        .from(paperPatterns)
+        .where(
+          and(
+            eq(paperPatterns.id, input.blueprintId),
+            eq(paperPatterns.instituteId, instituteId),
+          ),
+        )
+        .limit(1);
+      if (!pattern || pattern.status !== 'APPROVED') {
+        throw new BadRequestException(
+          'Blueprint must be an approved paper pattern in this institute',
+        );
+      }
+      if (topic.subjectId !== pattern.subjectId) {
+        throw new BadRequestException(
+          'Blueprint subject must match the generation topic subject',
+        );
+      }
+      payload['params'] = {
+        ...(payload['params'] as Record<string, unknown>),
+        blueprint: { patternId: pattern.id, structure: pattern.structure },
+      };
+    }
 
     // Same partial-unique-index + isUniqueViolation -> 409 pattern as content
     // generation: only one active AI_GENERATE_QUESTIONS job per topic.
@@ -88,15 +118,16 @@ export class QuestionGenerationService {
   private async assertTopicInInstitute(
     instituteId: string,
     topicId: string,
-  ): Promise<void> {
-    const [topic] = await this.db
-      .select({ id: topics.id })
+  ): Promise<{ topicId: string; subjectId: string }> {
+    const [row] = await this.db
+      .select({ topicId: topics.id, subjectId: subjects.id })
       .from(topics)
       .innerJoin(chapters, eq(topics.chapterId, chapters.id))
       .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
       .where(and(eq(topics.id, topicId), eq(subjects.instituteId, instituteId)))
       .limit(1);
 
-    if (!topic) throw new NotFoundException('Topic not found');
+    if (!row) throw new NotFoundException('Topic not found');
+    return row;
   }
 }
