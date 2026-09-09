@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-17-backend-complete
-current_phase_name: Phase 17 — Backend-Complete Checkpoint
+current_phase: phase-18-paper-pattern-complete
+current_phase_name: Phase 18 — Paper Pattern / Blueprint (Backend)
 status: completed
-stopped_at: "Phase 17 — Backend-Complete Checkpoint PASSED (2026-09-09): 4-subagent backend gate (module/route inventory + workflow traces, security/tenancy/RBAC/projection audit, concurrency/integrity audit incl. DB constraints, AI/OCR/worker boundary + incomplete-work + env audit); 2 real defects fixed — (1) AI_GENERATE_QUESTIONS missing from the jobs_active_generation_unique partial index (concurrent question-gen could enqueue duplicate jobs → now schema+migration 0013 includes it and the service maps the violation to 409 like content generation), (2) generic POST /jobs accepted arbitrary types that workers ack-and-skip (→ stuck queued) — now allowlisted via ALLOWED_JOB_TYPES + IsIn validation (unknown type 400); +3 contract asserts (CT-09f unknown type 400, CT-10a/b question-generation dedup 202/409); mock_ai_provider.py now dispatches by operation keywords when WORKER_AI_MODEL=auto → full 3-op AI demo reproducible on the dockerized stack; FULL regression 508/508 (attempts 96 / practice 73 / sec14 22 / api_contract 52 / demo 52 / syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32); typecheck/lint/build PASS; REQUIREMENTS.md DONE-01..15 all ✓; docs/jobs.md allowlist contract; non-blocking limitations documented (live OmniRoute needs operator credentials, CSRF-on-auth-only under SameSite=Lax, OCR key fail-open-when-unset, GIF/office extraction out of scope). Next: frontend integration phases 18-25 (Phase 18 — Frontend Foundation) or Paper Pattern/Blueprint as next product capability."
-last_updated: "2026-09-09T22:00:00.000Z"
+stopped_at: "Phase 18 — Paper Pattern / Blueprint COMPLETE (2026-09-09): full backend implementation of paper-patterns module (CRUD + DRAFT→REVIEW→APPROVED lifecycle + TEXT-source AI analysis + deterministic validation + assessment-from-blueprint + blueprint-constrained generation + marks override); validated: analyse, validate, approve, generate-with-blueprint (satisfied true/false), assessment-from-blueprint, marks override, security/tenant isolation; regression 583/583 FAIL=0 across 12 E2E suites; unit tests 13/13; typecheck/lint PASS; validate bug fixed (valid: false now correct); docs/api/paper-patterns.md + questions.md + assessments.md + REQUIREMENTS + ROADMAP updated; frontend phases renumbered 19-26. Next: Phase 19 — Frontend Foundation."
+last_updated: "2026-09-09T16:45:00.000Z"
 state_head: 4f07977
 progress:
   total_phases: 17
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Core value:** A teacher takes a source material through upload → async OCR/AI processing → AI-generated, reviewable content/questions → a published, approved-question-only examination, and a student takes it and receives an automatically-computed, reproducible result.
-**Current focus:** Demo Milestone — vertical slice (teacher → syllabus → AI → questions → quiz → student → attempt → result) with first-class `apps/web` frontend.
+**Current focus:** Phase 18 Paper Pattern / Blueprint backend — COMPLETE (2026-09-09).
 
 ## Project State
 
 **Sequence:** Demo-first vertical-slice (user-directed override)
-**Phase:** Phase 17 — Backend-Complete Checkpoint
-**Status:** COMPLETE — PASSED 2026-09-09 (4-subagent gate, 2 defects fixed with migration+regression, full 11-suite regression 508 assertions green on the dockerized stack, typecheck/lint/build PASS, DONE-01..15 all ✓)
+**Phase:** Phase 18 — Paper Pattern / Blueprint (Backend)
+**Status:** COMPLETE — 583/583 E2E checks across 12 suites; unit tests 13/13; typecheck/lint PASS; PP-01..08 ✓
 
 ## Phase State
 
@@ -59,8 +59,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Not started / pending:**
 
-- Frontend integration phases (18-25): DEFERRED — demo milestone frontend delivered (Wave 3); Phase 17 backend-complete gate now PASSED, so frontend feature development may begin.
-- Next product capability (out of Phase-17 scope, recorded): Paper Pattern / Blueprint system.
+- Frontend integration phases (19-26): DEFERRED — Phase 18 backend now COMPLETE; frontend feature development can begin at Phase 19.
+- Next: Phase 19 — Frontend Foundation.
 
 ## Phase Plans
 
@@ -88,33 +88,29 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 | 15 | API Contract Verification | ✓ completed (E2E 2026-09-09, api_contract_e2e.sh PASS=49) |
 | 16 | Testing & Demonstration Readiness | ✓ completed (E2E 2026-09-09, 11-suite regression 505 assertions FAIL=0) |
 | 17 | Backend-Complete Checkpoint | ✓ completed (PASSED 2026-09-09, regression 508 assertions FAIL=0) |
-| 18–25 | Frontend + Integration + Polish | ○ deferred (demo milestone frontend delivered via Wave 3; gate now passed) |
+| 18 | Paper Pattern / Blueprint (Backend) | ✓ completed (2026-09-09, regression 583 assertions FAIL=0, 12 suites) |
+| 19–26 | Frontend + Integration + Polish | ○ deferred (gate open — Phase 18 backend delivered) |
 
 ## Current Task
 
-**Phase 17 — Backend-Complete Checkpoint — PASSED (closed 2026-09-09).**
-The backend surface is inventoried, audited, and fully green. Next per
-roadmap: **Phase 18 — Frontend Foundation** (or, as the next product
-capability, the Paper Pattern / Blueprint system — explicitly out of Phase-17
-scope).
+**Phase 18 — Paper Pattern / Blueprint (Backend) — COMPLETE (closed 2026-09-09).**
+The Paper Pattern / Blueprint backend is fully implemented and validated. Next per
+roadmap: **Phase 19 — Frontend Foundation** (app shell, auth screens, API client,
+session/role handling).
 
 ## Session Continuity
 
-Last session: 2026-09-09 (Phase 17 closed)
-Stopped at: Phase 17 — Backend-Complete Checkpoint PASSED
-(4-subagent backend gate: module inventory + workflow traces, security audit,
-concurrency/integrity audit, boundary + incomplete-work audit; 2 defects
-fixed — AI_GENERATE_QUESTIONS dedup index (migration 0013) + service 409
-mapping, and POST /jobs type allowlist (unknown type 400) — each with
-contract-suite regression (CT-09f, CT-10a/b); mock_ai_provider.py operation-
-keyword dispatch so the full 3-op AI demo runs on the dockerized stack;
-full 11-suite regression 508/508 FAIL=0; typecheck/lint/build PASS;
-REQUIREMENTS.md DONE-01..15 all ✓ + traceability reconciled; docs/api/jobs.md
-allowlist documented; non-blocking limitations recorded (live OmniRoute needs
-operator credentials, CSRF-on-auth-only under SameSite=Lax, OCR key
-fail-open-when-unset, GIF/office extraction out of agreed scope).
+Last session: 2026-09-09 (Phase 18 Paper Pattern closed)
+Stopped at: Phase 18 — Paper Pattern / Blueprint COMPLETE
+(paper-patterns module: CRUD + DRAFT→REVIEW→APPROVED lifecycle + TEXT-source AI
+analysis + deterministic validation + assessment-from-blueprint + blueprint-
+constrained generation with satisfaction report + marks override; validate bug
+fixed (valid: false now correct); 75/75 E2E; full regression 583/583 FAIL=0;
+unit tests 13/13; typecheck/lint PASS; docs/api/paper-patterns.md + questions.md
++ assessments.md + REQUIREMENTS.md + ROADMAP.md updated; frontend phases
+renumbered 19-26).
 Clean tree, checkpoint pushed.
-Resume file: `.planning/ROADMAP.md` (Phase 18 — Frontend Foundation next)
+Resume file: `.planning/ROADMAP.md` (Phase 19 — Frontend Foundation next)
 
 ## Verification
 
@@ -135,6 +131,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 18 — Frontend Foundation next)
 - Phase 15 (API contract verification): `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01 health public, CT-02 refresh/logout CSRF 403/200 + me + logout closes session, CT-03 memberships, CT-04 academic create/patch/slug-409, CT-05 materials text lifecycle 201/409/201, CT-06 upload validation MIME 400/mismatch 400/>20MB 413/invalid enum 400, CT-07 content versioning v1→v2 + versions + missing-version 404 + wrong-payload-type 400 + archive/activate 201, CT-08 questions list + invalid enum 400 + DELETE 204 + deleted 404, CT-09 jobs create 201/poll 200/unknown 404/student 403); all 11 `docs/api/*.md` + `AGENTS.md` verified and aligned; regressions `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 / `sec14_e2e.sh` 22 all FAIL=0; API typecheck/lint/build green. 2026-09-09
 - Phase 16 (testing & demo readiness): **11-suite regression 505/505 green on the dockerized stack** — attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 / syllabus 39 / p8 86 / NEW auth 15 / NEW materials 21 / NEW web_smoke 20 / NEW docker_readiness 32 (seeded, full worker boundary). Compose at repo root; web :3001 public behind middleware auth guard; demo profile = seed (demo + p8 fixtures) + mock AI; env audited (Web/OmniRoute/Demo sections, no Ollama); login_user jar-staleness guard across 8 suites; typecheck/lint/build PASS. 2026-09-09
 - Known: zero automated test coverage across the codebase (manual E2E via shell scripts) — Phase 12 analytics logic has the project's first node:test unit coverage
+- Phase 18 (paper pattern / blueprint): `paper_pattern_e2e.sh` PASS=75 FAIL=0 (PP-01..15 — CRUD, validate, approve, analyse, assessment-from-blueprint, blueprint-constrained generation satisfied true/false, marks override, student 403, cross-tenant 403/404, no-cookie 401); full 12-suite regression 583/583 FAIL=0; `pnpm --filter @catlium/api run test:paper-patterns` 13/13 PASS (unit: validation logic); typecheck/lint PASS; validate bug fixed (`valid: false` now correct); docs/api/paper-patterns.md written. 2026-09-09
 
 ## Decisions
 

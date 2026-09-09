@@ -55,6 +55,82 @@ regression **508/508 FAIL=0** on the dockerized stack; `pnpm typecheck` +
 
 ---
 
+## Phase 18 — Paper Pattern / Blueprint (Backend)
+
+Status: `[x]` **PASS (2026-09-09)** — paper-patterns module fully implemented
+and validated. 12-suite regression **583/583 FAIL=0** on the dockerized stack;
+unit tests 13/13; typecheck/lint PASS; REQS PP-01..08 ✓.
+
+### New checks added by this phase
+
+- **PP-01 — CRUD create + get** — `[x]` passed 2026-09-09 via
+  `bash scripts/e2e/paper_pattern_e2e.sh` (PP-01).
+  - Setup: dockerized stack up; teacher cookie; demo topic, subject.
+  - Endpoint: `POST /api/v1/paper-patterns` then `GET /api/v1/paper-patterns/:id`
+  - Payload: `{"title":"Full Blueprint","subjectId":"<demo subject>","topicId":"<demo topic>","totalMarks":100,"durationMinutes":120,"structure":{"totalMarks":100,"durationMinutes":120,"questions":[{"section":"Part A","questionType":"mcq","count":10,"marksPerQuestion":2,"difficulty":"easy","compulsory":true}],"instructions":["Answer all questions."]}}`
+  - Expected: 201 `{status:"DRAFT"}`; GET returns same.
+
+- **PP-02 — TEXT-source AI analysis → REVIEW** — `[x]` passed 2026-09-09 via
+  `paper_pattern_e2e.sh` (PP-02).
+  - Setup: create pattern first; mock AI running (mock_ai_provider.py on :8899).
+  - Endpoint: `POST /api/v1/paper-patterns/:id/analyze`
+  - Payload: `{"type":"TEXT","sourceMaterialId":"<demo text-material>","rawText":"Sample paper..."}`
+  - Expected: 200; `status: "REVIEW"`; `structure` populated from AI.
+
+- **PP-03 — Deterministic validate** — `[x]` passed 2026-09-09 via
+  `paper_pattern_e2e.sh` (PP-03, PP-03b).
+  - Setup: pattern with valid/invalid structure.
+  - Endpoint: `POST /api/v1/paper-patterns/:id/validate`
+  - Payload: `{"structure":{...}}` (structure with arithmetic mismatch)
+  - Expected: `valid: false, errors: [...]` (was bug: always `valid: true`; now fixed).
+
+- **PP-04 — Assessments can link via blueprintId** — `[x]` passed 2026-09-09 via
+  `paper_pattern_e2e.sh` (PP-04, PP-04b).
+  - Setup: approved pattern + demo topic + demo material.
+  - Endpoint: `POST /api/v1/assessments`
+  - Payload: `{"title":"BP Quiz","type":"quiz","topicId":"...","blueprintId":"<approved-pattern>"}}`
+  - Expected: 201 with `assessment.blueprintId` populated.
+
+- **PP-05 — Blueprint-constrained question generation** — `[x]` passed 2026-09-09
+  via `paper_pattern_e2e.sh` (PP-05, PP-05x).
+  - Setup: linked assessment; mock AI on :8899; workers running.
+  - Endpoint: `POST /api/v1/questions/generate`
+  - Payload: `{"assessmentId":"...","count":10,"blueprintId":"<approved>","type_":"mcq"}`
+  - Expected: 202; job `completed` with `result.satisfied` array; generated
+    questions have `status: "PENDING"`.
+
+- **PP-06 — Marks override on question linking** — `[x]` passed 2026-09-09 via
+  `paper_pattern_e2e.sh` (PP-06).
+  - Endpoint: `POST /api/v1/assessments/:id/questions`
+  - Payload: `{"questionIds":["..."],"marks":{"<qid>":7}}`
+  - Expected: 201; `assessmentQuestion.marks = 7`.
+
+- **PP-07 — Student tenant isolation** — `[x]` passed 2026-09-09 via
+  `paper_pattern_e2e.sh` (PP-07, PP-07x).
+  - Endpoint: `POST /api/v1/paper-patterns` (student cookie), `DELETE .../:id`, `PATCH .../:id`, `POST .../analyze`, `POST .../validate`
+  - Expected: all 403 for student; cross-tenant 404/403.
+
+- **PP-08 — Auth / no-cookie 401** — `[x]` passed 2026-09-09 via
+  `paper_pattern_e2e.sh` (PP-08).
+  - Endpoint: `GET /api/v1/paper-patterns` with no cookie
+  - Expected: 401.
+
+### Phase 18 regression (all suites, dockerized stack, 2026-09-09)
+
+- `[x]` paper_pattern_e2e.sh **75/0** (PP-01..15).
+- `[x]` Full 12-suite regression: paper_pattern 75, attempts 96, practice 73,
+  sec14 22, api_contract 52, demo 52, syllabus 39, p8 86, auth 15,
+  materials 21, web_smoke 20, docker_readiness 32 — **583/583 FAIL=0**.
+- `[x]` Unit tests: `pnpm --filter @catlium/api run test:paper-patterns` 13/13 PASS.
+- `[x]` `pnpm typecheck` / `pnpm lint` PASS.
+
+### Known issue fixed during this phase
+
+- `validate()` always returned `valid: true` regardless of errors — fixed in
+  `paper-patterns.service.ts:208`; API image rebuilt and restarted.
+
+---
+
 ## Demo Milestone — Full Journey E2E (Wave 4 close)
 
 Status: `[x]` **PASS=52 FAIL=0 (2026-09-08)** via

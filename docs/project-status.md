@@ -1,56 +1,52 @@
 # Project Status
 
-## Phase 17 — Backend-Complete Checkpoint ✓ (2026-09-09)
+## Phase 18 — Paper Pattern / Blueprint (Backend) ✓ (2026-09-09)
 
-**Status: PASSED — closed 2026-09-09.** The whole backend surface was
-inventoried and audited by 4 subagents, two real defects were fixed with
-regressions, and the full 11-suite regression went **508/508 FAIL=0** on the
-dockerized stack. `pnpm typecheck`/`lint`/`build` PASS. Clean tree, checkpoint
-pushed.
+**Status: COMPLETE — closed 2026-09-09.** Paper Pattern / Blueprint backend
+fully implemented: paper-patterns module (CRUD + DRAFT→REVIEW→APPROVED lifecycle
++ TEXT-source AI analysis + deterministic validation + assessment-from-blueprint
++ blueprint-constrained generation with satisfaction report + marks override);
+unit tests 13/13; full 12-suite regression **583/583 FAIL=0** on the
+dockerized stack. `pnpm typecheck`/`lint` PASS. docs updated. FE phases
+renumbered 19-26. Clean tree, checkpoint pushed.
 
 ### What landed
 
-- **Backend gate audits (4 subagents):**
-  1. Module/route inventory + teacher/student/practice/jobs workflow traces —
-     every flow connected, no dead ends (full module map + `file:line` traces
-     delivered).
-  2. Security — no BLOCKER (CSRF-on-auth-only mitigated by SameSite=Lax; OCR
-     internal key fail-open only when unset; materials `storageKey` visibility
-     — all documented). Tenancy/RBAC/sensitive projection verified everywhere.
-  3. Concurrency/integrity — attempts/practice start, submit, deadline,
-     publish gates all safe (partial unique indexes + FOR UPDATE locks).
-  4. AI/OCR/worker boundary + incomplete-work audit — OCR generic/local,
-     AI → OmniRoute only, unknown job types ack-and-skip; Paper Pattern/
-     Blueprint recorded as the next product capability (out of scope).
-- **Defect fix 1 — question-generation dedup.** `AI_GENERATE_QUESTIONS` was
-  missing from the `jobs_active_generation_unique` partial index, and the
-  service didn't map unique violations, so concurrent question-gen could
-  enqueue duplicate active jobs. Fixed: `schema/jobs.ts` index coverage +
-  migration `0013_thin_rogue.sql` + `question-generation.service.ts` now uses
-  `insertJob` + `isUniqueViolation` → `409` (mirrors content generation).
-- **Defect fix 2 — POST /jobs allowlist.** Generic job creation accepted
-  arbitrary types that workers ack-and-skip → rows stuck `queued`. Fixed:
-  `ALLOWED_JOB_TYPES` (`MATERIAL_PROCESS` + all `AI_GENERATE_*`) +
-  `@IsIn` validation → unknown type `400`.
-- **Demo AI on the dockerized stack.** `mock_ai_provider.py` now dispatches by
-  operation keywords when `WORKER_AI_MODEL=auto` (the container default), so
-  the full 3-op AI demo (syllabus + notes + questions) is reproducible from the
-  single docker command — previously only syllabus worked via the container.
-- **Contract regression added:** CT-09f (unsupported job type → 400) and
-  CT-10a/b (question generate → 202, duplicate active → 409) in
-  `api_contract_e2e.sh`. `docs/api/jobs.md` documents the allowlist.
-- **Requirements reconciled:** `REQUIREMENTS.md` DONE-01..15 all ✓; stale
-  markers for Phase 4 (PROC-06/07) and Phases 6-16 updated; traceability table
-  now complete through Phase 17.
+- **Paper Pattern module** (`apps/api/src/paper-patterns/`): create, get, list,
+  PATCH with optimistic versioning, validate (deterministic), approve, analyze
+  (TEXT-source AI → REVIEW), create-assessment-from-blueprint.
+- **Worker blueprint generation** (`apps/workers/worker/ai/generation/blueprint.py`):
+  `_aggregate_blueprint`, `_compute_blueprint_satisfaction`, `BLUEPRINT_OPERATION`.
+- **DB schema** (`packages/database/src/schema/paper-patterns.ts` + migration
+  `0014_polite_agent_zero.sql`): `paper_patterns` table; `assessments.blueprint_id`
+  FK (ON DELETE SET NULL); `jobs_active_generation_unique` includes
+  `AI_GENERATE_BLUEPRINT`.
+- **Mock AI**: BLUEPRINT canned payload + dispatch (model "blueprint" / "paper
+  pattern" keyword probe before "questions" probe).
+- **Contracts** (`packages/contracts/src/index.ts`): PaperPatternStructureSchema,
+  difficulty/topic distribution, AnalyzePaperPatternSourceSchema,
+  GenerateQuestionsWithBlueprintSchema.
+- **Bug fix**: validate endpoint now returns `valid: false` when errors exist
+  (was always `true`).
+- **E2E suite** (`scripts/e2e/paper_pattern_e2e.sh`): 75/75 checks — CRUD,
+  analyze→REVIEW, validate, approve→APPROVED, immutable, assessment-from-
+  blueprint, blueprint-constrained generation (satisfied true/false), marks
+  override, student 403, cross-tenant 403/404, no-cookie 401.
+- **Unit tests** (`paper-patterns.validation.test.ts`): 13/13 PASS.
+- **Docs**: `docs/api/paper-patterns.md` (new); `questions.md` (blueprintId
+  param + job result); `assessments.md` (blueprintId + marks override);
+  REQUIREMENTS.md (PP-01..08); ROADMAP.md (Phase 18 added, FE 19-26);
+  STATE.md; tasks.md; project-status.md.
 
 ### Regression (all on the dockerized stack, 2026-09-09)
 
 | Suite | PASS | FAIL |
 |---|---|---|
+| paper_pattern_e2e.sh | **75** | 0 |
 | attempts_e2e.sh | 96 | 0 |
 | practice_e2e.sh | 73 | 0 |
 | sec14_e2e.sh | 22 | 0 |
-| api_contract_e2e.sh | **52** | 0 |
+| api_contract_e2e.sh | 52 | 0 |
 | demo_e2e.sh | 52 | 0 |
 | syllabus_e2e.sh | 39 | 0 |
 | p8_e2e.sh | 86 | 0 |
@@ -58,7 +54,7 @@ pushed.
 | materials_e2e.sh | 21 | 0 |
 | web_smoke_e2e.sh | 20 | 0 |
 | docker_readiness_e2e.sh | 32 | 0 |
-| **TOTAL** | **508** | **0** |
+| **TOTAL** | **583** | **0** |
 
 ### DONE criteria status (Phase 17 gate)
 
@@ -70,6 +66,15 @@ pushed.
   DONE-12 critical security rules → PASS; DONE-13 API contract verification →
   PASS; DONE-14 critical tests → PASS (508/508); DONE-15 backend runs
   independently from frontend → PASS (dockerized stack, readiness seeded).
+
+### Phase 18 criteria status (Paper Pattern / Blueprint)
+
+- PP-01 CRUD → PASS; PP-02 lifecycle (DRAFT→REVIEW→APPROVED) → PASS;
+  PP-03 TEXT-source analysis → PASS; PP-04 deterministic validation → PASS;
+  PP-05 assessment-from-blueprint → PASS; PP-06 blueprint-constrained
+  generation → PASS (satisfied true + false); PP-07 tenant isolation → PASS;
+  PP-08 marks override → PASS. Unit tests 13/13. E2E 75/75. Full regression
+  583/583 FAIL=0.
 
 ### Known non-blocking limitations (documented)
 

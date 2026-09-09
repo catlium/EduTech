@@ -92,6 +92,7 @@ Body:
 | `instructions`    | no       | object (JSONB)                           |
 | `startsAt`        | no       | ISO 8601 datetime                       |
 | `endsAt`          | no       | ISO 8601 datetime                       |
+| `blueprintId`     | no       | `uuid` (APPROVED paper pattern; pre-fills `durationMinutes`/`maxMarks` from the pattern when not supplied) |
 
 `status` defaults to `DRAFT` and is **always** server-computed on create — it
 is never accepted from a request body. `instituteId` is derived from the
@@ -224,7 +225,9 @@ POST /assessments/:assessmentId/questions
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02.) Returns `201` with
 the added link rows (`{ added: [...] }`, `sortOrder` 1-based, `marks` default
-1). The `questionIds` array is required and must be a non-empty array of UUIDs,
+1). An optional `marks` object (`Record<uuid, integer>`) overrides the default
+marks per question; each value must be an integer 1–1000, otherwise `400`.
+The `questionIds` array is required and must be a non-empty array of UUIDs,
 capped at 1000 IDs per request (08-06 WR-02 fix): a missing `questionIds`,
 an empty array, or an array of more than 1000 IDs returns `400` via the global
 validation pipe. Each referenced question is validated to exist in the active

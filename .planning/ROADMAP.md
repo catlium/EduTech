@@ -21,10 +21,9 @@ Frontend is part of the master roadmap and has its own implementation phases (no
 
 ## Completion Summary (verified against codebase)
 
-- ✓ Complete: Phases 1-17 + demo milestone Waves 0-4 (backend fully green; Phase 17 backend-complete gate PASSED 2026-09-09)
-- ◆ Next: Phase 18 — Frontend Foundation (gate now open)
-- ○ Not started: Frontend integration phases (18-25) — gate open, can begin
-- ○ Next product capability (out of backend scope): Paper Pattern / Blueprint system
+- ✓ Complete: Phases 1-18 + demo milestone Waves 0-4 (backend fully green; Phase 18 Paper Pattern backend COMPLETE 2026-09-09)
+- ◆ Next: Phase 19 — Frontend Foundation (gate open)
+- ○ Not started: Frontend integration phases (19-26) — gate open, can begin
 
 ## Phase 1 — Backend Foundation & Authentication ✓
 
@@ -242,58 +241,67 @@ lint/build PASS. Reqs TST-01..07.
 
 ---
 
-# Frontend & Integration (after backend-complete checkpoint)
+## Phase 18 — Paper Pattern / Blueprint (Backend) ✓ COMPLETE
 
-## Phase 18 — Frontend Foundation ◆ ○
+**Goal:** Teacher-created reusable exam blueprints: AI-analysed or manual structure, deterministic validation, blueprint-constrained generation, assessment seeding.
+**Scope:** Paper pattern CRUD, DRAFT→REVIEW→APPROVED lifecycle, TEXT-source AI analysis, deterministic validation (arithmetic, compulsory/optional sections, distributions), assessment creation from approved blueprint, blueprint-constrained question generation with satisfaction reporting, marks override on question linking.
+**Success Criteria:** Full regression green (583+ checks across 12 E2E suites); unit tests pass; typecheck/lint clean.
+**Status:** ✓ COMPLETE 2026-09-09. 75/75 E2E checks. Regression 583/583 PASS. Validated: analyse, validate, approve, generate-with-blueprint (satisfied true/false), assessment-from-blueprint, marks override, security/tenant isolation. Reqs: PP-01..08.
+
+---
+
+# Frontend & Integration (after backend-freeze candidate)
+
+## Phase 19 — Frontend Foundation ◆ ○
 
 **Goal:** Frontend project foundation in the monorepo (full-stack workspace), configured against the `docs/api/` contract.
 **Scope:** App shell/navigation, routing, auth screens (login/register), authenticated API client, session/role handling, error/loading/empty-state primitives, environment wiring.
 **Success Criteria:** User can register/login in the UI and the app routes by role against the running backend.
 **Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-01.. (see below).
 
-## Phase 19 — Frontend Teacher Workflows: Academic, Materials, AI ◆ ○
+## Phase 20 — Frontend Teacher Workflows: Academic, Materials, AI ◆ ○
 
 **Goal:** Teacher UI for the core learning loop.
 **Scope:** Academic structure management (subject/chapter/topic + ordering); learning-materials management (upload, list, metadata, processing status, retry); AI summaries, AI flashcards, and important-concepts generation/retrieval/display.
 **Success Criteria:** A teacher can manage their academic structure and materials and trigger/view AI-generated study content in the UI.
 **Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-02..04.
 
-## Phase 20 — Frontend Question Bank & Exam Authoring ◆ ○
+## Phase 21 — Frontend Question Bank & Exam Authoring ◆ ○
 
 **Goal:** Teacher UI for question and assessment management.
 **Scope:** Question bank (manual create, AI question generation, review/approval/rejection, filtering); quiz/examination authoring (add/remove questions, duration, max marks, instructions, scheduling, publish).
 **Success Criteria:** A teacher can author questions, approve/reject them, and create/publish an assessment in the UI.
 **Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-05..06.
 
-## Phase 21 — Frontend Student Examination & Results ◆ ○
+## Phase 22 — Frontend Student Examination & Results ◆ ○
 
 **Goal:** Student-facing exam attempt and results UI.
 **Scope:** Available-exam list; start attempt / answer / update / submit; attempt state + timer; results (score, correct/incorrect, question-level) with security enforced (no correct-answer exposure during an active attempt).
 **Success Criteria:** A student can take an assessment end-to-end and view their result.
 **Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-07..08.
 
-## Phase 22 — Frontend Teacher Analytics & Practice ◆ ○
+## Phase 23 — Frontend Teacher Analytics & Practice ◆ ○
 
 **Goal:** Teacher analytics dashboard + student practice UI.
 **Scope:** Teacher view of assessment analytics (average/highest/lowest, question accuracy, topic/difficulty performance); student practice (flashcards and questions, ungraded, with history).
 **Success Criteria:** Teacher sees per-assessment stats; student completes practice sessions independent of exam scoring.
 **Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-09..10.
 
-## Phase 23 — Backend/Frontend Integration & API Contract Verification ◆ ○
+## Phase 24 — Backend/Frontend Integration & API Contract Verification ◆ ○
 
 **Goal:** Wire the frontend to the live backend; verify each consumed endpoint from the frontend against `docs/api/`.
 **Scope:** Full API integration of all frontend features; frontend-driven API contract verification (method, path, auth, authorization, request/response, status codes, error format, pagination, filtering).
 **Success Criteria:** Every frontend feature operates against the real backend per the `docs/api/` contract.
 **Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-11, FE-12.
 
-## Phase 24 — End-to-End & Security Testing ◆ ○
+## Phase 25 — End-to-End & Security Testing ◆ ○
 
 **Goal:** End-to-end testing of complete user journeys and authentication/security behavior across the stack.
 **Scope:** Full E2E flows (teacher material→AI→exam; student attempt→result); authentication/security testing (role restrictions, cross-tenant isolation, answer-key security); error/loading/empty states verified across flows.
 **Success Criteria:** Complete journeys pass; security rules hold end-to-end; all UI states handled.
 **Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-13, FE-14.
 
-## Phase 25 — Final Polish & Demonstration Readiness ◆ ○
+## Phase 26 — Final Polish & Demonstration Readiness ◆ ○
 
 **Goal:** Final UI/UX polish and readiness for a college demonstration.
 **Scope:** UI/UX polish, demo data/flow readiness, cross-browser/responsive checks, accessibility basics, final end-to-end run.
@@ -324,8 +332,8 @@ lint/build PASS. Reqs TST-01..07.
 6. ✅ Phase 14 cross-module validation & security (closed 2026-09-09)
 7. ✅ Phase 15 API contract verification & alignment (closed 2026-09-09)
 8. ✅ Phase 16 testing & demonstration readiness (closed 2026-09-09, 505/505)
+9. ✅ Phase 17 backend-complete checkpoint (closed 2026-09-09, 508/508)
+10. ✅ Phase 18 Paper Pattern / Blueprint backend (closed 2026-09-09, 583/583)
 
-**→ NEXT: Phase 17 — Backend-Complete Checkpoint** (validate the whole backend
-surface: endpoints, DB ops, auth, AI, background processing, approval, exam,
-evaluation, results, analytics, practice, security, contract verification,
-tests, independent runnability). Then frontend integration phases 18-25.
+**→ NEXT: Phase 19 — Frontend Foundation** (app shell, auth screens, API client,
+session/role handling). Frontend phases 19–26 can now begin.

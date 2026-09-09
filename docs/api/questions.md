@@ -300,6 +300,7 @@ Body:
 | `questionType` | yes      | `MCQ` \| `TRUE_FALSE` \| `FILL_IN_BLANK` |
 | `count`        | yes      | integer 1–50 |
 | `difficulty`   | no       | `EASY` \| `MEDIUM` \| `HARD` (default `MEDIUM`) |
+| `blueprintId`  | no       | `uuid` (APPROVED paper pattern, same subject as topic) |
 
 `404` if the `topicId` is not in the active institute. `400` on invalid enum or
 `count` out of range.
@@ -328,8 +329,11 @@ Roles: `INSTITUTE_ADMIN`, `TEACHER`.
 
 Returns the tracked generation job and its `result` (the generated `questionIds`
 array, `count`, `questionType`, `difficulty`, and source) once `status` is
-`completed`, or `error` when `failed`. `404` if the job is not in the active
-institute; `400` if the job is not a question-generation job.
+`completed`, or `error` when `failed`. When the generation was initiated with a
+`blueprintId`, the result also contains a `blueprint` object reporting
+`satisfied` (boolean) and `mismatches` (string array — see
+`docs/api/paper-patterns.md`). `404` if the job is not in the active institute;
+`400` if the job is not a question-generation job.
 
 Response:
 

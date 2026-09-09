@@ -264,12 +264,27 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       dockerized demo; 11-suite regression 508/508 FAIL=0; typecheck/lint/build
       PASS; DONE-01..15 ✓)
 
-## Phase 18 — Frontend Foundation (NOT STARTED — gate open 2026-09-09)
+## Phase 18 — Paper Pattern / Blueprint (BACKEND) ✓ COMPLETE (2026-09-09)
+
+- [x] PP-01 — paper-patterns module (CRUD, DRAFT→REVIEW→APPROVED lifecycle, optimistic versioning)
+- [x] PP-02 — TEXT-source AI analysis → REVIEW status with structure
+- [x] PP-03 — deterministic validation (arithmetic, compulsory/optional sections, distributions)
+- [x] PP-04 — assessment creation from approved blueprint (blueprintId, durationMinutes, maxMarks)
+- [x] PP-05 — blueprint-constrained question generation with satisfaction report
+- [x] PP-06 — marks override in assessment/question linking
+- [x] PP-07 — student cross-tenant isolation (403 on writes/reads)
+- [x] PP-08 — docs/api/paper-patterns.md + questions.md + assessments.md updates
+- [x] PP-09 — validate bug fixed (valid: false now correct on arithmetic mismatch)
+- [x] PP-10 — 75/75 E2E (paper_pattern_e2e.sh); full regression 583/583 FAIL=0 (12 suites)
+- [x] PP-11 — unit tests 13/13 (paper-patterns.validation.test.ts)
+- [x] PP-12 — typecheck/lint PASS; REQUIREMENTS.md + ROADMAP.md + STATE.md updated; FE phases renumbered 19-26
+
+## Phase 19 — Frontend Foundation (NOT STARTED — gate open 2026-09-09)
 
 - [ ] FE-01 — app shell/navigation, routing, auth screens
 - [ ] FE-02 — authenticated API client, session/role handling
 - [ ] FE-03 — error/loading/empty-state primitives, environment wiring
-      (Phase 17 backend-complete gate PASSED; frontend feature phases may begin)
+      (Phase 18 backend delivered; frontend feature phases 19-26 may begin)
 
 --
 

@@ -180,43 +180,54 @@
 
 ## Frontend & Integration Requirements (after Backend-Complete Checkpoint)
 
-### Phase 18 — Frontend Foundation
+### Phase 18 — Paper Pattern / Blueprint (BACKEND) ✓ COMPLETE
+
+- [x] **PP-01**: Paper pattern CRUD (create, get, list, edit DRAFT with optimistic versioning)
+- [x] **PP-02**: Paper pattern status lifecycle: DRAFT → REVIEW → APPROVED (immutable)
+- [x] **PP-03**: TEXT-source AI analysis → REVIEW status with structure, sourceMaterialId, durationMinutes, totalMarks
+- [x] **PP-04**: Deterministic validation: arithmetic, compulsory/optional sections, distributions
+- [x] **PP-05**: Assessment creation from approved blueprint (blueprintId, durationMinutes, maxMarks)
+- [x] **PP-06**: Blueprint-constrained question generation with satisfaction report
+- [x] **PP-07**: Student cross-tenant isolation (403 on writes, 403 on reads)
+- [x] **PP-08**: Marks override in assessment/question linking
+
+### Phase 19 — Frontend Foundation
 
 - [ ] **FE-01**: User can register/login in the UI and the app routes by role against the running backend
 - [ ] **FE-02**: App shell/navigation, routing, authenticated API client, session/role handling, error/loading/empty-state primitives
 
-### Phase 19 — Teacher Workflows: Academic, Materials, AI
+### Phase 20 — Teacher Workflows: Academic, Materials, AI
 
 - [ ] **FE-03**: Teacher can manage academic structure (subject/chapter/topic + ordering) in the UI
 - [ ] **FE-04**: Teacher can manage learning materials (upload, list, metadata, processing status, retry) in the UI
 - [ ] **FE-05**: Teacher can trigger and view AI summaries, AI flashcards, and important-concepts generation in the UI
 
-### Phase 20 — Question Bank & Exam Authoring
+### Phase 21 — Question Bank & Exam Authoring
 
 - [ ] **FE-06**: Teacher can author questions manually, trigger AI question generation, review/approve/reject, and filter in the UI
 - [ ] **FE-07**: Teacher can author and publish assessments (add/remove questions, duration, max marks, instructions, scheduling) in the UI
 
-### Phase 21 — Student Examination & Results
+### Phase 22 — Student Examination & Results
 
 - [ ] **FE-08**: Student can start/answer/update/submit an attempt (state + timer) in the UI
 - [ ] **FE-09**: Student can view their result (score, correct/incorrect, question-level) with no correct-answer exposure during an active attempt
 
-### Phase 22 — Teacher Analytics & Practice
+### Phase 23 — Teacher Analytics & Practice
 
 - [ ] **FE-10**: Teacher can view assessment analytics (average/highest/lowest, question accuracy, topic/difficulty performance)
 - [ ] **FE-11**: Student can complete flashcard and question practice sessions (ungraded) with history
 
-### Phase 23 — Integration & API Contract Verification
+### Phase 24 — Integration & API Contract Verification
 
 - [ ] **FE-12**: Every frontend feature operates against the real backend
 - [ ] **FE-13**: Frontend-driven API contract verification against `docs/api/` (method, path, auth, authorization, response/status, errors, pagination, filtering)
 
-### Phase 24 — End-to-End & Security Testing
+### Phase 25 — End-to-End & Security Testing
 
 - [ ] **FE-14**: Complete E2E journeys pass (teacher material→AI→exam; student attempt→result)
 - [ ] **FE-15**: Authentication/security tested across the stack (role restrictions, cross-tenant isolation, answer-key security); error/loading/empty states handled across flows
 
-### Phase 25 — Final Polish & Demonstration
+### Phase 26 — Final Polish & Demonstration
 
 - [ ] **FE-16**: Final UI/UX polish and college-demonstration readiness (demo flows, responsive/accessibility, final end-to-end run)
 
@@ -251,22 +262,22 @@
 | CON-01..03 | 15 | ✓ complete |
 | TST-01..07 | 16 | ✓ complete |
 | DONE-01..15 | 17 | ✓ complete (backend-complete gate passed 2026-09-09) |
-| FE-01..02 | 18 | [ ] gated (after backend complete) |
-| FE-03..05 | 19 | [ ] gated |
-| FE-06..07 | 20 | [ ] gated |
-| FE-08..09 | 21 | [ ] gated |
-| FE-10..11 | 22 | [ ] gated |
-| FE-12..13 | 23 | [ ] gated |
-| FE-14..15 | 24 | [ ] gated |
-| FE-16 | 25 | [ ] gated |
+| PP-01..08 | 18 | ✓ complete |
+| FE-01..02 | 19 | [ ] gated (after backend complete) |
+| FE-03..05 | 20 | [ ] gated |
+| FE-06..07 | 21 | [ ] gated |
+| FE-08..09 | 22 | [ ] gated |
+| FE-10..11 | 23 | [ ] gated |
+| FE-12..13 | 24 | [ ] gated |
+| FE-14..15 | 25 | [ ] gated |
+| FE-16 | 26 | [ ] gated |
 
 **Coverage:**
 
-- Backend v1: 17 phases mapped (1–17 all ✓ complete — backend-complete gate passed)
-- Frontend & integration: 8 phases (18–25) — the Phase 17 gate is now PASSED;
-  frontend feature development may begin
+- Backend v1: 18 phases mapped (1–18 all ✓ complete — backend-freeze candidate)
+- Frontend & integration: 8 phases (19–26) — Phase 18 backend delivered; frontend gate remains open
 - Frontend is part of the master roadmap (full-stack monorepo), NOT out of scope
 
 ---
 *Requirements defined: 2026-09-01*
-*Last updated: 2026-09-09 — backend-complete gate passed (Phase 17, DONE-01..15 all ✓)*
+*Last updated: 2026-09-09 — Phase 18 (Paper Pattern / Blueprint) backend complete*
