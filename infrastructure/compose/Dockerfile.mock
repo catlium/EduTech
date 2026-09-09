@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech — deterministic mock AI provider (demo/test only)
+#
+# Stdlib-only OpenAI-compatible endpoint used by the demo override and
+# host-based E2E suites. Never published to the host, never used in
+# production (the base compose worker talks to the OmniRoute gateway).
+# ─────────────────────────────────────────────────────────────
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    MOCK_AI_HOST=0.0.0.0 \
+    MOCK_AI_PORT=8899
+
+COPY scripts/e2e/mock_ai_provider.py /app/mock_ai_provider.py
+
+CMD ["python", "/app/mock_ai_provider.py"]

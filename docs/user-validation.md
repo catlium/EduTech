@@ -1097,6 +1097,55 @@ IN_PROGRESS attempt (excluded).
   `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 /
   `sec14_e2e.sh` 22 / `api_contract_e2e.sh` 49 all FAIL=0.
 
+### AU-01..04 — Auth lifecycle (Phase 16, 2026-09-09) [x]
+
+- **Setup:** live dockerized stack (base+dev+demo), seed applied.
+- **Command:** `bash scripts/e2e/auth_e2e.sh`
+- **Expected:** `AUTH E2E: PASS=15 FAIL=0` (AU-01 register validation — short
+  password 400 / missing email 400; AU-02 register → 201 + `GET /auth/me` →
+  200, duplicate email → 409; AU-03 login — wrong password 401, unknown user
+  401, correct → 200 + cookie jar + CSRF token; AU-04 refresh — rotated-out
+  old token with valid CSRF → 401, new token → 200, wrong CSRF on logout →
+  403, logout → 200, me-after-logout → 401; memberships 200; anon guards on
+  protected routes → 401).
+
+### MA-01..04 — Materials worker boundary (Phase 16, 2026-09-09) [x]
+
+- **Setup:** compose stack with `catlium-worker-material` RUNNING; seeded
+  teacher login.
+- **Command:** `bash scripts/e2e/materials_e2e.sh`
+- **Expected:** `MATERIALS E2E: PASS=21 FAIL=0` (MA-01 upload text/plain →
+  201 + marker; MA-02 anon upload → 401; MA-03 student on another's
+  unprocessed material → 403, lifecycle gates → 400/404; MA-04
+  `POST /materials/:id/process` → 202 + job id → `GET /jobs/:id` completes →
+  material status READY + extracted text present).
+
+### WS-01..04 — Web smoke (Phase 16, 2026-09-09) [x]
+
+- **Setup:** compose stack, web on :3001, API on :3000.
+- **Command:** `bash scripts/e2e/web_smoke_e2e.sh`
+- **Expected:** `WEB SMOKE E2E: PASS=20 FAIL=0` (WS-01 `/` → 307 to
+  `/dashboard`; `/login` `/register` `/institutes` → 200; WS-02 anon
+  workspace routes → 307 to `/login`; WS-03 seeded-teacher cookie-holder
+  reaches the workspace shell → 200; WS-04 `Access-Control-Allow-Origin`
+  header on API responses matches the web origin).
+
+### RD-01..07 — Docker readiness (Phase 16, 2026-09-09) [x]
+
+- **Setup:** compose stack base+dev+demo; seed applied; both workers running.
+- **Command:** `bash scripts/e2e/docker_readiness_e2e.sh`
+- **Expected:** `DOCKER READINESS E2E: PASS=32 FAIL=0 (seeded=1)` (RD-01 all
+  services up; RD-02 internal infra responsive on the private network —
+  postgres:5432, redis:6379, rabbitmq:5672, ocr:8000, omniroute:20128; RD-03
+  public boundary — api:3000 + web:3001 published, internal ports loopback/
+  unpublished only; RD-04 API health 200; RD-05 CORS origin matches web;
+  RD-06 seeded mode — teacher login, memberships, representative read; RD-07
+  full worker boundary — upload → 201, process → 202, job completed, material
+  READY + marker).
+- **Unseeded fallback:** registers a fresh user and expects 403 (no
+  membership) on subject create — used when the 5/min login throttle 429s the
+  seeded login.
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete

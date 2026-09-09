@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech - DEMONSTRATION-ONLY Docker Compose override
+# ─────────────────────────────────────────────────────────────
+#
+# Turns `docker compose up --build` into a fully self-contained,
+# deterministic demo that needs NO external AI credentials:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
+#
+# What it adds/changes:
+#   - `mock-ai`:  an INTERNAL deterministic OpenAI-compatible provider
+#                 (scripts/e2e/mock_ai_provider.py — stdlib only).
+#   - `seed`:     applies the idempotent demo seed (teacher@catlium.dev /
+#                 student@catlium.dev in the catlium-demo institute).
+#   - worker-ai:  points WORKER_AI_PROVIDER_URL at mock-ai (inside the
+#                 private network) instead of the OmniRoute gateway.
+#
+# ⚠️  DEMO ONLY — never use in production. For real AI, run the base
+#     compose file and set OMNIROUTE_INITIAL_PASSWORD / OMNIROUTE_JWT_SECRET /
+#     WORKER_AI_API_KEY (one-time operator setup, documented in .env.example).
+#
+# Single public boundary is unchanged: web (3001) + API (3000) are the only
+# host-published services. mock-ai is never exposed to the host or browser.
+
+services:
+  # Internal deterministic mock provider for the demo/test path.
+  mock-ai:
+    build:
+      context: .
+      dockerfile: infrastructure/compose/Dockerfile.mock
+    container_name: catlium-mock-ai
+    # Bind inside the container so the worker can reach it over the network;
+    # the container itself publishes no host port.
+    environment:
+      MOCK_AI_HOST: 0.0.0.0
+      MOCK_AI_PORT: '8899'
+    # No host port mapping: reachable only via the Docker network.
+    healthcheck:
+      test: ['CMD', 'python', '-c', 'import urllib.request as u; u.urlopen("http://localhost:8899/health", timeout=5)']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot demo seed (idempotent — safe to run on every up).
+  seed:
+    build:
+      context: .
+      dockerfile: infrastructure/compose/Dockerfile.api
+    working_dir: /app/packages/database
+    command: ['node_modules/.bin/tsx', './scripts/seed-demo.ts']
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # API/Web start only after the seed exists (demo users must be present).
+  api:
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  # Point the AI worker at the internal mock provider for this demo run.
+  worker-ai:
+    environment:
+      WORKER_AI_PROVIDER_URL: http://mock-ai:8899/v1
+      WORKER_AI_API_KEY: demo-not-needed
+    depends_on:
+      mock-ai:
+        condition: service_healthy

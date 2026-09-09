@@ -2,6 +2,47 @@
 
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
+## Phase 16 — Testing & Demonstration Readiness (started/closed 2026-09-09)
+
+Make the dockerized app fully verifiable + demo-able from the repo root.
+
+- [x] Compose moved from `infrastructure/compose/` to repo root
+      (`docker-compose.yml` / `.dev.yml` / new `.demo.yml`); Dockerfiles stay
+      in `infrastructure/compose/`
+- [x] Web `apps/web` becomes a public entry point (:3001) behind the
+      middleware auth guard; web image command fixed
+      (`node .../next start`, `working_dir=/app/apps/web`)
+- [x] Demo profile: internal deterministic mock-AI service (`GET /health`),
+      idempotent one-shot seed carrying demo + ALL p8 fixture users/institutes
+      (`seedValidationFixtures` in `packages/database/scripts/seed-demo.ts`)
+- [x] Infra fixes: seed `loadEnvFile` `.env`-missing guard; mock-ai `do_GET`;
+      web `pnpm`→`next` command
+- [x] Env audit: `.env.example`/`.env` aligned — Web section
+      (`NEXT_PUBLIC_API_URL`, `WEB_PORT`), internal `INTERNAL_API_KEY` +
+      `OCR_INTERNAL_API_KEY`, OmniRoute section, Workers aligned, demo mock-AI
+      host/port; Ollama residue removed
+- [x] NEW `scripts/e2e/auth_e2e.sh` — register validation/dedup/login/refresh
+      rotation/logout revocation/memberships/anon guards (PASS=15)
+- [x] NEW `scripts/e2e/materials_e2e.sh` — upload→process→worker-material
+      job boundary (PASS=21)
+- [x] NEW `scripts/e2e/web_smoke_e2e.sh` — web routes, middleware redirects,
+      cookie-holder workspace shell, CORS origin (PASS=20)
+- [x] NEW `scripts/e2e/docker_readiness_e2e.sh` — services up, internal infra
+      responsive, public boundary (only api:3000+web:3001), API health, CORS,
+      seeded full worker flow + unseeded fallback (PASS=32 seeded)
+- [x] `login_user` jar-staleness hardening (validate `GET /auth/me` before
+      reuse) across attempts/materials/syllabus/sec14/demo/practice/
+      api_contract/p8
+- [x] Full regression on dockerized stack: attempts 96 / practice 73 /
+      sec14 22 / api_contract 49 / demo 52 / syllabus 39 / p8 86 / auth 15 /
+      materials 21 / web_smoke 20 / readiness 32 = 505/505 FAIL=0
+- [x] `pnpm typecheck` + `lint` + `build` PASS
+- [x] Docs: STATE.md, ROADMAP.md, project-status.md, tasks.md,
+      user-validation.md, architecture/infrastructure.md, development.md,
+      AGENTS.md (compose paths + public boundary)
+- [x] Commit `feat(infra): complete testing and docker demonstration
+      readiness` + push + report
+
 ## Phase 15 — API Contract Verification (started/closed 2026-09-09)
 
 Verify every endpoint against every `docs/api/*.md` doc; resolve
@@ -215,7 +256,8 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       new `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01..10),
       regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 /
       sec14 22 all FAIL=0, typecheck/lint/build green)
-- [ ] Phase 16 — Testing & Demonstration Readiness
+- [x] Phase 16 — Testing & Demonstration Readiness (closed 2026-09-09,
+      505/505 regression green, see top of this file)
 - [ ] Phase 17 — Backend-Complete Checkpoint
 
 --

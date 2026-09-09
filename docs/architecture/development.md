@@ -32,7 +32,7 @@ cd ../..
 ### 2. Start Infrastructure
 
 ```bash
-docker compose -f infrastructure/compose/docker-compose.yml up -d
+docker compose up -d
 ```
 
 ### 3. Set Up Environment

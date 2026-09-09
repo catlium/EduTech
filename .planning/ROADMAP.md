@@ -227,7 +227,12 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 ### Phase 16 — Testing & Demonstration Readiness
 
 **Goal:** Automated/integration tests for critical workflows: auth, academic, materials, AI, questions, examination, security.
-**Status:** DEFERRED (see Phase 12 node:test analytics unit coverage + growing `scripts/e2e` suite; TST-01..07).
+**Status:** ✓ COMPLETED 2026-09-09 — 11-suite regression 505/505 FAIL=0 on
+the dockerized stack (attempts 96 / practice 73 / sec14 22 / contract 49 /
+demo 52 / syllabus 39 / p8 86 / auth 15 / materials 21 / web smoke 20 /
+readiness 32). Compose at repo root + demo profile (mock AI + seed w/ p8
+fixtures); web = public :3001 behind middleware guard; env audited; typecheck/
+lint/build PASS. Reqs TST-01..07.
 
 ### Phase 17 — Backend-Complete Checkpoint
 
@@ -301,7 +306,7 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 - Backend phases: 17
 - Backend ✓ Complete: 15 (Phases 1-15)
 - Demo milestone waves: 4 (Waves 0-4 ✓ complete, closed 2026-09-08)
-- Later backend phases: 2 (Phases 16-17), Phase 16 next
+- Later backend phases: 2 (Phases 16-17), Phase 16 ✓ complete, Phase 17 next
 - Frontend/integration phases: 8 (Phases 18-25), deferred (demo milestone frontend shipped as Wave 3)
 - Frontend is part of the master roadmap (NOT out of scope)
 - Monorepo retained for both backend and frontend
@@ -317,8 +322,9 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 5. ✅ Phase 13 practice system (closed 2026-09-08)
 6. ✅ Phase 14 cross-module validation & security (closed 2026-09-09)
 7. ✅ Phase 15 API contract verification & alignment (closed 2026-09-09)
+8. ✅ Phase 16 testing & demonstration readiness (closed 2026-09-09, 505/505)
 
-**→ NEXT: Phase 16 — Testing & Demonstration Readiness** (expand automated
-coverage for critical workflows, tighten test/demo tooling and checkpoints).
-Then Phase 17 (backend-complete checkpoint), then frontend integration phases
-18-25.
+**→ NEXT: Phase 17 — Backend-Complete Checkpoint** (validate the whole backend
+surface: endpoints, DB ops, auth, AI, background processing, approval, exam,
+evaluation, results, analytics, practice, security, contract verification,
+tests, independent runnability). Then frontend integration phases 18-25.

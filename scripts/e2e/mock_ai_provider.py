@@ -103,6 +103,15 @@ def _pick(model: str) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # Minimal liveness probe for the container healthcheck.
+        body = b'{"status":"ok"}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
@@ -123,4 +132,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("127.0.0.1", 8899), Handler).serve_forever()
+    import os
+
+    host = os.environ.get("MOCK_AI_HOST", "127.0.0.1")
+    port = int(os.environ.get("MOCK_AI_PORT", "8899"))
+    HTTPServer((host, port), Handler).serve_forever()

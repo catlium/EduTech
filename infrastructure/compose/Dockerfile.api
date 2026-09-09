@@ -1,13 +1,22 @@
 # ─────────────────────────────────────────────────────────────
-# CatLium EduTech — API image (NestJS modular monolith)
+# CatLium EduTech — API image (NestJS modular monolith) / web (Next.js)
+#
+# One image serves BOTH the NestJS API and the Next.js web app (each picks
+# its runtime command via the compose service definition). The web bundle
+# inlines NEXT_PUBLIC_API_URL (the browser-visible API URL) at build time —
+# pass it as a build ARG when the machine serving the browser is not
+# `localhost`.
 #
 # The API imports the `@catlium/*` workspace packages, which are
 # TypeScript ESM packages that resolve to their built `dist/`. So the
 # image builds the whole pnpm workspace (turbo build → all package
 # dists) and copies that into a runtime stage.
 #
-# The same image serves the `api` service and the one-shot `migrate`
-# service (which just overrides the command to run Drizzle migrations).
+# Services using this image:
+#   - `api`    → node apps/api/dist/main.js            (default CMD)
+#   - `web`    → pnpm --filter @catlium/web exec next start -p 3001
+#   - `migrate`→ drizzle-kit migrate (one-shot)
+#   - `seed`   → tsx ./scripts/seed-demo.ts (demo override, one-shot)
 # ─────────────────────────────────────────────────────────────
 
 # ── Build stage: install + compile the full workspace ──
@@ -15,6 +24,13 @@
 # `node:sqlite` (Node >=22.5).
 FROM node:24-alpine AS build
 WORKDIR /app
+
+# Browser-visible API URL, baked into the web bundle during `next build`.
+# Must be passed through the compose `build.args` for non-localhost hosts.
+ARG NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Pin pnpm to the repo's packageManager version.
 RUN corepack enable

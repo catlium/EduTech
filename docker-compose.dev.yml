@@ -15,9 +15,8 @@
 #     Loopback binding keeps these unreachable from other machines; the
 #     web app knows only the API URL.
 #
-# Usage:
-#   docker compose -f infrastructure/compose/docker-compose.yml \
-#                  -f infrastructure/compose/docker-compose.dev.yml up --build
+# Usage (from the repo root, compose at root):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 #
 # Run without this override for a production-like private-network stack.
 

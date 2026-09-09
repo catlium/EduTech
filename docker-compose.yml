@@ -3,25 +3,30 @@
 # ─────────────────────────────────────────────────────────────
 #
 # Runs the full stack: backing infrastructure (Postgres/Redis/RabbitMQ)
-# plus the application (API, OCR service, DB migrations, both async
+# plus the application (API, web, OCR service, DB migrations, both async
 # workers — material + AI generation, and the OmniRoute AI gateway).
 #
-# SINGLE PUBLIC API BOUNDARY
-#   The only port published to the host is the API (`3000`). Postgres,
-#   Redis, RabbitMQ, the OCR service, the workers and OmniRoute are
-#   INTERNAL services reachable only over the private Docker network.
-#   The browser/frontend must never call them directly.
+# SINGLE PUBLIC BOUNDARY
+#   The only ports published to the host are the API (`3000`) and the web
+#   app (`3001`). Postgres, Redis, RabbitMQ, the OCR service, the workers
+#   and OmniRoute are INTERNAL services reachable only over the private
+#   Docker network. The browser/frontend must never call them directly.
 #
 #   For LOCAL DEVELOPMENT, `docker-compose.dev.yml` (an explicit opt-in
 #   override) publishes the internal services bound to 127.0.0.1 only.
 #   Production deployments must NOT use that override.
 #
+#   For a DETERMINISTIC DEMO (no external AI credentials), add
+#   `-f docker-compose.demo.yml` — it runs an internal mock AI provider
+#   and applies the demo seed. See docker-compose.demo.yml for details.
+#
 # Usage (from the repo root):
 #   1. Copy the root env template, then tune it:
 #        cp .env.example .env
 #      (The app services load the root .env via env_file — compose requires it.)
-#   2. docker compose -f infrastructure/compose/docker-compose.yml up --build
-#      Dev: add `-f infrastructure/compose/docker-compose.dev.yml`.
+#   2. docker compose up --build
+#      Dev: add `-f docker-compose.dev.yml`.
+#      Demo: add `-f docker-compose.demo.yml`.
 #
 # The root `.env` is loaded into each app container (env_file). Settings
 # that must point at container hostnames (postgres/rabbitmq/redis/ocr/
@@ -44,7 +49,8 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-catlium} -d ${POSTGRES_DB:-catlium_dev}']
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -56,7 +62,7 @@ services:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -72,16 +78,17 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+      start_period: 15s
 
   # ── Database migrations (one-shot) ─────────────────────────
   migrate:
     build:
-      context: ../..
+      context: .
       dockerfile: infrastructure/compose/Dockerfile.api
     working_dir: /app/packages/database
     command: ['node_modules/.bin/drizzle-kit', 'migrate']
     env_file:
-      - ../../.env
+      - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
     depends_on:
@@ -89,16 +96,19 @@ services:
         condition: service_healthy
 
   # ── Application ────────────────────────────────────────────
-  # The ONLY public entry point. Everything else is internal.
+  # The ONLY public API entry point. Everything else is internal.
   api:
     build:
-      context: ../..
+      context: .
       dockerfile: infrastructure/compose/Dockerfile.api
+      args:
+        # Inlined into the web bundle at build time (browser-visible URL).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
     container_name: catlium-api
     ports:
       - '${API_PORT:-3000}:3000'
     env_file:
-      - ../../.env
+      - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
       REDIS_URL: redis://redis:6379
@@ -113,10 +123,43 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'fetch("http://localhost:3000/api/v1/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Public client-facing web app (Next.js). It talks ONLY to the API
+  # (NEXT_PUBLIC_API_URL, baked into the bundle at build time — the value
+  # the BROWSER must use). Shares the workspace build image; runs `next start`.
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/compose/Dockerfile.api
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+    container_name: catlium-web
+    working_dir: /app/apps/web
+    command: ['node', 'node_modules/next/dist/bin/next', 'start', '-p', '3001']
+    ports:
+      - '${WEB_PORT:-3001}:3001'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'fetch("http://localhost:3001/login").then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # ── Internal AI gateway (OmniRoute) ────────────────────────
   # No local LLM ever: the AI worker only talks to this internal,
   # OpenAI-compatible gateway, never to a browser-facing endpoint.
+  # Operator setup (one-time): create a provider + endpoint key in the
+  # OmniRoute dashboard and set WORKER_AI_API_KEY in .env. The demo
+  # override (docker-compose.demo.yml) bypasses this with a mock provider.
   omniroute:
     image: diegosouzapw/omniroute:latest
     container_name: catlium-omniroute
@@ -139,13 +182,13 @@ services:
   # ── Internal OCR service (local PaddleOCR) ─────────────────
   ocr:
     build:
-      context: ../..
+      context: .
       dockerfile: infrastructure/compose/Dockerfile.python
     container_name: catlium-ocr
     command: ['uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000']
     # No host port mapping.
     env_file:
-      - ../../.env
+      - .env
     environment:
       OCR_HOST: 0.0.0.0
       OCR_PORT: 8000
@@ -157,15 +200,21 @@ services:
     volumes:
       # Persist the PaddleOCR model cache so downloads survive rebuilds.
       - paddle_models:/root/.paddlex
+    healthcheck:
+      test: ['CMD', 'python', '-c', 'import urllib.request as u; u.urlopen("http://localhost:8000/health", timeout=5)']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
 
   worker-material:
     build:
-      context: ../..
+      context: .
       dockerfile: infrastructure/compose/Dockerfile.python
     container_name: catlium-worker-material
     command: ['python', '-m', 'worker.app']
     env_file:
-      - ../../.env
+      - .env
     environment:
       WORKER_ROLE: material
       WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
@@ -181,7 +230,7 @@ services:
       rabbitmq:
         condition: service_healthy
       ocr:
-        condition: service_started
+        condition: service_healthy
 
   # AI generation worker. AI goes ONLY through the internal OmniRoute
   # gateway (OpenAI-compatible /v1). No local LLM (no Ollama/llama.cpp)
@@ -190,12 +239,12 @@ services:
   # WORKER_AI_API_KEY to the matching credential.
   worker-ai:
     build:
-      context: ../..
+      context: .
       dockerfile: infrastructure/compose/Dockerfile.python
     container_name: catlium-worker-ai
     command: ['python', '-m', 'worker.app']
     env_file:
-      - ../../.env
+      - .env
     environment:
       WORKER_ROLE: ai
       WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672

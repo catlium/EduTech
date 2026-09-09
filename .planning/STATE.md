@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-15-api-contract-verification
-current_phase_name: Phase 15 — API Contract Verification
+current_phase: phase-16-testing-demo-readiness
+current_phase_name: Phase 16 — Testing & Demonstration Readiness
 status: completed
-stopped_at: "Phase 15 — API Contract Verification COMPLETE (2026-09-09): every docs/api/*.md verified against the live API; 10 doc fixes aligned (questions 404→400 job-type, jobs roles + 201/200 codes, attempts CSRF scope + analytics 12/12, practice no-updatedAt + class-validator wording, auth refresh rate limit, ai 500 on publish, syllabus extra 400s, content/materials 201 transitions, AGENTS.md health route /api/v1/health); 2 code fixes (removed dead size check in materials.validateFile + deleted unused assessment-query.dto.ts); new api_contract_e2e.sh PASS=49 covering health/auth-CSRF/memberships/academic/materials/content versioning/questions/jobs; regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 / sec14 22 all FAIL=0; typecheck/lint/build green. Next: Phase 16 — Testing & Demonstration Readiness."
-last_updated: "2026-09-09T12:00:00.000Z"
-state_head: 501d92b
+stopped_at: "Phase 16 — Testing & Demonstration Readiness COMPLETE (2026-09-09): compose moved to repo root; web (:3001) added as a public entry point behind the server-side auth guard; infra bug fixes (seed loadEnvFile guard, mock-ai GET /health, web pnpm→next start); env audit (Web/OmniRoute/Demo sections, internal API keys, no Ollama); 4 NEW e2e suites — auth (15), materials worker-boundary (21), web smoke (20), docker readiness (32, seeded, worker-ai+material through RabbitMQ) — plus login_user jar-staleness hardening across 8 suites and p8 fixtures added to seed-demo.ts; FULL regression on the dockerized stack: attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 / syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32 — all FAIL=0 (total 505 assertions); typecheck/lint/build green; docs aligned (STATE/ROADMAP/tasks/project-status/user-validation/infrastructure/development/AGENTS). Next: Phase 17 — Backend-Complete Checkpoint."
+last_updated: "2026-09-09T19:00:00.000Z"
+state_head: HEAD-PENDING
 progress:
   total_phases: 17
-  completed_phases: 15
+  completed_phases: 16
   total_plans: 11
   completed_plans: 11
-  percent: 88
+  percent: 94
 ---
 
 # STATE.md
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 ## Project State
 
 **Sequence:** Demo-first vertical-slice (user-directed override)
-**Phase:** Phase 15 — API Contract Verification
-**Status:** COMPLETE — closed 2026-09-09 (every documented endpoint verified against the live API; docs/robots aligned; contract suite added)
+**Phase:** Phase 16 — Testing & Demonstration Readiness
+**Status:** COMPLETE — closed 2026-09-09 (full 11-suite regression green on the dockerized stack, 505 assertions, typecheck/lint/build PASS)
 
 ## Phase State
 
@@ -58,7 +58,7 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Not started / pending:**
 
-- Later backend phases (16-17): Phase 16 — Testing & Demonstration Readiness is the recommended next task.
+- Later backend phase (17): Phase 17 — Backend-Complete Checkpoint is the recommended next task.
 - Frontend integration phases (18-25): DEFERRED (demo milestone frontend delivered via Wave 3)
 
 ## Phase Plans
@@ -85,36 +85,38 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 | 13 | Practice System | ✓ completed (E2E 2026-09-08, practice_e2e.sh PASS=73) |
 | 14 | Cross-Module Validation & Security | ✓ completed (E2E 2026-09-09, sec14_e2e.sh PASS=22) |
 | 15 | API Contract Verification | ✓ completed (E2E 2026-09-09, api_contract_e2e.sh PASS=49) |
-| 16 | Testing & Demonstration Readiness | ○ NEXT |
-| 17 | Backend-Complete Checkpoint | ○ deferred |
+| 16 | Testing & Demonstration Readiness | ✓ completed (E2E 2026-09-09, 11-suite regression 505 assertions FAIL=0) |
+| 17 | Backend-Complete Checkpoint | ○ NEXT |
 | 18–25 | Frontend + Integration + Polish | ○ deferred (demo milestone frontend takes priority) |
 
 ## Current Task
 
-**Phase 15 — API Contract Verification — COMPLETE (closed 2026-09-09). Next per roadmap:**
+**Phase 16 — Testing & Demonstration Readiness — COMPLETE (closed 2026-09-09).
+Next per roadmap:**
 
-**Phase 16 — Testing & Demonstration Readiness** (expand automated coverage,
-tighten test/demo tooling and checkpoints). Phase 17 (backend-complete
-checkpoint) follows. Frontend integration phases (18-25) remain deferred per
-the demo-first override (frontend delivered inside the milestone as Wave 3).
+**Phase 17 — Backend-Complete Checkpoint** (validate the whole backend surface
+one more time; verify nothing deferred remains; record closed-loop coverage).
+Frontend integration phases (18-25) remain deferred per the demo-first
+override (frontend delivered inside the milestone as Wave 3 + web smoke
+coverage in Phase 16).
 
 ## Session Continuity
 
-Last session: 2026-09-09 (closed)
-Stopped at: Phase 15 completed — API contract verification & alignment
-(3-subagent inventory of all endpoints over all 11 `docs/api/*.md`; doc fixes:
-questions 404→400 job-type, jobs roles + 201/200, attempts CSRF scope +
-analytics 12/12, practice no-updatedAt + class-validator wording, auth refresh
-rate limit, ai 500 on publish, syllabus extra 400s, content/materials 201
-transitions, AGENTS.md health route `GET /api/v1/health`; code fixes: removed
-dead 20MB check in materials.validateFile + deleted unused
-assessment-query.dto.ts; new `api_contract_e2e.sh` PASS=49 covering
-health/auth-CSRF refresh+logout+me/memberships/academic/materials/content
-versioning/questions/jobs), regressions attempts 96 / practice 73 / demo 52 /
-syllabus 39 / p8 86 / sec14 22 / contract 49 all FAIL=0, API
-typecheck/lint/build green.
+Last session: 2026-09-09 (Phase 16 closed)
+Stopped at: Phase 16 completed — Testing & Demonstration Readiness
+(compose moved from `infrastructure/compose/` to the repo root; web `apps/web`
+now a public entry point :3001 behind the middleware auth guard; demo profile
+`docker-compose.demo.yml` with mock-AI + idempotent seed carrying the demo AND
+all p8 fixture users/institutes; infra bugs fixed — seed `loadEnvFile` guard,
+mock-ai `GET /health`, web `node .../next` command; `.env`/`.env.example`
+audited with Web/OmniRoute/Demo sections and internal API keys; 4 new E2E
+suites — auth 15, materials 21 (worker boundary), web smoke 20, docker
+readiness 32 (seeded) — plus `login_user` jar-staleness hardening in 8 suites;
+full 11-suite regression on the dockerized stack 505/505 green;
+typecheck/lint/build PASS; docs aligned; disk-full (96%) resolved via
+`docker builder prune`.
 Clean tree, checkpoint pushed.
-Resume file: `.planning/ROADMAP.md` (Phase 16 — Testing & Demonstration Readiness next)
+Resume file: `.planning/ROADMAP.md` (Phase 17 — Backend-Complete Checkpoint next)
 
 ## Verification
 
@@ -133,6 +135,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 16 — Testing & Demonstration Readin
 - Phase 13 (practice): `practice_e2e.sh` PASS=73 FAIL=0 (PR-01..12 + PR-05x — snapshot/sanitization, duplicate-open 409, start guards, grading/reveal/rating, flashcard back-face, complete idempotency, history stats, cross-student 404, tenant/anon gates, PRAC-03: 0 attempts written), regressions `attempts_e2e.sh` 96 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API typecheck/lint/build green, GlobalExceptionFilter now logs unhandled 500s. 2026-09-08
 - Phase 14 (validation & security): `sec14_e2e.sh` PASS=22 FAIL=0 (SC-01/02 student 403 on question-bank + assessment reads, SC-03 6-way attempt start single-winner 201 + 5×409, SC-04 parallel submit atomic evaluation, SC-05 answer-after-submit 400, SC-06 practice start single-winner + 409, SC-07 answer-after-complete 409), regressions `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API typecheck/lint/build green. 2026-09-09
 - Phase 15 (API contract verification): `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01 health public, CT-02 refresh/logout CSRF 403/200 + me + logout closes session, CT-03 memberships, CT-04 academic create/patch/slug-409, CT-05 materials text lifecycle 201/409/201, CT-06 upload validation MIME 400/mismatch 400/>20MB 413/invalid enum 400, CT-07 content versioning v1→v2 + versions + missing-version 404 + wrong-payload-type 400 + archive/activate 201, CT-08 questions list + invalid enum 400 + DELETE 204 + deleted 404, CT-09 jobs create 201/poll 200/unknown 404/student 403); all 11 `docs/api/*.md` + `AGENTS.md` verified and aligned; regressions `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 / `sec14_e2e.sh` 22 all FAIL=0; API typecheck/lint/build green. 2026-09-09
+- Phase 16 (testing & demo readiness): **11-suite regression 505/505 green on the dockerized stack** — attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 / syllabus 39 / p8 86 / NEW auth 15 / NEW materials 21 / NEW web_smoke 20 / NEW docker_readiness 32 (seeded, full worker boundary). Compose at repo root; web :3001 public behind middleware auth guard; demo profile = seed (demo + p8 fixtures) + mock AI; env audited (Web/OmniRoute/Demo sections, no Ollama); login_user jar-staleness guard across 8 suites; typecheck/lint/build PASS. 2026-09-09
 - Known: zero automated test coverage across the codebase (manual E2E via shell scripts) — Phase 12 analytics logic has the project's first node:test unit coverage
 
 ## Decisions
@@ -151,7 +154,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 16 — Testing & Demonstration Readin
 
 ## Blocked
 
-- None. Phase 15 complete; nothing blocks Phase 16 (Testing & Demonstration Readiness).
+- None. Phase 16 complete; nothing blocks Phase 17 (Backend-Complete Checkpoint).
 
 ## Performance Metrics
 

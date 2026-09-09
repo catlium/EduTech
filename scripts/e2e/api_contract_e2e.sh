@@ -52,7 +52,10 @@ req_anon() { local method="$1" path="$2"; shift 2
 }
 jget() { grep -oP "\"$1\"\s*:\s*\"?[^\",}]*" "$BODY_FILE" | head -1 | sed -E "s/\"$1\"\s*:\s*\"?//"; }
 login_user() { local email="$1" jar="$2"
-  if [ -f "$jar" ] && grep -q "access_token" "$jar"; then return 0; fi
+  if [ -f "$jar" ] && grep -q "access_token" "$jar"; then
+    if curl -s -b "$jar" "$BASE/auth/me" -o /dev/null -w '%{http_code}' | grep -q 200; then return 0; fi
+    echo "  stale jar for $email, re-logging in"; rm -f "$jar"
+  fi
   local code
   code=$(curl -s -c "$jar" -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
     -d "{\"email\":\"$email\",\"password\":\"Password123!\"}" -o /dev/null -w '%{http_code}')

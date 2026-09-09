@@ -9,48 +9,60 @@ The browser / frontend only ever talks to the API (`http://localhost:3000`,
 the `/api/v1` base). The frontend never knows internal service URLs.
 
 ```
-Browser / Web app (apps/web)
-        │  HTTPS / JSON only
-        ▼
-   API (NestJS)  ◄── public, port 3000
-        │
-        ├──► PostgreSQL  ├──► Redis   ├──► RabbitMQ
-        │
-        └──► worker-material ──► OCR service (FastAPI, port 8000)
-                                      └─ PyMuPDF / PaddleOCR (local)
-        worker-ai ──► OmniRoute AI gateway (port 20128)
-                       └─ cloud LLM (OpenAI-compatible)
+Browser ──► Web app (apps/web, Next.js, public :3001)
+                 │  fetch() JSON
+                 ▼
+           API (NestJS)  ◄── public, port 3000
+                 │
+                 ├──► PostgreSQL  ├──► Redis   ├──► RabbitMQ
+                 │
+                 └──► worker-material ──► OCR service (FastAPI, port 8000)
+                                               └─ PyMuPDF / PaddleOCR (local)
+                 worker-ai ──► OmniRoute AI gateway (port 20128)
+                                └─ cloud LLM (OpenAI-compatible)
 ```
 
 ### Compose layout
 
-- `infrastructure/compose/docker-compose.yml` — production posture. Only the
-  API publishes a host port. Postgres/Redis/RabbitMQ/OCR/OmniRoute publish
-  nothing.
-- `infrastructure/compose/docker-compose.dev.yml` — **DEVELOPMENT-ONLY**
-  opt-in override that republishes the internal services bound to
-  `127.0.0.1` so host-based tooling (drizzle studio, psql, host-run workers,
-  E2E suites) can reach them. Never used in production.
+Compose files live at the **repo root** (Dockerfiles stay in
+`infrastructure/compose/`):
+
+- `docker-compose.yml` — base posture. Publishes **only** the API (`:3000`)
+  and the web app (`:3001`). Postgres/Redis/RabbitMQ/OCR/OmniRoute/workers
+  publish nothing.
+- `docker-compose.dev.yml` — **DEVELOPMENT-ONLY** opt-in override that
+  republishes the internal services bound to `127.0.0.1` so host-based
+  tooling (drizzle studio, psql, host-run workers, E2E suites) can reach
+  them. Never used in production.
+- `docker-compose.demo.yml` — demo profile: adds an internal deterministic
+  **mock AI** service plus an idempotent one-shot **seed** (demo users + all
+  E2E fixture institutes/users) so a full demo + every suite is runnable from
+  a single command. The API/web start only after the seed completes.
 
 ```bash
-# Production-like (internal services stay private):
-docker compose -f infrastructure/compose/docker-compose.yml up --build
+# Base (internal services stay private; web + api public):
+docker compose up --build
 
 # Local development (publishes internal services on loopback only):
-docker compose -f infrastructure/compose/docker-compose.yml \
-               -f infrastructure/compose/docker-compose.dev.yml up --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+# Demo (seeded data + mock AI, internal only):
+docker compose -f docker-compose.yml \
+               -f docker-compose.dev.yml -f docker-compose.demo.yml up --build
 ```
 
 ### Internal services
 
 | Service        | Internal port | Exposed?                    | Purpose                                  |
 | -------------- | ------------- | --------------------------- | ---------------------------------------- |
+| Web app        | 3001          | **public**                  | Next.js frontend (server-side auth guard) |
+| API (NestJS)   | 3000          | **public**                  | The single public API boundary           |
 | PostgreSQL 17  | 5432          | dev override (loopback)     | Primary database                         |
 | Redis 7        | 6379          | dev override (loopback)     | Cache / rate limiting                    |
 | RabbitMQ 3     | 5672 (+15672 mgmt) | dev override (loopback) | Async job queues (API -> workers)        |
 | OCR (FastAPI)  | 8000          | dev override (loopback)     | Local document extraction                |
 | OmniRoute      | 20128         | dev override (loopback)     | Internal AI gateway (OpenAI-compatible)  |
-| API (NestJS)   | 3000          | **public**                  | The single public boundary               |
+| mock AI        | 8899          | none (demo profile)         | Deterministic canned responses (demo)    |
 
 ### Internal authentication
 
@@ -86,28 +98,28 @@ cd apps/workers
 
 ```bash
 # Dev (loopback exposure for host tooling):
-docker compose -f infrastructure/compose/docker-compose.yml \
-               -f infrastructure/compose/docker-compose.dev.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
 ## Stopping Infrastructure
 
 ```bash
-docker compose -f infrastructure/compose/docker-compose.yml \
-               -f infrastructure/compose/docker-compose.dev.yml down
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 ```
 
 ## Removing Data
 
 ```bash
-docker compose -f <base + dev as above> down -v
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
 ```
 
 ## Service URLs (development)
 
 | Service        | URL                          | Note                            |
 | -------------- | ---------------------------- | ------------------------------- |
+| Web app        | http://localhost:3001        | PUBLIC                          |
 | API            | http://localhost:3000        | PUBLIC                          |
+| API Health     | http://localhost:3000/api/v1/health | PUBLIC                          |
 | API Health     | http://localhost:3000/api/v1/health | PUBLIC                          |
 | OCR Service    | http://localhost:8000        | loopback-only (dev override)    |
 | OmniRoute UI   | http://localhost:20128       | loopback-only (dev override)    |
@@ -116,10 +128,15 @@ docker compose -f <base + dev as above> down -v
 
 ## Production Considerations
 
-- Only the API is exposed; terminate TLS at a reverse proxy in front of it.
+- Only the web app and the API are exposed; terminate TLS at a reverse proxy in
+  front of them (and restrict the web origin via `CORS_ORIGIN`).
 - `INTERNAL_API_KEY` + OmniRoute secrets must be set (env only, never committed).
 - Managed Postgres/Redis/RabbitMQ can replace the containers without touching
   the boundary: the API and workers must reference the managed endpoints via
-  env, but nothing accepts public traffic except the API.
+  env, but nothing accepts public traffic except the API and the web app.
 - The OCR image carries PaddleOCR (heavy). A persistent `paddle_models`
   volume caches model downloads across rebuilds.
+- The web image builds the whole workspace and serves `next start` on 3001
+  via `NODE apps/web/node_modules/next/dist/bin/next` (the `pnpm`/`.bin`
+  shells are not on PATH inside the image). `NEXT_PUBLIC_API_URL` is a build
+  ARG — changing it requires `docker compose build web`.

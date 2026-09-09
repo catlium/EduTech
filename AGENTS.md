@@ -89,8 +89,9 @@ These are the planned logical modules for the API. Do NOT implement them now:
 
 ### 6. Single Public API Boundary
 
-- The NestJS API is the **only public entry point**. The browser/frontend
-  talks to the API (`/api/v1`) only.
+- The NestJS API (`/api/v1`) and the Next.js web app `apps/web` (served on
+  :3001) are the only public entry points. The browser talks to the web app,
+  which talks only to the API.
 - Postgres, Redis, RabbitMQ, the OCR service, the async workers, and the
   OmniRoute AI gateway are INTERNAL, reachable only over the private Docker
   network. Their ports are never published on the host except in the
@@ -167,7 +168,11 @@ pnpm db:migrate           # Run migrations
 pnpm db:studio            # Open Drizzle Studio
 
 # Infrastructure
-docker compose -f infrastructure/compose/docker-compose.yml up -d
+docker compose up -d                    # base posture (web+api public)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d   # dev
+# Demo (seed + mock AI on top of dev):
+docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+               -f docker-compose.demo.yml up --build
 ```
 
 ### Health Endpoints

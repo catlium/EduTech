@@ -1,5 +1,59 @@
 # Project Status
 
+## Phase 16 — Testing & Demonstration Readiness ✓ (2026-09-09)
+
+**Status: COMPLETE — closed 2026-09-09.** Full 11-suite regression green on
+the dockerized stack (505/505 assertions), `pnpm typecheck`/`lint`/`build`
+PASS, clean tree, checkpoint `feat(infra): complete testing and docker
+demonstration readiness` (pushed).
+
+### What landed
+
+- **Compose moved to the repo root** (`docker-compose.yml` /
+  `docker-compose.dev.yml` / **new** `docker-compose.demo.yml`; Dockerfiles
+  stay in `infrastructure/compose/`). One command runs the whole demo:
+  `docker compose -f docker-compose.yml -f docker-compose.dev.yml
+  -f docker-compose.demo.yml up --build`.
+- **Web is now a public entry point (:3001)** — browser → `apps/web` →
+  API. Internal services (Postgres/Redis/RabbitMQ/OCR/OmniRoute/workers/mock
+  AI) stay private; `RD-03` verifies nothing else publishes host ports.
+- **Demo profile = mock AI + idempotent seed.** `seed-demo.ts` now also
+  creates every p8 fixture (institutes A/B, `p8.teacher`/`p8.other`/
+  `p8student…`, topic "Linear Equations" with the exact UUIDs) so suites run
+  from a wiped DB.
+- **4 new E2E suites:** `auth_e2e.sh` (15), `materials_e2e.sh` (21, worker
+  boundary), `web_smoke_e2e.sh` (20), `docker_readiness_e2e.sh` (32, seeded).
+- **Login robustness:** `login_user` in 8 suites now validates the jar
+  (`GET /auth/me`) before reuse — expired jars no longer cascade 401s.
+- **Infra bug fixes:** seed `loadEnvFile` missing-`.env` guard; mock-ai
+  `GET /health`; web runs `node …/next start` (pnpm shims aren't on PATH).
+- **Env audit:** `.env.example`/`.env` aligned — Web (`NEXT_PUBLIC_API_URL`,
+  `WEB_PORT`), internal `INTERNAL_API_KEY`/`OCR_INTERNAL_API_KEY`, OmniRoute
+  secrets, Workers section, demo mock-AI host/port. Ollama residue removed.
+
+### Regression (all on the dockerized stack, 2026-09-09)
+
+| Suite | PASS | FAIL |
+|---|---|---|
+| attempts_e2e.sh | 96 | 0 |
+| practice_e2e.sh | 73 | 0 |
+| sec14_e2e.sh | 22 | 0 |
+| api_contract_e2e.sh | 49 | 0 |
+| demo_e2e.sh | 52 | 0 |
+| syllabus_e2e.sh | 39 | 0 |
+| p8_e2e.sh | 86 | 0 |
+| **auth_e2e.sh (new)** | **15** | **0** |
+| **materials_e2e.sh (new)** | **21** | **0** |
+| **web_smoke_e2e.sh (new)** | **20** | **0** |
+| **docker_readiness_e2e.sh (new)** | **32** | **0** |
+| **TOTAL** | **505** | **0** |
+
+Validation: attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 /
+syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32 —
+all FAIL=0; typecheck/lint/build PASS.
+
+**Recommended next task:** Phase 17 — Backend-Complete Checkpoint.
+
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
 **Status: COMPLETE — Demo milestone closed 2026-09-08; full-journey E2E green

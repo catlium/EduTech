@@ -65,7 +65,10 @@ jget() { # jget <key> — reads $BODY_FILE, prints first value for key
 }
 login_user() { # login_user <email> <jar>
   local email="$1" jar="$2"
-  if [ -f "$jar" ] && grep -q "access_token" "$jar"; then return 0; fi
+  if [ -f "$jar" ] && grep -q "access_token" "$jar"; then
+    if curl -s -b "$jar" "$BASE/auth/me" -o /dev/null -w '%{http_code}' | grep -q 200; then return 0; fi
+    echo "  stale jar for $email, re-logging in"; rm -f "$jar"
+  fi
   local attempt code
   for attempt in 1 2 3; do
     code=$(curl -s -c "$jar" -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
