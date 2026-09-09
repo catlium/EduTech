@@ -209,10 +209,10 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 **Goal:** Average/highest/lowest score, question accuracy, topic & difficulty performance. Computed on demand; no unnecessary analytics infrastructure for MVP.
 **Status:** COMPLETE (2026-09-08). `GET /assessments/:assessmentId/analytics` (teacher/institute-admin) aggregates EVALUATED attempts (SUBMITTED/EXPIRED, non-null score) on demand in the API — summary, exact-score distribution, per-question accuracy, topic + difficulty performance. Single grouped Postgres query joined against question/topic/difficulty; pure `buildAnalytics()` in `apps/api/src/attempts/analytics.ts`; 12 node:test unit cases; `attempts_e2e.sh` PASS=96 (AT-15..17 analytics block); teacher results UI now shows Overview / score distribution / question / topic / difficulty sections. No analytics DB, warehouse, precompute, or caching. Reqs: ANL-01..03 ✓.
 
-### Phase 13 — Practice System
+### Phase 13 — Practice System ✓ COMPLETE
 
 **Goal:** Ungraded flashcards + question practice (start session, review/answer, record response, complete, history). Excluded from formal exam scoring.
-**Status:** DEFERRED. Reqs: PRAC-01..03.
+**Status:** COMPLETE (2026-09-08). Backend-only (no web UI yet — frontend integration phases 18-25). Migration 0011 (`practice_sessions` / `practice_session_items` / `practice_session_responses`, snapshot pattern), `apps/api/src/practice` (start / history / detail / answer / complete), zod contracts in `@catlium/contracts`, `docs/api/practice.md`. PRACTICE-answer key kept server-side until the item is answered; identical deterministic grader as attempts; 201/400/404/409 gates; `practice_e2e.sh` PASS=73 FAIL=0; regressions attempts 96 / demo 52 / syllabus 39 / p8 86. Reqs: PRAC-01..03 ✓.
 
 ### Phase 14 — Cross-Module Validation & Security
 
@@ -315,7 +315,9 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 3. ✅ Phases 9-11 delivered inside the demo milestone
 4. ✅ Phase 12 examination analytics (closed 2026-09-08)
 
-**→ NEXT: Phase 13 — Practice System** (ungraded flashcards + question
-practice: start session, review/answer, record response, complete, history;
-excluded from formal exam scoring). Then Phases 14-17, then frontend
-integration phases 18-25.
+**→ NEXT: Phase 14 — Cross-Module Validation & Security** (full backend
+review: auth, authorization, input validation, ownership, data isolation,
+approval rules, exam state transitions, attempt restrictions, student answer
+security, AI job failures, file validation, error responses, DB constraints,
+transactions, race conditions around attempts/submission). Then Phases
+15-17, then frontend integration phases 18-25.

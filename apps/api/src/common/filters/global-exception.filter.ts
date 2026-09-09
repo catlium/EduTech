@@ -10,6 +10,9 @@ interface ErrorResponse {
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
+    if (!(exception instanceof HttpException)) {
+      console.error('[unhandled]', (exception as Error)?.stack ?? exception);
+    }
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 

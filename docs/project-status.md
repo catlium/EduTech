@@ -4,8 +4,9 @@
 
 **Status: COMPLETE — Demo milestone closed 2026-09-08; full-journey E2E green
 (`demo_e2e.sh` PASS=52 FAIL=0), all Waves 0-4 + Phases 9-11 delivered, then
-Phase 12 — Examination Analytics (2026-09-08). Next: later backend phases
-(Phases 13-17) starting with Phase 13 — Practice System.** A user-directed prioritization
+Phase 12 — Examination Analytics (2026-09-08) and Phase 13 — Practice System
+(2026-09-08). Next: later backend phases (Phases 14-17) starting with
+Phase 14 — Cross-Module Validation & Security.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -202,8 +203,64 @@ single grouped Postgres query + a pure totalization module in the API.
 
 **Commit:** `feat(analytics): add examination analytics`
 
-**Recommended next task:** Phase 13 — Practice System (ungraded flashcards +
-question practice; excluded from formal exam scoring).
+## Phase 13 — Practice System (2026-09-08)
+
+**Status: COMPLETE.** Backend-only ungraded flashcard (`PRAC-01`) and question
+(`PRAC-02`) practice, fully excluded from formal examination scoring
+(`PRAC-03` — practice never writes `attempts` rows). Reqs PRAC-01..03 ✓.
+Web practice UI deliberately deferred to the frontend integration phases
+(18-25), consistent with the demo-first override.
+
+- **Schema (migration 0011, `packages/database/src/schema/practice.ts`):**
+  `practice_sessions` (mode `FLASHCARD`/`QUESTION`, status
+  `IN_PROGRESS`/`COMPLETED`, contentId XOR topicId), `practice_session_items`
+  (snapshot: `source_key` `fc:<cardId>`/`q:<questionId>`, `prompt`,
+  `question_type`, `payload` incl. answer key stored server-side only,
+  `reveal` = flashcard back face), `practice_session_responses`
+  (`answer`/`rating`, graded `is_correct` for questions, upsert per item).
+- **Endpoints (`apps/api/src/practice`):** `POST /practice/sessions`
+  (201; FLASHCARD requires ACTIVE `FLASHCARD_SET` contentId, QUESTION requires
+  institute topicId — only APPROVED+ACTIVE questions snapshot; empty set
+  allowed → itemCount 0; 409 on duplicate open session for the same
+  mode+source), `GET /practice/sessions` (history, newest first, per-session
+  itemCount/answeredCount/correctCount — `count(*) filter (where is_correct)`),
+  `GET /practice/sessions/:id` (own sessions only, else 404), `PUT
+  .../items/:itemId` (MCQ `{choiceId}` / TF `{value}` answers graded
+  synchronously with the same deterministic grader as attempts; flashcard
+  `{rating: AGAIN|GOOD}`; wrong mode/missing payload → 400),
+  `POST .../complete` (idempotent; releases the open-session slot; answers
+  after completion → 409).
+- **Answer-key security:** a question item serializes only MCQ `choices` until
+  it is answered; `reveal` + `isCorrect` appear only after answering. Flashcard
+  items always expose `reveal` (cards are content, not keys).
+- **Contracts:** zod schemas (`PracticeModeSchema`, `FlashcardRatingSchema`,
+  `PracticeSessionStatusSchema`, `PracticeCreateRequestSchema`,
+  `PracticeSaveAnswerRequestSchema`, `PracticeSessionItemSchema`,
+  `PracticeSessionDetailSchema`, `PracticeSessionListItemSchema`) appended to
+  `@catlium/contracts`; router DTOs in `apps/api/src/practice/dto`.
+- **Docs:** `docs/api/practice.md`.
+- **E2E:** `scripts/e2e/practice_e2e.sh` **PASS=73 FAIL=0** (PR-01 snapshot;
+  PR-02 duplicate-open 409; PR-03 start guards + empty-source 201; PR-04/05/05x
+  grading, reveal-only-after-answering, key non-leakage; PR-06 flashcard
+  start/back-face/rating; PR-07 complete idempotency + answer-after-complete;
+  PR-08 slot release; PR-09 history stats; PR-10 cross-student 404; PR-11
+  tenant/anon gates 403/401; PR-12 PRAC-03: `count(*) FROM attempts WHERE
+  student_id = <fresh student> = 0`).
+- **Regressions green (all FAIL=0):** attempts **96**, demo **52**, syllabus
+  **39**, p8 **86**; API typecheck/lint/build green. (Demo/syllabus/p8 depend
+  on RabbitMQ — 403 `ACCESS_REFUSED` if the API is launched without
+  `RABBITMQ_URL`; launch from shell with `.env` sourced.)
+- **Also fixed during bring-up:** `GlobalExceptionFilter` previously swallowed
+  unhandled errors silently; it now logs the stack (this surfaced the Phase 13
+  `created`/TDZ-reference bug in `start()`).
+
+**Commit:** `feat(practice): add ungraded flashcard and question practice`
+
+**Recommended next task:** Phase 14 — Cross-Module Validation & Security
+(full backend review — auth, authorization, input validation, ownership, data
+isolation, approval rules, exam state transitions, attempt restrictions,
+student answer security, AI job failures, file validation, error responses,
+DB constraints, transactions, race conditions around attempts/submission).
 
 **Wave 4 — Full integration & demo validation ✓ (2026-09-08):**
 - `scripts/e2e/mock_ai_provider.py` v2 (model-keyed outputs: `syllabus-mock` /
@@ -977,21 +1034,17 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ## Recommended Next Task
 
-**Demo-first vertical-slice (see the Demo Milestone section at the top of this
-file for full detail):**
-
-1. **Wave 1 — Syllabus backend**: migration 0009 `syllabus_proposals`, worker
-   op `AI_GENERATE_SYLLABUS` (Pydantic mirrors + proposal upsert, proposal-only
-   AI), API module `apps/api/src/syllabus` (generate/get/patch/confirm),
-   `scripts/e2e/syllabus_e2e.sh` + `docs/api/syllabus.md`.
-2. **Wave 3a next — Teacher syllabus pages** in `apps/web` (SyllabusProposalEditor)
-   once `syllabus` API exists; student UI (Wave 3b) after Wave 2.
-3. **Wave 2 — Attempts backend**: migration 0010, API module
-   `apps/api/src/attempts` (available/start/questions-sanitized/save/submit/
-   result), deterministic grading, closes WR-06.
-4. **Wave 4 — Full integration & demo validation** (`demo_e2e.sh`, browser
-   walkthrough).
+**Phase 14 — Cross-Module Validation & Security** (full backend review):
+auth, authorization, input validation, ownership, data isolation, approval
+rules, exam state transitions, attempt restrictions, student answer security,
+AI job failures, file validation, error responses, DB constraints,
+transactions, race conditions around attempts/submission. Emphasis on
+server-side authorization. Then Phases 15-17 (contract verification, testing &
+demonstration readiness, backend-complete checkpoint), then frontend
+integration phases 18-25.
 
 The dockerized stack (`infrastructure/compose/docker-compose.yml`) is the
 validation harness for any follow-on testing. `apps/web` dev server runs on
 port 3001 (`next dev -p 3001`) to match the API's default `CORS_ORIGIN`.
+Run API-side validation scripts with the full `.env` loaded (RabbitMQ creds
+are required if the phase touches AI/job endpoints).

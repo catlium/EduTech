@@ -1030,6 +1030,24 @@ IN_PROGRESS attempt (excluded).
 - Expected: route returns `200`; sections visible on an assessment with
   evaluated attempts; page still renders cleanly with an empty assessment.
 
+### PRAC-01..03 — Practice System (Phase 13, 2026-09-08)
+
+- **Command:** `bash scripts/e2e/practice_e2e.sh` against the live stack
+  (API on :3000 launched with full `.env`; PostgreSQL 17; RabbitMQ up).
+- **Expected:** `PRACTICE E2E: PASS=73 FAIL=0` (PR-01..12 + PR-05x:
+  snapshot + MCQ-choices-only sanitization, duplicate-open 409, start guards
+  (wrong mode payloads 400, DRAFT set 404, PENDING-only topic 201 empty),
+  grading + reveal-only-after-answering + key non-leakage, flashcard
+  back-face + rating, complete idempotency + answer-after-complete 409,
+  new session after completion, history stats + ordering, own-session 404 for
+  another student, tenant 403 / anon 401, PRAC-03 — 0 `attempts` rows created
+  for the practice student).
+- **Endpoint examples:** `POST /api/v1/practice/sessions`
+  `{"mode":"QUESTION","topicId":"<t>"}` → 201 `{session:{...}}`;
+  `PUT /api/v1/practice/sessions/:id/items/:itemId`
+  `{"answer":{"choiceId":"<id>"}}` or `{"rating":"AGAIN"}` → 200.
+- **Docs:** `docs/api/practice.md` (full contract + error table).
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete

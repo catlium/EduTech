@@ -13,6 +13,7 @@ import { QuestionsModule } from '../questions/questions.module.js';
 import { ExaminationsModule } from '../examinations/examinations.module.js';
 import { SyllabusModule } from '../syllabus/syllabus.module.js';
 import { AttemptsModule } from '../attempts/attempts.module.js';
+import { PracticeModule } from '../practice/practice.module.js';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { RabbitMQService } from '../common/services/rabbitmq.service.js';
@@ -45,6 +46,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     ExaminationsModule,
     SyllabusModule,
     AttemptsModule,
+    PracticeModule,
   ],
   providers: [
     {

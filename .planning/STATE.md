@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 ## Project State
 
 **Sequence:** Demo-first vertical-slice (user-directed override)
-**Phase:** Phase 12 — Examination Analytics
-**Status:** COMPLETE — closed 2026-09-08 (on-demand examination analytics; backend phases 13-17 pending)
+**Phase:** Phase 13 — Practice System
+**Status:** COMPLETE — closed 2026-09-08 (backend-only ungraded flashcard + question practice; phases 14-17 pending)
 
 ## Phase State
 
@@ -51,9 +51,11 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 - Demo Wave 4 — Full integration & docs close: `scripts/e2e/demo_e2e.sh` full teacher→syllabus→AI→notes→questions→quiz→student→attempt→result journey against the live stack. **E2E validated 2026-09-08 (PASS=52 FAIL=0)**; regressions attempts 76 / syllabus 39 / p8 86; typecheck/lint/build green; roadmap + state + tasks + validation docs closed.
 - Phase 12 — Examination Analytics (`GET /assessments/:assessmentId/analytics`, teacher/institute-admin): summary (average/highest/lowest + evaluated attempts + total marks), exact-score distribution, per-question accuracy (correct/incorrect/unanswered, works across mixed question types), topic + difficulty performance. Computed ON DEMAND in the API — a single grouped Postgres query over `attempt_questions`/`attempt_responses`/`attempts`/`questions`/`topics`; pure `buildAnalytics()` module (`apps/api/src/attempts/analytics.ts`, dependency-free) tested with 12 node:test cases (`pnpm --filter @catlium/api test:analytics`). Only EVALUATED attempts count (SUBMITTED/EXPIRED, non-null score); IN_PROGRESS/unevaluated excluded. Teacher results UI now renders Overview stats, score distribution, and question/topic/difficulty tables. **E2E validated 2026-09-08 (`attempts_e2e.sh` PASS=96 FAIL=0, AT-15..17: expected metrics, role/tenant/anon gates, empty case)**. Reqs ANL-01..03 ✓. No analytics DB/warehouse/precompute/cache.
 
+- Phase 13 — Practice System (migration 0011 `practice_sessions` / `practice_session_items` / `practice_session_responses` snapshot tables, `apps/api/src/practice` module: POST/GET `/practice/sessions`, detail, PUT items response (answer graded with the attempts grader / flashcard rating), complete; zod contracts in `@catlium/contracts`; PRAC-03 — practice never writes `attempts`; answer keys server-side until answered, flashcard back face always revealed; 201/400/401/403/404/409 gates; `docs/api/practice.md`). **E2E validated 2026-09-08 (`practice_e2e.sh` PASS=73 FAIL=0, PR-01..12 + PR-05x)**; regressions attempts 96 / demo 52 / syllabus 39 / p8 86; API typecheck/lint/build green. Reqs PRAC-01..03 ✓. Backend-only; web practice UI deferred to frontend phases 18-25.
+
 **Not started / pending:**
 
-- Later backend phases (13-17): Phase 13 — Practice System is the recommended next task.
+- Later backend phases (14-17): Phase 14 — Cross-Module Validation & Security is the recommended next task.
 - Frontend integration phases (18-25): DEFERRED (demo milestone frontend delivered via Wave 3)
 
 ## Phase Plans
@@ -77,8 +79,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 | 10 | Automatic Evaluation | ✓ completed (E2E 2026-09-08, ATTEMPTS PASS=76) |
 | 11 | Results | ✓ completed (with Phase 10 + Wave 4) |
 | 12 | Examination Analytics | ✓ completed (E2E 2026-09-08, attempts_e2e.sh PASS=96, node:test 12/12, |
-| 13 | Practice System | ○ NEXT |
-| 14 | Cross-Module Validation & Security | ○ deferred |
+| 13 | Practice System | ✓ completed (E2E 2026-09-08, practice_e2e.sh PASS=73) |
+| 14 | Cross-Module Validation & Security | ○ NEXT |
 | 15 | API Contract Verification | ○ deferred |
 | 16 | Testing & Demonstration Readiness | ○ deferred |
 | 17 | Backend-Complete Checkpoint | ○ deferred |
@@ -86,23 +88,25 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Current Task
 
-**Phase 12 — Examination Analytics — COMPLETE (closed 2026-09-08). Next per roadmap:**
+**Phase 13 — Practice System — COMPLETE (closed 2026-09-08). Next per roadmap:**
 
-**Phase 13 — Practice System** (ungraded flashcards + question practice: start
-session, review/answer, record response, complete, history; excluded from
-formal exam scoring). Phases 14-17 follow. Frontend integration phases (18-25)
-remain deferred per the demo-first override (frontend delivered inside the
-milestone as Wave 3).
+**Phase 14 — Cross-Module Validation & Security** (full backend review:
+auth, authorization, input validation, ownership, data isolation, approval
+rules, exam state transitions, attempt restrictions, student answer security,
+AI job failures, file validation, error responses, DB constraints,
+transactions, race conditions around attempts/submission). Phases 15-17
+follow. Frontend integration phases (18-25) remain deferred per the demo-first
+override (frontend delivered inside the milestone as Wave 3).
 
 ## Session Continuity
 
 Last session: 2026-09-08 (closed)
-Stopped at: Phase 12 completed — on-demand examination analytics
-(`GET /assessments/:assessmentId/analytics`) with 12 node:test unit cases,
-`attempts_e2e.sh` PASS=96 FAIL=0 (AT-15..17), teacher results UI analytics
-sections, regressions demo 52 / syllabus 39 / p8 86, typecheck/lint/build green.
+Stopped at: Phase 13 completed — backend-only ungraded flashcard + question
+practice (migration 0011, `apps/api/src/practice`, zod contracts,
+`docs/api/practice.md`), `practice_e2e.sh` PASS=73 FAIL=0 (PR-01..12 + PR-05x),
+regressions attempts 96 / demo 52 / syllabus 39 / p8 86, API typecheck/lint/build green.
 Clean tree, checkpoint pushed.
-Resume file: `.planning/ROADMAP.md` (Phase 13 — Practice System next)
+Resume file: `.planning/ROADMAP.md` (Phase 14 — Cross-Module Validation & Security next)
 
 ## Verification
 
@@ -118,6 +122,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 13 — Practice System next)
 - Wave 3: API + web typecheck/lint, `next build` PASS, live route table, 2026-09-08
 - Wave 4 (demo close): `demo_e2e.sh` PASS=52 FAIL=0 full teacher→syllabus→AI→quiz→student→attempt→result journey (mock AI v2 on 127.0.0.1:8899, live dockerized stack). Regressions re-run green: attempts 76, syllabus 39, p8 86. API + web typecheck/lint + `next build` PASS. UI route smoke 200 on all demo routes. 2026-09-08
 - Phase 12 (analytics): `pnpm --filter @catlium/api test:analytics` 12/12 PASS (node:test — summary/averages/distribution/per-question/topic/difficulty/zero-marks/empty/privacy), `attempts_e2e.sh` PASS=96 FAIL=0 (AT-15 analytics metrics + AT-16 role/tenant/anon gates + AT-17 empty case), regressions `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API + web typecheck/lint + `next build` PASS, results route 200 on live dev web. 2026-09-08
+- Phase 13 (practice): `practice_e2e.sh` PASS=73 FAIL=0 (PR-01..12 + PR-05x — snapshot/sanitization, duplicate-open 409, start guards, grading/reveal/rating, flashcard back-face, complete idempotency, history stats, cross-student 404, tenant/anon gates, PRAC-03: 0 attempts written), regressions `attempts_e2e.sh` 96 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API typecheck/lint/build green, GlobalExceptionFilter now logs unhandled 500s. 2026-09-08
 - Known: zero automated test coverage across the codebase (manual E2E via shell scripts) — Phase 12 analytics logic has the project's first node:test unit coverage
 
 ## Decisions
@@ -136,7 +141,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 13 — Practice System next)
 
 ## Blocked
 
-- None. Analytics complete; nothing blocks Phase 13 (Practice System).
+- None. Practice complete; nothing blocks Phase 14 (Cross-Module Validation & Security).
 
 ## Performance Metrics
 

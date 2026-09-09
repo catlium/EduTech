@@ -126,11 +126,11 @@
 - [x] **ANL-02**: Question accuracy
 - [x] **ANL-03**: Topic performance + difficulty performance where supported
 
-### Phase 13 — Practice System (NOT STARTED)
+### Phase 13 — Practice System (COMPLETE 2026-09-08)
 
-- [ ] **PRAC-01**: Flashcard practice (start session, review, record rating, complete, history)
-- [ ] **PRAC-02**: Question practice (start session, answer, complete, history)
-- [ ] **PRAC-03**: Practice excluded from formal examination scoring
+- [x] **PRAC-01**: Flashcard practice (start session, review, record rating, complete, history)
+- [x] **PRAC-02**: Question practice (start session, answer, complete, history)
+- [x] **PRAC-03**: Practice excluded from formal examination scoring
 
 ### Phase 14 — Cross-Module Validation & Security (NOT STARTED)
 
@@ -243,7 +243,7 @@
 | EVAL-01..04 | 10 | ✓ complete |
 | RES-01..06 | 11 | ✓ complete |
 | ANL-01..03 | 12 | ✓ complete |
-| PRAC-01..03 | 13 | [ ] not started |
+| PRAC-01..03 | 13 | ✓ complete |
 | SEC-01..05 | 14 | [ ] not started |
 | CON-01..03 | 15 | [ ] not started |
 | TST-01..07 | 16 | [ ] not started |

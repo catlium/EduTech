@@ -158,7 +158,13 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       /assessments/:assessmentId/analytics`, on-demand summary / score
       distribution / question accuracy / topic + difficulty performance;
       node:test 12/12, `attempts_e2e.sh` PASS=96, teacher results UI)
-- [ ] Phase 13 — Practice System
+- [x] Phase 13 — Practice System (delivered 2026-09-08, `feat(practice)`:
+      migration 0011 `practice_sessions` / `practice_session_items` /
+      `practice_session_responses`, `apps/api/src/practice` start/history/
+      detail/answer/complete, ungraded flashcard + question practice
+      (PRAC-03: never writes attempts), zod contracts, `docs/api/practice.md`;
+      `practice_e2e.sh` PASS=73 FAIL=0, regressions attempts 96 / demo 52 /
+      syllabus 39 / p8 86, backend-only — web practice UI deferred to phases 18-25)
 - [ ] Phase 14 — Cross-Module Validation & Security
 - [ ] Phase 15 — API Contract Verification
 - [ ] Phase 16 — Testing & Demonstration Readiness

@@ -235,15 +235,18 @@ password/profile management; unnecessary Institute CRUD; nonessential UI extras.
 - Phase 12 — Examination Analytics ✓ (delivered 2026-09-08, `GET
   /assessments/:assessmentId/analytics`, on-demand; node:test 12/12,
   attempts_e2e.sh PASS=96, teacher results UI)
-- Phase 13 — Practice System (NEXT)
-- Phase 14 — Cross-Module Validation & Security
+- Phase 13 — Practice System ✓ (delivered 2026-09-08, backend-only: migration
+  0011 + `apps/api/src/practice`, ungraded flashcard + question practice,
+  practice_e2e.sh PASS=73 FAIL=0, docs/api/practice.md; web UI deferred to
+  phases 18-25)
+- Phase 14 — Cross-Module Validation & Security (NEXT)
 - Phase 15 — API Contract Verification
 - Phase 16 — Testing & Demonstration Readiness
 - Phase 17 — Backend-Complete Checkpoint
 
 These are NOT abandoned. The complete roadmap remains documented. The demo
 milestone (the critical vertical slice) is now closed; later backend phases
-continue from Phase 13.
+continue from Phase 14.
 
 ## Validation Discipline
 

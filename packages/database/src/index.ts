@@ -26,3 +26,8 @@ export { questions } from './schema/questions.js';
 export { assessments, assessmentQuestions } from './schema/examinations.js';
 export { syllabusProposals } from './schema/syllabus.js';
 export { attempts, attemptQuestions, attemptResponses } from './schema/attempts.js';
+export {
+  practiceSessions,
+  practiceSessionItems,
+  practiceSessionResponses,
+} from './schema/practice.js';

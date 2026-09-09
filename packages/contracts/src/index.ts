@@ -940,3 +940,64 @@ export const AssessmentAnalyticsSchema = z.object({
   difficultyPerformance: z.array(DifficultyPerformanceMetricSchema),
 });
 export type AssessmentAnalytics = z.infer<typeof AssessmentAnalyticsSchema>;
+
+// ── Practice System (Phase 13) — ungraded practice, PRAC-03 ───────────────
+
+export const PracticeModeSchema = z.enum(['FLASHCARD', 'QUESTION']);
+export type PracticeMode = z.infer<typeof PracticeModeSchema>;
+
+export const FlashcardRatingSchema = z.enum(['AGAIN', 'GOOD']);
+export type FlashcardRating = z.infer<typeof FlashcardRatingSchema>;
+
+export const PracticeSessionStatusSchema = z.enum(['IN_PROGRESS', 'COMPLETED']);
+
+export const PracticeCreateRequestSchema = z.object({
+  mode: PracticeModeSchema,
+  contentId: z.string().uuid().optional(),
+  topicId: z.string().uuid().optional(),
+});
+export type PracticeCreateRequest = z.infer<typeof PracticeCreateRequestSchema>;
+
+export const PracticeSaveAnswerRequestSchema = z.object({
+  answer: z.unknown().optional(),
+  rating: FlashcardRatingSchema.optional(),
+});
+export type PracticeSaveAnswerRequest = z.infer<typeof PracticeSaveAnswerRequestSchema>;
+
+export const PracticeSessionItemSchema = z.object({
+  id: z.string().uuid(),
+  sourceKey: z.string(),
+  sortOrder: z.number().int(),
+  prompt: z.string(),
+  reveal: z.string().optional(),
+  questionType: z.string().optional(),
+  answer: z.unknown().optional(),
+  rating: FlashcardRatingSchema.optional(),
+  isCorrect: z.boolean().optional(),
+});
+export type PracticeSessionItem = z.infer<typeof PracticeSessionItemSchema>;
+
+export const PracticeSessionDetailSchema = z.object({
+  id: z.string().uuid(),
+  mode: PracticeModeSchema,
+  status: PracticeSessionStatusSchema,
+  itemCount: z.number().int(),
+  answeredCount: z.number().int(),
+  correctCount: z.number().int(),
+  startedAt: z.string(),
+  completedAt: z.string().nullable(),
+  items: z.array(PracticeSessionItemSchema),
+});
+export type PracticeSessionDetail = z.infer<typeof PracticeSessionDetailSchema>;
+
+export const PracticeSessionListItemSchema = z.object({
+  id: z.string().uuid(),
+  mode: PracticeModeSchema,
+  status: PracticeSessionStatusSchema,
+  itemCount: z.number().int(),
+  answeredCount: z.number().int(),
+  correctCount: z.number().int(),
+  startedAt: z.string(),
+  completedAt: z.string().nullable(),
+});
+export type PracticeSessionListItem = z.infer<typeof PracticeSessionListItemSchema>;

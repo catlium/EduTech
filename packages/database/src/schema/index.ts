@@ -10,3 +10,8 @@ export { questions } from './questions.js';
 export { assessments, assessmentQuestions } from './examinations.js';
 export { syllabusProposals } from './syllabus.js';
 export { attempts, attemptQuestions, attemptResponses } from './attempts.js';
+export {
+  practiceSessions,
+  practiceSessionItems,
+  practiceSessionResponses,
+} from './practice.js';
