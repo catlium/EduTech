@@ -5,7 +5,7 @@ current_phase_name: Phase 16 — Testing & Demonstration Readiness
 status: completed
 stopped_at: "Phase 16 — Testing & Demonstration Readiness COMPLETE (2026-09-09): compose moved to repo root; web (:3001) added as a public entry point behind the server-side auth guard; infra bug fixes (seed loadEnvFile guard, mock-ai GET /health, web pnpm→next start); env audit (Web/OmniRoute/Demo sections, internal API keys, no Ollama); 4 NEW e2e suites — auth (15), materials worker-boundary (21), web smoke (20), docker readiness (32, seeded, worker-ai+material through RabbitMQ) — plus login_user jar-staleness hardening across 8 suites and p8 fixtures added to seed-demo.ts; FULL regression on the dockerized stack: attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 / syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32 — all FAIL=0 (total 505 assertions); typecheck/lint/build green; docs aligned (STATE/ROADMAP/tasks/project-status/user-validation/infrastructure/development/AGENTS). Next: Phase 17 — Backend-Complete Checkpoint."
 last_updated: "2026-09-09T19:00:00.000Z"
-state_head: HEAD-PENDING
+state_head: 5c4fcba
 progress:
   total_phases: 17
   completed_phases: 16
