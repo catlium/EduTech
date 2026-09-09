@@ -8,7 +8,9 @@ import {
   integer,
   boolean,
   unique,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 import { institutes } from './institutes.js';
 import { users } from './users.js';
@@ -21,24 +23,42 @@ import { topics } from './academic.js';
 // snapshot a content FLASHCARD_SET; QUESTION sessions snapshot the approved
 // ACTIVE question bank (optionally scoped to a topic). Source items are
 // SNAPSHOTTED at session start, mirroring the attempts immutability rule.
-export const practiceSessions = pgTable('practice_sessions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  instituteId: uuid('institute_id')
-    .notNull()
-    .references(() => institutes.id, { onDelete: 'cascade' }),
-  studentId: uuid('student_id')
-    .notNull()
-    .references(() => users.id),
-  mode: varchar('mode', { length: 20 }).notNull(),
-  status: varchar('status', { length: 20 }).notNull().default('IN_PROGRESS'),
-  // FLASHCARD -> contentId; QUESTION -> topicId (null = whole institute bank).
-  contentId: uuid('content_id').references(() => contentItems.id),
-  topicId: uuid('topic_id').references(() => topics.id),
-  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const practiceSessions = pgTable(
+  'practice_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    instituteId: uuid('institute_id')
+      .notNull()
+      .references(() => institutes.id, { onDelete: 'cascade' }),
+    studentId: uuid('student_id')
+      .notNull()
+      .references(() => users.id),
+    mode: varchar('mode', { length: 20 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('IN_PROGRESS'),
+    // FLASHCARD -> contentId; QUESTION -> topicId (null = whole institute bank).
+    contentId: uuid('content_id').references(() => contentItems.id),
+    topicId: uuid('topic_id').references(() => topics.id),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // One open session per (student, institute, mode, source) mirroring the
+    // service's assertNoOpenSession clash rule — the source being contentId
+    // (flashcards) or topicId (questions; '0000…' = whole-bank). The API
+    // pre-checks for a friendly 409; this index makes concurrent `start`
+    // requests atomic (unique violation mapped to a 409).
+    uniqueIndex('practice_open_sessions_unique')
+      .on(
+        table.studentId,
+        table.instituteId,
+        table.mode,
+        sql`coalesce(content_id, topic_id, '00000000-0000-4000-8000-000000000000')`,
+      )
+      .where(sql`status = 'IN_PROGRESS'`),
+  ],
+);
 
 // Immutable per-item snapshot. `prompt`/`reveal` are copied so a session
 // survives edits to the source content/question. For QUESTION items `payload`

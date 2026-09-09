@@ -20,6 +20,7 @@ import {
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { gradeAnswer } from '../attempts/attempts.grade.js';
 import type { PracticeCreateDto, PracticeSaveAnswerDto } from './dto/practice.dto.js';
 
@@ -64,25 +65,34 @@ export class PracticeService {
         ? await this.flashcardItems(instituteId, dto.contentId!)
         : await this.questionItems(instituteId, dto.topicId);
 
-    const created = await this.db.transaction(async (tx) => {
-      const [session] = await tx
-        .insert(practiceSessions)
-        .values({
-          instituteId,
-          studentId,
-          mode: dto.mode,
-          status: IN_PROGRESS,
-          contentId: dto.mode === 'FLASHCARD' ? dto.contentId : null,
-          topicId: dto.mode === 'QUESTION' ? (dto.topicId ?? null) : null,
-        })
-        .returning();
-      if (items.length > 0) {
-        await tx.insert(practiceSessionItems).values(
-          items.map((i) => ({ ...i, sessionId: session.id })),
-        );
+    let created: typeof practiceSessions.$inferSelect;
+    try {
+      created = await this.db.transaction(async (tx) => {
+        const [session] = await tx
+          .insert(practiceSessions)
+          .values({
+            instituteId,
+            studentId,
+            mode: dto.mode,
+            status: IN_PROGRESS,
+            contentId: dto.mode === 'FLASHCARD' ? dto.contentId : null,
+            topicId: dto.mode === 'QUESTION' ? (dto.topicId ?? null) : null,
+          })
+          .returning();
+        if (items.length > 0) {
+          await tx.insert(practiceSessionItems).values(
+            items.map((i) => ({ ...i, sessionId: session.id })),
+          );
+        }
+        return session;
+      });
+    } catch (error) {
+      // Concurrent start lost the race: practice_open_sessions_unique refused it.
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('An open practice session already exists for this source');
       }
-      return session;
-    });
+      throw error;
+    }
 
     return { session: await this.detail(instituteId, studentId, created.id) };
   }
@@ -164,33 +174,49 @@ export class PracticeService {
     sessionItemId: string,
     dto: PracticeSaveAnswerDto,
   ) {
-    const session = await this.loadOwn(instituteId, studentId, sessionId);
-    if (session.status !== IN_PROGRESS) {
-      throw new ConflictException('Practice session is not in progress');
-    }
+    const response = await this.db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(practiceSessions)
+        .where(
+          and(
+            eq(practiceSessions.id, sessionId),
+            eq(practiceSessions.instituteId, instituteId),
+            eq(practiceSessions.studentId, studentId),
+          ),
+        )
+        .for('update')
+        .limit(1);
+      if (!locked) throw new NotFoundException('Practice session not found');
+      if (locked.status !== IN_PROGRESS) {
+        throw new ConflictException('Practice session is not in progress');
+      }
 
-    const [item] = await this.db
-      .select()
-      .from(practiceSessionItems)
-      .where(and(eq(practiceSessionItems.id, sessionItemId), eq(practiceSessionItems.sessionId, sessionId)))
-      .limit(1);
-    if (!item) throw new NotFoundException('Practice item not found');
+      const [item] = await tx
+        .select()
+        .from(practiceSessionItems)
+        .where(and(eq(practiceSessionItems.id, sessionItemId), eq(practiceSessionItems.sessionId, sessionId)))
+        .limit(1);
+      if (!item) throw new NotFoundException('Practice item not found');
 
-    const values =
-      session.mode === 'FLASHCARD'
-        ? this.flashcardResponse(dto)
-        : this.questionResponse(item, dto);
+      const values =
+        locked.mode === 'FLASHCARD'
+          ? this.flashcardResponse(dto)
+          : this.questionResponse(item, dto);
 
-    const [response] = await this.db
-      .insert(practiceSessionResponses)
-      .values({ ...values, sessionItemId })
-      .onConflictDoUpdate({
-        target: practiceSessionResponses.sessionItemId,
-        set: { answer: values.answer ?? null, rating: values.rating ?? null, isCorrect: values.isCorrect ?? null },
-      })
-      .returning();
+      const [response] = await tx
+        .insert(practiceSessionResponses)
+        .values({ ...values, sessionItemId })
+        .onConflictDoUpdate({
+          target: practiceSessionResponses.sessionItemId,
+          set: { answer: values.answer ?? null, rating: values.rating ?? null, isCorrect: values.isCorrect ?? null },
+        })
+        .returning();
 
-    return { item: this.serializeItem(item, response) };
+      return this.serializeItem(item, response);
+    });
+
+    return { item: response };
   }
 
   // ── Complete ──────────────────────────────
@@ -200,7 +226,7 @@ export class PracticeService {
       await this.db
         .update(practiceSessions)
         .set({ status: COMPLETED, completedAt: new Date(), updatedAt: new Date() })
-        .where(eq(practiceSessions.id, sessionId));
+        .where(and(eq(practiceSessions.id, sessionId), eq(practiceSessions.status, IN_PROGRESS)));
     }
     return { session: await this.detail(instituteId, studentId, sessionId) };
   }

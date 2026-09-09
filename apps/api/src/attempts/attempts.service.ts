@@ -19,11 +19,15 @@ import {
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { gradeAnswer } from './attempts.grade.js';
 import { buildAnalytics } from './analytics.js';
 
 const ATTEMPTABLE_STATUSES = ['PUBLISHED', 'ACTIVE'] as const;
 type AttemptRow = typeof attempts.$inferSelect;
+
+// db or a transaction handle — both expose the same query builders.
+type Queryable = Pick<Database, 'select' | 'update' | 'insert'>;
 
 function isUuid(v: unknown): boolean {
   return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
@@ -102,34 +106,41 @@ export class AttemptsService {
    * Server-side deadline enforcement — never trust the frontend timer. When an
    * IN_PROGRESS attempt has passed its deadline it is atomically transitioned
    * to EXPIRED (submittedAt = deadline) and evaluated against whatever was
-   * saved. Callers check `status` afterwards.
+   * saved — both in one transaction, so the attempt is never observable as
+   * EXPIRED-but-unevaluated. Callers check `status` afterwards.
    */
   private async refreshAndExpire(row: AttemptRow): Promise<AttemptRow> {
     if (row.status !== 'IN_PROGRESS' || !row.deadline) return row;
     if (new Date() <= row.deadline) return row;
-    const [updated] = await this.db
-      .update(attempts)
-      .set({ status: 'EXPIRED', submittedAt: row.deadline, updatedAt: new Date() })
-      .where(eq(attempts.id, row.id))
-      .returning();
-    if (updated) {
-      await this.evaluateAttempt(updated.id);
-      const [fresh] = await this.db.select().from(attempts).where(eq(attempts.id, updated.id));
+    const expired = await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(attempts)
+        .set({ status: 'EXPIRED', submittedAt: row.deadline, updatedAt: new Date() })
+        .where(and(eq(attempts.id, row.id), eq(attempts.status, 'IN_PROGRESS')))
+        .returning();
+      if (!updated) return null;
+      await this.evaluateAttempt(updated.id, tx);
+      const [fresh] = await tx.select().from(attempts).where(eq(attempts.id, updated.id));
       return fresh ?? updated;
-    }
-    return updated ?? row;
+    });
+    if (expired) return expired;
+    // Lost the transition race to a concurrent request — return the winner's state.
+    const [fresh] = await this.db.select().from(attempts).where(eq(attempts.id, row.id));
+    return fresh ?? row;
   }
 
   /**
    * Phase 10 automatic evaluation. Deterministic, server-side: grades each
    * snapshotted question against the saved response (unanswered = 0 marks),
    * persists per-response correctness, and writes the attempt's total score.
-   * Runs exactly once per attempt, at the IN_PROGRESS -> terminal transition.
+   * Runs exactly once per attempt, inside the same transaction that performs
+   * the IN_PROGRESS -> terminal transition — the attempt can never be observed
+   * as terminal-but-unevaluated.
    */
-  private async evaluateAttempt(attemptId: string): Promise<void> {
+  private async evaluateAttempt(attemptId: string, exec: Queryable = this.db): Promise<void> {
     const [aqRows, resRows] = await Promise.all([
-      this.db.select().from(attemptQuestions).where(eq(attemptQuestions.attemptId, attemptId)),
-      this.db.select().from(attemptResponses).where(eq(attemptResponses.attemptId, attemptId)),
+      exec.select().from(attemptQuestions).where(eq(attemptQuestions.attemptId, attemptId)),
+      exec.select().from(attemptResponses).where(eq(attemptResponses.attemptId, attemptId)),
     ]);
     const responses = new Map(resRows.map((r) => [r.attemptQuestionId, r]));
 
@@ -141,16 +152,14 @@ export class AttemptsService {
       return { attemptQuestionId: aq.id, isCorrect, marksAwarded: isCorrect ? aq.marks : 0 };
     });
 
-    await this.db.transaction(async (tx) => {
-      for (const g of graded) {
-        await tx
-          .update(attemptResponses)
-          .set({ isCorrect: g.isCorrect, marksAwarded: g.marksAwarded, evaluatedAt: new Date() })
-          .where(eq(attemptResponses.attemptQuestionId, g.attemptQuestionId));
-      }
-      const score = graded.reduce((sum, g) => sum + g.marksAwarded, 0);
-      await tx.update(attempts).set({ score, updatedAt: new Date() }).where(eq(attempts.id, attemptId));
-    });
+    for (const g of graded) {
+      await exec
+        .update(attemptResponses)
+        .set({ isCorrect: g.isCorrect, marksAwarded: g.marksAwarded, evaluatedAt: new Date() })
+        .where(eq(attemptResponses.attemptQuestionId, g.attemptQuestionId));
+    }
+    const score = graded.reduce((sum, g) => sum + g.marksAwarded, 0);
+    await exec.update(attempts).set({ score, updatedAt: new Date() }).where(eq(attempts.id, attemptId));
   }
 
   // ── Student endpoints ──────────────────────
@@ -247,32 +256,42 @@ export class AttemptsService {
       ? new Date(now.getTime() + assessment.durationMinutes * 60_000)
       : assessment.endsAt ?? null;
 
-    const attempt = await this.db.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(attempts)
-        .values({
-          instituteId,
-          assessmentId,
-          studentId,
-          status: 'IN_PROGRESS',
-          startedAt: now,
-          deadline,
-          totalMarks,
-        })
-        .returning();
-      await tx.insert(attemptQuestions).values(
-        links.map((l) => ({
-          attemptId: created.id,
-          questionId: l.questionId,
-          sortOrder: l.sortOrder,
-          marks: l.marks,
-          questionType: l.questionType,
-          stem: l.stem,
-          payload: l.payload as unknown as Record<string, unknown>,
-        })),
-      );
-      return created;
-    });
+    let attempt: AttemptRow;
+    try {
+      attempt = await this.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(attempts)
+          .values({
+            instituteId,
+            assessmentId,
+            studentId,
+            status: 'IN_PROGRESS',
+            startedAt: now,
+            deadline,
+            totalMarks,
+          })
+          .returning();
+        await tx.insert(attemptQuestions).values(
+          links.map((l) => ({
+            attemptId: created.id,
+            questionId: l.questionId,
+            sortOrder: l.sortOrder,
+            marks: l.marks,
+            questionType: l.questionType,
+            stem: l.stem,
+            payload: l.payload as unknown as Record<string, unknown>,
+          })),
+        );
+        return created;
+      });
+    } catch (error) {
+      // Concurrent start lost the race: the partial unique index
+      // attempts_one_in_progress_unique refused the second row.
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('An attempt is already in progress for this assessment');
+      }
+      throw error;
+    }
 
     return this.detail(instituteId, attempt.id, studentId);
   }
@@ -285,28 +304,56 @@ export class AttemptsService {
 
   /** Save/overwrite a student's answer for one snapshotted question. */
   async saveResponse(instituteId: string, attemptId: string, studentId: string, attemptQuestionId: string, answer: unknown) {
-    const attempt = await this.refreshAndExpire(await this.loadOwn(instituteId, attemptId, studentId));
-    if (attempt.status !== 'IN_PROGRESS') {
-      throw new BadRequestException('Attempt is not in progress');
-    }
+    const aq = await this.db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(attempts)
+        .where(
+          and(
+            eq(attempts.id, attemptId),
+            eq(attempts.instituteId, instituteId),
+            eq(attempts.studentId, studentId),
+          ),
+        )
+        .for('update')
+        .limit(1);
+      if (!locked) throw new NotFoundException('Attempt not found');
 
-    const [aq] = await this.db
-      .select()
-      .from(attemptQuestions)
-      .where(and(eq(attemptQuestions.id, attemptQuestionId), eq(attemptQuestions.attemptId, attemptId)))
-      .limit(1);
-    if (!aq) throw new NotFoundException('Question not found in this attempt');
+      if (locked.status === 'IN_PROGRESS' && locked.deadline && new Date() > locked.deadline) {
+        // Deadline passed while queued: expire + evaluate atomically, then reject
+        // the late answer. Same transition as refreshAndExpire, inside this lock.
+        const [expired] = await tx
+          .update(attempts)
+          .set({ status: 'EXPIRED', submittedAt: locked.deadline, updatedAt: new Date() })
+          .where(eq(attempts.id, locked.id))
+          .returning();
+        if (expired) await this.evaluateAttempt(expired.id, tx);
+        throw new BadRequestException('Attempt is not in progress');
+      }
+      if (locked.status !== 'IN_PROGRESS') {
+        throw new BadRequestException('Attempt is not in progress');
+      }
 
-    this.validateAnswer(aq.questionType, aq.payload, answer);
+      const [aq] = await tx
+        .select()
+        .from(attemptQuestions)
+        .where(and(eq(attemptQuestions.id, attemptQuestionId), eq(attemptQuestions.attemptId, attemptId)))
+        .limit(1);
+      if (!aq) throw new NotFoundException('Question not found in this attempt');
 
-    // Duplicate-write safe: unique (attemptId, attemptQuestionId) → upsert.
-    await this.db
-      .insert(attemptResponses)
-      .values({ attemptId, attemptQuestionId: aq.id, answer: answer as Record<string, unknown> })
-      .onConflictDoUpdate({
-        target: [attemptResponses.attemptId, attemptResponses.attemptQuestionId],
-        set: { answer: answer as Record<string, unknown>, updatedAt: new Date() },
-      });
+      this.validateAnswer(aq.questionType, aq.payload, answer);
+
+      // Duplicate-write safe: unique (attemptId, attemptQuestionId) → upsert.
+      await tx
+        .insert(attemptResponses)
+        .values({ attemptId, attemptQuestionId: aq.id, answer: answer as Record<string, unknown> })
+        .onConflictDoUpdate({
+          target: [attemptResponses.attemptId, attemptResponses.attemptQuestionId],
+          set: { answer: answer as Record<string, unknown>, updatedAt: new Date() },
+        });
+
+      return aq;
+    });
 
     return { attemptQuestionId: aq.id, saved: true };
   }
@@ -316,15 +363,21 @@ export class AttemptsService {
     let attempt = await this.refreshAndExpire(await this.loadOwn(instituteId, attemptId, studentId));
 
     if (attempt.status === 'IN_PROGRESS') {
-      const [updated] = await this.db
-        .update(attempts)
-        .set({ status: 'SUBMITTED', submittedAt: new Date(), updatedAt: new Date() })
-        .where(eq(attempts.id, attemptId))
-        .returning();
-      attempt = updated ?? attempt;
-      await this.evaluateAttempt(attemptId);
-      const [fresh] = await this.db.select().from(attempts).where(eq(attempts.id, attemptId));
-      attempt = fresh ?? attempt;
+      attempt = await this.db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(attempts)
+          .set({ status: 'SUBMITTED', submittedAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(attempts.id, attemptId), eq(attempts.status, 'IN_PROGRESS')))
+          .returning();
+        if (!updated) {
+          // Lost the transition race (concurrent submit/expire) — winner's state.
+          const [fresh] = await tx.select().from(attempts).where(eq(attempts.id, attemptId));
+          return fresh ?? attempt;
+        }
+        await this.evaluateAttempt(attemptId, tx);
+        const [fresh] = await tx.select().from(attempts).where(eq(attempts.id, attemptId));
+        return fresh ?? updated;
+      });
     }
 
     return this.serializeMeta(attempt);

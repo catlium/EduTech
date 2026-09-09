@@ -9,7 +9,9 @@ questions exclusively from that institute's approved question bank.
 
 All endpoints require an authenticated session cookie (`access_token`) and the
 `x-institute-id` header, with an active membership (status `'active'`) in that
-institute. Reads are available to any member of the institute; writes and
+institute. Reads and writes require the `INSTITUTE_ADMIN` or `TEACHER` role
+(assessment metadata and linked-question payloads carry answer-key material;
+students get `403`). Writes and
 lifecycle actions require the `INSTITUTE_ADMIN` or `TEACHER` role.
 
 Response wrapping follows the platform convention: `{ assessment }`,
@@ -113,6 +115,7 @@ GET /api/v1/assessments
 ```
 
 Returns the active institute's assessments ordered by `updatedAt` descending.
+Roles: `INSTITUTE_ADMIN`, `TEACHER`.
 Each row carries a computed `questionCount` (number of `assessment_questions`
 links), derived at read time and never stored. The list is always scoped to the
 active institute.
@@ -147,8 +150,9 @@ active institute.
 GET /api/v1/assessments/:assessmentId
 ```
 
-Returns the assessment. `404` if it does not exist in the active institute; a
-foreign-institute id returns `404` and never leaks data.
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns the assessment. `404` if it does
+not exist in the active institute; a foreign-institute id returns `404` and
+never leaks data.
 
 Response: `{ "assessment": Assessment }`
 
@@ -206,10 +210,11 @@ record).
 GET /assessments/:assessmentId/questions
 ```
 
-Reads are available to any member of the active institute (no role
-restriction). Returns the linked questions with their per-assessment `marks`
-and `sortOrder`, ordered ascending by `sortOrder`. `404` if the assessment is
-not in the active institute.
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns the linked questions with their
+per-assessment `marks` and `sortOrder`, ordered ascending by `sortOrder`.
+`404` if the assessment is not in the active institute. (Phase 14: this
+endpoint carries per-assessment question payloads with answer keys, so it is
+closed to students.)
 
 ## Add questions to assessment
 

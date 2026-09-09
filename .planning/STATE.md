@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-13-practice-system
-current_phase_name: Phase 13 — Practice System
+current_phase: phase-14-validation-security
+current_phase_name: Phase 14 — Cross-Module Validation & Security
 status: completed
-stopped_at: "Phase 13 — Practice System COMPLETE (2026-09-08): migration 0011 + apps/api/src/practice — backend-only ungraded flashcard + question practice (start/history/detail/answer/complete), zod contracts, docs/api/practice.md, practice_e2e.sh PASS=73 FAIL=0 (PR-01..12 + PR-05x, PRAC-03 never writes attempts), regressions attempts 96 / demo 52 / syllabus 39 / p8 86. Next: Phase 14 — Cross-Module Validation & Security."
-last_updated: "2026-09-08T22:50:00.000Z"
+stopped_at: "Phase 14 — Cross-Module Validation & Security COMPLETE (2026-09-09): audit of auth/RBAC/ownership/isolation/validation/transactions/races; student reads of question bank + assessment metadata closed (WRITE_ROLES 403), generic job endpoints gated, partial unique indexes attempts_one_in_progress_unique + practice_open_sessions_unique (migration 0012), atomic submit/refreshAndExpire/saveResponse/answer with row locks + fresh re-reads, isUniqueViolation cause-chain helper unifies drizzle-wrapped 23505 mapping (attempts/practice/examinations/generation), sec14_e2e.sh PASS=22, regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86, typecheck/lint/build green. Next: Phase 15 — API Contract Verification."
+last_updated: "2026-09-09T00:00:00.000Z"
 state_head: a9f7ecf
 progress:
   total_phases: 17
-  completed_phases: 13
+  completed_phases: 14
   total_plans: 11
   completed_plans: 11
-  percent: 76
+  percent: 82
 ---
 
 # STATE.md
@@ -55,7 +55,7 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Not started / pending:**
 
-- Later backend phases (14-17): Phase 14 — Cross-Module Validation & Security is the recommended next task.
+- Later backend phases (15-17): Phase 15 — API Contract Verification is the recommended next task.
 - Frontend integration phases (18-25): DEFERRED (demo milestone frontend delivered via Wave 3)
 
 ## Phase Plans
@@ -88,25 +88,29 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Current Task
 
-**Phase 13 — Practice System — COMPLETE (closed 2026-09-08). Next per roadmap:**
+**Phase 14 — Cross-Module Validation & Security — COMPLETE (closed 2026-09-09). Next per roadmap:**
 
-**Phase 14 — Cross-Module Validation & Security** (full backend review:
-auth, authorization, input validation, ownership, data isolation, approval
-rules, exam state transitions, attempt restrictions, student answer security,
-AI job failures, file validation, error responses, DB constraints,
-transactions, race conditions around attempts/submission). Phases 15-17
-follow. Frontend integration phases (18-25) remain deferred per the demo-first
-override (frontend delivered inside the milestone as Wave 3).
+**Phase 15 — API Contract Verification** (verify every endpoint against every
+`docs/api/` document: method, path, auth, authorization, request/response,
+status codes, validation, error format, pagination, filtering, IDs, date/time;
+resolve inconsistencies deliberately; extend `docs/api/` coverage to all
+phases). Phases 16-17 follow. Frontend integration phases (18-25) remain
+deferred per the demo-first override (frontend delivered inside the milestone
+as Wave 3).
 
 ## Session Continuity
 
-Last session: 2026-09-08 (closed)
-Stopped at: Phase 13 completed — backend-only ungraded flashcard + question
-practice (migration 0011, `apps/api/src/practice`, zod contracts,
-`docs/api/practice.md`), `practice_e2e.sh` PASS=73 FAIL=0 (PR-01..12 + PR-05x),
-regressions attempts 96 / demo 52 / syllabus 39 / p8 86, API typecheck/lint/build green.
+Last session: 2026-09-09 (closed)
+Stopped at: Phase 14 completed — cross-module validation & security hardening
+(role gating of question-bank/assessment/jobs reads, migration 0012 partial
+unique indexes for attempts + practice sessions, atomic
+submit/refreshAndExpire/saveResponse/answer with FOR UPDATE row locks and
+fresh post-evaluation re-reads, shared `isUniqueViolation` helper fixing
+drizzle-wrapped 23505 mapping, `sec14_e2e.sh` PASS=22 with concurrency +
+access-closure coverage), regressions attempts 96 / practice 73 / demo 52 /
+syllabus 39 / p8 86 / sec14 22, API typecheck/lint/build green.
 Clean tree, checkpoint pushed.
-Resume file: `.planning/ROADMAP.md` (Phase 14 — Cross-Module Validation & Security next)
+Resume file: `.planning/ROADMAP.md` (Phase 15 — API Contract Verification next)
 
 ## Verification
 
@@ -123,6 +127,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 14 — Cross-Module Validation & Secu
 - Wave 4 (demo close): `demo_e2e.sh` PASS=52 FAIL=0 full teacher→syllabus→AI→quiz→student→attempt→result journey (mock AI v2 on 127.0.0.1:8899, live dockerized stack). Regressions re-run green: attempts 76, syllabus 39, p8 86. API + web typecheck/lint + `next build` PASS. UI route smoke 200 on all demo routes. 2026-09-08
 - Phase 12 (analytics): `pnpm --filter @catlium/api test:analytics` 12/12 PASS (node:test — summary/averages/distribution/per-question/topic/difficulty/zero-marks/empty/privacy), `attempts_e2e.sh` PASS=96 FAIL=0 (AT-15 analytics metrics + AT-16 role/tenant/anon gates + AT-17 empty case), regressions `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API + web typecheck/lint + `next build` PASS, results route 200 on live dev web. 2026-09-08
 - Phase 13 (practice): `practice_e2e.sh` PASS=73 FAIL=0 (PR-01..12 + PR-05x — snapshot/sanitization, duplicate-open 409, start guards, grading/reveal/rating, flashcard back-face, complete idempotency, history stats, cross-student 404, tenant/anon gates, PRAC-03: 0 attempts written), regressions `attempts_e2e.sh` 96 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API typecheck/lint/build green, GlobalExceptionFilter now logs unhandled 500s. 2026-09-08
+- Phase 14 (validation & security): `sec14_e2e.sh` PASS=22 FAIL=0 (SC-01/02 student 403 on question-bank + assessment reads, SC-03 6-way attempt start single-winner 201 + 5×409, SC-04 parallel submit atomic evaluation, SC-05 answer-after-submit 400, SC-06 practice start single-winner + 409, SC-07 answer-after-complete 409), regressions `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 / `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0, API typecheck/lint/build green. 2026-09-09
 - Known: zero automated test coverage across the codebase (manual E2E via shell scripts) — Phase 12 analytics logic has the project's first node:test unit coverage
 
 ## Decisions
@@ -141,7 +146,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 14 — Cross-Module Validation & Secu
 
 ## Blocked
 
-- None. Practice complete; nothing blocks Phase 14 (Cross-Module Validation & Security).
+- None. Phase 14 complete; nothing blocks Phase 15 (API Contract Verification).
 
 ## Performance Metrics
 

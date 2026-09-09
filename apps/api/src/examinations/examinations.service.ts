@@ -10,6 +10,7 @@ import { assessments, assessmentQuestions, questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import type { AssessmentStatus } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 
 // Pattern 1 (08-RESEARCH) — the transition lookup table is the single source
 // of truth for lifecycle legality. COMPLETED is terminal (empty list).
@@ -381,12 +382,7 @@ export class ExaminationsService {
   }
 
   private throwIfUniqueViolation(error: unknown, message: string): void {
-    const code =
-      typeof error === 'object' && error !== null && 'cause' in error
-        ? (error.cause as { code?: string })?.code
-        : (error as { code?: string })?.code;
-
-    if (code === '23505') {
+    if (isUniqueViolation(error)) {
       throw new ConflictException(message);
     }
   }

@@ -1048,6 +1048,26 @@ IN_PROGRESS attempt (excluded).
   `{"answer":{"choiceId":"<id>"}}` or `{"rating":"AGAIN"}` → 200.
 - **Docs:** `docs/api/practice.md` (full contract + error table).
 
+### SC-01..07 — Security Hardening (Phase 14, 2026-09-09)
+
+- **Command:** `bash scripts/e2e/sec14_e2e.sh` against the live stack
+  (API on :3000; PostgreSQL 17; seed applied).
+- **Expected:** `SEC14 E2E: PASS=22 FAIL=0` (SC-01 student 403 on
+  `GET /questions` + `GET /questions/:id`; SC-02 student 403 on
+  `GET /assessments` + `GET /assessments/:id` + `GET /assessments/:id/questions`;
+  SC-03 six parallel `POST /attempts` → exactly one 201 + five 409 and one
+  IN_PROGRESS row; SC-04 four parallel `POST /attempts/:id/submit` → all 200,
+  status SUBMITTED with evaluated (non-null) score; SC-05 answer PUT after
+  submit → 400; SC-06 four parallel `POST /practice/sessions` → one 201 +
+  three 409 and one IN_PROGRESS row; SC-07 answer PUT after complete → 409).
+- **Endpoint examples:** `GET /api/v1/questions` as student + `x-institute-id`
+  → 403; `POST /api/v1/attempts` `{"assessmentId":"<id>"}` raced → 201/409;
+  `POST /api/v1/attempts/:id/submit` → 200 with evaluated score.
+- **Docs:** `docs/api/questions.md` + `docs/api/assessments.md` now list
+  teacher/admin roles on reads; migration `0012` documented in schema.
+- **Regression:** `attempts_e2e.sh` 96 / `practice_e2e.sh` 73 /
+  `demo_e2e.sh` 52 / `syllabus_e2e.sh` 39 / `p8_e2e.sh` 86 all FAIL=0.
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete

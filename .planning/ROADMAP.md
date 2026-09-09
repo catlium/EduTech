@@ -214,10 +214,12 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 **Goal:** Ungraded flashcards + question practice (start session, review/answer, record response, complete, history). Excluded from formal exam scoring.
 **Status:** COMPLETE (2026-09-08). Backend-only (no web UI yet — frontend integration phases 18-25). Migration 0011 (`practice_sessions` / `practice_session_items` / `practice_session_responses`, snapshot pattern), `apps/api/src/practice` (start / history / detail / answer / complete), zod contracts in `@catlium/contracts`, `docs/api/practice.md`. PRACTICE-answer key kept server-side until the item is answered; identical deterministic grader as attempts; 201/400/404/409 gates; `practice_e2e.sh` PASS=73 FAIL=0; regressions attempts 96 / demo 52 / syllabus 39 / p8 86. Reqs: PRAC-01..03 ✓.
 
-### Phase 14 — Cross-Module Validation & Security
+### Phase 14 — Cross-Module Validation & Security ✓ COMPLETE
 
 **Goal:** Full backend review: auth, authorization, input validation, ownership, data isolation, approval rules, exam state transitions, attempt restrictions, student answer security, AI job failures, file validation, error responses, DB constraints, transactions, race conditions around attempts/submission. Emphasis on server-side authorization.
-**Status:** DEFERRED. Reqs: SEC-01..05.
+**Status:** COMPLETE (2026-09-09). Student reads of the question bank and assessment metadata/questions closed (`@RequiredRoles(...WRITE_ROLES)`; students get 403); generic job create/fetch gated to institute admins/teachers. Migration 0012: partial unique indexes `attempts_one_in_progress_unique` and `practice_open_sessions_unique` enforce single open attempt/session at the DB level. Attempts: atomic submit (guarded update + synchronous evaluation in one tx, post-evaluation re-read), atomic refreshAndExpire, FOR UPDATE row-locked saveResponse with owner + in-tx deadline/status checks; practice answer likewise row-locked. Shared `isUniqueViolation` helper (cause-chain walk) fixes drizzle-wrapped 23505 → 409 mapping across attempts/practice/examinations/generation. `sec14_e2e.sh` PASS=22 (SC-01..07 concurrency + access-closure); regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86. Reqs: SEC-01..05 ✓.
+
+### Phase 15 — API Contract Verification
 
 ### Phase 15 — API Contract Verification
 
@@ -315,9 +317,9 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 3. ✅ Phases 9-11 delivered inside the demo milestone
 4. ✅ Phase 12 examination analytics (closed 2026-09-08)
 
-**→ NEXT: Phase 14 — Cross-Module Validation & Security** (full backend
-review: auth, authorization, input validation, ownership, data isolation,
-approval rules, exam state transitions, attempt restrictions, student answer
-security, AI job failures, file validation, error responses, DB constraints,
-transactions, race conditions around attempts/submission). Then Phases
-15-17, then frontend integration phases 18-25.
+**→ NEXT: Phase 15 — API Contract Verification** (verify every endpoint
+against every `docs/api/` document: method, path, auth, authorization,
+request/response, status codes, validation, error format, pagination,
+filtering, IDs, date/time; resolve inconsistencies deliberately; extend
+`docs/api/` coverage to all phases). Then Phases 16-17, then frontend
+integration phases 18-25.

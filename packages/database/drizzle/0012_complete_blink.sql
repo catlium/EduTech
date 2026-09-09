@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "attempts_one_in_progress_unique" ON "attempts" USING btree ("assessment_id","student_id") WHERE status = 'IN_PROGRESS';--> statement-breakpoint
+CREATE UNIQUE INDEX "practice_open_sessions_unique" ON "practice_sessions" USING btree ("student_id","institute_id","mode",coalesce(content_id, topic_id, '00000000-0000-4000-8000-000000000000')) WHERE status = 'IN_PROGRESS';

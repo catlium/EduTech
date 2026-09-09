@@ -165,7 +165,13 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       (PRAC-03: never writes attempts), zod contracts, `docs/api/practice.md`;
       `practice_e2e.sh` PASS=73 FAIL=0, regressions attempts 96 / demo 52 /
       syllabus 39 / p8 86, backend-only — web practice UI deferred to phases 18-25)
-- [ ] Phase 14 — Cross-Module Validation & Security
+- [x] Phase 14 — Cross-Module Validation & Security (delivered 2026-09-09:
+      students 403 on question-bank + assessment reads, generic /jobs gated,
+      migration 0012 partial unique indexes for open attempts + practice
+      sessions, atomic submit/refreshAndExpire/saveResponse/answer with row
+      locks and post-evaluation re-reads, `isUniqueViolation` cause-chain
+      helper; `sec14_e2e.sh` PASS=22 FAIL=0, regressions attempts 96 /
+      practice 73 / demo 52 / syllabus 39 / p8 86, typecheck/lint/build green)
 - [ ] Phase 15 — API Contract Verification
 - [ ] Phase 16 — Testing & Demonstration Readiness
 - [ ] Phase 17 — Backend-Complete Checkpoint

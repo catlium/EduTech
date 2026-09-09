@@ -7,8 +7,8 @@ delete, and drive the approval workflow. A question belongs to an institute and
 is attached to exactly one academic scope (subject, chapter, or topic).
 
 All endpoints require an authenticated session cookie (`access_token`) and the
-`x-institute-id` header. Reads are available to any member of the institute;
-writes require the `INSTITUTE_ADMIN` or `TEACHER` role.
+`x-institute-id` header. Reads and writes require the `INSTITUTE_ADMIN` or
+`TEACHER` role (question-bank payloads carry answer keys; students get `403`).
 
 Response wrapping follows the platform convention: `{ question }`,
 `{ questions }`.
@@ -160,6 +160,8 @@ An invalid enum value for `questionType`, `difficulty`, or `approvalStatus`
 returns `400`. Lists are ordered by `updatedAt` descending and are always
 scoped to the active institute.
 
+Roles: `INSTITUTE_ADMIN`, `TEACHER`.
+
 Response: `{ "questions": Question[] }`
 
 ## Get question
@@ -168,8 +170,9 @@ Response: `{ "questions": Question[] }`
 GET /questions/:questionId
 ```
 
-Returns the question. `404` if it does not exist in the active institute (a
-foreign-institute id returns `404`, never leaks data).
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns the question. `404` if it does
+not exist in the active institute (a foreign-institute id returns `404`, never
+leaks data).
 
 Response: `{ "question": Question }`
 

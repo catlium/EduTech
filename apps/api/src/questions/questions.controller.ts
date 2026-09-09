@@ -57,6 +57,7 @@ export class QuestionsController {
   }
 
   @Get()
+  @RequiredRoles(...WRITE_ROLES)
   async list(
     @Tenant() tenant: TenantContext,
     @Query('questionType', new ParseEnumPipe(['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'], { optional: true }))
@@ -81,6 +82,7 @@ export class QuestionsController {
   }
 
   @Get(':questionId')
+  @RequiredRoles(...WRITE_ROLES)
   async get(
     @Tenant() tenant: TenantContext,
     @Param('questionId', ParseUUIDPipe) questionId: string,

@@ -49,12 +49,14 @@ export class ExaminationsController {
   }
 
   @Get()
+  @RequiredRoles(...WRITE_ROLES)
   async list(@Tenant() tenant: TenantContext) {
     const assessments = await this.examinationsService.listAssessments(tenant.instituteId);
     return { assessments };
   }
 
   @Get(':assessmentId')
+  @RequiredRoles(...WRITE_ROLES)
   async get(
     @Tenant() tenant: TenantContext,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
@@ -146,6 +148,7 @@ export class ExaminationsController {
   }
 
   @Get(':assessmentId/questions')
+  @RequiredRoles(...WRITE_ROLES)
   async listQuestions(
     @Tenant() tenant: TenantContext,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,

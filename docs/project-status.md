@@ -4,9 +4,10 @@
 
 **Status: COMPLETE — Demo milestone closed 2026-09-08; full-journey E2E green
 (`demo_e2e.sh` PASS=52 FAIL=0), all Waves 0-4 + Phases 9-11 delivered, then
-Phase 12 — Examination Analytics (2026-09-08) and Phase 13 — Practice System
-(2026-09-08). Next: later backend phases (Phases 14-17) starting with
-Phase 14 — Cross-Module Validation & Security.** A user-directed prioritization
+Phase 12 — Examination Analytics (2026-09-08), Phase 13 — Practice System
+(2026-09-08), and Phase 14 — Cross-Module Validation & Security (2026-09-09).
+Next: later backend phases (Phases 15-17) starting with Phase 15 — API
+Contract Verification.** A user-directed prioritization
 replaces the sequential roadmap for this milestone: ship a working
 teacher→syllabus→AI-notes→questions→quiz→student→attempt→result demo with a
 first-class frontend (`apps/web`, Next.js 15 + shadcn/ui). Master plan (the
@@ -256,10 +257,11 @@ Web practice UI deliberately deferred to the frontend integration phases
 
 **Commit:** `feat(practice): add ungraded flashcard and question practice`
 
-**Recommended next task:** Phase 14 — Cross-Module Validation & Security
-(full backend review — auth, authorization, input validation, ownership, data
-isolation, approval rules, exam state transitions, attempt restrictions,
-student answer security, AI job failures, file validation, error responses,
+**Recommended next task:** Phase 15 — API Contract Verification (verify every
+endpoint against every `docs/api/` document — method, path, auth,
+authorization, request/response, status codes, validation, error format,
+pagination, filtering, IDs, date/time — resolve inconsistencies deliberately;
+Phases 16-17 follow).
 DB constraints, transactions, race conditions around attempts/submission).
 
 **Wave 4 — Full integration & demo validation ✓ (2026-09-08):**
@@ -1032,16 +1034,56 @@ Validated against a clean PostgreSQL 17 + running API on 2026-08-19.
 
 ---
 
+## Phase 14 — Cross-Module Validation & Security (2026-09-09)
+
+**Status: COMPLETE.** Cross-module backend review (auth, RBAC, ownership,
+tenant isolation, validation, transactions, races) with server-side
+authorization emphasis. Reqs SEC-01..05 ✓.
+
+- **Access closed to students (403, WRITE_ROLES):** `GET /questions`,
+  `GET /questions/:id`, `GET /assessments`, `GET /assessments/:id`,
+  `GET /assessments/:id/questions` (answer-key material), and the generic
+  `POST /jobs` + `GET /jobs/:id` (jobs controller gained `RolesGuard`).
+- **Migration `0012` (applied):** partial unique indexes
+  `attempts_one_in_progress_unique` (assessment, student WHERE IN_PROGRESS)
+  and `practice_open_sessions_unique` (student, institute, mode,
+  coalesce(content/topic) WHERE IN_PROGRESS) — single open attempt/session is
+  now a DB invariant, not just an app guard.
+- **Attempt atomicity:** `submit` = guarded conditional update + synchronous
+  evaluation in one transaction with a fresh post-evaluation re-read (no more
+  `SUBMITTED`/`EXPIRED` rows without a score); `refreshAndExpire` atomic
+  conditional update + re-read; `saveResponse` FOR UPDATE row lock + student
+  owner check + in-tx deadline/status checks. `start` maps the DB unique
+  violation to 409.
+- **Practice same hardening:** `answer` FOR UPDATE session lock + owner/status
+  checks; `complete` conditional update; `start` 409 on race.
+- **Shared `isUniqueViolation` helper** (`common/utils/db-errors.util.ts`)
+  walks the drizzle `DrizzleQueryError.cause` chain so `23505` → 409 mapping
+  is uniform across attempts / practice / examinations / generation (fixes the
+  500-on-race bug where `error.code` was absent on wrapped tx errors).
+- **E2E:** new `scripts/e2e/sec14_e2e.sh` PASS=22 FAIL=0 (student 403 reads,
+  6-way attempt-start single winner, parallel submit atomicity, answer-after-
+  submit/complete rejection, practice start single winner).
+- **Regressions green (all FAIL=0):** attempts **96**, practice **73**, demo
+  **52**, syllabus **39**, p8 **86** (SEC block updated for the new 403s,
+  count unchanged); API typecheck/lint/build green.
+- **Deferred (documented, not refactored):** workers persist directly to
+  PostgreSQL (`apps/workers/worker/db.py`) — pre-existing deliberate design,
+  institute-scoped; OCR internal-key enforcement is config-conditional (dev
+  empty); assessment `setStatus` read-check-act race is negligible (comment
+  documents the ceiling); CSRF = SameSite=lax + path-scoped httpOnly cookies
+  + double-submit guard on refresh/logout only (rationale documented).
+
+**Commit:** `feat(security): complete cross-module validation and security hardening`
+
 ## Recommended Next Task
 
-**Phase 14 — Cross-Module Validation & Security** (full backend review):
-auth, authorization, input validation, ownership, data isolation, approval
-rules, exam state transitions, attempt restrictions, student answer security,
-AI job failures, file validation, error responses, DB constraints,
-transactions, race conditions around attempts/submission. Emphasis on
-server-side authorization. Then Phases 15-17 (contract verification, testing &
-demonstration readiness, backend-complete checkpoint), then frontend
-integration phases 18-25.
+**Phase 15 — API Contract Verification** (verify every endpoint against every
+`docs/api/` document: method, path, auth, authorization, request/response,
+status codes, validation, error format, pagination, filtering, IDs, date/time;
+resolve inconsistencies deliberately; extend `docs/api/` coverage to all
+phases). Then Phases 16-17 (testing & demonstration readiness, backend-
+complete checkpoint), then frontend integration phases 18-25.
 
 The dockerized stack (`infrastructure/compose/docker-compose.yml`) is the
 validation harness for any follow-on testing. `apps/web` dev server runs on

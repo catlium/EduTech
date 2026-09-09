@@ -325,9 +325,9 @@ sadd=$(curl -s -b "$CJS" -X POST "$BASE/assessments/$AB/questions" -H 'Content-T
 sdel=$(curl -s -b "$CJS" -X DELETE "$BASE/assessments/$AB" -H "x-institute-id: $IA" -o /tmp/opencode/sd.txt -w "%{http_code}"); ok "$sdel" 403 "SEC student delete 403"
 spub=$(curl -s -b "$CJS" -X POST "$BASE/assessments/$AB/publish" -H "x-institute-id: $IA" -o /tmp/opencode/sp.txt -w "%{http_code}"); ok "$spub" 403 "SEC student publish 403"
 scomp=$(curl -s -b "$CJS" -X POST "$BASE/assessments/$AB/complete" -H "x-institute-id: $IA" -o /tmp/opencode/scp.txt -w "%{http_code}"); ok "$scomp" 403 "SEC student complete 403"
-slist=$(curl -s -b "$CJS" -X GET "$BASE/assessments" -H "x-institute-id: $IA" -o /tmp/opencode/sl.txt -w "%{http_code}"); ok "$slist" 200 "SEC student list 200"
-sget=$(curl -s -b "$CJS" -X GET "$BASE/assessments/$AB" -H "x-institute-id: $IA" -o /tmp/opencode/sg.txt -w "%{http_code}"); ok "$sget" 200 "SEC student get 200"
-sqlist=$(curl -s -b "$CJS" -X GET "$BASE/assessments/$AB/questions" -H "x-institute-id: $IA" -o /tmp/opencode/sql.txt -w "%{http_code}"); ok "$sqlist" 200 "SEC student list-questions 200"
+slist=$(curl -s -b "$CJS" -X GET "$BASE/assessments" -H "x-institute-id: $IA" -o /tmp/opencode/sl.txt -w "%{http_code}"); ok "$slist" 403 "SEC student list 403"
+sget=$(curl -s -b "$CJS" -X GET "$BASE/assessments/$AB" -H "x-institute-id: $IA" -o /tmp/opencode/sg.txt -w "%{http_code}"); ok "$sget" 403 "SEC student get 403"
+sqlist=$(curl -s -b "$CJS" -X GET "$BASE/assessments/$AB/questions" -H "x-institute-id: $IA" -o /tmp/opencode/sql.txt -w "%{http_code}"); ok "$sqlist" 403 "SEC student list-questions 403"
 
 RANDUUID="00000000-0000-0000-0000-000000000000"
 rndg=$(req GET "/assessments/$RANDUUID" -H "x-institute-id: $IA"); ok "$rndg" 404 "SEC random uuid get 404"
