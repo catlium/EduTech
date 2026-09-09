@@ -20,6 +20,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { AuthShell } from "@/components/app/auth-shell";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -47,52 +49,61 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">CatLium EduTech</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your account</p>
-        </div>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input type="email" placeholder="you@institute.edu" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
-        </Form>
-        <p className="text-center text-sm text-muted-foreground">
+    <AuthShell
+      title="CatLium EduTech"
+      description="Sign in to continue to your workspace"
+      footer={
+        <>
           No account?{" "}
           <Link href="/register" className="font-medium underline underline-offset-4">
             Create one
           </Link>
-        </p>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    placeholder="you@institute.edu"
+                    autoComplete="email"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {submitting ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      </Form>
+    </AuthShell>
   );
 }

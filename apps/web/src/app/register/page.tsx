@@ -20,6 +20,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { AuthShell } from "@/components/app/auth-shell";
+import { Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -47,65 +49,70 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">CatLium EduTech</h1>
-          <p className="text-sm text-muted-foreground">Create your account</p>
-        </div>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ada Lovelace" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input type="email" placeholder="you@institute.edu" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="At least 8 characters" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Creating account..." : "Create account"}
-            </Button>
-          </form>
-        </Form>
-        <p className="text-center text-sm text-muted-foreground">
+    <AuthShell
+      title="CatLium EduTech"
+      description="Create your account to get started"
+      footer={
+        <>
           Already have an account?{" "}
           <Link href="/login" className="font-medium underline underline-offset-4">
             Sign in
           </Link>
-        </p>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="Ada Lovelace" autoComplete="name" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="you@institute.edu" autoComplete="email" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <Input
+                    type="password"
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {submitting ? "Creating account…" : "Create account"}
+          </Button>
+        </form>
+      </Form>
+    </AuthShell>
   );
 }

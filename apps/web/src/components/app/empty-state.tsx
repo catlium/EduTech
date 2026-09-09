@@ -1,29 +1,38 @@
 import type { ReactNode } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export function EmptyState({
   icon,
   title,
   description,
   children,
+  className,
 }: {
   icon?: ReactNode;
   title: string;
   description?: string;
   children?: ReactNode;
+  className?: string;
 }) {
   return (
-    <Card>
-      <CardContent className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-        {icon && <div className="text-muted-foreground">{icon}</div>}
-        <div className="space-y-1">
-          <p className="text-sm font-medium">{title}</p>
-          {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
-          )}
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-5 rounded-xl border border-dashed bg-muted/20 px-6 py-14 text-center",
+        className,
+      )}
+    >
+      {icon && (
+        <div className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+          {icon}
         </div>
-        {children}
-      </CardContent>
-    </Card>
+      )}
+      <div className="max-w-sm space-y-1.5">
+        <p className="text-sm font-semibold">{title}</p>
+        {description && (
+          <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+        )}
+      </div>
+      {children && <div className="flex flex-wrap items-center justify-center gap-2">{children}</div>}
+    </div>
   );
 }

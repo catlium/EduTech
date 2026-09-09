@@ -113,7 +113,43 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   body {
     @apply bg-background text-foreground;
+    font-family:
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      "Helvetica Neue",
+      Arial,
+      "Noto Sans",
+      sans-serif,
+      "Apple Color Emoji",
+      "Segoe UI Emoji",
+      "Segoe UI Symbol",
+      "Noto Color Emoji";
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  ::selection {
+    @apply bg-primary/10 text-foreground;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    :focus-visible {
+      transition: box-shadow 0.15s ease;
+    }
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .text-balance {
+    text-wrap: balance;
   }
 }
