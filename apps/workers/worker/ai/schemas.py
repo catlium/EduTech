@@ -155,3 +155,39 @@ class SyllabusChapter(BaseModel):
 
 class SyllabusPayload(BaseModel):
     chapters: list[SyllabusChapter] = Field(min_length=1, max_length=100)
+
+
+# ── AI blueprint (paper pattern) generation ─────────────────────────────────
+
+
+class BlueprintDifficultyDistribution(BaseModel):
+    EASY: int = Field(ge=0, le=100)
+    MEDIUM: int = Field(ge=0, le=100)
+    HARD: int = Field(ge=0, le=100)
+
+
+class BlueprintTopicDistribution(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    percentage: int | None = Field(default=None, ge=0, le=100)
+
+
+class BlueprintSection(BaseModel):
+    # LLM ids are rarely UUIDs; the aggregation step re-keys every section to a
+    # fresh UUID (stable across re-analysis runs is not required).
+    id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=100)
+    questionType: Literal["MCQ", "TRUE_FALSE", "FILL_IN_BLANK"] | None = None  # noqa: N815
+    count: int | None = Field(default=None, ge=1)
+    marksPerQuestion: int | None = Field(default=None, ge=1)  # noqa: N815
+    totalMarks: int | None = Field(default=None, ge=1)  # noqa: N815
+    compulsory: bool = True
+    attemptCount: int | None = Field(default=None, ge=1)  # noqa: N815
+    difficultyDistribution: BlueprintDifficultyDistribution | None = None  # noqa: N815
+    topicDistribution: list[BlueprintTopicDistribution] | None = None  # noqa: N815
+
+
+class BlueprintPayload(BaseModel):
+    totalMarks: int = Field(ge=1)  # noqa: N815
+    durationMinutes: int = Field(ge=1)  # noqa: N815
+    instructions: list[str] = Field(default_factory=list, max_length=50)
+    sections: list[BlueprintSection] = Field(min_length=1, max_length=50)

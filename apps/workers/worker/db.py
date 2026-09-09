@@ -35,6 +35,36 @@ def get_subject(subject_id: str, institute_id: str) -> dict[str, Any] | None:
         ).fetchone()
 
 
+def get_paper_pattern(pattern_id: str, institute_id: str) -> dict[str, Any] | None:
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT * FROM paper_patterns WHERE id = %s AND institute_id = %s",
+            (pattern_id, institute_id),
+        ).fetchone()
+
+
+def save_blueprint_analysis(
+    pattern_id: str,
+    *,
+    structure: dict[str, Any],
+    source_material_id: str,
+    updated_by: str,
+) -> None:
+    """Persist an AI-analyzed blueprint as the pattern's structure (REVIEW).
+
+    Moves the pattern to REVIEW (analysis = a better draft for the teacher),
+    records the analyzed source material, and stamps the updating user. The
+    API is the ownership boundary for APPROVED immutability; the worker re-checks
+    it as defense in depth.
+    """
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE paper_patterns SET structure = %s, source_material_id = %s,"
+            " status = 'REVIEW', updated_by = %s, updated_at = %s WHERE id = %s",
+            (Jsonb(structure), source_material_id, updated_by, _now(), pattern_id),
+        )
+
+
 def update_material_status(material_id: str, status: str) -> None:
     with psycopg.connect(settings.database_url) as conn:
         conn.execute(

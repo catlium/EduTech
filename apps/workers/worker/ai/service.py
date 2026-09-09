@@ -23,7 +23,7 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ValidationError
 
@@ -45,6 +45,7 @@ VALID_QUESTION_TYPES = {"MCQ", "TRUE_FALSE", "FILL_IN_BLANK"}
 VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
 
 SYLLABUS_OPERATION = "AI_GENERATE_SYLLABUS"
+BLUEPRINT_OPERATION = "AI_GENERATE_BLUEPRINT"
 
 MAX_QUESTION_COUNT = 50
 
@@ -182,6 +183,72 @@ def _aggregate_syllabus(results: list[dict[str, Any]], _limit: int | None = None
     return {"chapters": list(chapters.values())[:100]}
 
 
+def _aggregate_blueprint(
+    results: list[dict[str, Any]], _limit: int | None = None
+) -> dict[str, Any]:
+    """Fold per-chunk blueprint drafts into one deterministic structure.
+
+    First declared value wins per field; null fields may be filled by later
+    chunks; section ids are always re-keyed to fresh UUIDs (LLM ids are not
+    reliable). No invented numbers: if the model never declared totalMarks /
+    durationMinutes they stay 0 and the outer Pydantic validation fails the job
+    loudly (teacher cannot approve an unspecified pattern).
+    """
+    total_marks = next(
+        (
+            r["totalMarks"]
+            for r in results
+            if isinstance(r.get("totalMarks"), int) and r["totalMarks"] > 0
+        ),
+        None,
+    )
+    duration = next(
+        (
+            r["durationMinutes"]
+            for r in results
+            if isinstance(r.get("durationMinutes"), int) and r["durationMinutes"] > 0
+        ),
+        None,
+    )
+    instructions: list[str] = []
+    for result in results:
+        for item in result.get("instructions") or []:
+            if isinstance(item, str) and item.strip() and item not in instructions:
+                instructions.append(item)
+
+    sections: dict[str, dict[str, Any]] = {}
+    for result in results:
+        for section in result.get("sections") or []:
+            if not isinstance(section, dict):
+                continue
+            name = str(section.get("name") or "").strip()
+            if not name:
+                continue
+            if name not in sections:
+                sections[name] = {**section, "id": str(uuid4())}
+                continue
+            existing = sections[name]
+            for key in (
+                "questionType",
+                "count",
+                "marksPerQuestion",
+                "totalMarks",
+                "compulsory",
+                "attemptCount",
+                "difficultyDistribution",
+                "topicDistribution",
+            ):
+                if existing.get(key) is None and section.get(key) is not None:
+                    existing[key] = section[key]
+
+    return {
+        "totalMarks": total_marks or 0,
+        "durationMinutes": duration or 0,
+        "instructions": instructions,
+        "sections": list(sections.values()),
+    }
+
+
 @dataclass(frozen=True)
 class Operation:
     operation: str
@@ -248,6 +315,15 @@ OPERATIONS: dict[str, Operation] = {
         default_title="AI-generated syllabus",
         aggregate=_aggregate_syllabus,
     ),
+    BLUEPRINT_OPERATION: Operation(
+        operation=BLUEPRINT_OPERATION,
+        content_type="PAPER_PATTERN",
+        build_messages=generation.blueprint.build_messages,
+        parse=generation.blueprint.parse_blueprint_json,
+        model=schemas.BlueprintPayload,
+        default_title="AI-generated paper pattern",
+        aggregate=_aggregate_blueprint,
+    ),
 }
 
 
@@ -266,6 +342,12 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
 
         if operation.operation == SYLLABUS_OPERATION:
             _generate_syllabus(
+                job_id, institute_id, operation, source, materials, chunks, payload, context_meta
+            )
+            return
+
+        if operation.operation == BLUEPRINT_OPERATION:
+            _generate_blueprint(
                 job_id, institute_id, operation, source, materials, chunks, payload, context_meta
             )
             return
@@ -366,20 +448,24 @@ def _generate_questions(
         topic_id=scope["topicId"],
         created_by=source["requestedBy"],
     )
-    db.update_job_status(
-        job_id,
-        "completed",
-        result={
-            "count": len(question_ids),
-            "questionIds": question_ids,
-            "questionType": type_,
-            "difficulty": difficulty,
-            "sourceType": source["type"],
-            "sourceId": source["id"],
-            "materialIds": [str(m["id"]) for m in materials],
-            "chunks": context_meta["chunkCount"],
-        },
-    )
+    result: dict[str, Any] = {
+        "count": len(question_ids),
+        "questionIds": question_ids,
+        "questionType": type_,
+        "difficulty": difficulty,
+        "sourceType": source["type"],
+        "sourceId": source["id"],
+        "materialIds": [str(m["id"]) for m in materials],
+        "chunks": context_meta["chunkCount"],
+    }
+    # Blueprint-constrained generation reports satisfaction (deduplicated
+    # aggregate) so the teacher can see whether the declared quotas held.
+    blueprint = params.get("blueprint")
+    if isinstance(blueprint, dict):
+        result["blueprint"] = _compute_blueprint_satisfaction(
+            aggregated["questions"], blueprint
+        )
+    db.update_job_status(job_id, "completed", result=result)
     logger.info("AI questions generated: job=%s count=%s", job_id, len(question_ids))
 
 
@@ -441,6 +527,116 @@ def _generate_syllabus(
         },
     )
     logger.info("AI syllabus generated: job=%s proposal=%s", job_id, proposal_id)
+
+
+def _generate_blueprint(
+    job_id: str,
+    institute_id: str,
+    operation: Operation,
+    source: dict[str, str],
+    materials: list[dict[str, Any]],
+    chunks: list[str],
+    payload: dict[str, Any],
+    context_meta: dict[str, Any],
+) -> None:
+    """Analyze a paper pattern's source and persist a REVIEW draft.
+
+    The AI draft is written onto the pattern as its ``structure`` and the
+    pattern moves to REVIEW for the teacher to edit/approve. Re-analysis
+    overwrites the draft but never an APPROVED pattern (guarded here and in the
+    API). The deterministic invariants are checked by the API at approval time,
+    not in the worker.
+    """
+    pattern_id = payload.get("patternId")
+    if not isinstance(pattern_id, str) or not _is_uuid(pattern_id):
+        raise GenerationError("Invalid job payload")
+
+    pattern = db.get_paper_pattern(pattern_id, institute_id)
+    if pattern is None:
+        raise GenerationError("Paper pattern not found")
+    if pattern.get("status") == "APPROVED":
+        raise GenerationError("Approved paper patterns cannot be re-analyzed")
+
+    provider = create_provider()
+    outputs: list[dict[str, Any]] = []
+    for index, chunk in enumerate(chunks):
+        label = _part_label(_source_label(source, materials), chunks, index)
+        raw = provider.complete(operation.build_messages(chunk, label))
+        outputs.append(_validate_output(operation, raw))
+
+    aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
+
+    db.save_blueprint_analysis(
+        pattern_id=pattern_id,
+        structure=aggregated,
+        source_material_id=source["id"],
+        updated_by=source["requestedBy"],
+    )
+    db.update_job_status(
+        job_id,
+        "completed",
+        result={
+            "patternId": pattern_id,
+            "status": "REVIEW",
+            "sectionCount": len(aggregated["sections"]),
+            "totalMarks": aggregated["totalMarks"],
+            "durationMinutes": aggregated["durationMinutes"],
+            "sourceType": source["type"],
+            "sourceId": source["id"],
+            "materialIds": [str(m["id"]) for m in materials],
+            "chunks": context_meta["chunkCount"],
+        },
+    )
+    logger.info("AI blueprint generated: job=%s pattern=%s", job_id, pattern_id)
+
+
+def _compute_blueprint_satisfaction(
+    generated: list[dict[str, Any]], blueprint: dict[str, Any]
+) -> dict[str, Any]:
+    """Deterministic check: did this generation meet the declared quotas?
+
+    Only sections whose ``questionType`` matches the generated questions
+    constrain the result (a TRUE_FALSE generation cannot be judged against MCQ
+    sections). The generated set is still persisted — satisfaction is a report,
+    not a gate, and the teacher decides whether to retry.
+    """
+    pattern_id = blueprint.get("patternId")
+    structure = blueprint.get("structure")
+    if not isinstance(pattern_id, str) or not isinstance(structure, dict):
+        return {
+            "patternId": None,
+            "satisfied": False,
+            "mismatches": ["Blueprint in job payload is malformed"],
+        }
+
+    generated_by_type: dict[str, int] = {}
+    for question in generated:
+        question_type = question.get("questionType")
+        if isinstance(question_type, str):
+            generated_by_type[question_type] = generated_by_type.get(question_type, 0) + 1
+
+    mismatches: list[str] = []
+    for section in structure.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        section_type = section.get("questionType")
+        count = section.get("count")
+        if not isinstance(section_type, str) or section_type not in generated_by_type:
+            continue
+        if not isinstance(count, int) or count < 1:
+            continue
+        actual = generated_by_type[section_type]
+        if actual < count:
+            mismatches.append(
+                f"Section '{section.get('name') or section_type}': expects {count} "
+                f"{section_type} questions, this generation produced {actual}"
+            )
+
+    return {
+        "patternId": pattern_id,
+        "satisfied": len(mismatches) == 0,
+        "mismatches": mismatches,
+    }
 
 
 def _part_label(base: str, chunks: list[str], index: int) -> str:

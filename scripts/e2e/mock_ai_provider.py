@@ -12,6 +12,9 @@ the canned output via WORKER_AI_MODEL:
   - ``note-mock``      -> AI_GENERATE_NOTE NotePayload
   - ``questions-mock`` -> AI_GENERATE_QUESTIONS GeneratedQuestions (3 identical
                           MCQs, EASY)
+  - ``blueprint-mock`` -> AI_GENERATE_BLUEPRINT BlueprintPayload (Section A:
+                          MCQ 10 x 1 compulsory; Section B: TRUE_FALSE 5 x 2
+                          compulsory; 20 total marks, 40 minutes)
 
 Anything else falls back to the syllabus response.
 """
@@ -91,6 +94,37 @@ MOCK_QUESTIONS = [
 
 QUESTIONS = {"questions": MOCK_QUESTIONS}
 
+# Blueprint: Section A MCQ 10 x 1, Section B TRUE_FALSE 5 x 2. The paper
+# pattern_e2e.sh harness remixes these into multiple named patterns (full
+# quota, partial quota, invalid marks) by mutating this dict per run.
+BLUEPRINT = {
+    "totalMarks": 20,
+    "durationMinutes": 40,
+    "instructions": ["Answer all questions where required."],
+    "sections": [
+        {
+            "id": "sec-a",
+            "name": "Section A — Multiple Choice",
+            "questionType": "MCQ",
+            "count": 10,
+            "marksPerQuestion": 1,
+            "totalMarks": 10,
+            "compulsory": True,
+            "attemptCount": None,
+        },
+        {
+            "id": "sec-b",
+            "name": "Section B — True or False",
+            "questionType": "TRUE_FALSE",
+            "count": 5,
+            "marksPerQuestion": 2,
+            "totalMarks": 10,
+            "compulsory": True,
+            "attemptCount": None,
+        },
+    ],
+}
+
 
 def _pick(model: str, messages: list | None = None) -> dict:
     if "syllabus" in model:
@@ -99,6 +133,8 @@ def _pick(model: str, messages: list | None = None) -> dict:
         return NOTE
     if "question" in model:
         return QUESTIONS
+    if "blueprint" in model:
+        return BLUEPRINT
     # WORKER_AI_MODEL=auto (the dockerized demo default): the worker embeds the
     # operation into its prompt, so dispatch deterministically on that instead
     # of silently returning the syllabus payload for every operation.
@@ -107,6 +143,8 @@ def _pick(model: str, messages: list | None = None) -> dict:
     ).lower()
     if "study notes" in probe:
         return NOTE
+    if "paper pattern" in probe:
+        return BLUEPRINT
     if "syllabus structure" in probe:
         return SYLLABUS
     if "questions" in probe:
