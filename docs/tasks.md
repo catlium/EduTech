@@ -279,12 +279,29 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 - [x] PP-11 — unit tests 13/13 (paper-patterns.validation.test.ts)
 - [x] PP-12 — typecheck/lint PASS; REQUIREMENTS.md + ROADMAP.md + STATE.md updated; FE phases renumbered 19-26
 
-## Phase 19 — Frontend Foundation (NOT STARTED — gate open 2026-09-09)
+## Phase 19 — Frontend Product Transformation (IN PROGRESS — checkpoint 1 committed, pushed 2026-09-09)
 
-- [ ] FE-01 — app shell/navigation, routing, auth screens
-- [ ] FE-02 — authenticated API client, session/role handling
-- [ ] FE-03 — error/loading/empty-state primitives, environment wiring
-      (Phase 18 backend delivered; frontend feature phases 19-26 may begin)
+- [x] FE-01 — product application shell: branded sidebar (role-aware teacher/student nav),
+      sticky header (breadcrumb, theme toggle, user menu), institute switcher, role guard
+      (Forbidden on teacher routes for students, /dashboard → /student/dashboard redirect)
+- [x] FE-02 — design system primitives in shadcn style: StatCard, SectionHeader, PageLoader,
+      SkeletonRows/SkeletonCards, ErrorState, ConfirmDialog, UserMenu, ThemeToggle,
+      InstituteSwitcher, AppBreadcrumbs, avatar; StatusBadge tone system; PageHeader/EmptyState
+      enhanced; dark mode wired; global error/404/forbidden states
+- [x] FE-03 — branded login/register/institutes screens (AuthShell), cn() unified across
+      shadcn/ui (removed cn npm dep), utils helpers, middleware covers /paper-patterns + /practice
+- [~] FE-04 — teacher dashboard + academic workspace (dashboard stat extraction; subject →
+      chapter → topic hierarchy; material availability; syllabus workflow polish)
+- [ ] FE-05 — learning-material/OCR workflow (upload status, processing progress, retry, content open)
+- [ ] FE-06 — AI learning-content workflow (notes/summaries/flashcards generate→review→activate)
+- [ ] FE-07 — question bank workspace (browse/filter/detail/preview, generate, approve/reject)
+- [ ] FE-08 — paper patterns / blueprint UI (create→configure→analyze→review→approve→assessment)
+- [ ] FE-09 — assessment builder + publishing
+- [ ] FE-10 — student dashboard + learning workspace (subject→chapter→topic→content reading)
+- [ ] FE-11 — practice UI (flashcards + question practice, answer/rate, complete, history)
+- [ ] FE-12 — exam attempt UI polish + results/performance
+- [ ] FE-13 — browser/test validation + responsive/accessibility polish + docs
+      (Phase 18 backend delivered; frontend feature phases now underway)
 
 --
 

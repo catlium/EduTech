@@ -1,5 +1,41 @@
 # Project Status
 
+## Phase 19 — Frontend Product Transformation (IN PROGRESS — 2026-09-09)
+
+**Checkpoint 1 of Phase 19 committed + pushed (`8b1844a`).** The frontend has
+been moved off "CRUD data-viewer" onto a product shell + design system. No
+functional feature workflows rewritten yet — those land in subsequent
+checkpoints (2: teacher workspace, 3: question/blueprint/assessment,
+4: student learning/practice/exam, 5: validation + polish + docs).
+
+### What landed (checkpoint 1)
+
+- **Application shell**: role-aware sidebar (teacher: Dashboard/Subjects/
+  Materials/Question Bank/Assessments/Paper Patterns; student: Dashboard/My
+  Subjects + shared Practice), sticky header with breadcrumb + theme toggle +
+  user menu, institute switcher, branded footer.
+- **Role guard**: students get a Forbidden state on teacher-only routes;
+  `/dashboard` redirects students to `/student/dashboard`. Auth flows
+  unchanged (cookie + CSRF + tenant header via `src/lib/api.ts`).
+- **Design system primitives** (all shadcn style): StatCard, SectionHeader,
+  PageLoader/SkeletonRows/SkeletonCards, ErrorState, ConfirmDialog, UserMenu,
+  ThemeToggle, InstituteSwitcher, AppBreadcrumbs, AuthShell, avatar; StatusBadge
+  tone map expanded; PageHeader + EmptyState enhanced; dark mode wired via
+  next-themes; global error.tsx / not-found.tsx / Forbidden.
+- **cn() consolidation**: all 24 ui primitives now import from `@/lib/utils`;
+  the stray `cn` npm dependency removed.
+- **Auth screens**: branded login/register/institute-picker.
+- **middleware** now protects `/paper-patterns` + `/practice`.
+- Validation: `pnpm typecheck` + `pnpm build` PASS in web.
+
+### Phase 19 checkpoint queue (planned commit series)
+
+1. ~~Foundation: shell + design system + auth~~ (done, `8b1844a`)
+2. Teacher academic workspace + syllabus + materials + AI content
+3. Question bank + paper patterns/blueprint + assessment builder
+4. Student learning workspace + practice + exam attempt + results
+5. Web E2E extension + responsive/accessibility polish + docs + full validation
+
 ## Phase 18 — Paper Pattern / Blueprint (Backend) ✓ (2026-09-09)
 
 **Status: COMPLETE — closed 2026-09-09.** Paper Pattern / Blueprint backend
