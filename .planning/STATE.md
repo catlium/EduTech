@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-12-examination-analytics
-current_phase_name: Phase 12 — Examination Analytics
+current_phase: phase-13-practice-system
+current_phase_name: Phase 13 — Practice System
 status: completed
-stopped_at: "Phase 12 — Examination Analytics COMPLETE (2026-09-08): GET /assessments/:assessmentId/analytics (summary, exact-score distribution, question accuracy, topic + difficulty performance), computed on demand; 12 node:test unit cases + attempts_e2e.sh PASS=96; teacher results UI shows Overview/distribution/question/topic/difficulty. Next: Phase 13 — Practice System."
-last_updated: "2026-09-08T21:30:00.000Z"
-state_head: 7f21f4e
+stopped_at: "Phase 13 — Practice System COMPLETE (2026-09-08): migration 0011 + apps/api/src/practice — backend-only ungraded flashcard + question practice (start/history/detail/answer/complete), zod contracts, docs/api/practice.md, practice_e2e.sh PASS=73 FAIL=0 (PR-01..12 + PR-05x, PRAC-03 never writes attempts), regressions attempts 96 / demo 52 / syllabus 39 / p8 86. Next: Phase 14 — Cross-Module Validation & Security."
+last_updated: "2026-09-08T22:50:00.000Z"
+state_head: a9f7ecf
 progress:
   total_phases: 17
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 11
   completed_plans: 11
-  percent: 71
+  percent: 76
 ---
 
 # STATE.md
