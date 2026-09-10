@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { LoginRequestSchema, type LoginRequest } from "@catlium/contracts";
-import { toast } from "sonner";
+import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { LoginRequestSchema, type LoginRequest } from '@catlium/contracts';
+import { toast } from 'sonner';
 
-import { api, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
+import { api, ApiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
@@ -18,10 +18,10 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { AuthShell } from "@/components/app/auth-shell";
-import { Loader2 } from "lucide-react";
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { AuthShell } from '@/components/app/auth-shell';
+import { Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,18 +30,18 @@ export default function LoginPage() {
 
   const form = useForm<LoginRequest>({
     resolver: zodResolver(LoginRequestSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: '', password: '' },
   });
 
   async function onSubmit(values: LoginRequest) {
     setSubmitting(true);
     try {
-      await api("/auth/login", { method: "POST", body: values });
+      await api('/auth/login', { method: 'POST', body: values });
       await refresh();
-      toast.success("Welcome back");
-      router.replace("/dashboard");
+      toast.success('Welcome back');
+      router.replace('/dashboard');
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : "Login failed";
+      const message = error instanceof ApiError ? error.message : 'Login failed';
       toast.error(message);
     } finally {
       setSubmitting(false);
@@ -53,12 +53,12 @@ export default function LoginPage() {
       title="CatLium EduTech"
       description="Sign in to continue to your workspace"
       footer={
-        <>
-          No account?{" "}
-          <Link href="/register" className="font-medium underline underline-offset-4">
-            Create one
+        <p className="text-center text-sm text-muted-foreground">
+          Your institute administrator creates and manages your account.{' '}
+          <Link href="/" className="font-medium text-primary underline-offset-4 hover:underline">
+            Learn about CatLium EduTech
           </Link>
-        </>
+        </p>
       }
     >
       <Form {...form}>
@@ -88,11 +88,7 @@ export default function LoginPage() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input
-                    type="password"
-                    autoComplete="current-password"
-                    {...field}
-                  />
+                  <Input type="password" autoComplete="current-password" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -100,7 +96,7 @@ export default function LoginPage() {
           />
           <Button type="submit" className="w-full" disabled={submitting}>
             {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-            {submitting ? "Signing in…" : "Sign in"}
+            {submitting ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>
       </Form>
