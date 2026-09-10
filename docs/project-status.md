@@ -1,12 +1,11 @@
 # Project Status
 
-## Phase 19 — Frontend Product Transformation (IN PROGRESS — 2026-09-09)
+## Phase 19 — Frontend Product Transformation (IN PROGRESS — 2026-09-10)
 
-**Checkpoint 1 of Phase 19 committed + pushed (`8b1844a`).** The frontend has
-been moved off "CRUD data-viewer" onto a product shell + design system. No
-functional feature workflows rewritten yet — those land in subsequent
-checkpoints (2: teacher workspace, 3: question/blueprint/assessment,
-4: student learning/practice/exam, 5: validation + polish + docs).
+**Checkpoints 1-3 of Phase 19 committed + pushed** (`8b1844a`, `fbda5d9`,
+`<next>`). The frontend has been moved off "CRUD data-viewer" onto a product
+shell + design system + teacher workflows. Remaining checkpoints: 4 (student
+learning/practice/exam), 5 (validation + polish + docs).
 
 ### What landed (checkpoint 1)
 
@@ -25,14 +24,54 @@ checkpoints (2: teacher workspace, 3: question/blueprint/assessment,
 - **cn() consolidation**: all 24 ui primitives now import from `@/lib/utils`;
   the stray `cn` npm dependency removed.
 - **Auth screens**: branded login/register/institute-picker.
-- **middleware** now protects `/paper-patterns` + `/practice`.
+- **middleware** now protects `/paper-patterns` + `/practice` + `/content`.
 - Validation: `pnpm typecheck` + `pnpm build` PASS in web.
+
+### What landed (checkpoint 2) — `fbda5d9` teacher academic workspace
+
+- **Academic workspace**: enhanced subject cards; subject overview w/ StatCards
+  download; chapter tree with lazy per-topic material counts, inline add-topic;
+  topic hub page (breadcrumb, description, topic-scoped materials); subjects
+  list/new polish.
+- **Syllabus**: 4-step flow Generate → Processing (2s job polling) → Review/Edit
+  (editable structure) → Confirm/Confirmed with ConfirmDialog + resume-draft.
+- **Materials/OCR**: dual-form create bug fixed (separate dialogs), text/upload
+  with subject→chapter→topic cascade, 20MB client cap, filter tabs, per-row
+  process/retry/archive/activate + live polling, material detail page.
+- **AI content**: `/content` + `/content/:id` workspaces (All/Notes/Summaries/
+  Flashcards/Concepts tabs, DRAFT→ACTIVE→ARCHIVED, typed renderers incl. flip
+  flashcards); generate via `/content/generate` + job poll.
+- **Teacher dashboard**: personalized welcome, real stat card, quick actions,
+  recent subjects, live processing activity, recent assessments.
+
+### What landed (checkpoint 3) — question/blueprint/assessment builder
+
+- **Question Bank**: status tabs + type/difficulty filters, subject-scope labels,
+  expandable payload preview (MCQ choices w/ correct, TF, FIB), approve/reject/
+  archive/activate/delete, manual-create dialog (typed payload editors built per
+  type with zod validation), "Ask AI" generate with real subject→chapter→topic
+  cascade + 2s job poll.
+- **Paper Patterns / Blueprint**: list w/ subject filter → create → detail with
+  structure editor (sections, reorder, compulsory/attemptCount), Analyze dialog
+  (TEXT paste or ACTIVE material) → 2s poll → proposal auto-load, Validate
+  (green/amber findings), Approve (ConfirmDialog), Create-Assessment flows from
+  APPROVED blueprint. Optimistic-version save with 409 reload.
+- **Assessment builder**: workflow-driven list + detail (DRAFT → Publish →
+  Activate → Complete), edit dialog incl. schedule, add-questions picker
+  (search/type filter, multi-select, per-question marks), remove question,
+  results link retained. Locked to real marks set at add-time (no edit-marks
+  endpoint exists).
+- **Code review pass**: catch-response-shape fixes (analyze `{generation}` vs
+  `{job}`, lowercase job statuses, validate `{valid, errors}`), poll
+  unmount/timeout guards, abort/disconnect fixes, datetime-local formatting,
+  loading-state races.
+- Validation: web `pnpm typecheck` + `pnpm build` PASS (all routes compile).
 
 ### Phase 19 checkpoint queue (planned commit series)
 
 1. ~~Foundation: shell + design system + auth~~ (done, `8b1844a`)
-2. Teacher academic workspace + syllabus + materials + AI content
-3. Question bank + paper patterns/blueprint + assessment builder
+2. ~~Teacher academic workspace + syllabus + materials + AI content~~ (done, `fbda5d9`)
+3. ~~Question bank + paper patterns/blueprint + assessment builder~~ (done)
 4. Student learning workspace + practice + exam attempt + results
 5. Web E2E extension + responsive/accessibility polish + docs + full validation
 
