@@ -36,7 +36,7 @@ async function doLogin(email, password, expectPath) {
       await page.waitFor(`location.pathname === ${JSON.stringify(expectPath)}`, { timeout: 12000 });
       return;
     } catch {
-      await sleep(2000);
+      await sleep(12000); // auth throttle window
     }
   }
   const q = await page.url();
@@ -207,7 +207,7 @@ async function s03Teacher() {
   p.assert(true, 'opened chapter/topic page');
 
   await p.navigate(WEB_URL + `/subjects/${subjectId}/syllabus`);
-  await p.waitFor(`document.body.innerText.includes('Syllabus')`, { timeout: 15000 });
+  await p.waitFor(`document.body.innerText.includes('Generate AI syllabus')`, { timeout: 15000 });
   await p.screenshot('s03-syllabus.png');
 
   await p.navigate(WEB_URL + '/materials');

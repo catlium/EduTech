@@ -1,21 +1,15 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import {
-  ChevronRight,
-  ChevronDown,
-  Plus,
-  FileText,
-  Circle,
-} from "lucide-react";
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { ChevronRight, ChevronDown, Plus, FileText, Circle } from 'lucide-react';
 
-import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { StatusBadge } from "./status-badge";
-import type { ChapterResponse, TopicResponse } from "@catlium/contracts";
+import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { StatusBadge } from './status-badge';
+import type { ChapterResponse, TopicResponse } from '@catlium/contracts';
 
 export function ChapterTree({
   subjectId,
@@ -31,7 +25,7 @@ export function ChapterTree({
       {initialChapters.length === 0 && (
         <p className="py-4 text-center text-sm text-muted-foreground">
           No chapters yet.
-          {isTeacher && " Add chapters to organize topics."}
+          {isTeacher && ' Add chapters to organize topics.'}
         </p>
       )}
       {initialChapters
@@ -60,7 +54,7 @@ function ChapterItem({
   const [expanded, setExpanded] = useState(false);
   const [topics, setTopics] = useState<TopicResponse[]>([]);
   const [loading, setLoading] = useState(false);
-  const [newTopicName, setNewTopicName] = useState("");
+  const [newTopicName, setNewTopicName] = useState('');
   const [adding, setAdding] = useState(false);
   const [topicCounts, setTopicCounts] = useState<Record<string, number>>({});
 
@@ -73,12 +67,9 @@ function ChapterItem({
         if (cancelled) return;
         setTopics(t);
         t.forEach((topic) => {
-          api<{ materials: { id: string }[] }>(
-            `/materials?topicId=${topic.id}`,
-          )
+          api<{ materials: { id: string }[] }>(`/materials?topicId=${topic.id}`)
             .then(({ materials }) => {
-              if (!cancelled)
-                setTopicCounts((prev) => ({ ...prev, [topic.id]: materials.length }));
+              if (!cancelled) setTopicCounts((prev) => ({ ...prev, [topic.id]: materials.length }));
             })
             .catch(() => {
               /* count stays 0 */
@@ -100,14 +91,14 @@ function ChapterItem({
     try {
       const slug = name
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)/g, "");
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
       const { topic } = await api<{ topic: TopicResponse }>(
         `/academic/chapters/${chapter.id}/topics`,
-        { method: "POST", body: { name, slug } },
+        { method: 'POST', body: { name, slug } },
       );
       setTopics((prev) => [...prev, topic]);
-      setNewTopicName("");
+      setNewTopicName('');
     } catch {
       /* toast handled by caller or leave silent */
     } finally {
@@ -131,7 +122,7 @@ function ChapterItem({
         <span className="font-medium truncate">{chapter.name}</span>
         <StatusBadge status={chapter.status} className="ml-1" />
         <span className="ml-auto text-xs text-muted-foreground">
-          {expanded ? `${topics.length} topic${topics.length !== 1 ? "s" : ""}` : "..."}
+          {expanded ? `${topics.length} topic${topics.length !== 1 ? 's' : ''}` : '...'}
         </span>
       </button>
       {expanded && (
@@ -143,7 +134,7 @@ function ChapterItem({
             </div>
           ) : topics.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">
-              No topics. {isTeacher ? "Add topics to this chapter." : ""}
+              No topics. {isTeacher ? 'Add topics to this chapter.' : ''}
             </p>
           ) : (
             <ul className="space-y-0.5">
@@ -151,32 +142,19 @@ function ChapterItem({
                 .sort((a, b) => a.sortOrder - b.sortOrder)
                 .map((topic) => (
                   <li key={topic.id}>
-                    {isTeacher ? (
-                      <div className="flex items-center gap-2 rounded px-2 py-1.5 text-sm">
-                        <Circle className="size-1.5 shrink-0 fill-muted-foreground text-muted-foreground" />
-                        <span className="truncate">{topic.name}</span>
-                        <StatusBadge status={topic.status} />
-                        {topicCounts[topic.id] !== undefined && topicCounts[topic.id] > 0 && (
-                          <span className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                            {topicCounts[topic.id]} material{topicCounts[topic.id] !== 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <Link
-                        href={`/subjects/${subjectId}/topics/${topic.id}`}
-                        className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/70"
-                      >
-                        <Circle className="size-1.5 shrink-0 fill-muted-foreground text-muted-foreground" />
-                        <span className="truncate">{topic.name}</span>
-                        <StatusBadge status={topic.status} />
-                        {topicCounts[topic.id] !== undefined && topicCounts[topic.id] > 0 && (
-                          <span className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                            {topicCounts[topic.id]} material{topicCounts[topic.id] !== 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </Link>
-                    )}
+                    <Link
+                      href={`/subjects/${subjectId}/topics/${topic.id}`}
+                      className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/70"
+                    >
+                      <Circle className="size-1.5 shrink-0 fill-muted-foreground text-muted-foreground" />
+                      <span className="truncate">{topic.name}</span>
+                      <StatusBadge status={topic.status} />
+                      {topicCounts[topic.id] !== undefined && topicCounts[topic.id] > 0 && (
+                        <span className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                          {topicCounts[topic.id]} material{topicCounts[topic.id] !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </Link>
                   </li>
                 ))}
             </ul>
@@ -189,7 +167,7 @@ function ChapterItem({
                 placeholder="New topic name..."
                 className="h-8 text-xs"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === 'Enter') {
                     e.preventDefault();
                     void addTopic();
                   }
