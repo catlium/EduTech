@@ -9,6 +9,8 @@ import { useTenant, canManage } from "@/lib/tenant";
 import { PageHeader } from "@/components/app/page-header";
 import { SubjectCard } from "@/components/app/subject-card";
 import { EmptyState } from "@/components/app/empty-state";
+import { SkeletonCards } from "@/components/app/loading";
+import { ErrorState } from "@/components/app/error-state";
 import { Button } from "@/components/ui/button";
 import type { SubjectResponse } from "@catlium/contracts";
 
@@ -17,21 +19,46 @@ export default function SubjectsListPage() {
   const isTeacher = canManage(institute);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     if (!institute) return;
+    setLoading(true);
+    setError(null);
     const ctrl = new AbortController();
     api<{ subjects: SubjectResponse[] }>("/academic/subjects", { signal: ctrl.signal })
       .then(({ subjects }) => setSubjects(subjects))
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError("Failed to load subjects. Please try again.");
+      })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
+  };
+
+  useEffect(() => {
+    const cleanup = load();
+    return () => cleanup?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [institute]);
+
+  const subjectExamples =
+    subjects.length > 0
+      ? subjects
+          .slice(0, 3)
+          .map((s) => s.name)
+          .join(", ")
+      : "";
 
   return (
     <div>
       <PageHeader
         title="Subjects"
-        description={`${subjects.length} subject${subjects.length !== 1 ? "s" : ""}`}
+        description={
+          subjects.length > 0
+            ? `${subjects.length} subject${subjects.length !== 1 ? "s" : ""} \u00b7 ${subjectExamples}`
+            : undefined
+        }
         actions={
           isTeacher && (
             <Button size="sm" asChild>
@@ -43,7 +70,9 @@ export default function SubjectsListPage() {
         }
       />
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <SkeletonCards />
+      ) : error ? (
+        <ErrorState onRetry={() => load()} />
       ) : subjects.length === 0 ? (
         <EmptyState
           icon={<BookOpen className="size-8" />}

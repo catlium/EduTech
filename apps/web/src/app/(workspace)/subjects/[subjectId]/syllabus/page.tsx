@@ -5,20 +5,25 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
-  BookOpen,
+  Check,
+  CheckCircle2,
   FileText,
+  Info,
+  Loader2,
   Plus,
+  RefreshCw,
   Sparkles,
   X,
 } from "lucide-react";
 
-import { api, ApiError, waitForJob } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useTenant, canManage } from "@/lib/tenant";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
+import { ErrorState } from "@/components/app/error-state";
 import { StatusBadge } from "@/components/app/status-badge";
-import { ChapterTree } from "@/components/app/chapter-tree";
+import { SkeletonCards } from "@/components/app/loading";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -45,11 +51,12 @@ import type {
   SyllabusResponse,
   SyllabusChapter,
   SubjectResponse,
-  ChapterResponse,
   MaterialResponse,
 } from "@catlium/contracts";
 
-type View = "loading" | "none" | "editing" | "confirmed";
+const STEPS = ["Generate", "Processing", "Review", "Confirm"] as const;
+
+type Stage = "loading" | "generate" | "processing" | "review" | "confirmed";
 type Generation = { jobId: string; status: string; error?: { message?: string } | null };
 
 function deepClone<T>(v: T): T {
@@ -60,21 +67,61 @@ function newChapter(): SyllabusChapter {
   return { name: "", description: "", topics: [{ name: "", description: "" }] };
 }
 
+function StepIndicator({ current }: { current: number }) {
+  return (
+    <ol className="mx-auto mb-8 flex w-full max-w-2xl flex-wrap items-center justify-center gap-y-3">
+      {STEPS.map((label, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <li key={label} className="flex items-center">
+            <span className="flex flex-col items-center gap-1.5 px-3">
+              <span
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-full border text-xs font-medium",
+                  active && "border-primary bg-primary text-primary-foreground",
+                  done && "border-emerald-500 bg-emerald-500 text-white",
+                  !active && !done && "border-border text-muted-foreground",
+                )}
+              >
+                {done ? <Check className="size-3.5" /> : i + 1}
+              </span>
+              <span
+                className={cn(
+                  "text-xs",
+                  active ? "font-semibold" : done ? "text-emerald-600" : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </span>
+            </span>
+            {i < STEPS.length - 1 && (
+              <span className={cn("hidden h-px w-8 bg-border sm:block", done && "bg-emerald-500")} />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default function SyllabusPage() {
   const { subjectId } = useParams<{ subjectId: string }>();
   const router = useRouter();
   const { institute } = useTenant();
   const isTeacher = canManage(institute);
 
-  const [view, setView] = useState<View>("loading");
+  const [stage, setStage] = useState<Stage>("loading");
+  const [loadError, setLoadError] = useState(false);
   const [subject, setSubject] = useState<SubjectResponse | null>(null);
   const [proposal, setProposal] = useState<SyllabusResponse | null>(null);
   const [materials, setMaterials] = useState<MaterialResponse[]>([]);
-  const [confirmedChapters, setConfirmedChapters] = useState<ChapterResponse[]>([]);
 
-  const [selectedMaterialId, setSelectedMaterialId] = useState("");
+  const [source, setSource] = useState("auto");
+  const [jobId, setJobId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState(0);
+  const [jobError, setJobError] = useState<string | null>(null);
 
   const [proposalChapters, setProposalChapters] = useState<SyllabusChapter[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -86,8 +133,17 @@ export default function SyllabusPage() {
     (m) => m.processingStatus === "READY" && m.status === "ACTIVE",
   );
 
+  const fetchProposal = useCallback(async () => {
+    const { proposal: prop } = await api<{ proposal: SyllabusResponse }>(
+      `/academic/subjects/${subjectId}/syllabus`,
+    );
+    return prop;
+  }, [subjectId]);
+
   const load = useCallback(async () => {
     if (!institute) return;
+    setLoadError(false);
+    setStage("loading");
     try {
       const [subjRes, matRes] = await Promise.all([
         api<{ subject: SubjectResponse }>(`/academic/subjects/${subjectId}`),
@@ -99,68 +155,108 @@ export default function SyllabusPage() {
       setMaterials(matRes.materials);
 
       try {
-        const { proposal: prop } = await api<{ proposal: SyllabusResponse }>(
-          `/academic/subjects/${subjectId}/syllabus`,
-        );
+        const prop = await fetchProposal();
         setProposal(prop);
         if (prop.status === "CONFIRMED") {
-          setView("confirmed");
-          const { chapters } = await api<{ chapters: ChapterResponse[] }>(
-            `/academic/subjects/${subjectId}/chapters`,
-          );
-          setConfirmedChapters(chapters);
+          setStage("confirmed");
         } else {
-          setView("editing");
           setProposalChapters(deepClone(prop.structure.chapters));
           setDirty(false);
+          setStage("review");
         }
       } catch {
-        setView("none");
-        if (matRes.materials.length > 0) setSelectedMaterialId(matRes.materials[0].id);
+        setProposal(null);
+        setStage("generate");
       }
     } catch {
-      toast.error("Failed to load syllabus");
-      setView("none");
+      setLoadError(true);
     }
-  }, [institute, subjectId]);
+  }, [institute, subjectId, fetchProposal]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   /* ── Generate ──────────────────────────────────────────────────────────── */
 
   async function onGenerate() {
     if (!isTeacher || generating) return;
     setGenerating(true);
-    setGenProgress(0);
     try {
       const { generation } = await api<{ generation: Generation }>(
         `/academic/subjects/${subjectId}/syllabus/generate`,
-        { method: "POST", body: { materialId: selectedMaterialId || undefined } },
+        { method: "POST", body: { materialId: source === "auto" ? undefined : source } },
       );
       toast.success("AI syllabus generation started");
-
-      await waitForJob(async () => {
-        const { generation: g } = await api<{ generation: Generation }>(
-          `/academic/subjects/${subjectId}/syllabus/jobs/${generation.jobId}`,
-        );
-        setGenProgress((p) => Math.min(p + 12, 90));
-        return { job: { status: g.status, error: g.error } } as { job: { status: string } };
-      });
-
-      const { proposal: prop } = await api<{ proposal: SyllabusResponse }>(
-        `/academic/subjects/${subjectId}/syllabus`,
-      );
-      setProposal(prop);
-      setProposalChapters(deepClone(prop.structure.chapters));
-      setDirty(false);
-      setView("editing");
-      toast.success("Syllabus generated — review and edit below");
+      setJobId(generation.jobId);
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Generation failed");
-    } finally {
       setGenerating(false);
-      setGenProgress(100);
+      toast.error(error instanceof ApiError ? error.message : "Failed to start generation");
     }
+  }
+
+  /* ── Job polling: 2s until completed/failed; aborted on leave ──────────── */
+
+  useEffect(() => {
+    if (!jobId) return;
+    setStage("processing");
+    setJobError(null);
+    setGenProgress(0);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const { generation: g } = await api<{ generation: Generation }>(
+          `/academic/subjects/${subjectId}/syllabus/jobs/${jobId}`,
+          { signal: controller.signal },
+        );
+        if (cancelled) return;
+        if (g.status === "completed" || g.status === "failed") {
+          setGenerating(false);
+          setGenProgress(100);
+          if (g.status === "failed") {
+            setJobError(g.error?.message ?? "Syllabus generation failed. Please try again.");
+            return;
+          }
+          const prop = await fetchProposal();
+          if (cancelled) return;
+          setProposal(prop);
+          setProposalChapters(deepClone(prop.structure.chapters));
+          setDirty(false);
+          setStage("review");
+          toast.success("Syllabus generated — review and edit below");
+          return;
+        }
+        setGenProgress((p) => Math.min(p + 12, 90));
+      } catch (error) {
+        if (cancelled || (error instanceof Error && error.name === "AbortError")) return;
+        setGenerating(false);
+        setJobError(
+          error instanceof ApiError
+            ? error.message
+            : "Couldn't check generation progress. Please try again.",
+        );
+        return;
+      }
+      timer = setTimeout(poll, 2000);
+    };
+
+    timer = setTimeout(poll, 0);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      controller.abort();
+    };
+  }, [jobId, subjectId, fetchProposal]);
+
+  function onCancelProcessing() {
+    setJobId(null);
+    setGenerating(false);
+    setGenProgress(0);
+    setStage("generate");
   }
 
   /* ── Save / Confirm ────────────────────────────────────────────────────── */
@@ -194,11 +290,7 @@ export default function SyllabusPage() {
         { method: "POST" },
       );
       setProposal(confirmed);
-      const { chapters } = await api<{ chapters: ChapterResponse[] }>(
-        `/academic/subjects/${subjectId}/chapters`,
-      );
-      setConfirmedChapters(chapters);
-      setView("confirmed");
+      setStage("confirmed");
       toast.success("Syllabus confirmed — chapters and topics created");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Failed to confirm");
@@ -207,7 +299,7 @@ export default function SyllabusPage() {
     }
   }
 
-  /* ── Structure editing helpers ──────────────────────────────────────────── */
+  /* ── Structure editing helpers ─────────────────────────────────────────── */
 
   const updateChapter = (ci: number, patch: Partial<SyllabusChapter>) => {
     setProposalChapters((prev) => {
@@ -218,7 +310,11 @@ export default function SyllabusPage() {
     setDirty(true);
   };
 
-  const updateTopic = (ci: number, ti: number, patch: Partial<SyllabusChapter["topics"][number]>) => {
+  const updateTopic = (
+    ci: number,
+    ti: number,
+    patch: Partial<SyllabusChapter["topics"][number]>,
+  ) => {
     setProposalChapters((prev) => {
       const next = deepClone(prev);
       Object.assign(next[ci].topics[ti], patch);
@@ -263,19 +359,35 @@ export default function SyllabusPage() {
 
   /* ── Loading ───────────────────────────────────────────────────────────── */
 
-  if (view === "loading") {
+  if (loadError) {
     return (
-      <div className="py-8 text-center text-sm text-muted-foreground">
-        Loading syllabus...
+      <div className="mx-auto max-w-3xl space-y-6">
+        <PageHeader title="Syllabus" description={subject?.name ?? ""} />
+        <ErrorState
+          title="Couldn't load the syllabus"
+          description="We couldn't reach the server. Please try again."
+          onRetry={() => void load()}
+        />
       </div>
     );
   }
 
-  /* ── Confirmed ─────────────────────────────────────────────────────────── */
-
-  if (view === "confirmed") {
+  if (stage === "loading") {
     return (
-      <div className="mx-auto max-w-2xl space-y-6">
+      <div className="mx-auto max-w-3xl space-y-6">
+        <PageHeader title="Syllabus" description={subject?.name ?? ""} />
+        <div className="py-8">
+          <SkeletonCards count={3} />
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Generate ──────────────────────────────────────────────────────────── */
+
+  if (stage === "generate") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
         <div>
           <Button
             variant="ghost"
@@ -285,69 +397,33 @@ export default function SyllabusPage() {
           >
             <ArrowLeft className="mr-1 size-3.5" /> Back to subject
           </Button>
-          <PageHeader title="Syllabus" description={subject?.name ?? ""} />
-          <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">CONFIRMED</Badge>
-          {proposal?.confirmedAt && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Confirmed {formatDate(proposal.confirmedAt)}
-            </p>
-          )}
+          <PageHeader title="Generate syllabus" description={subject?.name ?? ""} />
+          <StepIndicator current={0} />
         </div>
 
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Chapters ({confirmedChapters.length})</h2>
-          {confirmedChapters.length === 0 ? (
-            <EmptyState
-              icon={<BookOpen className="size-8" />}
-              title="No chapters"
-              description="Confirm the proposal to generate the academic hierarchy."
-            />
-          ) : (
-            <ChapterTree
-              subjectId={subjectId}
-              isTeacher={isTeacher}
-              chapters={confirmedChapters.sort((a, b) => a.sortOrder - b.sortOrder)}
-            />
-          )}
-        </section>
-      </div>
-    );
-  }
+        {proposal && (
+          <Alert>
+            <Info className="size-4" />
+            <AlertTitle>You already have a syllabus draft</AlertTitle>
+            <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span>Review your existing draft or regenerate it from material.</span>
+              <span className="flex shrink-0 gap-2">
+                <Button size="sm" variant="outline" onClick={() => setStage("review")}>
+                  Review it
+                </Button>
+                <Button size="sm" onClick={() => void onGenerate()}>
+                  Regenerate
+                </Button>
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
 
-  /* ── No proposal — generate ────────────────────────────────────────────── */
-
-  if (view === "none") {
-    return (
-      <div className="mx-auto max-w-2xl space-y-6">
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mb-2 -ml-2"
-            onClick={() => router.replace(`/subjects/${subjectId}`)}
-          >
-            <ArrowLeft className="mr-1 size-3.5" /> Back to subject
-          </Button>
-          <PageHeader title="Syllabus" description={subject?.name ?? ""} />
-        </div>
-
-        {generating ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Generating syllabus...</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Progress value={genProgress} className="h-2" />
-              <p className="text-sm text-muted-foreground">
-                AI is analyzing your material and building the chapter/topic structure.
-              </p>
-            </CardContent>
-          </Card>
-        ) : eligibleMaterials.length === 0 ? (
+        {eligibleMaterials.length === 0 ? (
           <EmptyState
             icon={<FileText className="size-8" />}
             title="No syllabus material"
-            description="Create a text material for this subject first, then generate an AI syllabus."
+            description="Add a text material for this subject first, then the AI can draft a syllabus from it."
           >
             <Button size="sm" variant="outline" onClick={() => router.push("/materials")}>
               Go to Materials
@@ -360,16 +436,17 @@ export default function SyllabusPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Pick a source material. The AI will extract a chapter/topic structure
-                you can review before confirming.
+                The AI reads a subject material and drafts an ordered chapter and topic
+                structure you can review and edit before confirming.
               </p>
               <div className="grid gap-2">
-                <Label>Source material</Label>
-                <Select value={selectedMaterialId} onValueChange={setSelectedMaterialId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Pick a material" />
+                <Label htmlFor="syllabus-source">Source material</Label>
+                <Select value={source} onValueChange={setSource}>
+                  <SelectTrigger id="syllabus-source" className="w-full">
+                    <SelectValue placeholder="Choose a source" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="auto">Auto — latest ready material</SelectItem>
                     {eligibleMaterials.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
                         {m.title}
@@ -378,11 +455,12 @@ export default function SyllabusPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {eligibleMaterials.length} eligible material{eligibleMaterials.length !== 1 ? "s" : ""}
+                  {eligibleMaterials.length} eligible material
+                  {eligibleMaterials.length !== 1 ? "s" : ""}
                 </p>
               </div>
               <div className="flex justify-end">
-                <Button disabled={!selectedMaterialId || !isTeacher} onClick={() => void onGenerate()}>
+                <Button disabled={!isTeacher || generating} onClick={() => void onGenerate()}>
                   <Sparkles className="mr-1 size-3.5" /> Generate syllabus
                 </Button>
               </div>
@@ -393,12 +471,11 @@ export default function SyllabusPage() {
     );
   }
 
-  /* ── Editing (PENDING_REVIEW) ──────────────────────────────────────────── */
+  /* ── Processing ────────────────────────────────────────────────────────── */
 
-  return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      {/* header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+  if (stage === "processing") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
         <div>
           <Button
             variant="ghost"
@@ -408,28 +485,113 @@ export default function SyllabusPage() {
           >
             <ArrowLeft className="mr-1 size-3.5" /> Back to subject
           </Button>
-          <PageHeader
-            title="Edit syllabus"
-            description={`${subject?.name ?? ""} — ${proposalChapters.length} chapters, ${topicCount} topics`}
-          />
-          <div className="flex items-center gap-2">
-            <StatusBadge status={proposal?.status ?? "PENDING_REVIEW"} />
-            {proposal?.updatedAt && (
-              <span className="text-sm text-muted-foreground">Saved {formatDate(proposal.updatedAt)}</span>
-            )}
-          </div>
+          <PageHeader title="Generate syllabus" description={subject?.name ?? ""} />
+          <StepIndicator current={1} />
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" disabled={saving || !dirty} onClick={() => void onSave()}>
-            {saving ? "Saving..." : "Save"}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Loader2 className="size-4 animate-spin" /> Drafting your syllabus
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {jobError ? (
+              <div className="space-y-4">
+                <ErrorState title="Generation failed" description={jobError} onRetry={() => void onGenerate()} />
+                <Button variant="ghost" size="sm" onClick={() => setStage("generate")}>
+                  Back to generate
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Progress value={genProgress} className="h-2" />
+                <p className="text-sm text-muted-foreground">
+                  AI is drafting chapters and topics for {subject?.name}. This usually takes
+                  about a minute.
+                </p>
+                <div>
+                  <Button variant="ghost" size="sm" onClick={onCancelProcessing}>
+                    <X className="mr-1 size-3.5" /> Stop monitoring
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  /* ── Confirmed ─────────────────────────────────────────────────────────── */
+
+  if (stage === "confirmed") {
+    const chapters = proposal?.structure.chapters.length ?? 0;
+    const topics =
+      proposal?.structure.chapters.reduce((n, c) => n + c.topics.length, 0) ?? 0;
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mb-2 -ml-2"
+            onClick={() => router.replace(`/subjects/${subjectId}`)}
+          >
+            <ArrowLeft className="mr-1 size-3.5" /> Back to subject
           </Button>
-          <Button size="sm" disabled={confirming || saving} onClick={() => setShowConfirmDialog(true)}>
-            Confirm &amp; Create
-          </Button>
+          <PageHeader title="Syllabus" description={subject?.name ?? ""} />
+          <StepIndicator current={3} />
+        </div>
+
+        <Card className="py-10 text-center">
+          <CardContent className="space-y-4">
+            <CheckCircle2 className="mx-auto size-12 text-emerald-500" />
+            <h2 className="text-lg font-semibold">
+              Syllabus confirmed — {chapters} chapter{chapters !== 1 ? "s" : ""}, {topics} topic
+              {topics !== 1 ? "s" : ""} created
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              The academic hierarchy for {subject?.name} is ready to use.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 pt-2">
+              <Button onClick={() => router.push(`/subjects/${subjectId}`)}>View subject</Button>
+              <Button variant="outline" onClick={() => router.push("/materials")}>
+                <FileText className="mr-1 size-3.5" /> Add learning material
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  /* ── Review / Edit (PENDING_REVIEW) ────────────────────────────────────── */
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-2 -ml-2"
+          onClick={() => router.replace(`/subjects/${subjectId}`)}
+        >
+          <ArrowLeft className="mr-1 size-3.5" /> Back to subject
+        </Button>
+        <PageHeader
+          title="Review & edit syllabus"
+          description={`${subject?.name ?? ""} — ${proposalChapters.length} chapters, ${topicCount} topics`}
+        />
+        <StepIndicator current={2} />
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={proposal?.status ?? "PENDING_REVIEW"} />
+          {proposal?.updatedAt && (
+            <span className="text-sm text-muted-foreground">Saved {formatDate(proposal.updatedAt)}</span>
+          )}
         </div>
       </div>
 
-      {/* chapters */}
       <section className="space-y-4">
         {proposalChapters.map((chapter, ci) => (
           <Card key={ci}>
@@ -452,11 +614,10 @@ export default function SyllabusPage() {
                     onChange={(e) => updateChapter(ci, { description: e.target.value || undefined })}
                   />
 
-                  {/* topics */}
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">Topics ({chapter.topics.length})</p>
                     {chapter.topics.map((topic, ti) => (
-                      <div key={ti} className="flex gap-2">
+                      <div key={ti} className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <Input
                           value={topic.name}
                           placeholder="Topic name..."
@@ -466,8 +627,10 @@ export default function SyllabusPage() {
                         <Input
                           value={topic.description ?? ""}
                           placeholder="Description..."
-                          className="w-48"
-                          onChange={(e) => updateTopic(ci, ti, { description: e.target.value || undefined })}
+                          className="w-full sm:w-48"
+                          onChange={(e) =>
+                            updateTopic(ci, ti, { description: e.target.value || undefined })
+                          }
                         />
                         <Button
                           type="button"
@@ -507,14 +670,25 @@ export default function SyllabusPage() {
         </Button>
       </section>
 
-      {/* confirm dialog */}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button size="sm" variant="ghost" onClick={() => setStage("generate")}>
+          <RefreshCw className="mr-1 size-3.5" /> Regenerate
+        </Button>
+        <Button size="sm" variant="outline" disabled={saving || !dirty} onClick={() => void onSave()}>
+          {saving ? "Saving..." : "Save draft"}
+        </Button>
+        <Button size="sm" disabled={confirming || saving} onClick={() => setShowConfirmDialog(true)}>
+          Confirm &amp; Create
+        </Button>
+      </div>
+
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm syllabus?</DialogTitle>
             <DialogDescription>
-              This creates {proposalChapters.length} chapter(s) with {topicCount} topic(s)
-              in the academic hierarchy. This action cannot be undone.
+              This creates {proposalChapters.length} chapter(s) with {topicCount} topic(s) in the
+              academic hierarchy. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
