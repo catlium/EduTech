@@ -3,7 +3,7 @@
 ## Phase 19 — Frontend Product Transformation (IN PROGRESS — 2026-09-10)
 
 **Checkpoints 1-4 of Phase 19 committed + pushed** (`8b1844a`, `fbda5d9`,
-`433692b`, `<next>`). The frontend has been moved off "CRUD data-viewer" onto
+`433692b`, `5ddfecc`). The frontend has been moved off "CRUD data-viewer" onto
 a product shell + design system + teacher and student workflows. Remaining:
 checkpoint 5 (validation + polish + E2E + docs).
 
@@ -89,13 +89,36 @@ checkpoint 5 (validation + polish + E2E + docs).
   cascade cancellation, datetime-local prefill, unmount guards.
 - Validation: web `pnpm typecheck` + `pnpm build` PASS (all routes compile).
 
+### What landed (checkpoint 5) — validation, E2E, docs
+
+- **Web E2E suite** `scripts/e2e/web_workflow_e2e.sh` (extended smoke suite in
+  the curl-based repo convention): WEB-10..13 — Phase 19 route prefixes redirect
+  anonymous → /login via middleware; cookie-holder reaches every workspace shell
+  (200, no 500/404); **PASS 33/33, run 2026-09-10** against the built web
+  (`pnpm start`) — no API required (pages are client-rendered shells).
+- **Responsive/a11y spot-check**: `sm:/md:/lg:` grid classes on all new
+  multi-column pages; practice session player navigator + flip cards use real
+  buttons (keyboard-accessible); buttons labelable via visible text.
+- **Docs**: `docs/tasks.md` FE-01..12 ✓ / FE-13 in progress; `docs/project-status.md`
+  checkpoint 1-5 sections; `.planning/ROADMAP.md` Phase 18 API-doc cross-link +
+  consolidated Phase 19 status (Phases 19-26 merged per the one-week Phase 19
+  brief); `.planning/STATE.md` current_phase → phase-19-frontend-transformation;
+  `docs/user-validation.md` WF-01..05 `[x]` (E2E suite) + WF-06..10 browser
+  journey matrix `[~]` deferred.
+- **Deferred (recorded, not dead)**: full-stack browser validation of the
+  teacher+student journeys against the docker demo env (AI mock) — host disk
+  at 4.2G free, demo image builds need >6G; exact steps in
+  `docs/user-validation.md` WF-06..10. The earlier Phase 18 dockerized
+  regression (583/583) remains valid — no backend code has changed since.
+
 ### Phase 19 checkpoint queue (planned commit series)
 
 1. ~~Foundation: shell + design system + auth~~ (done, `8b1844a`)
 2. ~~Teacher academic workspace + syllabus + materials + AI content~~ (done, `fbda5d9`)
 3. ~~Question bank + paper patterns/blueprint + assessment builder~~ (done, `433692b`)
-4. ~~Student learning workspace + practice + exam attempt + results~~ (done)
-5. Web E2E extension + responsive/accessibility polish + docs + full validation
+4. ~~Student learning workspace + practice + exam attempt + results~~ (done, `5ddfecc`)
+5. ~~Web E2E extension + responsive/accessibility polish + docs~~ (done) —
+   remaining closure: browser journey matrix after disk reclamation (WF-06..10)
 
 ## Phase 18 — Paper Pattern / Blueprint (Backend) ✓ (2026-09-09)
 

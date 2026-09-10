@@ -246,67 +246,74 @@ lint/build PASS. Reqs TST-01..07.
 **Goal:** Teacher-created reusable exam blueprints: AI-analysed or manual structure, deterministic validation, blueprint-constrained generation, assessment seeding.
 **Scope:** Paper pattern CRUD, DRAFT→REVIEW→APPROVED lifecycle, TEXT-source AI analysis, deterministic validation (arithmetic, compulsory/optional sections, distributions), assessment creation from approved blueprint, blueprint-constrained question generation with satisfaction reporting, marks override on question linking.
 **Success Criteria:** Full regression green (583+ checks across 12 E2E suites); unit tests pass; typecheck/lint clean.
-**Status:** ✓ COMPLETE 2026-09-09. 75/75 E2E checks. Regression 583/583 PASS. Validated: analyse, validate, approve, generate-with-blueprint (satisfied true/false), assessment-from-blueprint, marks override, security/tenant isolation. Reqs: PP-01..08.
+**Status:** ✓ COMPLETE 2026-09-09. 75/75 E2E checks. Regression 583/583 PASS. Validated: analyse, validate, approve, generate-with-blueprint (satisfied true/false), assessment-from-blueprint, marks override, security/tenant isolation. Reqs: PP-01..08. **API doc:** `docs/api/paper-patterns.md`.
 
 ---
 
 # Frontend & Integration (after backend-freeze candidate)
 
-## Phase 19 — Frontend Foundation ◆ ○
+> **Consolidation (2026-09-09):** Phases 19-26 below are executed as ONE
+> consolidated **Phase 19 — Frontend Product Transformation** in 5 checkpoints
+> (sources: `docs/project-status.md`, `docs/tasks.md` FE-01..FE-13), per the
+> Phase 19 brief: (1) shell+design system+auth `8b1844a`, (2) teacher academic/
+> syllabus/materials/AI `fbda5d9`, (3) question bank+blueprint+assessment
+> `433692b`, (4) student learning+practice+exam `5ddfecc`, (5) E2E+polish+docs
+> (in progress). Phase 18 backend API docs per feature are cross-linked below.
 
-**Goal:** Frontend project foundation in the monorepo (full-stack workspace), configured against the `docs/api/` contract.
-**Scope:** App shell/navigation, routing, auth screens (login/register), authenticated API client, session/role handling, error/loading/empty-state primitives, environment wiring.
-**Success Criteria:** User can register/login in the UI and the app routes by role against the running backend.
-**Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-01.. (see below).
+## Phase 19 — Frontend Product Transformation ✓ CONSOLIDATED (checkpoints 1-4 done; 5 IN PROGRESS)
+
+**Goal:** Product-grade shadcn/ui frontend across teacher + student journeys.
+**Scope:** Phases 20-26 below all land under this consolidated phase.
+**Status:** IN PROGRESS 2026-09-10 — checkpoints 1-4 committed+pushed (`8b1844a`, `fbda5d9`, `433692b`, `5ddfecc`); checkpoint 5 (web E2E suite + polish + docs) in progress. Reqs: FE-01..13 (FE-01..12 done; FE-13 in progress).
 
 ## Phase 20 — Frontend Teacher Workflows: Academic, Materials, AI ◆ ○
 
 **Goal:** Teacher UI for the core learning loop.
 **Scope:** Academic structure management (subject/chapter/topic + ordering); learning-materials management (upload, list, metadata, processing status, retry); AI summaries, AI flashcards, and important-concepts generation/retrieval/display.
 **Success Criteria:** A teacher can manage their academic structure and materials and trigger/view AI-generated study content in the UI.
-**Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-02..04.
+**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10). Reqs: FE-02..04.
 
 ## Phase 21 — Frontend Question Bank & Exam Authoring ◆ ○
 
 **Goal:** Teacher UI for question and assessment management.
 **Scope:** Question bank (manual create, AI question generation, review/approval/rejection, filtering); quiz/examination authoring (add/remove questions, duration, max marks, instructions, scheduling, publish).
 **Success Criteria:** A teacher can author questions, approve/reject them, and create/publish an assessment in the UI.
-**Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-05..06.
+**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10). Reqs: FE-05..06.
 
 ## Phase 22 — Frontend Student Examination & Results ◆ ○
 
 **Goal:** Student-facing exam attempt and results UI.
 **Scope:** Available-exam list; start attempt / answer / update / submit; attempt state + timer; results (score, correct/incorrect, question-level) with security enforced (no correct-answer exposure during an active attempt).
 **Success Criteria:** A student can take an assessment end-to-end and view their result.
-**Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-07..08.
+**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10). Reqs: FE-07..08.
 
 ## Phase 23 — Frontend Teacher Analytics & Practice ◆ ○
 
 **Goal:** Teacher analytics dashboard + student practice UI.
 **Scope:** Teacher view of assessment analytics (average/highest/lowest, question accuracy, topic/difficulty performance); student practice (flashcards and questions, ungraded, with history).
 **Success Criteria:** Teacher sees per-assessment stats; student completes practice sessions independent of exam scoring.
-**Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-09..10.
+**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10). Reqs: FE-09..10.
 
 ## Phase 24 — Backend/Frontend Integration & API Contract Verification ◆ ○
 
 **Goal:** Wire the frontend to the live backend; verify each consumed endpoint from the frontend against `docs/api/`.
 **Scope:** Full API integration of all frontend features; frontend-driven API contract verification (method, path, auth, authorization, request/response, status codes, error format, pagination, filtering).
 **Success Criteria:** Every frontend feature operates against the real backend per the `docs/api/` contract.
-**Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-11, FE-12.
+**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10). Reqs: FE-11, FE-12.
 
 ## Phase 25 — End-to-End & Security Testing ◆ ○
 
 **Goal:** End-to-end testing of complete user journeys and authentication/security behavior across the stack.
 **Scope:** Full E2E flows (teacher material→AI→exam; student attempt→result); authentication/security testing (role restrictions, cross-tenant isolation, answer-key security); error/loading/empty states verified across flows.
 **Success Criteria:** Complete journeys pass; security rules hold end-to-end; all UI states handled.
-**Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-13, FE-14.
+**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10). Reqs: FE-13, FE-14.
 
 ## Phase 26 — Final Polish & Demonstration Readiness ◆ ○
 
 **Goal:** Final UI/UX polish and readiness for a college demonstration.
 **Scope:** UI/UX polish, demo data/flow readiness, cross-browser/responsive checks, accessibility basics, final end-to-end run.
 **Success Criteria:** The full-stack application is polished and demonstrable end-to-end.
-**Status:** NOT STARTED (gate now open — Phase 17 PASSED 2026-09-09). Reqs: FE-15.
+**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10). Reqs: FE-15.
 
 ---
 

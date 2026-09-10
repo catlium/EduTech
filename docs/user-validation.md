@@ -1262,6 +1262,53 @@ IN_PROGRESS attempt (excluded).
   membership) on subject create — used when the 5/min login throttle 429s the
   seeded login.
 
+## Phase 19 — Frontend Product Transformation (checkpoint 5, 2026-09-10)
+
+### WF-01..05 — Web workflow suite (web serving, no stack needed for shells) [x]
+
+- **Setup required:** web server reachable at $WEB_URL (`pnpm start -p 3001`
+  on built output, or the dockerized web service). API not required — the
+  pages are client-rendered shells (skeletons) at SSR time.
+- **Command:** `WEB_URL=http://localhost:3001 bash scripts/e2e/web_workflow_e2e.sh`
+- **Expected output:** `WEB WORKFLOW E2E: PASS=33 FAIL=0` (WEB-10 web
+  reachable; WEB-11 all Phase 19 route prefixes redirect anonymous →
+  /login via middleware: content, materials/:id, paper-patterns(+new/+:id),
+  practice(+sessions/:id), assessments/:id, subjects/:id/topics/:id,
+  student/learning(+/:id/topics/:id); WEB-12 cookie-holder reaches every
+  Phase 19 shell with 200 (no 500/404); WEB-13 baseline curriculum shells).
+- Result: **PASS 33/33, 2026-09-10, local `pnpm start` on built `.next`.**
+
+### WF-06..10 — Browser journey matrix (teacher + student) [~] deferred
+
+- **Setup required (deferred reason: host disk 4.2G free; demo image builds
+  need >6G):** docker demo env (`docker compose -f docker-compose.yml -f
+  docker-compose.dev.yml -f docker-compose.demo.yml up --build`), mock AI on
+  127.0.0.1:8899/v1, seeded institute
+  `99999999-9999-9999-9999-999999999999`, teacher@catlium.dev /
+  student@catlium.dev `Password123!`. Space API logins ≥65s apart (auth
+  throttle 5/min per route+IP).
+- **Endpoints:** web `http://localhost:3001` only against the API
+  `http://localhost:3000/api/v1`.
+- **Teacher journey:** login → dashboard (stat cards + quick actions) →
+  Subjects → subject detail → add chapter/topic → Syllabus flow
+  (Generate→Process→Review→Confirm) → Materials upload → material detail →
+  Learning Content generate (note/summary/flashcards, poll → activate) →
+  Question Bank (manual create + Ask AI + approve) → Paper Patterns
+  (new → structure → Analyze from text → Validate → Approve → Create
+  Assessment) → Assessment builder (add approved questions w/ marks →
+  Publish → Activate).
+- **Student journey:** login → student dashboard (available assessment) →
+  My Subjects → chapter/topic explorer → topic content reading (incl. flip
+  flashcards) → Practice (question drill + flashcard drill → answer → rate →
+  complete → review) → assessment intro → attempt (answer in navigator,
+  auto-save, submit) → result (score + per-question feedback).
+- **Expected output:** every action hits the real API (network tab shows
+  `/api/v1/*`, no fabricated data); empty/loading/error states render;
+  role guard blocks teacher pages for student and vice versa; dark/light
+  theme + responsive (<768px) layouts render without horizontal scroll.
+- Deferred to first run after disk reclamation; item flips to `[x]` after a
+  passing run per the check matrix above.
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete
