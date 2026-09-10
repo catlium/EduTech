@@ -302,6 +302,11 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 - [x] FE-12 — exam attempt UI polish + results/performance
 - [~] FE-13 — browser/test validation + responsive/accessibility polish + docs
       (Phase 18 backend delivered; frontend feature phases now underway)
+- [x] FE-14 — custom Paper Pattern builder (sections + multi question-type rules,
+      add/remove/reorder, live totals, difficulty/topic constraints, review before
+      save, save via existing PATCH structure + version; validated 2026-09-10:
+      unit checks 4/4, backend conformance + API round-trip, web build,
+      web_workflow_e2e 33/33)
 
 --
 

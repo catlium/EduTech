@@ -1318,6 +1318,29 @@ IN_PROGRESS attempt (excluded).
   deferred pending registry access (host network flaky). Re-run the browser
   journeys to close WF-06..10.
 
+### WF-11 — Custom Paper Pattern builder (2026-09-10) [x]
+
+- **Setup required:** docker demo stack up (`docker compose -f
+  docker-compose.yml -f docker-compose.dev.yml -f docker-compose.demo.yml up
+  -d`), web :3001, api :3000, seeded institute `99999999-9999-9999-9999-999999999999`,
+  teacher@catlium.dev / `Password123!`.
+- **Endpoint:** `PATCH /api/v1/paper-patterns/:id` (structure + version) and
+  create `POST /api/v1/paper-patterns` with `{title, subjectId, structure}`;
+  UI at `:3001/paper-patterns/:id` (sections → multiple question-type rules).
+- **Payload:** flattened builder output — 3 backend sections
+  `Section A — MCQ`, `Section A — FILL_IN_BLANK`, `Section B — TRUE_FALSE`
+  (10×2 MCQ w/ difficulty 30/50/20 + topics 60/40, 5×1 FIB compulsory,
+  8×1 TRUE_FALSE optional attemptCount 4), `totalMarks` 33 auto-computed.
+- **Expected output:** API accepts structure (201), `GET` returns the identical
+  structure (201→GET round-trip; difficulty/topics/optional-count intact);
+  live totals discomfort; review dialog lists difficulty/topic/optional
+  issues before save; reload regroups rules into sections.
+- **Validity:** `node --test src/lib/paper-pattern-builder.test.ts` 4/4
+  (flatten, parse/reload, reorder round-trip, issue flags) +
+  backend conformance `validatePaperPatternStructure === []` +
+  live API create→GET round-trip PASS (2026-09-10); `web_workflow_e2e.sh`
+  33/33 no regression; web typecheck + build PASS.
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete

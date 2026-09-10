@@ -3,7 +3,19 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, ArrowDown, Trash2, Loader2, AlertTriangle } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Clock,
+  Layers,
+  ListChecks,
+  CircleDollarSign,
+  Eye,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { api, ApiError } from "@/lib/api";
@@ -15,6 +27,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { SkeletonCards } from "@/components/app/loading";
 import { ErrorState } from "@/components/app/error-state";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
+import { StatCard } from "@/components/app/stat-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -37,28 +51,41 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { SubjectResponse, MaterialResponse } from "@catlium/contracts";
+import {
+  type BackendSection,
+  type Rule,
+  type Section,
+  type TopicRow,
+  TYPE_OPTIONS,
+  TYPE_LABELS,
+  emptyRule,
+  emptySection,
+  buildInstructions,
+  ruleSubtotal,
+  computeTotals,
+  difficultySum,
+  topicPercentSum,
+  flattenSections,
+  parseBackendSections,
+  collectIssues,
+} from "@/lib/paper-pattern-builder";
 
-/* ── local types (backend returns these shapes but contracts only exports the Zod schemas) ── */
+const SOURCE_TYPES_TEXT = ["TEXT", "MATERIAL"] as const;
 
-interface Section {
-  id: string;
-  name: string;
-  questionType?: string;
-  count?: number | null;
-  marksPerQuestion?: number | null;
-  totalMarks?: number | null;
-  compulsory: boolean;
-  attemptCount?: number | null;
-  difficultyDistribution?: { EASY?: number; MEDIUM?: number; HARD?: number } | null;
-  topicDistribution?: { name: string; percentage?: number | null }[] | null;
-}
+/* ── response types (backend returns these shapes but contracts only exports the Zod schemas) ── */
 
 interface PatternStructure {
   totalMarks: number;
   durationMinutes: number;
   instructions: string[];
-  sections: Section[];
+  sections: BackendSection[];
 }
 
 interface PaperPattern {
@@ -76,23 +103,10 @@ interface PaperPattern {
   updatedAt: string;
 }
 
-const QT_OPTIONS = ["", "MCQ", "TRUE_FALSE", "FILL_IN_BLANK"] as const;
-const SOURCE_TYPES_TEXT = ["TEXT", "MATERIAL"] as const;
-
-function emptySection(): Section {
-  return { id: crypto.randomUUID(), name: "", compulsory: true };
-}
-
-function buildInstructions(text: string): string[] {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-}
 
 /* ────────────────────────────────────────────── */
 
-export default function PatternDetailPage() {
+export default function PatternBuilderPage() {
   const { patternId } = useParams<{ patternId: string }>();
   const router = useRouter();
   const { institute } = useTenant();
@@ -102,13 +116,15 @@ export default function PatternDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  /* structure editor */
-  const [totalMarks, setTotalMarks] = useState<number | "">("");
+  /* builder state */
   const [durationMinutes, setDurationMinutes] = useState<number | "">("");
   const [instructionsText, setInstructionsText] = useState("");
   const [sections, setSections] = useState<Section[]>([]);
   const [saving, setSaving] = useState(false);
   const [structureLoaded, setStructureLoaded] = useState(false);
+
+  /* review dialog */
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   /* dialogs */
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
@@ -171,14 +187,12 @@ export default function PatternDetailPage() {
   function applyStructure(s: PatternStructure | null) {
     if (!s) {
       setSections([]);
-      setTotalMarks("");
       setDurationMinutes("");
       setInstructionsText("");
       setStructureLoaded(false);
       return;
     }
-    setSections(s.sections.map((sec) => ({ ...sec })));
-    setTotalMarks(s.totalMarks);
+    setSections(parseBackendSections(s.sections));
     setDurationMinutes(s.durationMinutes);
     setInstructionsText(s.instructions.join("\n"));
     setStructureLoaded(true);
@@ -223,34 +237,58 @@ export default function PatternDetailPage() {
   function removeSection(idx: number) {
     setSections((prev) => prev.filter((_, i) => i !== idx));
   }
+  function updateRule(sIdx: number, rIdx: number, patch: Partial<Rule>) {
+    setSections((prev) =>
+      prev.map((s, i) =>
+        i === sIdx ? { ...s, rules: s.rules.map((r, j) => (j === rIdx ? { ...r, ...patch } : r)) } : s,
+      ),
+    );
+  }
+  function moveRule(sIdx: number, rIdx: number, dir: -1 | 1) {
+    setSections((prev) =>
+      prev.map((s, i) => {
+        if (i !== sIdx) return s;
+        const rules = [...s.rules];
+        const target = rIdx + dir;
+        if (target < 0 || target >= rules.length) return s;
+        [rules[rIdx], rules[target]] = [rules[target], rules[rIdx]];
+        return { ...s, rules };
+      }),
+    );
+  }
+  function removeRule(sIdx: number, rIdx: number) {
+    setSections((prev) =>
+      prev.map((s, i) => (i === sIdx ? { ...s, rules: s.rules.filter((_, j) => j !== rIdx) } : s)),
+    );
+  }
+  function addRule(sIdx: number) {
+    setSections((prev) => prev.map((s, i) => (i === sIdx ? { ...s, rules: [...s.rules, emptyRule()] } : s)));
+  }
 
-  /* ── save structure ── */
-  async function onSaveStructure() {
+  /* ── save structure (via existing Paper Pattern PATCH + optimistic version) ── */
+  async function onSave() {
     if (!pattern) return;
-    const filled = sections.filter((s) => s.name.trim());
-    if (filled.length === 0) {
-      toast.error("Add at least one section with a name");
+    if (!durationMinutes) {
+      toast.error("Duration (minutes) is required");
       return;
     }
-    if (!totalMarks || !durationMinutes) {
-      toast.error("Total marks and duration are required");
+    const flattened = flattenSections(sections);
+    if (flattened.length === 0) {
+      toast.error("Add at least one section with a configured question-type rule");
       return;
     }
+    if (flattened.length > 50) {
+      toast.error("A paper pattern supports at most 50 sections");
+      return;
+    }
+    const totals = computeTotals(sections);
     setSaving(true);
     try {
       const structure: PatternStructure = {
-        totalMarks: Number(totalMarks),
+        totalMarks: Math.max(1, totals.marks),
         durationMinutes: Number(durationMinutes),
         instructions: buildInstructions(instructionsText),
-        sections: filled.map((s) => ({
-          ...s,
-          id: crypto.randomUUID(),
-          count: s.count == null ? null : Number(s.count),
-          marksPerQuestion: s.marksPerQuestion == null ? null : Number(s.marksPerQuestion),
-          totalMarks: s.totalMarks == null ? null : Number(s.totalMarks),
-          attemptCount: s.attemptCount == null ? null : Number(s.attemptCount),
-          questionType: s.questionType || undefined,
-        })),
+        sections: flattened,
       };
       const { pattern: updated } = await api<{ pattern: PaperPattern }>(
         `/paper-patterns/${pattern.id}`,
@@ -258,10 +296,12 @@ export default function PatternDetailPage() {
       );
       setPattern(updated);
       applyStructure(updated.structure);
-      toast.success("Saved");
+      setReviewOpen(false);
+      toast.success("Blueprint saved");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         toast.error("Changed by someone else — reloaded");
+        setReviewOpen(false);
         void loadPattern();
       } else {
         toast.error(err instanceof ApiError ? err.message : "Failed to save");
@@ -271,7 +311,7 @@ export default function PatternDetailPage() {
     }
   }
 
-  /* ── analyze ── */
+  /* ── analyze (unchanged behavior) ── */
   async function onAnalyze() {
     if (!pattern) return;
     const src =
@@ -294,7 +334,6 @@ export default function PatternDetailPage() {
         { method: "POST", body: { source: src } },
       );
       const jobId = generation.jobId;
-      /* poll */
       let done = false;
       let ticks = 0;
       while (!done) {
@@ -401,6 +440,11 @@ export default function PatternDetailPage() {
     }
   }
 
+  /* ── derived values for render ── */
+  const totals = computeTotals(sections);
+  const durationLabel =
+    durationMinutes === "" ? "—" : `${durationMinutes} min`;
+
   /* ── render ── */
   if (loading) {
     return (
@@ -457,426 +501,751 @@ export default function PatternDetailPage() {
   const canApprove = pattern.status !== "APPROVED";
 
   return (
-    <div>
-      {/* back */}
-      <div className="mb-4">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/paper-patterns">
-            <ArrowLeft className="mr-1 size-3.5" /> Paper Patterns
-          </Link>
-        </Button>
-      </div>
+    <TooltipProvider delayDuration={200}>
+      <div>
+        {/* back */}
+        <div className="mb-4">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/paper-patterns">
+              <ArrowLeft className="mr-1 size-3.5" /> Paper Patterns
+            </Link>
+          </Button>
+        </div>
 
-      <PageHeader
-        title={pattern.title || "Untitled pattern"}
-        description={pattern.description ?? undefined}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={pattern.status} />
-            {isTeacher && (
-              <>
-                <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
-                  Analyze
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onValidate}
-                  disabled={validating}
-                >
-                  {validating && <Loader2 className="mr-1 size-3 animate-spin" />}
-                  Validate
-                </Button>
-                {canApprove && (
-                  <Button size="sm" onClick={() => setApproveOpen(true)}>
-                    Approve
+        <PageHeader
+          title={pattern.title || "Untitled pattern"}
+          description={pattern.description ?? undefined}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status={pattern.status} />
+              {isTeacher && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
+                    Analyze
                   </Button>
-                )}
-                {pattern.status === "APPROVED" && (
-                  <Button size="sm" onClick={() => {
-                    setAssessmentTitle(pattern.title ? `${pattern.title} — Assessment` : "Assessment");
-                    setAssessmentMaxMarks(pattern.structure?.totalMarks ?? "");
-                    setAssessmentOpen(true);
-                  }}>
-                    Create Assessment
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onValidate}
+                    disabled={validating}
+                  >
+                    {validating && <Loader2 className="mr-1 size-3 animate-spin" />}
+                    Validate
                   </Button>
-                )}
-                <Button size="sm" onClick={onSaveStructure} disabled={saving}>
-                  {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
-                  Save
-                </Button>
-              </>
+                  {canApprove && (
+                    <Button size="sm" variant="outline" onClick={() => setApproveOpen(true)}>
+                      Approve
+                    </Button>
+                  )}
+                  {pattern.status === "APPROVED" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setAssessmentTitle(pattern.title ? `${pattern.title} — Assessment` : "Assessment");
+                        setAssessmentMaxMarks(totals.marks || "");
+                        setAssessmentOpen(true);
+                      }}
+                    >
+                      Create Assessment
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => setReviewOpen(true)}>
+                    <Eye className="mr-1 size-3.5" /> Review &amp; Save
+                  </Button>
+                </>
+              )}
+            </div>
+          }
+        />
+
+        {/* structure-loaded banner */}
+        {structureLoaded && pattern.structure === null && sections.length > 0 && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+            Structure loaded from AI analysis — review then Save.
+          </div>
+        )}
+
+        {/* validate result */}
+        {validateResult && (
+          <div
+            className={`mb-4 rounded-lg border p-4 text-sm ${
+              validateResult.ok
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+            }`}
+          >
+            {validateResult.ok ? (
+              <div className="flex items-center gap-2 font-medium">
+                <span className="text-lg">✓</span> Looks valid
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <p className="font-medium">Findings:</p>
+                <ul className="list-disc pl-4">
+                  {validateResult.messages.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
-        }
-      />
+        )}
 
-      {/* structure-loaded banner */}
-      {structureLoaded && pattern.structure === null && sections.length > 0 && (
-        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
-          Structure loaded from AI analysis — review then Save
+        {/* live totals */}
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard icon={Layers} label="Sections" value={totals.sections} />
+          <StatCard
+            icon={ListChecks}
+            label="Questions"
+            value={totals.questions}
+            hint={totals.uncertain ? "some quantities unset" : undefined}
+          />
+          <StatCard
+            icon={CircleDollarSign}
+            label="Total marks"
+            value={totals.marks}
+            hint={totals.uncertain ? "computed from set values" : "count × marks"}
+          />
+          <StatCard icon={Clock} label="Duration" value={durationLabel} />
         </div>
-      )}
 
-      {/* validate result */}
-      {validateResult && (
-        <div
-          className={`mb-4 rounded-lg border p-4 text-sm ${
-            validateResult.ok
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-              : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
-          }`}
-        >
-          {validateResult.ok ? (
-            <div className="flex items-center gap-2 font-medium">
-              <span className="text-lg">✓</span> Looks valid
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <p className="font-medium">Findings:</p>
-              <ul className="list-disc pl-4">
-                {validateResult.messages.map((m, i) => (
-                  <li key={i}>{m}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* structure editor */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Structure</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {sections.length === 0 && !pattern.structure && !structureLoaded && (
-            <EmptyState
-              title="No structure yet"
-              description="Write one below or use Analyze to draft it."
-            />
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label>Total marks *</Label>
-              <Input
-                type="number"
-                min={1}
-                value={totalMarks}
-                onChange={(e) => setTotalMarks(e.target.value ? Number(e.target.value) : "")}
+        {/* blueprint editor */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Blueprint</CardTitle>
+            {sections.length > 0 && (
+              <Badge variant="secondary" className="text-xs font-normal">
+                {flattenSections(sections).length} rule{sections.length !== 1 ? "s" : ""} ·{" "}
+                {sections.length} section{sections.length !== 1 ? "s" : ""}
+              </Badge>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {sections.length === 0 && !pattern.structure && !structureLoaded && (
+              <EmptyState
+                title="No blueprint yet"
+                description="Add a section, then configure its question-type rules. Analyze can draft one for you."
               />
+            )}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Duration (minutes) *</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(e.target.value ? Number(e.target.value) : "")}
+                />
+              </div>
             </div>
             <div className="grid gap-2">
-              <Label>Duration (minutes) *</Label>
-              <Input
-                type="number"
-                min={1}
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(e.target.value ? Number(e.target.value) : "")}
+              <Label>Instructions (one per line)</Label>
+              <Textarea
+                className="resize-none"
+                rows={3}
+                value={instructionsText}
+                onChange={(e) => setInstructionsText(e.target.value)}
+                placeholder="Read carefully before answering..."
               />
             </div>
-          </div>
-          <div className="grid gap-2">
-            <Label>Instructions (one per line)</Label>
-            <Textarea
-              className="resize-none"
-              rows={3}
-              value={instructionsText}
-              onChange={(e) => setInstructionsText(e.target.value)}
-              placeholder="Read carefully before answering..."
-            />
-          </div>
 
-          {/* sections */}
-          <div className="space-y-3">
-            {sections.map((sec, idx) => (
-              <Card key={sec.id} className="border-dashed">
-                <CardContent className="space-y-3 pt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        disabled={idx === 0}
-                        onClick={() => moveSection(idx, -1)}
-                      >
-                        <ArrowUp className="size-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        disabled={idx === sections.length - 1}
-                        onClick={() => moveSection(idx, 1)}
-                      >
-                        <ArrowDown className="size-3.5" />
-                      </Button>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 text-destructive"
-                      onClick={() => removeSection(idx)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
+            <Separator />
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label>Section name *</Label>
+            {/* sections */}
+            <div className="space-y-4">
+              {sections.map((sec, sIdx) => (
+                <Card key={sec.id} className="border-dashed">
+                  <CardContent className="space-y-3 pt-4">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                disabled={sIdx === 0}
+                                onClick={() => moveSection(sIdx, -1)}
+                              >
+                                <ArrowUp className="size-3.5" />
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Move section up</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                disabled={sIdx === sections.length - 1}
+                                onClick={() => moveSection(sIdx, 1)}
+                              >
+                                <ArrowDown className="size-3.5" />
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Move section down</TooltipContent>
+                        </Tooltip>
+                      </div>
                       <Input
+                        className="font-medium"
                         value={sec.name}
-                        onChange={(e) => updateSection(idx, { name: e.target.value })}
-                        placeholder="e.g. Section A"
+                        onChange={(e) => updateSection(sIdx, { name: e.target.value })}
+                        placeholder="Section name (e.g. Section A)"
                       />
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive"
+                              onClick={() => removeSection(sIdx)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>Remove section</TooltipContent>
+                      </Tooltip>
                     </div>
-                    <div className="grid gap-2">
-                      <Label>Question type</Label>
-                      <Select
-                        value={sec.questionType ?? ""}
-                        onValueChange={(v) =>
-                          updateSection(idx, { questionType: v || undefined })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Mixed" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">Mixed</SelectItem>
-                          {QT_OPTIONS.slice(1).map((qt) => (
-                            <SelectItem key={qt} value={qt}>
-                              {qt.replace(/_/g, " ")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Count</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={sec.count ?? ""}
-                        onChange={(e) =>
-                          updateSection(idx, {
-                            count: e.target.value ? Number(e.target.value) : null,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Marks / question</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={sec.marksPerQuestion ?? ""}
-                        onChange={(e) =>
-                          updateSection(idx, {
-                            marksPerQuestion: e.target.value ? Number(e.target.value) : null,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Section total marks</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={sec.totalMarks ?? ""}
-                        onChange={(e) =>
-                          updateSection(idx, {
-                            totalMarks: e.target.value ? Number(e.target.value) : null,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="flex items-end gap-4">
+
+                    {/* section-level options */}
+                    <div className="flex flex-wrap items-center gap-4">
                       <label className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={sec.compulsory}
-                          onCheckedChange={(c) => updateSection(idx, { compulsory: !!c })}
+                          onCheckedChange={(c) => updateSection(sIdx, { compulsory: !!c })}
                         />
                         Compulsory
                       </label>
                       {!sec.compulsory && (
-                        <div className="grid gap-1">
-                          <Label className="text-xs">Attempt N of M</Label>
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs">Attempt</Label>
                           <Input
                             type="number"
                             min={1}
                             className="w-20"
                             value={sec.attemptCount ?? ""}
+                            placeholder="N of M"
                             onChange={(e) =>
-                              updateSection(idx, {
+                              updateSection(sIdx, {
                                 attemptCount: e.target.value ? Number(e.target.value) : null,
                               })
                             }
                           />
+                          <span className="text-xs text-muted-foreground">questions</span>
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* readonly difficulty/topic chips */}
-                  {(sec.difficultyDistribution || (sec.topicDistribution && sec.topicDistribution.length > 0)) && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {sec.difficultyDistribution && (
-                        <Badge variant="secondary" className="text-xs font-normal">
-                          E:{sec.difficultyDistribution.EASY ?? "—"} M:{sec.difficultyDistribution.MEDIUM ?? "—"} H:{sec.difficultyDistribution.HARD ?? "—"}
-                        </Badge>
+                    {/* rules */}
+                    <div className="space-y-3">
+                      {sec.rules.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          No question-type rules — add one below.
+                        </p>
                       )}
-                      {sec.topicDistribution?.map((t, ti) => (
-                        <Badge key={ti} variant="secondary" className="text-xs font-normal">
-                          {t.name}{t.percentage != null ? ` ${t.percentage}%` : ""}
-                        </Badge>
-                      ))}
+                      {sec.rules.map((rule, rIdx) => {
+                        const sub = ruleSubtotal(rule);
+                        const diffSum = difficultySum(rule.difficulty);
+                        const diffComplete = rule.difficulty.EASY !== "" && rule.difficulty.MEDIUM !== "" && rule.difficulty.HARD !== "";
+                        const topicsConfigured = rule.topics.filter((t) => t.name.trim()).length > 0;
+                        const topicsSum = topicPercentSum(rule.topics);
+                        return (
+                          <div key={rule.id} className="rounded-lg border bg-muted/30 p-3">
+                            <div className="grid items-end gap-3 sm:grid-cols-[minmax(150px,1fr)_120px_120px_auto_auto]">
+                              <div className="grid gap-2">
+                                <Label className="text-xs">Question type</Label>
+                                <Select
+                                  value={rule.questionType}
+                                  onValueChange={(v) =>
+                                    updateRule(sIdx, rIdx, {
+                                      questionType: v as Rule["questionType"],
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select type" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {TYPE_OPTIONS.map((qt) => (
+                                      <SelectItem key={qt || "MIXED"} value={qt}>
+                                        {qt === "" ? "Mixed" : TYPE_LABELS[qt]}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="grid gap-2">
+                                <Label className="text-xs">Questions</Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={rule.count ?? ""}
+                                  placeholder="—"
+                                  onChange={(e) =>
+                                    updateRule(sIdx, rIdx, {
+                                      count: e.target.value ? Number(e.target.value) : null,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label className="text-xs">Marks / question</Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={rule.marksPerQuestion ?? ""}
+                                  placeholder="—"
+                                  onChange={(e) =>
+                                    updateRule(sIdx, rIdx, {
+                                      marksPerQuestion: e.target.value ? Number(e.target.value) : null,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="pb-1">
+                                <Badge variant={sub != null ? "default" : "outline"} className="text-xs tabular-nums">
+                                  {sub != null ? `${sub} marks` : "unset"}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-0.5 pb-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-7"
+                                        disabled={rIdx === 0}
+                                        onClick={() => moveRule(sIdx, rIdx, -1)}
+                                      >
+                                        <ArrowUp className="size-3" />
+                                      </Button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Move rule up</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-7"
+                                        disabled={rIdx === sec.rules.length - 1}
+                                        onClick={() => moveRule(sIdx, rIdx, 1)}
+                                      >
+                                        <ArrowDown className="size-3" />
+                                      </Button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Move rule down</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-7 text-destructive"
+                                        onClick={() => removeRule(sIdx, rIdx)}
+                                      >
+                                        <Trash2 className="size-3" />
+                                      </Button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Remove rule</TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </div>
+
+                            {/* constraints */}
+                            <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-xs">Difficulty split (%)</Label>
+                                  {diffComplete && diffSum !== 100 && (
+                                    <Badge variant="destructive" className="text-[10px]">
+                                      totals {diffSum}%
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {(["EASY", "MEDIUM", "HARD"] as const).map((lv) => (
+                                    <div key={lv} className="grid gap-1">
+                                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                        {lv === "EASY" ? "Easy" : lv === "MEDIUM" ? "Medium" : "Hard"}
+                                      </span>
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        value={rule.difficulty[lv]}
+                                        placeholder="—"
+                                        onChange={(e) =>
+                                          updateRule(sIdx, rIdx, {
+                                            difficulty: {
+                                              ...rule.difficulty,
+                                              [lv]: e.target.value ? Number(e.target.value) : "",
+                                            },
+                                          })
+                                        }
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label className="text-xs">Topic distribution (%)</Label>
+                                {rule.topics.map((t, ti) => (
+                                  <div key={ti} className="flex items-center gap-2">
+                                    <Input
+                                      className="h-8"
+                                      value={t.name}
+                                      placeholder="Topic name"
+                                      onChange={(e) =>
+                                        updateRule(sIdx, rIdx, {
+                                          topics: rule.topics.map((x, xi) =>
+                                            xi === ti ? { ...x, name: e.target.value } : x,
+                                          ),
+                                        })
+                                      }
+                                    />
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={100}
+                                      className="h-8 w-20"
+                                      value={t.percentage}
+                                      placeholder="%"
+                                      onChange={(e) =>
+                                        updateRule(sIdx, rIdx, {
+                                          topics: rule.topics.map((x, xi) =>
+                                            xi === ti
+                                              ? { ...x, percentage: e.target.value ? Number(e.target.value) : "" }
+                                              : x,
+                                          ),
+                                        })
+                                      }
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-8 text-destructive"
+                                      onClick={() =>
+                                        updateRule(sIdx, rIdx, {
+                                          topics: rule.topics.filter((_, i) => i !== ti),
+                                        })
+                                      }
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                    </Button>
+                                  </div>
+                                ))}
+                                {topicsConfigured &&
+                                  (() => {
+                                    const withPct = rule.topics.some((t) => t.percentage !== "");
+                                    return withPct && topicsSum !== 100 ? (
+                                      <Badge variant="destructive" className="text-[10px]">
+                                        totals {topicsSum}% (must be 100%)
+                                      </Badge>
+                                    ) : null;
+                                  })()}
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8"
+                                  onClick={() =>
+                                    updateRule(sIdx, rIdx, {
+                                      topics: [...rule.topics, { name: "", percentage: "" }],
+                                    })
+                                  }
+                                >
+                                  <Plus className="mr-1 size-3.5" /> Add topic
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addRule(sIdx)}
+                    >
+                      <Plus className="mr-1 size-3.5" /> Add question-type rule
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {isTeacher && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSections((prev) => [...prev, emptySection()])}
+              >
+                <Plus className="mr-1 size-3.5" /> Add section
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* footer chips */}
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="secondary">{pattern.sourceType.replace(/_/g, " ")}</Badge>
+          <Badge variant="secondary">v{pattern.version}</Badge>
+          <span>Created {formatDate(pattern.createdAt)}</span>
+          <span>Updated {formatDate(pattern.updatedAt)}</span>
+          {subjectName && <span>{subjectName}</span>}
+        </div>
+
+        {/* ── Review & Save dialog ── */}
+        <Dialog open={reviewOpen} onOpenChange={(o) => !saving && setReviewOpen(o)}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Review blueprint</DialogTitle>
+              <DialogDescription>
+                Confirm the composition before it is saved to the paper pattern.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm">
+                  <span className="font-medium">{pattern.title || "Untitled pattern"}</span>
+                  <span className="text-muted-foreground"> · {durationLabel} · {totals.questions} questions · {totals.marks} marks</span>
+                  {totals.uncertain && (
+                    <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">
+                      (some quantities unset)
+                    </span>
                   )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {isTeacher && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setSections((prev) => [...prev, emptySection()])}>
-              Add section
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* footer chips */}
-      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="secondary">{pattern.sourceType.replace(/_/g, " ")}</Badge>
-        <Badge variant="secondary">v{pattern.version}</Badge>
-        <span>Created {formatDate(pattern.createdAt)}</span>
-        <span>Updated {formatDate(pattern.updatedAt)}</span>
-        {subjectName && <span>{subjectName}</span>}
-      </div>
-
-      {/* ── Analyze dialog ── */}
-      <Dialog open={analyzeOpen} onOpenChange={(o) => !analyzing && setAnalyzeOpen(o)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Analyze paper pattern</DialogTitle>
-            <DialogDescription>
-              AI will analyze content and propose a structure.
-            </DialogDescription>
-          </DialogHeader>
-          {analyzing ? (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 className="size-5 animate-spin" />
-              <p className="text-sm text-muted-foreground">{analyzeProgress}</p>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-3">
-                <div className="flex gap-4">
-                  {SOURCE_TYPES_TEXT.map((t) => (
-                    <label key={t} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="analyze-source"
-                        value={t}
-                        checked={analyzeSource === t}
-                        onChange={(e) => setAnalyzeSource(e.target.value)}
-                      />
-                      {t === "TEXT" ? "Paste text" : "From material"}
-                    </label>
-                  ))}
                 </div>
-                {analyzeSource === "TEXT" ? (
-                  <Textarea
-                    className="resize-none min-h-[120px]"
-                    placeholder="Paste exam content or syllabus text..."
-                    value={analyzeText}
-                    onChange={(e) => setAnalyzeText(e.target.value)}
-                  />
-                ) : (
-                  <Select value={analyzeMaterialId} onValueChange={setAnalyzeMaterialId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a material" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {materials.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <StatusBadge status={pattern.status} />
               </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setAnalyzeOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={onAnalyze}>Analyze</Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
 
-      {/* ── Approve dialog ── */}
-      <ConfirmDialog
-        open={approveOpen}
-        onOpenChange={setApproveOpen}
-        title="Approve pattern"
-        description="This marks the pattern as approved. It will be used for question generation and assessment creation."
-        confirmLabel="Approve"
-        loading={approving}
-        onConfirm={onApprove}
-      />
+              {/* issues preview */}
+              {(() => {
+                const issues = collectIssues(sections);
+                return issues.length ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                    <p className="mb-1 font-medium">Heads-up before saving:</p>
+                    <ul className="list-disc space-y-0.5 pl-4">
+                      {issues.map((it, i) => (
+                        <li key={i}>{it}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null;
+              })()}
 
-      {/* ── Create Assessment dialog ── */}
-      <Dialog open={assessmentOpen} onOpenChange={(o) => !creatingAssessment && setAssessmentOpen(o)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create Assessment</DialogTitle>
-            <DialogDescription>
-              Generate an assessment from this approved pattern.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="assess-title">Title</Label>
-              <Input
-                id="assess-title"
-                value={assessmentTitle}
-                onChange={(e) => setAssessmentTitle(e.target.value)}
-              />
+              <Separator />
+
+              {/* full blueprint readout */}
+              {sections.map((sec) => {
+                const configured = sec.rules.filter(
+                  (r) => r.questionType !== "" || r.count != null || r.marksPerQuestion != null,
+                );
+                if (configured.length === 0) return null;
+                const secSubtotal = configured.reduce(
+                  (acc, r) => acc + (ruleSubtotal(r) ?? 0),
+                  0,
+                );
+                return (
+                  <div key={sec.id} className="space-y-1.5">
+                    <div className="flex items-center justify-between border-b pb-1">
+                      <span className="font-medium">{sec.name.trim() || "(untitled section)"}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {sec.compulsory
+                          ? "compulsory"
+                          : `attempt ${sec.attemptCount ?? "?"} of ${configured.reduce((a, r) => a + (r.count ?? 0), 0)}`}
+                        {" · "}
+                        {secSubtotal} marks
+                      </span>
+                    </div>
+                    {configured.map((r, i) => {
+                      const sub = ruleSubtotal(r);
+                      const title = TYPE_LABELS[r.questionType] ?? "Mixed";
+                      const diffParts = [r.difficulty.EASY, r.difficulty.MEDIUM, r.difficulty.HARD].filter((v) => v !== "");
+                      const topics = r.topics.filter((t) => t.name.trim());
+                      return (
+                        <div key={r.id} className="flex flex-wrap items-center gap-2 text-sm">
+                          <span className="min-w-[90px] text-muted-foreground">{title}</span>
+                          <span className="tabular-nums">
+                            {r.count ?? "?"} × {r.marksPerQuestion ?? "?"} ={" "}
+                            <span className="font-medium tabular-nums">{sub ?? "—"}</span>
+                          </span>
+                          {r.questionType && <Badge variant="secondary" className="text-[10px]">{r.questionType}</Badge>}
+                          {diffParts.length > 0 && (
+                            <Badge variant="outline" className="text-[10px]">
+                              E{diffParts[0]} M{diffParts[1] ?? "—"} H{diffParts[2] ?? "—"}
+                            </Badge>
+                          )}
+                          {topics.length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {topics.map((t) => `${t.name}${t.percentage !== "" ? `${t.percentage}%` : ""}`).join(", ")}
+                            </span>
+                          )}
+                          {i === 0 && !sec.compulsory && sec.attemptCount != null && (
+                            <Badge variant="outline" className="text-[10px]">choice</Badge>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="assess-marks">Max marks</Label>
-              <Input
-                id="assess-marks"
-                type="number"
-                min={1}
-                value={assessmentMaxMarks}
-                onChange={(e) =>
-                  setAssessmentMaxMarks(e.target.value ? Number(e.target.value) : "")
-                }
-              />
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setReviewOpen(false)} disabled={saving}>
+                Keep editing
+              </Button>
+              <Button onClick={onSave} disabled={saving}>
+                {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
+                Save blueprint
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Analyze dialog ── */}
+        <Dialog open={analyzeOpen} onOpenChange={(o) => !analyzing && setAnalyzeOpen(o)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Analyze paper pattern</DialogTitle>
+              <DialogDescription>
+                AI will analyze content and propose a structure.
+              </DialogDescription>
+            </DialogHeader>
+            {analyzing ? (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Loader2 className="size-5 animate-spin" />
+                <p className="text-sm text-muted-foreground">{analyzeProgress}</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  <div className="flex gap-4">
+                    {SOURCE_TYPES_TEXT.map((t) => (
+                      <label key={t} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="analyze-source"
+                          value={t}
+                          checked={analyzeSource === t}
+                          onChange={(e) => setAnalyzeSource(e.target.value)}
+                        />
+                        {t === "TEXT" ? "Paste text" : "From material"}
+                      </label>
+                    ))}
+                  </div>
+                  {analyzeSource === "TEXT" ? (
+                    <Textarea
+                      className="resize-none min-h-[120px]"
+                      placeholder="Paste exam content or syllabus text..."
+                      value={analyzeText}
+                      onChange={(e) => setAnalyzeText(e.target.value)}
+                    />
+                  ) : (
+                    <Select value={analyzeMaterialId} onValueChange={setAnalyzeMaterialId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a material" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {materials.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="ghost" onClick={() => setAnalyzeOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={onAnalyze}>Analyze</Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Approve dialog ── */}
+        <ConfirmDialog
+          open={approveOpen}
+          onOpenChange={setApproveOpen}
+          title="Approve pattern"
+          description="This marks the pattern as approved. It will be used for question generation and assessment creation."
+          confirmLabel="Approve"
+          loading={approving}
+          onConfirm={onApprove}
+        />
+
+        {/* ── Create Assessment dialog ── */}
+        <Dialog open={assessmentOpen} onOpenChange={(o) => !creatingAssessment && setAssessmentOpen(o)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Assessment</DialogTitle>
+              <DialogDescription>
+                Generate an assessment from this approved pattern.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="assess-title">Title</Label>
+                <Input
+                  id="assess-title"
+                  value={assessmentTitle}
+                  onChange={(e) => setAssessmentTitle(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="assess-marks">Max marks</Label>
+                <Input
+                  id="assess-marks"
+                  type="number"
+                  min={1}
+                  value={assessmentMaxMarks}
+                  onChange={(e) =>
+                    setAssessmentMaxMarks(e.target.value ? Number(e.target.value) : "")
+                  }
+                />
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setAssessmentOpen(false)} disabled={creatingAssessment}>
-              Cancel
-            </Button>
-            <Button onClick={onCreateAssessment} disabled={creatingAssessment}>
-              {creatingAssessment && <Loader2 className="mr-1 size-3 animate-spin" />}
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setAssessmentOpen(false)} disabled={creatingAssessment}>
+                Cancel
+              </Button>
+              <Button onClick={onCreateAssessment} disabled={creatingAssessment}>
+                {creatingAssessment && <Loader2 className="mr-1 size-3 animate-spin" />}
+                Create
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 }
