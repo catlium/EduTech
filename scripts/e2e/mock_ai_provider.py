@@ -9,8 +9,9 @@ the canned output via WORKER_AI_MODEL:
 
   - ``syllabus-mock``  -> syllabus proposal JSON (contract preserved for
                           ``syllabus_e2e.sh``)
-  - ``note-mock``      -> AI_GENERATE_NOTE NotePayload
-  - ``questions-mock`` -> AI_GENERATE_QUESTIONS GeneratedQuestions (3 identical
+- ``note-mock``      -> AI_GENERATE_NOTE NotePayload
+   - ``summary-mock``   -> AI_GENERATE_SUMMARY SummaryPayload
+   - ``questions-mock`` -> AI_GENERATE_QUESTIONS GeneratedQuestions (3 identical
                           MCQs, EASY)
   - ``blueprint-mock`` -> AI_GENERATE_BLUEPRINT BlueprintPayload (Section A:
                           MCQ 10 x 1 compulsory; Section B: TRUE_FALSE 5 x 2
@@ -58,6 +59,18 @@ NOTE = {
             "type": "list",
             "items": ["Integers", "Fractions", "Terminating and repeating decimals"],
         },
+    ],
+}
+
+SUMMARY = {
+    "title": "Rational Numbers — demo summary",
+    "summary": "Rational numbers are numbers that can be written as a ratio of two "
+    "integers (p/q with q != 0). They include integers, proper fractions, and "
+    "terminating or repeating decimals.",
+    "keyConcepts": ["Ratio of two integers", "Terminating decimals", "Repeating decimals"],
+    "importantPoints": [
+        "A rational number is expressible as p/q with q != 0.",
+        "Decimals that terminate or repeat are rational.",
     ],
 }
 
@@ -141,6 +154,8 @@ def _pick(model: str, messages: list | None = None) -> dict:
     probe = " ".join(
         str(m.get("content", "")) for m in (messages or [])
     ).lower()
+    if "study-summary" in probe or "study summary" in probe:
+        return SUMMARY
     if "study notes" in probe:
         return NOTE
     if "paper pattern" in probe:
