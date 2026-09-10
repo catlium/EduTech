@@ -1308,6 +1308,15 @@ IN_PROGRESS attempt (excluded).
   theme + responsive (<768px) layouts render without horizontal scroll.
 - Deferred to first run after disk reclamation; item flips to `[x]` after a
   passing run per the check matrix above.
+- **2026-09-10 login-blocker fixed during browser pass:** `access_token` and
+  `csrf_token` cookies were scoped `Path=/api/v1` so `apps/web` middleware on
+  :3001 never saw the session → login showed "Welcome back" then bounced to
+  /login. Root-caused against the live stack; `cookie.util.ts` now sets them
+  `Path=/` (refresh_token stays `/api/v1/auth`). Verified via curl:
+  login → Set-Cookie `Path=/` → `GET :3001/dashboard` returns 200 (was 302).
+  API image in the running stack is hot-patched; `docker compose build api`
+  deferred pending registry access (host network flaky). Re-run the browser
+  journeys to close WF-06..10.
 
 ## Conventions
 

@@ -29,7 +29,9 @@ export function setAccessCookie(response: Response, token: string, options: Cook
     secure: options.secure,
     sameSite: options.sameSite,
     domain: options.domain,
-    path: '/api/v1',
+    // '/' so the web app (served from a different port) sees the session in
+    // its middleware; the refresh token below stays scoped to the auth paths.
+    path: '/',
     maxAge: options.accessExpiresMs,
   });
 }
@@ -51,7 +53,7 @@ export function setCsrfCookie(response: Response, token: string, options: Cookie
     secure: options.secure,
     sameSite: options.sameSite,
     domain: options.domain,
-    path: '/api/v1',
+    path: '/',
     maxAge: options.accessExpiresMs,
   });
 }
@@ -62,7 +64,7 @@ export function clearAuthCookies(response: Response, options: CookieOptions) {
     secure: options.secure,
     sameSite: options.sameSite,
     domain: options.domain,
-    path: '/api/v1',
+    path: '/',
   });
   response.clearCookie('refresh_token', {
     httpOnly: true,
@@ -76,6 +78,6 @@ export function clearAuthCookies(response: Response, options: CookieOptions) {
     secure: options.secure,
     sameSite: options.sameSite,
     domain: options.domain,
-    path: '/api/v1',
+    path: '/',
   });
 }

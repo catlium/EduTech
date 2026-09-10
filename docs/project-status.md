@@ -110,6 +110,12 @@ checkpoint 5 (validation + polish + E2E + docs).
   at 4.2G free, demo image builds need >6G; exact steps in
   `docs/user-validation.md` WF-06..10. The earlier Phase 18 dockerized
   regression (583/583) remains valid — no backend code has changed since.
+- **Login fix (2026-09-10)**: `access_token`/`csrf_token` cookies were
+  `Path=/api/v1`, invisible to the web middleware on :3001, so post-login
+  redirect bounced back to /login. Now `Path=/` (refresh stays `/api/v1/auth`).
+  Verified on the live stack (login → `GET /dashboard` 200, was 302).
+  Rebuild of the api image (`docker compose build api`) pending registry
+  access; running container hot-patched.
 
 ### Phase 19 checkpoint queue (planned commit series)
 

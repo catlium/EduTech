@@ -5,7 +5,8 @@ Base URL: `/api/v1`
 Authentication uses HTTP-only cookies set by the API:
 
 - `access_token` — short-lived JWT (default 15 min), sent automatically by the
-  browser.
+  browser. Cookie path `/` so the web app's middleware (`apps/web` on a
+  different port) can gate protected routes.
 - `refresh_token` — long-lived rotating session token (path `/api/v1/auth`).
 - `csrf_token` — non-HttpOnly double-submit cookie; `POST /auth/refresh` and
   `POST /auth/logout` require the matching `x-csrf-token` header (403 without).
