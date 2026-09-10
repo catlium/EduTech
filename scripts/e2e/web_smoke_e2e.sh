@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # web_smoke_e2e.sh — Phase 16 frontend smoke suite for the Next.js web app.
 # Asserts, against the running web server (dockerized or local):
-#   - public pages return 200 (/, /login, /register, /institutes)
+#   - public pages return 200 (/, /login, /institutes); /register is gone
+#     (404) because accounts are institute-provisioned
 #   - server-side middleware (middleware.ts) redirects unauthenticated visitors
 #     away from workspace routes to /login
 #   - a cookie-holder is allowed through to the workspace shell (page renders)
@@ -31,6 +32,10 @@ redirect_ok() { local code="$1" loc="$2" label="$3"
     FAIL=$((FAIL+1)); FAILURES+=("$label: got $code loc=$loc"); echo "  FAIL $label (got $code loc=$loc)"
   fi
 }
+body_has() { local sub="$1" label="$2"
+  if grep -qF "$sub" "$BODY_FILE"; then PASS=$((PASS+1));
+  else FAIL=$((FAIL+1)); FAILURES+=("$label: missing '$sub' in body"); echo "  FAIL $label (missing '$sub')"; fi
+}
 
 echo "== WEB-00 wait for server =="
 UP=""
@@ -43,27 +48,25 @@ PASS=$((PASS+1)); echo "  ok WEB-00 web reachable"
 sleep 1
 
 echo "== WEB-01 public pages render =="
-code=$(curl -s -o /dev/null -D "$HDR_FILE" -w '%{http_code}' "$WEB/")
-loc=$(grep -i '^location:' "$HDR_FILE" | tr -d '\r' | sed 's/[Ll]ocation: //;s|\r||')
-ok "$code" 307 "WEB-01a / bootstraps to dashboard (redirect)"
-printf '%s' "$loc" | grep -q 'dashboard' && { PASS=$((PASS+1)); echo "  ok WEB-01b / redirects to /dashboard"; } \
-  || { FAIL=$((FAIL+1)); FAILURES+=("WEB-01b / -> dashboard"); echo "  FAIL WEB-01b / -> dashboard (loc=$loc)"; }
+code=$(curl -s -L -o "$BODY_FILE" -w '%{http_code}' "$WEB/")
+ok "$code" 200 "WEB-01a / landing page -> 200"
+body_has "hello@catlium.dev" "WEB-01b landing references demo CTA"
 code=$(curl -s -L -o "$BODY_FILE" -w '%{http_code}' "$WEB/login")
 ok "$code" 200 "WEB-01c /login -> 200"
-code=$(curl -s -L -o "$BODY_FILE" -w '%{http_code}' "$WEB/register")
-ok "$code" 200 "WEB-01d /register -> 200"
+code=$(curl -s -o "$BODY_FILE" -w '%{http_code}' "$WEB/register")
+ok "$code" 404 "WEB-01d /register -> 404 (no public self-registration)"
 code=$(curl -s -L -o "$BODY_FILE" -w '%{http_code}' "$WEB/institutes")
 ok "$code" 200 "WEB-01e /institutes -> 200"
 
 echo "== WEB-02 middleware: workspace routes redirect anon to /login =="
-for path in dashboard subjects "subjects/new" "subjects/00000000-0000-4000-8000-000000000000" materials questions assessments "student/dashboard"; do
+for path in dashboard subjects "subjects/new" "subjects/00000000-0000-4000-8000-000000000000" materials questions assessments "student/dashboard" institute users; do
   code=$(curl -s -o /dev/null -D "$HDR_FILE" -w '%{http_code}' "$WEB/$path")
   loc=$(grep -i '^location:' "$HDR_FILE" | tr -d '\r' | sed 's/[Ll]ocation: //;s|\r||')
   redirect_ok "$code" "$loc" "WEB-02 $path redirects"
 done
 
 echo "== WEB-03 cookie-holder reaches workspace shell =="
-for path in dashboard subjects materials questions "student/dashboard"; do
+for path in dashboard subjects materials questions "student/dashboard" institute users; do
   code=$(curl -s -b "access_token=smoke" -o /dev/null -w '%{http_code}' "$WEB/$path")
   ok "$code" 200 "WEB-03 /$path with cookie -> 200"
 done

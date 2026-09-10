@@ -8,8 +8,8 @@
 #   3. API /api/v1/health ok, web serves /login, CORS lets the web origin
 #      call the API.
 #   4. Auth works. If the demo seed is present it logs in as the seeded
-#      teacher; otherwise it registers a fresh user and verifies the correct
-#      tenant-state (subject create without a membership -> 403), deferring
+#      teacher; otherwise it verifies that public registration is gone and
+#      authentication is only possible for provisioned accounts, deferring
 #      the full content flow to the demo profile.
 #   5. Seeded mode only: full representative flow — subject/chapter/topic,
 #      text material READY, then a text/plain upload processed by the
@@ -98,7 +98,14 @@ viol=0
 for pair in ocr:8000 omniroute:20128 postgres:5432 redis:6379 rabbitmq:5672; do
   svc="${pair%%:*}"; p="${pair##*:}"
   out=$(docker compose port "$svc" "$p" 2>/dev/null)
-  if [ -n "$out" ] && ! printf '%s' "$out" | grep -q '127.0.0.1'; then viol=$((viol+1)); fi
+  # 'invalid IP:0' is a compose-oracle quirk for compact loopback bindings;
+  # a REAL violation is a non-loopback mapping. Use `docker port` to verify.
+  if [ -z "$out" ] || printf '%s' "$out" | grep -q 'invalid IP:0'; then
+    real=$(docker port "catlium-$svc" "$p" 2>/dev/null | head -1 | sed -E 's/.*-> //')
+    [ -z "$real" ] || printf '%s' "$real" | grep -q '127.0.0.1' || viol=$((viol+1))
+  elif ! printf '%s' "$out" | grep -q '127.0.0.1'; then
+    viol=$((viol+1))
+  fi
 done
 ok "$viol" 0 "RD-03c internal ports only on loopback (or unpublished)"
 
@@ -121,13 +128,10 @@ if [ "$code" = "200" ]; then
   SEEDED=1; PASS=$((PASS+1)); echo "  ok RD-05 seeded login works"
 else
   echo "    seeded login rc=$code (unseeded base stack) — deferring full flow to demo profile"
-  RAND="$(date +%s)"
   code=$(req POST /auth/register -H 'Content-Type: application/json' \
-    -d "{\"name\":\"Readiness $RAND\",\"email\":\"rd_${RAND}@test.dev\",\"password\":\"Password123!\"}")
-  ok "$code" 201 "RD-05a unseeded: register -> 201"
-  ok "$(req GET /auth/me)" 200 "RD-05b unseeded: me -> 200"
-  ok "$(req_i POST /academic/subjects -H 'Content-Type: application/json' \
-    -d "{\"name\":\"RD $RAND\",\"slug\":\"rd-$RAND\"}")" 403 "RD-05c unseeded: no-membership subject create -> 403"
+    -d '{"name":"Readiness R","email":"rd_r@test.dev","password":"Password123!"}')
+  ok "$code" 404 "RD-05a unseeded: register -> 404 (no public self-registration)"
+  ok "$(req GET /auth/me)" 401 "RD-05b unseeded: me anon -> 401"
 fi
 
 if [ "$SEEDED" = "1" ]; then

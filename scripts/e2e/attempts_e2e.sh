@@ -248,21 +248,19 @@ body_not_has "correctChoiceId|correctAnswer|acceptableAnswers|explanation" "AT-0
 
 echo "== AT-09 cross-student isolation =="
 S2_EMAIL="att.s2.$RAND@test.com"
-HEX12=$(printf '%012x' $((RAND % 0xFFFFFFFFFFFF)))
-MEM2="88888888-8888-4888-8888-$HEX12"
-curl -s -c "$CJS2" -X POST "$BASE/auth/register" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$S2_EMAIL\",\"password\":\"Password123!\",\"name\":\"Att S2\"}" -o "$BODY_FILE"
+JAR="$CJ"; INST="$DI"
+S2P=$(req POST /users -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$S2_EMAIL\",\"password\":\"Password123!\",\"name\":\"Att S2\",\"role\":\"STUDENT\"}")
+ok "$S2P" 201 "AT-09a admin provisions second student via /users -> 201"
 S2ID=$(jget id)
-sql "INSERT INTO memberships (id, user_id, institute_id, status) VALUES ('$MEM2','$S2ID','$DI','active') ON CONFLICT DO NOTHING" >/dev/null
-sql "INSERT INTO membership_roles (membership_id, role) VALUES ('$MEM2','STUDENT') ON CONFLICT DO NOTHING" >/dev/null
 login_user "$S2_EMAIL" "$CJS2"
 JAR="$CJS2"
 XG=$(req GET "/attempts/$ATTID")
-ok "$XG" 404 "AT-09a student cannot read other student's attempt -> 404"
+ok "$XG" 404 "AT-09b student cannot read other student's attempt -> 404"
 XS=$(req PUT "/attempts/$ATTID/questions/$AQ2" -H 'Content-Type: application/json' -d '{"answer":{"choiceId":"'$MC2A'"}}')
-ok "$XS" 404 "AT-09b student cannot answer other student's attempt -> 404"
+ok "$XS" 404 "AT-09c student cannot answer other student's attempt -> 404"
 XSU=$(req POST "/attempts/$ATTID/submit")
-ok "$XSU" 404 "AT-09c student cannot submit other student's attempt -> 404"
+ok "$XSU" 404 "AT-09d student cannot submit other student's attempt -> 404"
 
 echo "== AT-10 teacher ledger + role gate =="
 JAR="$CJ"
