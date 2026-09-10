@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-19-frontend-transformation
-current_phase_name: Phase 19 — Frontend Product Transformation
+current_phase: phase-20-demo-seed-enrichment
+current_phase_name: Phase 20 — Demo Seed Enrichment + Student Journey Closure
 status: in-progress
-stopped_at: "Phase 19 — Frontend Product Transformation (2026-09-10) + priority task: custom Paper Pattern builder (FE-14) committed 116fbb7 + pushed — sections → multi question-type rules, add/remove/reorder, live totals, difficulty/topic constraints, review-before-save, save via existing API; validated: node --test round-trip 4/4 + backend conformance, live API create→GET round-trip PASS, web_workflow_e2e 33/33, web typecheck+build. Docker demo stack up/healthy with baked login-cookie fix (Path=/). Next: Phase 20 — enrich demo seed (chapters/topics/materials/questions/blueprint/assessment) so teacher/student journeys are meaningful, then close WF-06..10 browser matrix, run full Docker+frontend+backend regression, docs, Phase 20 checkpoint."
-last_updated: "2026-09-10T11:30:00.000Z"
-state_head: 116fbb7
+stopped_at: "Phase 20 — Demo Seed Enrichment + Student Journey Closure (2026-09-10) checkpoint committed + pushed. Seed now carries Mathematics + Physics curriculum (chapters/topics, syllabus + reading materials with NOTE/FLASHCARD_SET, 19 approved questions, APPROVED 13-mark blueprints, ACTIVE assessments per subject). Attemptable payloads: MCQ choice ids mapped to UUIDs (validateAnswer requirement), TF/FIB answers use value; stale literal-choice question removed and re-seeded. Student journey proven on live stack: quiz in /attempts/available, attempt 201, 10/10 answers accepted, submit → score 12/12 (100%). attempt payloads strip correctChoiceId by design. Regression: web_workflow_e2e 33/33, paper-patterns tests PASS, api+web typecheck clean. Docs/tasks.md + user-validation.md WF-11b + project-status updated. Next: close WF-06..10 browser journey matrix (disk-dependent), then final regression + docs for that."
+last_updated: "2026-09-10T13:40:00.000Z"
+state_head: 8c4586d
 progress:
   total_phases: 17
   completed_phases: 17
