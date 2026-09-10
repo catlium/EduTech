@@ -1,33 +1,28 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Archive,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { useCallback, useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { ArrowLeft, Archive, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
-import { useTenant, canManage } from "@/lib/tenant";
+import { api, ApiError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { useTenant, canManage } from '@/lib/tenant';
 import type {
   ContentResponse,
   NotePayload,
   SummaryPayload,
   FlashcardSetPayload,
   ImportantConceptsPayload,
-} from "@catlium/contracts";
-import { PageHeader } from "@/components/app/page-header";
-import { StatusBadge } from "@/components/app/status-badge";
-import { ErrorState } from "@/components/app/error-state";
-import { ConfirmDialog } from "@/components/app/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+  CornellNotePayload,
+} from '@catlium/contracts';
+import { PageHeader } from '@/components/app/page-header';
+import { StatusBadge } from '@/components/app/status-badge';
+import { ErrorState } from '@/components/app/error-state';
+import { ConfirmDialog } from '@/components/app/confirm-dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 
 export default function ContentDetailPage() {
   const { contentId } = useParams<{ contentId: string }>();
@@ -39,7 +34,7 @@ export default function ContentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [confirmAction, setConfirmAction] = useState<"activate" | "archive" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'activate' | 'archive' | null>(null);
 
   const refresh = useCallback(() => {
     if (!institute) return;
@@ -47,8 +42,8 @@ export default function ContentDetailPage() {
     api<{ content: ContentResponse }>(`/content/${contentId}`, { signal: ctrl.signal })
       .then(({ content }) => setContent(content))
       .catch((err) => {
-        if (!(err instanceof DOMException && err.name === "AbortError")) {
-          setError(err instanceof ApiError ? err.message : "Failed to load content");
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setError(err instanceof ApiError ? err.message : 'Failed to load content');
         }
       })
       .finally(() => setLoading(false));
@@ -61,23 +56,23 @@ export default function ContentDetailPage() {
 
   async function activateContent() {
     try {
-      await api(`/content/${contentId}/activate`, { method: "POST" });
-      toast.success("Content activated");
+      await api(`/content/${contentId}/activate`, { method: 'POST' });
+      toast.success('Content activated');
       setConfirmAction(null);
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to activate");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to activate');
     }
   }
 
   async function archiveContent() {
     try {
-      await api(`/content/${contentId}/archive`, { method: "POST" });
-      toast.success("Content archived");
+      await api(`/content/${contentId}/archive`, { method: 'POST' });
+      toast.success('Content archived');
       setConfirmAction(null);
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to archive");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to archive');
     }
   }
 
@@ -89,7 +84,7 @@ export default function ContentDetailPage() {
     return (
       <div>
         <PageHeader title="Content" />
-        <ErrorState description={error ?? "Content not found."} onRetry={refresh} />
+        <ErrorState description={error ?? 'Content not found.'} onRetry={refresh} />
       </div>
     );
   }
@@ -99,7 +94,12 @@ export default function ContentDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Button variant="ghost" size="sm" className="mb-2 -ml-2" onClick={() => router.push("/content")}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-2 -ml-2"
+          onClick={() => router.push('/content')}
+        >
           <ArrowLeft className="mr-1 size-3.5" /> Content
         </Button>
         <PageHeader
@@ -107,13 +107,13 @@ export default function ContentDetailPage() {
           actions={
             isTeacher && (
               <div className="flex gap-2">
-                {content.status === "DRAFT" && (
-                  <Button size="sm" onClick={() => setConfirmAction("activate")}>
+                {content.status === 'DRAFT' && (
+                  <Button size="sm" onClick={() => setConfirmAction('activate')}>
                     <CheckCircle2 className="mr-1 size-3.5" /> Activate
                   </Button>
                 )}
-                {content.status === "ACTIVE" && (
-                  <Button size="sm" variant="outline" onClick={() => setConfirmAction("archive")}>
+                {content.status === 'ACTIVE' && (
+                  <Button size="sm" variant="outline" onClick={() => setConfirmAction('archive')}>
                     <Archive className="mr-1 size-3.5" /> Archive
                   </Button>
                 )}
@@ -131,13 +131,20 @@ export default function ContentDetailPage() {
 
       <Separator />
 
-      {content.type === "NOTE" && <NoteView payload={payload as unknown as NotePayload} />}
-      {content.type === "SUMMARY" && <SummaryView payload={payload as unknown as SummaryPayload} />}
-      {content.type === "FLASHCARD_SET" && <FlashcardView payload={payload as unknown as FlashcardSetPayload} />}
-      {content.type === "IMPORTANT_CONCEPTS" && <ConceptsView payload={payload as unknown as ImportantConceptsPayload} />}
+      {content.type === 'NOTE' && <NoteView payload={payload as unknown as NotePayload} />}
+      {content.type === 'SUMMARY' && <SummaryView payload={payload as unknown as SummaryPayload} />}
+      {content.type === 'FLASHCARD_SET' && (
+        <FlashcardView payload={payload as unknown as FlashcardSetPayload} />
+      )}
+      {content.type === 'IMPORTANT_CONCEPTS' && (
+        <ConceptsView payload={payload as unknown as ImportantConceptsPayload} />
+      )}
+      {content.type === 'CORNELL_NOTE' && (
+        <CornellView payload={payload as unknown as CornellNotePayload} />
+      )}
 
       <ConfirmDialog
-        open={confirmAction === "activate"}
+        open={confirmAction === 'activate'}
         onOpenChange={(o) => !o && setConfirmAction(null)}
         title="Activate content?"
         description="This content will be available to students."
@@ -145,7 +152,7 @@ export default function ContentDetailPage() {
         onConfirm={activateContent}
       />
       <ConfirmDialog
-        open={confirmAction === "archive"}
+        open={confirmAction === 'archive'}
         onOpenChange={(o) => !o && setConfirmAction(null)}
         title="Archive content?"
         description="This content will no longer be available to students."
@@ -161,21 +168,21 @@ function NoteView({ payload }: { payload: NotePayload }) {
   return (
     <div className="max-w-none space-y-4">
       {payload.blocks.map((block) => {
-        if (block.type === "heading") {
+        if (block.type === 'heading') {
           return (
             <h3 key={block.id} className="text-lg font-semibold">
               {block.content}
             </h3>
           );
         }
-        if (block.type === "paragraph") {
+        if (block.type === 'paragraph') {
           return (
             <p key={block.id} className="text-sm leading-relaxed">
               {block.content}
             </p>
           );
         }
-        if (block.type === "list") {
+        if (block.type === 'list') {
           return (
             <ul key={block.id} className="list-disc space-y-1 pl-5 text-sm">
               {block.items.map((item, i) => (
@@ -265,7 +272,7 @@ function FlashcardView({ payload }: { payload: FlashcardSetPayload }) {
         onClick={() => setFlipped((f) => !f)}
       >
         <div className="absolute right-3 top-3 text-xs text-muted-foreground">
-          {flipped ? "Back" : "Front"} · click to flip
+          {flipped ? 'Back' : 'Front'} · click to flip
         </div>
         <div className="flex min-h-[160px] items-center justify-center text-center">
           <p className="whitespace-pre-wrap text-base">
@@ -291,6 +298,39 @@ function ConceptsView({ payload }: { payload: ImportantConceptsPayload }) {
           </CardContent>
         </Card>
       ))}
+    </div>
+  );
+}
+
+function CornellView({ payload }: { payload: CornellNotePayload }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1">
+          <h3 className="text-xs font-semibold uppercase text-muted-foreground">Cue Column</h3>
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {payload.sections.map((s) => (
+              <li key={s.id}>{s.cue}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-xs font-semibold uppercase text-muted-foreground">Notes</h3>
+          <div className="space-y-2 text-sm leading-relaxed">
+            {payload.sections.map((s) => (
+              <p key={s.id} className="whitespace-pre-wrap">
+                {s.notes}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+      {payload.summary && (
+        <div className="rounded-lg bg-muted/30 p-4">
+          <h3 className="text-xs font-semibold uppercase text-muted-foreground">Summary</h3>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">{payload.summary}</p>
+        </div>
+      )}
     </div>
   );
 }
