@@ -1,11 +1,12 @@
-"use client";
+'use client';
 
-import { LogOut, UserRound } from "lucide-react";
+import { LogOut, UserRound } from 'lucide-react';
+import Link from 'next/link';
 
-import { useAuth } from "@/lib/auth";
-import { initials } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { useAuth } from '@/lib/auth';
+import { initials } from '@/lib/utils';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +14,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
 
 export function UserMenu() {
   const { user, logout } = useAuth();
@@ -45,8 +46,10 @@ export function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>
-          <UserRound className="mr-2 size-4" /> Profile (coming soon)
+        <DropdownMenuItem asChild>
+          <Link href="/profile">
+            <UserRound className="mr-2 size-4" /> Profile
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => logout()}>

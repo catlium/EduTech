@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowDown,
   ArrowLeft,
@@ -15,34 +15,34 @@ import {
   Loader2,
   Plus,
   Trash2,
-} from "lucide-react";
-import { toast } from "sonner";
+} from 'lucide-react';
+import { toast } from 'sonner';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
-import { useTenant, canManage } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { StatusBadge } from "@/components/app/status-badge";
-import { EmptyState } from "@/components/app/empty-state";
-import { SkeletonCards } from "@/components/app/loading";
-import { ErrorState } from "@/components/app/error-state";
-import { ConfirmDialog } from "@/components/app/confirm-dialog";
-import { StatCard } from "@/components/app/stat-card";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { api, ApiError } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
+import { useTenant, canManage } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { StatusBadge } from '@/components/app/status-badge';
+import { EmptyState } from '@/components/app/empty-state';
+import { SkeletonCards } from '@/components/app/loading';
+import { ErrorState } from '@/components/app/error-state';
+import { ConfirmDialog } from '@/components/app/confirm-dialog';
+import { StatCard } from '@/components/app/stat-card';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -50,14 +50,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import type { SubjectResponse, MaterialResponse } from "@catlium/contracts";
+} from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import type { PaperPattern, SubjectResponse, MaterialResponse } from '@catlium/contracts';
 import {
   type BackendSection,
   type Rule,
@@ -75,9 +70,9 @@ import {
   flattenSections,
   parseBackendSections,
   collectIssues,
-} from "@/lib/paper-pattern-builder";
+} from '@/lib/paper-pattern-builder';
 
-const SOURCE_TYPES_TEXT = ["TEXT", "MATERIAL"] as const;
+const SOURCE_TYPES_TEXT = ['TEXT', 'MATERIAL'] as const;
 
 /* ── response types (backend returns these shapes but contracts only exports the Zod schemas) ── */
 
@@ -87,22 +82,6 @@ interface PatternStructure {
   instructions: string[];
   sections: BackendSection[];
 }
-
-interface PaperPattern {
-  id: string;
-  subjectId: string;
-  title: string;
-  description: string | null;
-  status: string;
-  version: number;
-  sourceType: string;
-  structure: PatternStructure | null;
-  validatedAt: string | null;
-  approvedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 
 /* ────────────────────────────────────────────── */
 
@@ -117,8 +96,8 @@ export default function PatternBuilderPage() {
   const [error, setError] = useState<string | null>(null);
 
   /* builder state */
-  const [durationMinutes, setDurationMinutes] = useState<number | "">("");
-  const [instructionsText, setInstructionsText] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState<number | ''>('');
+  const [instructionsText, setInstructionsText] = useState('');
   const [sections, setSections] = useState<Section[]>([]);
   const [saving, setSaving] = useState(false);
   const [structureLoaded, setStructureLoaded] = useState(false);
@@ -128,12 +107,12 @@ export default function PatternBuilderPage() {
 
   /* dialogs */
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
-  const [analyzeSource, setAnalyzeSource] = useState<string>("TEXT");
-  const [analyzeText, setAnalyzeText] = useState("");
-  const [analyzeMaterialId, setAnalyzeMaterialId] = useState("");
+  const [analyzeSource, setAnalyzeSource] = useState<string>('TEXT');
+  const [analyzeText, setAnalyzeText] = useState('');
+  const [analyzeMaterialId, setAnalyzeMaterialId] = useState('');
   const [materials, setMaterials] = useState<MaterialResponse[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analyzeProgress, setAnalyzeProgress] = useState("");
+  const [analyzeProgress, setAnalyzeProgress] = useState('');
 
   const [validateResult, setValidateResult] = useState<{
     ok: boolean;
@@ -145,8 +124,8 @@ export default function PatternBuilderPage() {
   const [approving, setApproving] = useState(false);
 
   const [assessmentOpen, setAssessmentOpen] = useState(false);
-  const [assessmentTitle, setAssessmentTitle] = useState("");
-  const [assessmentMaxMarks, setAssessmentMaxMarks] = useState<number | "">("");
+  const [assessmentTitle, setAssessmentTitle] = useState('');
+  const [assessmentMaxMarks, setAssessmentMaxMarks] = useState<number | ''>('');
   const [creatingAssessment, setCreatingAssessment] = useState(false);
 
   const alive = useRef(true);
@@ -157,19 +136,17 @@ export default function PatternBuilderPage() {
     setLoading(true);
     setError(null);
     try {
-      const { pattern: p } = await api<{ pattern: PaperPattern }>(
-        `/paper-patterns/${patternId}`,
-      );
+      const { pattern: p } = await api<{ pattern: PaperPattern }>(`/paper-patterns/${patternId}`);
       if (!alive.current) return;
       setPattern(p);
       applyStructure(p.structure);
     } catch (err) {
       if (!alive.current) return;
-      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       if (err instanceof ApiError && err.status === 404) {
-        setError("NOT_FOUND");
+        setError('NOT_FOUND');
       } else {
-        setError(err instanceof ApiError ? err.message : "Failed to load pattern");
+        setError(err instanceof ApiError ? err.message : 'Failed to load pattern');
       }
     } finally {
       if (alive.current) setLoading(false);
@@ -187,25 +164,25 @@ export default function PatternBuilderPage() {
   function applyStructure(s: PatternStructure | null) {
     if (!s) {
       setSections([]);
-      setDurationMinutes("");
-      setInstructionsText("");
+      setDurationMinutes('');
+      setInstructionsText('');
       setStructureLoaded(false);
       return;
     }
     setSections(parseBackendSections(s.sections));
     setDurationMinutes(s.durationMinutes);
-    setInstructionsText(s.instructions.join("\n"));
+    setInstructionsText(s.instructions.join('\n'));
     setStructureLoaded(true);
   }
 
   /* ── subject name ── */
-  const [subjectName, setSubjectName] = useState("");
+  const [subjectName, setSubjectName] = useState('');
   useEffect(() => {
     if (!institute || !pattern) return;
     const ctrl = new AbortController();
-    api<{ subjects: SubjectResponse[] }>("/academic/subjects", { signal: ctrl.signal })
+    api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal: ctrl.signal })
       .then(({ subjects }) => {
-        setSubjectName(subjects.find((s) => s.id === pattern.subjectId)?.name ?? "");
+        setSubjectName(subjects.find((s) => s.id === pattern.subjectId)?.name ?? '');
       })
       .catch(() => {});
     return () => ctrl.abort();
@@ -215,7 +192,7 @@ export default function PatternBuilderPage() {
   useEffect(() => {
     if (!institute || !analyzeOpen) return;
     const ctrl = new AbortController();
-    api<{ materials: MaterialResponse[] }>("/materials?status=ACTIVE", { signal: ctrl.signal })
+    api<{ materials: MaterialResponse[] }>('/materials?status=ACTIVE', { signal: ctrl.signal })
       .then(({ materials }) => setMaterials(materials))
       .catch(() => {});
     return () => ctrl.abort();
@@ -240,7 +217,9 @@ export default function PatternBuilderPage() {
   function updateRule(sIdx: number, rIdx: number, patch: Partial<Rule>) {
     setSections((prev) =>
       prev.map((s, i) =>
-        i === sIdx ? { ...s, rules: s.rules.map((r, j) => (j === rIdx ? { ...r, ...patch } : r)) } : s,
+        i === sIdx
+          ? { ...s, rules: s.rules.map((r, j) => (j === rIdx ? { ...r, ...patch } : r)) }
+          : s,
       ),
     );
   }
@@ -262,23 +241,25 @@ export default function PatternBuilderPage() {
     );
   }
   function addRule(sIdx: number) {
-    setSections((prev) => prev.map((s, i) => (i === sIdx ? { ...s, rules: [...s.rules, emptyRule()] } : s)));
+    setSections((prev) =>
+      prev.map((s, i) => (i === sIdx ? { ...s, rules: [...s.rules, emptyRule()] } : s)),
+    );
   }
 
   /* ── save structure (via existing Paper Pattern PATCH + optimistic version) ── */
   async function onSave() {
     if (!pattern) return;
     if (!durationMinutes) {
-      toast.error("Duration (minutes) is required");
+      toast.error('Duration (minutes) is required');
       return;
     }
     const flattened = flattenSections(sections);
     if (flattened.length === 0) {
-      toast.error("Add at least one section with a configured question-type rule");
+      toast.error('Add at least one section with a configured question-type rule');
       return;
     }
     if (flattened.length > 50) {
-      toast.error("A paper pattern supports at most 50 sections");
+      toast.error('A paper pattern supports at most 50 sections');
       return;
     }
     const totals = computeTotals(sections);
@@ -292,19 +273,19 @@ export default function PatternBuilderPage() {
       };
       const { pattern: updated } = await api<{ pattern: PaperPattern }>(
         `/paper-patterns/${pattern.id}`,
-        { method: "PATCH", body: { structure, version: pattern.version } },
+        { method: 'PATCH', body: { structure, version: pattern.version } },
       );
       setPattern(updated);
       applyStructure(updated.structure);
       setReviewOpen(false);
-      toast.success("Blueprint saved");
+      toast.success('Blueprint saved');
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        toast.error("Changed by someone else — reloaded");
+        toast.error('Changed by someone else — reloaded');
         setReviewOpen(false);
         void loadPattern();
       } else {
-        toast.error(err instanceof ApiError ? err.message : "Failed to save");
+        toast.error(err instanceof ApiError ? err.message : 'Failed to save');
       }
     } finally {
       setSaving(false);
@@ -315,23 +296,23 @@ export default function PatternBuilderPage() {
   async function onAnalyze() {
     if (!pattern) return;
     const src =
-      analyzeSource === "TEXT"
-        ? { type: "TEXT" as const, text: analyzeText }
-        : { type: "MATERIAL" as const, id: analyzeMaterialId };
-    if (analyzeSource === "TEXT" && !analyzeText.trim()) {
-      toast.error("Paste some text first");
+      analyzeSource === 'TEXT'
+        ? { type: 'TEXT' as const, text: analyzeText }
+        : { type: 'MATERIAL' as const, id: analyzeMaterialId };
+    if (analyzeSource === 'TEXT' && !analyzeText.trim()) {
+      toast.error('Paste some text first');
       return;
     }
-    if (analyzeSource === "MATERIAL" && !analyzeMaterialId) {
-      toast.error("Select a material first");
+    if (analyzeSource === 'MATERIAL' && !analyzeMaterialId) {
+      toast.error('Select a material first');
       return;
     }
     setAnalyzing(true);
-    setAnalyzeProgress("Starting analysis…");
+    setAnalyzeProgress('Starting analysis…');
     try {
       const { generation } = await api<{ generation: { jobId: string } }>(
         `/paper-patterns/${pattern.id}/analyze`,
-        { method: "POST", body: { source: src } },
+        { method: 'POST', body: { source: src } },
       );
       const jobId = generation.jobId;
       let done = false;
@@ -340,7 +321,7 @@ export default function PatternBuilderPage() {
         await new Promise((r) => setTimeout(r, 2000));
         if (!alive.current) return;
         if (++ticks > 120) {
-          toast.error("Analysis timed out");
+          toast.error('Analysis timed out');
           setAnalyzeOpen(false);
           return;
         }
@@ -352,30 +333,30 @@ export default function PatternBuilderPage() {
           };
         }>(`/paper-patterns/${pattern.id}/analyze/${jobId}`);
         const status = polled.status.toUpperCase();
-        if (status === "COMPLETED") {
+        if (status === 'COMPLETED') {
           if (polled.result?.proposal) {
             applyStructure(polled.result.proposal);
             setStructureLoaded(true);
-            toast.success("Structure loaded from AI analysis — review then Save");
+            toast.success('Structure loaded from AI analysis — review then Save');
           } else {
-            toast("Analysis complete — no structural proposal");
+            toast('Analysis complete — no structural proposal');
           }
           done = true;
           setAnalyzeOpen(false);
-        } else if (status === "FAILED") {
-          toast.error(polled.error?.message ?? "Analysis failed");
+        } else if (status === 'FAILED') {
+          toast.error(polled.error?.message ?? 'Analysis failed');
           done = true;
           setAnalyzeOpen(false);
         } else {
           setAnalyzeProgress(
-            status === "RUNNING" || status === "PROCESSING"
-              ? "Analyzing… (this may take a minute)"
-              : "Analyzing…",
+            status === 'RUNNING' || status === 'PROCESSING'
+              ? 'Analyzing… (this may take a minute)'
+              : 'Analyzing…',
           );
         }
       }
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Analysis failed");
+      toast.error(err instanceof ApiError ? err.message : 'Analysis failed');
     } finally {
       setAnalyzing(false);
     }
@@ -389,12 +370,12 @@ export default function PatternBuilderPage() {
     try {
       const res = await api<{ valid: boolean; errors: string[] }>(
         `/paper-patterns/${pattern.id}/validate`,
-        { method: "POST" },
+        { method: 'POST' },
       );
       setValidateResult({ ok: res.valid, messages: res.errors });
-      toast.success(res.valid ? "Validation passed" : "Validation found issues");
+      toast.success(res.valid ? 'Validation passed' : 'Validation found issues');
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Validation failed");
+      toast.error(err instanceof ApiError ? err.message : 'Validation failed');
     } finally {
       setValidating(false);
     }
@@ -407,13 +388,13 @@ export default function PatternBuilderPage() {
     try {
       const { pattern: updated } = await api<{ pattern: PaperPattern }>(
         `/paper-patterns/${pattern.id}/approve`,
-        { method: "POST" },
+        { method: 'POST' },
       );
       setPattern(updated);
       setApproveOpen(false);
-      toast.success("Pattern approved");
+      toast.success('Pattern approved');
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Approval failed");
+      toast.error(err instanceof ApiError ? err.message : 'Approval failed');
     } finally {
       setApproving(false);
     }
@@ -426,15 +407,15 @@ export default function PatternBuilderPage() {
     try {
       const body: Record<string, unknown> = {};
       if (assessmentTitle.trim()) body.title = assessmentTitle.trim();
-      if (assessmentMaxMarks !== "") body.maxMarks = Number(assessmentMaxMarks);
+      if (assessmentMaxMarks !== '') body.maxMarks = Number(assessmentMaxMarks);
       const { assessment } = await api<{ assessment: { id: string } }>(
         `/paper-patterns/${pattern.id}/assessment`,
-        { method: "POST", body },
+        { method: 'POST', body },
       );
-      toast.success("Assessment created");
+      toast.success('Assessment created');
       router.push(`/assessments/${assessment.id}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to create assessment");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to create assessment');
     } finally {
       setCreatingAssessment(false);
     }
@@ -442,8 +423,7 @@ export default function PatternBuilderPage() {
 
   /* ── derived values for render ── */
   const totals = computeTotals(sections);
-  const durationLabel =
-    durationMinutes === "" ? "—" : `${durationMinutes} min`;
+  const durationLabel = durationMinutes === '' ? '—' : `${durationMinutes} min`;
 
   /* ── render ── */
   if (loading) {
@@ -461,7 +441,7 @@ export default function PatternBuilderPage() {
     );
   }
 
-  if (error === "NOT_FOUND") {
+  if (error === 'NOT_FOUND') {
     return (
       <div>
         <div className="mb-4">
@@ -493,12 +473,12 @@ export default function PatternBuilderPage() {
             </Link>
           </Button>
         </div>
-        <ErrorState description={error ?? "Failed to load pattern"} onRetry={loadPattern} />
+        <ErrorState description={error ?? 'Failed to load pattern'} onRetry={loadPattern} />
       </div>
     );
   }
 
-  const canApprove = pattern.status !== "APPROVED";
+  const canApprove = pattern.status !== 'APPROVED';
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -513,7 +493,7 @@ export default function PatternBuilderPage() {
         </div>
 
         <PageHeader
-          title={pattern.title || "Untitled pattern"}
+          title={pattern.title || 'Untitled pattern'}
           description={pattern.description ?? undefined}
           actions={
             <div className="flex flex-wrap items-center gap-2">
@@ -523,12 +503,7 @@ export default function PatternBuilderPage() {
                   <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
                     Analyze
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={onValidate}
-                    disabled={validating}
-                  >
+                  <Button size="sm" variant="outline" onClick={onValidate} disabled={validating}>
                     {validating && <Loader2 className="mr-1 size-3 animate-spin" />}
                     Validate
                   </Button>
@@ -537,13 +512,15 @@ export default function PatternBuilderPage() {
                       Approve
                     </Button>
                   )}
-                  {pattern.status === "APPROVED" && (
+                  {pattern.status === 'APPROVED' && (
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        setAssessmentTitle(pattern.title ? `${pattern.title} — Assessment` : "Assessment");
-                        setAssessmentMaxMarks(totals.marks || "");
+                        setAssessmentTitle(
+                          pattern.title ? `${pattern.title} — Assessment` : 'Assessment',
+                        );
+                        setAssessmentMaxMarks(totals.marks || '');
                         setAssessmentOpen(true);
                       }}
                     >
@@ -571,8 +548,8 @@ export default function PatternBuilderPage() {
           <div
             className={`mb-4 rounded-lg border p-4 text-sm ${
               validateResult.ok
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
             }`}
           >
             {validateResult.ok ? (
@@ -599,13 +576,13 @@ export default function PatternBuilderPage() {
             icon={ListChecks}
             label="Questions"
             value={totals.questions}
-            hint={totals.uncertain ? "some quantities unset" : undefined}
+            hint={totals.uncertain ? 'some quantities unset' : undefined}
           />
           <StatCard
             icon={CircleDollarSign}
             label="Total marks"
             value={totals.marks}
-            hint={totals.uncertain ? "computed from set values" : "count × marks"}
+            hint={totals.uncertain ? 'computed from set values' : 'count × marks'}
           />
           <StatCard icon={Clock} label="Duration" value={durationLabel} />
         </div>
@@ -616,8 +593,8 @@ export default function PatternBuilderPage() {
             <CardTitle className="text-base">Blueprint</CardTitle>
             {sections.length > 0 && (
               <Badge variant="secondary" className="text-xs font-normal">
-                {flattenSections(sections).length} rule{sections.length !== 1 ? "s" : ""} ·{" "}
-                {sections.length} section{sections.length !== 1 ? "s" : ""}
+                {flattenSections(sections).length} rule{sections.length !== 1 ? 's' : ''} ·{' '}
+                {sections.length} section{sections.length !== 1 ? 's' : ''}
               </Badge>
             )}
           </CardHeader>
@@ -636,7 +613,7 @@ export default function PatternBuilderPage() {
                   type="number"
                   min={1}
                   value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(e.target.value ? Number(e.target.value) : "")}
+                  onChange={(e) => setDurationMinutes(e.target.value ? Number(e.target.value) : '')}
                 />
               </div>
             </div>
@@ -735,7 +712,7 @@ export default function PatternBuilderPage() {
                             type="number"
                             min={1}
                             className="w-20"
-                            value={sec.attemptCount ?? ""}
+                            value={sec.attemptCount ?? ''}
                             placeholder="N of M"
                             onChange={(e) =>
                               updateSection(sIdx, {
@@ -758,8 +735,12 @@ export default function PatternBuilderPage() {
                       {sec.rules.map((rule, rIdx) => {
                         const sub = ruleSubtotal(rule);
                         const diffSum = difficultySum(rule.difficulty);
-                        const diffComplete = rule.difficulty.EASY !== "" && rule.difficulty.MEDIUM !== "" && rule.difficulty.HARD !== "";
-                        const topicsConfigured = rule.topics.filter((t) => t.name.trim()).length > 0;
+                        const diffComplete =
+                          rule.difficulty.EASY !== '' &&
+                          rule.difficulty.MEDIUM !== '' &&
+                          rule.difficulty.HARD !== '';
+                        const topicsConfigured =
+                          rule.topics.filter((t) => t.name.trim()).length > 0;
                         const topicsSum = topicPercentSum(rule.topics);
                         return (
                           <div key={rule.id} className="rounded-lg border bg-muted/30 p-3">
@@ -770,7 +751,7 @@ export default function PatternBuilderPage() {
                                   value={rule.questionType}
                                   onValueChange={(v) =>
                                     updateRule(sIdx, rIdx, {
-                                      questionType: v as Rule["questionType"],
+                                      questionType: v as Rule['questionType'],
                                     })
                                   }
                                 >
@@ -779,8 +760,8 @@ export default function PatternBuilderPage() {
                                   </SelectTrigger>
                                   <SelectContent>
                                     {TYPE_OPTIONS.map((qt) => (
-                                      <SelectItem key={qt || "MIXED"} value={qt}>
-                                        {qt === "" ? "Mixed" : TYPE_LABELS[qt]}
+                                      <SelectItem key={qt || 'MIXED'} value={qt}>
+                                        {qt === '' ? 'Mixed' : TYPE_LABELS[qt]}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
@@ -791,7 +772,7 @@ export default function PatternBuilderPage() {
                                 <Input
                                   type="number"
                                   min={1}
-                                  value={rule.count ?? ""}
+                                  value={rule.count ?? ''}
                                   placeholder="—"
                                   onChange={(e) =>
                                     updateRule(sIdx, rIdx, {
@@ -805,18 +786,23 @@ export default function PatternBuilderPage() {
                                 <Input
                                   type="number"
                                   min={1}
-                                  value={rule.marksPerQuestion ?? ""}
+                                  value={rule.marksPerQuestion ?? ''}
                                   placeholder="—"
                                   onChange={(e) =>
                                     updateRule(sIdx, rIdx, {
-                                      marksPerQuestion: e.target.value ? Number(e.target.value) : null,
+                                      marksPerQuestion: e.target.value
+                                        ? Number(e.target.value)
+                                        : null,
                                     })
                                   }
                                 />
                               </div>
                               <div className="pb-1">
-                                <Badge variant={sub != null ? "default" : "outline"} className="text-xs tabular-nums">
-                                  {sub != null ? `${sub} marks` : "unset"}
+                                <Badge
+                                  variant={sub != null ? 'default' : 'outline'}
+                                  className="text-xs tabular-nums"
+                                >
+                                  {sub != null ? `${sub} marks` : 'unset'}
                                 </Badge>
                               </div>
                               <div className="flex items-center gap-0.5 pb-1">
@@ -885,10 +871,14 @@ export default function PatternBuilderPage() {
                                   )}
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
-                                  {(["EASY", "MEDIUM", "HARD"] as const).map((lv) => (
+                                  {(['EASY', 'MEDIUM', 'HARD'] as const).map((lv) => (
                                     <div key={lv} className="grid gap-1">
                                       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                        {lv === "EASY" ? "Easy" : lv === "MEDIUM" ? "Medium" : "Hard"}
+                                        {lv === 'EASY'
+                                          ? 'Easy'
+                                          : lv === 'MEDIUM'
+                                            ? 'Medium'
+                                            : 'Hard'}
                                       </span>
                                       <Input
                                         type="number"
@@ -900,7 +890,7 @@ export default function PatternBuilderPage() {
                                           updateRule(sIdx, rIdx, {
                                             difficulty: {
                                               ...rule.difficulty,
-                                              [lv]: e.target.value ? Number(e.target.value) : "",
+                                              [lv]: e.target.value ? Number(e.target.value) : '',
                                             },
                                           })
                                         }
@@ -936,7 +926,12 @@ export default function PatternBuilderPage() {
                                         updateRule(sIdx, rIdx, {
                                           topics: rule.topics.map((x, xi) =>
                                             xi === ti
-                                              ? { ...x, percentage: e.target.value ? Number(e.target.value) : "" }
+                                              ? {
+                                                  ...x,
+                                                  percentage: e.target.value
+                                                    ? Number(e.target.value)
+                                                    : '',
+                                                }
                                               : x,
                                           ),
                                         })
@@ -959,7 +954,7 @@ export default function PatternBuilderPage() {
                                 ))}
                                 {topicsConfigured &&
                                   (() => {
-                                    const withPct = rule.topics.some((t) => t.percentage !== "");
+                                    const withPct = rule.topics.some((t) => t.percentage !== '');
                                     return withPct && topicsSum !== 100 ? (
                                       <Badge variant="destructive" className="text-[10px]">
                                         totals {topicsSum}% (must be 100%)
@@ -973,7 +968,7 @@ export default function PatternBuilderPage() {
                                   className="h-8"
                                   onClick={() =>
                                     updateRule(sIdx, rIdx, {
-                                      topics: [...rule.topics, { name: "", percentage: "" }],
+                                      topics: [...rule.topics, { name: '', percentage: '' }],
                                     })
                                   }
                                 >
@@ -986,12 +981,7 @@ export default function PatternBuilderPage() {
                       })}
                     </div>
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addRule(sIdx)}
-                    >
+                    <Button type="button" variant="outline" size="sm" onClick={() => addRule(sIdx)}>
                       <Plus className="mr-1 size-3.5" /> Add question-type rule
                     </Button>
                   </CardContent>
@@ -1014,7 +1004,7 @@ export default function PatternBuilderPage() {
 
         {/* footer chips */}
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary">{pattern.sourceType.replace(/_/g, " ")}</Badge>
+          <Badge variant="secondary">{pattern.sourceType.replace(/_/g, ' ')}</Badge>
           <Badge variant="secondary">v{pattern.version}</Badge>
           <span>Created {formatDate(pattern.createdAt)}</span>
           <span>Updated {formatDate(pattern.updatedAt)}</span>
@@ -1033,8 +1023,11 @@ export default function PatternBuilderPage() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm">
-                  <span className="font-medium">{pattern.title || "Untitled pattern"}</span>
-                  <span className="text-muted-foreground"> · {durationLabel} · {totals.questions} questions · {totals.marks} marks</span>
+                  <span className="font-medium">{pattern.title || 'Untitled pattern'}</span>
+                  <span className="text-muted-foreground">
+                    {' '}
+                    · {durationLabel} · {totals.questions} questions · {totals.marks} marks
+                  </span>
                   {totals.uncertain && (
                     <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">
                       (some quantities unset)
@@ -1064,50 +1057,62 @@ export default function PatternBuilderPage() {
               {/* full blueprint readout */}
               {sections.map((sec) => {
                 const configured = sec.rules.filter(
-                  (r) => r.questionType !== "" || r.count != null || r.marksPerQuestion != null,
+                  (r) => r.questionType !== '' || r.count != null || r.marksPerQuestion != null,
                 );
                 if (configured.length === 0) return null;
-                const secSubtotal = configured.reduce(
-                  (acc, r) => acc + (ruleSubtotal(r) ?? 0),
-                  0,
-                );
+                const secSubtotal = configured.reduce((acc, r) => acc + (ruleSubtotal(r) ?? 0), 0);
                 return (
                   <div key={sec.id} className="space-y-1.5">
                     <div className="flex items-center justify-between border-b pb-1">
-                      <span className="font-medium">{sec.name.trim() || "(untitled section)"}</span>
+                      <span className="font-medium">{sec.name.trim() || '(untitled section)'}</span>
                       <span className="text-xs text-muted-foreground">
                         {sec.compulsory
-                          ? "compulsory"
-                          : `attempt ${sec.attemptCount ?? "?"} of ${configured.reduce((a, r) => a + (r.count ?? 0), 0)}`}
-                        {" · "}
+                          ? 'compulsory'
+                          : `attempt ${sec.attemptCount ?? '?'} of ${configured.reduce((a, r) => a + (r.count ?? 0), 0)}`}
+                        {' · '}
                         {secSubtotal} marks
                       </span>
                     </div>
                     {configured.map((r, i) => {
                       const sub = ruleSubtotal(r);
-                      const title = TYPE_LABELS[r.questionType] ?? "Mixed";
-                      const diffParts = [r.difficulty.EASY, r.difficulty.MEDIUM, r.difficulty.HARD].filter((v) => v !== "");
+                      const title = TYPE_LABELS[r.questionType] ?? 'Mixed';
+                      const diffParts = [
+                        r.difficulty.EASY,
+                        r.difficulty.MEDIUM,
+                        r.difficulty.HARD,
+                      ].filter((v) => v !== '');
                       const topics = r.topics.filter((t) => t.name.trim());
                       return (
                         <div key={r.id} className="flex flex-wrap items-center gap-2 text-sm">
                           <span className="min-w-[90px] text-muted-foreground">{title}</span>
                           <span className="tabular-nums">
-                            {r.count ?? "?"} × {r.marksPerQuestion ?? "?"} ={" "}
-                            <span className="font-medium tabular-nums">{sub ?? "—"}</span>
+                            {r.count ?? '?'} × {r.marksPerQuestion ?? '?'} ={' '}
+                            <span className="font-medium tabular-nums">{sub ?? '—'}</span>
                           </span>
-                          {r.questionType && <Badge variant="secondary" className="text-[10px]">{r.questionType}</Badge>}
+                          {r.questionType && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              {r.questionType}
+                            </Badge>
+                          )}
                           {diffParts.length > 0 && (
                             <Badge variant="outline" className="text-[10px]">
-                              E{diffParts[0]} M{diffParts[1] ?? "—"} H{diffParts[2] ?? "—"}
+                              E{diffParts[0]} M{diffParts[1] ?? '—'} H{diffParts[2] ?? '—'}
                             </Badge>
                           )}
                           {topics.length > 0 && (
                             <span className="text-xs text-muted-foreground">
-                              {topics.map((t) => `${t.name}${t.percentage !== "" ? `${t.percentage}%` : ""}`).join(", ")}
+                              {topics
+                                .map(
+                                  (t) =>
+                                    `${t.name}${t.percentage !== '' ? `${t.percentage}%` : ''}`,
+                                )
+                                .join(', ')}
                             </span>
                           )}
                           {i === 0 && !sec.compulsory && sec.attemptCount != null && (
-                            <Badge variant="outline" className="text-[10px]">choice</Badge>
+                            <Badge variant="outline" className="text-[10px]">
+                              choice
+                            </Badge>
                           )}
                         </div>
                       );
@@ -1155,11 +1160,11 @@ export default function PatternBuilderPage() {
                           checked={analyzeSource === t}
                           onChange={(e) => setAnalyzeSource(e.target.value)}
                         />
-                        {t === "TEXT" ? "Paste text" : "From material"}
+                        {t === 'TEXT' ? 'Paste text' : 'From material'}
                       </label>
                     ))}
                   </div>
-                  {analyzeSource === "TEXT" ? (
+                  {analyzeSource === 'TEXT' ? (
                     <Textarea
                       className="resize-none min-h-[120px]"
                       placeholder="Paste exam content or syllabus text..."
@@ -1204,7 +1209,10 @@ export default function PatternBuilderPage() {
         />
 
         {/* ── Create Assessment dialog ── */}
-        <Dialog open={assessmentOpen} onOpenChange={(o) => !creatingAssessment && setAssessmentOpen(o)}>
+        <Dialog
+          open={assessmentOpen}
+          onOpenChange={(o) => !creatingAssessment && setAssessmentOpen(o)}
+        >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Create Assessment</DialogTitle>
@@ -1229,13 +1237,17 @@ export default function PatternBuilderPage() {
                   min={1}
                   value={assessmentMaxMarks}
                   onChange={(e) =>
-                    setAssessmentMaxMarks(e.target.value ? Number(e.target.value) : "")
+                    setAssessmentMaxMarks(e.target.value ? Number(e.target.value) : '')
                   }
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setAssessmentOpen(false)} disabled={creatingAssessment}>
+              <Button
+                variant="ghost"
+                onClick={() => setAssessmentOpen(false)}
+                disabled={creatingAssessment}
+              >
                 Cancel
               </Button>
               <Button onClick={onCreateAssessment} disabled={creatingAssessment}>

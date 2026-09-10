@@ -12,6 +12,7 @@ const PROTECTED = [
   '/student',
   '/institute',
   '/users',
+  '/profile',
 ];
 
 export function middleware(request: NextRequest) {
@@ -41,5 +42,6 @@ export const config = {
     '/student/:path*',
     '/institute/:path*',
     '/users/:path*',
+    '/profile/:path*',
   ],
 };
