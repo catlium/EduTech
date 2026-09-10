@@ -1,7 +1,58 @@
 # Project Status
 
-## Phase 21 — SaaS Management + Public Landing Page (2026-09-10)
+## Phase 22 — Product Completion: Ship the Working App First (2026-09-10)
 
+**Priority redirected from exhaustive browser testing to delivering the
+working product.** Comprehensive test suites are now a guardrail, not the
+deliverable: implement missing functionality, fix real bugs found by
+typecheck/lint/build and live-route checks, then iterate.
+
+### Frontend fidelity audit (page-by-page vs intended workflows)
+
+Every step of the intended Teacher and Student journeys is wired to the live
+API — no mock/stub/hardcoded data, no dead sidebar links, no no-op handlers:
+Subjects/Chapters/Topics, Syllabus (generate→process→review→confirm),
+Materials (upload + process), AI content (generate + activate), Question Bank
+(manual + Ask AI + approve), Paper Pattern builder (sections/rules/analyze/
+validate/approve/create assessment), Assessments (questions/marks/publish/
+activate), results analytics, Student learning/practice/exam/result, Public
+landing + login.
+
+### Real gaps found and fixed (verified in a live browser)
+
+- **fix(web): load users roster on page mount** — `/users` rendered a skeleton
+  forever; the old page never fetched on mount. `6f973a5`
+- **fix(web): render Cornell notes in content detail** — teacher opening an
+  AI-generated Cornell note got a blank page (student side already rendered
+  them). `906f480`
+- **fix(web): make teacher topic rows navigable** — `chapter-tree` rendered a
+  dead `<div>` for teachers (Link only for non-teachers); teachers could not
+  open a topic from subject detail. `0eb7ac1`
+
+New zero-dependency browser harness `scripts/e2e/browser_journeys.mjs`
+(public/auth, institute-admin provisioning + role boundaries, teacher
+navigation incl. chapter expand + topic) — all PASS on the rebuilt stack.
+
+### Remaining minor (non-blocking) gaps
+
+- Profile page ("Profile (coming soon)" in user menu)
+- `PaperPattern` interface duplicated locally in pattern pages
+- Teacher vs student payload renderers diverge slightly (cosmetic)
+
+### Infra notes
+
+- Host disk hit 100% twice during web image rebuilds → reclaimed via `docker
+  builder prune -f` + `docker system prune -f --volumes` (9G free).
+- `docker compose up -d --build web` does not always recreate the container;
+  use `--force-recreate` after rebuilding web.
+
+### Validation
+Typecheck + `next build` clean. Browser journeys s01–s03 PASS. No large
+regression suites scheduled until the product is substantially complete.
+
+---
+
+## Phase 21 — SaaS Management + Public Landing Page (2026-09-10)
 **Checkpoint committed + pushed.** The product now behaves as a multi-tenant
 SaaS (institute admins provision accounts; no public self-registration) and
 ships a public landing page with a role-aware admin experience.

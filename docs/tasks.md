@@ -1,5 +1,30 @@
 # Task Tracker
 
+## Phase 22 — Product Completion: Ship the Working App First (2026-09-10)
+
+Priority redirected from exhaustive testing to delivering the working
+product. Testing is now a guardrail (typecheck/lint/build + live-route spot
+checks), not the deliverable.
+
+- [x] Audit every web page against the intended Teacher + Student workflows
+      (no mocks/stubs/hardcoded data; all sidebar links resolve; no dead
+      handlers) — all steps wired to live API
+- [x] fix(web): `/users` roster never fetched on mount (skeleton forever)
+- [x] fix(web): teacher content detail did not render CORNELL_NOTE (blank)
+- [x] fix(web): teacher topic rows in subject detail non-navigable
+      (`chapter-tree` dead `<div>` for teachers) — always a Link now
+- [x] Zero-dep browser harness `scripts/e2e/browser_journeys.mjs`
+      (s01 public/auth, s02 admin provisioning + boundaries, s03 teacher nav)
+      — all PASS on rebuilt stack
+- [~] Next: Profile page replacing "Profile (coming soon)" in user menu
+- [ ] Defer until product substantially complete: full regression matrix,
+      exhaustive E2E, cross-browser, API-contract verification
+- [ ] Then: re-close WF-06..10 browser journey matrix (expanded s03/s04
+      scenarios for syllabus/material/content/question/pattern/assessment/
+      student-exam happy paths)
+
+---
+
 ## Phase 21 — SaaS Management + Public Landing Page (2026-09-10)
 
 Make the product behave as a multi-tenant SaaS and give it a public landing

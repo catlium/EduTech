@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-21-saas-management
-current_phase_name: Phase 21 — SaaS Management + Public Landing Page
+current_phase: phase-22-product-completion
+current_phase_name: Phase 22 — Product Completion: Ship Working App First
 status: in-progress
-stopped_at: "Phase 21 — SaaS Management + Public Landing Page (2026-09-10) checkpoint committed + pushed. Institute-managed user provisioning (GET/POST /users, PATCH /users/:id/status — INSTITUTE_ADMIN-only, tenant-scoped, TEACHER|STUDENT allow-list, duplicate-member 409, self-deactivation 400); public POST /auth/register removed (web /register removed too); seed adds admin@catlium.dev INSTITUTE_ADMIN; public landing page at web /; /users + /institute admin pages with role-gated middleware/layout/sidebar. New scripts/e2e/saas_e2e.sh PASS=39; adapted suites — auth 14, docker_readiness 32, web_smoke 24, attempts 97, practice 74, web_workflow 33, paper-pattern 75, materials 21, syllabus 39, p8 86, sec14 22, demo 52, api_contract 52 — all FAIL=0 vs live stack; api+web typecheck + lint clean. Infra: host disk 100% pruned, demo stack recreated via documented -f chain (bare compose dropped dev/demo port overrides). Docs: tasks.md, user-validation.md WF-21, project-status.md, docs/api/users.md, architecture prose updated. Next: close WF-06..10 browser journey matrix (disk permitting)."
-last_updated: "2026-09-10T18:50:00.000Z"
-state_head: 994a895
+stopped_at: "Priority redirected: ship the working product first, comprehensive testing is a guardrail. Frontend audited page-by-page vs intended teacher + student workflows — every step is wired to the live API (no mocks/stubs/hardcoded data, all sidebar links resolve, no dead onClicks). Real gaps found + fixed: (1) /users roster never loaded on mount; (2) teacher content detail did not render CORNELL_NOTE; (3) teacher topic rows in subject detail were non-navigable (chapter-tree rendered a dead <div> for canManage users, Link only for non-teachers) — now always a Link to the topic page. New zero-dep browser harness scripts/e2e/browser_journeys.mjs (s01 public/auth, s02 institute admin provisioning + boundaries, s03 teacher nav incl. expanded chapter + topic + syllabus route) — all PASS against the rebuilt stack. Remaining product gaps are minor/won't-block: personnel Profile page (user-menu says 'coming soon'), local PaperPattern interface duplication, summary-card view consistency between teacher/student payload renderers. No large test suites scheduled; incremental fixes + typecheck/lint/build + live-route spot checks as guardrails. Infra: host disk twice hit 100% during web image rebuilds; reclaimed via builder prune + unused-volume prune (9G free). Commits this session: 6f973a5, 906f480, 1ed3716, 0eb7ac1."
+last_updated: "2026-09-10T19:40:00.000Z"
+state_head: 0eb7ac1
 progress:
   total_phases: 17
   completed_phases: 17
