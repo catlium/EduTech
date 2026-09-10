@@ -1,5 +1,39 @@
 # Task Tracker
 
+## Phase 21 — SaaS Management + Public Landing Page (2026-09-10)
+
+Make the product behave as a multi-tenant SaaS and give it a public landing
+page: institute admins provision accounts (no public self-registration), and
+the web app shows the product story publicly with role-gated admin tooling.
+
+- [x] Backend: institute-managed user provisioning — `GET/POST /users`,
+      `PATCH /users/:userId/status` (INSTITUTE_ADMIN only, tenant-scoped,
+      role allow-list TEACHER|STUDENT, self-deactivation guard, duplicate-
+      member 409)
+- [x] Backend: remove public `POST /auth/register` + register DTO/schema
+      (auth is login-only for provisioned accounts)
+- [x] Contracts: `InstituteUser` + create/update-status/response schemas
+- [x] Seed: add `admin@catlium.dev` / `Password123!` (INSTITUTE_ADMIN);
+      `teacher@catlium.dev` stays INSTITUTE_ADMIN+TEACHER (can provision)
+- [x] Frontend: public landing page at `/` (hero, platform overview, teacher
+      & student experiences, paper-pattern + exam-workflow examples, AI-as-
+      assistant positioning, institute/tenant model, demo CTA, footer)
+- [x] Frontend: `/users` admin page (search, create dialog, deactivate/
+      activate) + `/institute` admin dashboard (real member/teacher/student/
+      subject counts, account-model explainer); admin-sidebar group; middleware
+      + layout role gating; login page SaaS messaging
+- [x] Remove web `/register` route; root `/` no longer redirects to dashboard
+- [x] E2E: new `scripts/e2e/saas_e2e.sh` (39 asserts) + adapt
+      auth/docker_readiness/attempts/practice/web_smoke suites to
+      provisioning model
+- [x] Full regression green vs live stack: saas 39, auth 14, readiness 32,
+      web_smoke 24, attempts 97, practice 74, web_workflow 33, paper-pattern
+      75, materials 21, syllabus 39, p8 86, sec14 22, demo 52, api_contract
+      52; api + web typecheck + lint clean
+- [x] Docs: `docs/tasks.md`, `docs/user-validation.md` (WF-21 + account
+      model), `docs/project-status.md`, `.planning/STATE.md`, architecture +
+      API docs (register removal + users endpoints)
+
 ## Phase 20 — Demo Seed Enrichment + Student Journey Closure (2026-09-10)
 
 Enrich the demo seed with a real, attemptable curriculum and prove the

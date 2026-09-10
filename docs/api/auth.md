@@ -14,16 +14,10 @@ Authentication uses HTTP-only cookies set by the API:
 State-changing tenant APIs additionally require the `x-institute-id` header
 (UUID) — enforced by the global `TenantGuard`.
 
-## `POST /auth/register`
-
-Creates an account and logs it in (sets all three cookies).
-
-```json
-{ "email": "a@b.dev", "name": "A B", "password": "Password123!" }
-```
-
-`201` → `{ user: { id, email, name, status, createdAt } }`. `409` duplicate
-email, `400` invalid input. Rate limited (5/min).
+> **Accounts are institute-provisioned (Phase 21).** There is no public
+> `POST /auth/register` — teachers and students are created by an
+> `INSTITUTE_ADMIN` through `POST /api/v1/users` (see `docs/api/users.md`).
+> `/auth/register` returns 404.
 
 ## `POST /auth/login`
 

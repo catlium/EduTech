@@ -1,5 +1,70 @@
 # Project Status
 
+## Phase 21 — SaaS Management + Public Landing Page (2026-09-10)
+
+**Checkpoint committed + pushed.** The product now behaves as a multi-tenant
+SaaS (institute admins provision accounts; no public self-registration) and
+ships a public landing page with a role-aware admin experience.
+
+### What landed
+
+- **Institute-managed user provisioning** (`apps/api/src/users/*`):
+  `GET/POST /api/v1/users`, `PATCH /api/v1/users/:userId/status` — gated
+  `AccessTokenGuard + TenantGuard + RolesGuard(INSTITUTE_ADMIN)`, tenant-scoped
+  via memberships, role allow-list (`TEACHER|STUDENT`; admins cannot be
+  created through the API), existing-user reuse with duplicate-member 409,
+  self-deactivation guard (400), deactivation = per-institute membership
+  status (TenantGuard 403 blocks access until reactivation).
+- **Public registration removed**: `POST /auth/register` (controller, service,
+  `RegisterDto`, contracts `RegisterRequestSchema`) deleted; `/register` web
+  route removed; login page + landing carry the "your institute administrator
+  provisions your account" message.
+- **Seed**: `admin@catlium.dev` / `Password123!` as pure INSTITUTE_ADMIN;
+  `teacher@catlium.dev` remains INSTITUTE_ADMIN+TEACHER (provisions users in
+  the e2e suites).
+- **Public landing page** (`apps/web/src/app/page.tsx` + sticky header): hero,
+  platform overview, teacher/student experiences, paper-pattern + exam-flow
+  examples, AI-as-assistant positioning, institute/tenant model, demo CTA
+  (mailto:hello@catlium.dev), footer. Root `/` no longer redirects.
+- **Admin experience**: `/users` (search, create dialog, deactivate/activate)
+  and `/institute` (real member/teacher/student/subject counts, account-model
+  explainer); admin sidebar group; middleware PROTECTED + matcher new routes;
+  workspace layout ADMIN_ONLY gating (Forbidden for non-admins).
+- **Infra repair during validation**: host disk hit 100% (pruned 7.9GB docker
+  build cache); recreated the demo stack cleanly with the documented
+  `-f` chain after a bare `docker compose up` dropped dev/demo port overrides
+  (postgres/ocr bindings vanished); workers survived only after rabbitmq was
+  healthy — see Known issues.
+
+### Validation
+
+- New `scripts/e2e/saas_e2e.sh` → PASS 39/39 (2026-09-10); adapted suites →
+  auth 14/14, docker_readiness 32/32, web_smoke 24/24, attempts 97/97,
+  practice 74/74, web_workflow 33/33, paper-pattern 75/75, materials 21/21,
+  syllabus 39/39, p8 86/86, sec14 22/22, demo 52/52, api_contract 52/52.
+- `apps/api` + `apps/web` typecheck clean; eslint `--max-warnings 0` clean.
+- Docs: `docs/tasks.md` Phase 21, `docs/user-validation.md` WF-21,
+  `.planning/STATE.md`, architecture/API docs updated.
+
+### Known issues
+
+- **Worker start-order fragility**: both Python workers exit (1) if rabbitmq
+  isn't ready at their `depends_on: healthy` moment (blocking
+  pika connect, no retry). On a fresh `up -d` they may need a manual
+  restart once rabbitmq is healthy. Not Phase 21 scope.
+- **e2e auth throttle**: suites share the 5/min `/auth/login` limiter; run
+  suites ~≥65s apart (saas_e2e and auth_e2e retry on 429 with backoff).
+- **`docker compose port` quirk**: reports `invalid IP:0` for compact
+  loopback bindings; `docker_readiness_e2e.sh` RD-03c now cross-checks via
+  `docker port`. Not a binding defect (all internal ports verified loopback).
+- Deferred (WF-06..10 browser matrix) and old items unchanged from Phase 19/20.
+
+### Recommended next task
+
+- Close WF-06..10 browser journey matrix against the now-fully-rebuilt demo
+  images (disk permitting), exercising the landing page → login → teacher
+  journey → user provisioning → student journey in a real browser.
+
 ## Phase 20 — Demo Seed Enrichment + Student Journey Closure (2026-09-10)
 
 **Checkpoint committed + pushed.** The demo seed now carries a real, callable

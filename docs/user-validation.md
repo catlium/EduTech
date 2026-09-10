@@ -1370,6 +1370,40 @@ IN_PROGRESS attempt (excluded).
   live API create→GET round-trip PASS (2026-09-10); `web_workflow_e2e.sh`
   33/33 no regression; web typecheck + build PASS.
 
+### WF-21 — SaaS Management + Public Landing Page (2026-09-10) [x]
+
+- **Setup required:** docker demo stack up (`docker compose -f
+  docker-compose.yml -f docker-compose.dev.yml -f docker-compose.demo.yml up
+  -d`); seed applied (adds `admin@catlium.dev`); api :3000, web :3001,
+  institute `99999999-9999-9999-9999-999999999999`. Space API logins ≥65s
+  apart (auth throttle 5/min per route+IP).
+- **Endpoints & expected output** (all asserted by
+  `bash scripts/e2e/saas_e2e.sh` → PASS 39/39):
+  - `GET :3001/` → 200 landing page (demo CTA present); `:3001/register` →
+    404; `POST /api/v1/auth/register` → 404 (no public self-registration).
+  - `POST /api/v1/auth/login` as `admin@catlium.dev` /
+    `Password123!` → 200; `GET /api/v1/users` (header
+    `x-institute-id: 99999999-9999-9999-9999-999999999999`) → 200 roster
+    with roles incl. `INSTITUTE_ADMIN`.
+  - `POST /api/v1/users` `{"email","password","name","role":
+    "TEACHER"|"STUDENT"}` → 201; same email again → 409; `role:
+    "INSTITUTE_ADMIN"` or unknown → 400; weak password / bad email → 400.
+  - `PATCH /api/v1/users/:userId/status` `{"status":"deactivated"}` → 200;
+    deactivated student then gets 403 on all tenant endpoints
+    (`/attempts/available`) until `{"status":"active"}` → 200 restores
+    access; admin self-deactivation → 400; student/teacher on `/users` → 403;
+    foreign-institute `x-institute-id` on `/users` → 403 (tenant isolation).
+  - Web: `/users` (list + search + create dialog + deactivate/activate) and
+    `/institute` (live member/teacher/student/subject counts) render for
+    admins; role guard shows Forbidden for non-admins; anonymous visits
+    redirect to /login via middleware.
+- **Regression:** `bash scripts/e2e/{auth,web_smoke,docker_readiness,attempts,
+  practice,web_workflow,paper_pattern,materials,syllabus,p8,sec14,demo,
+  api_contract}_e2e.sh` all PASS (auth 14, web_smoke 24, readiness 32,
+  attempts 97 incl. provisioning-based second student, practice 74,
+  web_workflow 33, paper-pattern 75, materials 21, syllabus 39, p8 86,
+  sec14 22, demo 52, api_contract 52); api + web typecheck + lint clean.
+
 ## Conventions
 
 - This file is updated whenever a feature/phase reaches implementation-complete

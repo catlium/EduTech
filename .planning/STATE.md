@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-current_phase: phase-20-demo-seed-enrichment
-current_phase_name: Phase 20 — Demo Seed Enrichment + Student Journey Closure
+current_phase: phase-21-saas-management
+current_phase_name: Phase 21 — SaaS Management + Public Landing Page
 status: in-progress
-stopped_at: "Phase 20 — Demo Seed Enrichment + Student Journey Closure (2026-09-10) checkpoint committed + pushed. Seed now carries Mathematics + Physics curriculum (chapters/topics, syllabus + reading materials with NOTE/FLASHCARD_SET, 19 approved questions, APPROVED 13-mark blueprints, ACTIVE assessments per subject). Attemptable payloads: MCQ choice ids mapped to UUIDs (validateAnswer requirement), TF/FIB answers use value; stale literal-choice question removed and re-seeded. Student journey proven on live stack: quiz in /attempts/available, attempt 201, 10/10 answers accepted, submit → score 12/12 (100%). attempt payloads strip correctChoiceId by design. Regression: web_workflow_e2e 33/33, paper-patterns tests PASS, api+web typecheck clean. Docs/tasks.md + user-validation.md WF-11b + project-status updated. Next: close WF-06..10 browser journey matrix (disk-dependent), then final regression + docs for that."
-last_updated: "2026-09-10T13:40:00.000Z"
-state_head: 8c4586d
+stopped_at: "Phase 21 — SaaS Management + Public Landing Page (2026-09-10) checkpoint committed + pushed. Institute-managed user provisioning (GET/POST /users, PATCH /users/:id/status — INSTITUTE_ADMIN-only, tenant-scoped, TEACHER|STUDENT allow-list, duplicate-member 409, self-deactivation 400); public POST /auth/register removed (web /register removed too); seed adds admin@catlium.dev INSTITUTE_ADMIN; public landing page at web /; /users + /institute admin pages with role-gated middleware/layout/sidebar. New scripts/e2e/saas_e2e.sh PASS=39; adapted suites — auth 14, docker_readiness 32, web_smoke 24, attempts 97, practice 74, web_workflow 33, paper-pattern 75, materials 21, syllabus 39, p8 86, sec14 22, demo 52, api_contract 52 — all FAIL=0 vs live stack; api+web typecheck + lint clean. Infra: host disk 100% pruned, demo stack recreated via documented -f chain (bare compose dropped dev/demo port overrides). Docs: tasks.md, user-validation.md WF-21, project-status.md, docs/api/users.md, architecture prose updated. Next: close WF-06..10 browser journey matrix (disk permitting)."
+last_updated: "2026-09-10T18:50:00.000Z"
+state_head: 994a895
 progress:
   total_phases: 17
   completed_phases: 17
@@ -21,17 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-01)
 
 **Core value:** A teacher takes a source material through upload → async OCR/AI processing → AI-generated, reviewable content/questions → a published, approved-question-only examination, and a student takes it and receives an automatically-computed, reproducible result.
-**Current focus:** Phase 19 — Frontend Product Transformation (checkpoints 1-4 done; 5 finalizing).
+**Current focus:** Phase 21 — SaaS Management + Public Landing Page (complete, committed + pushed).
 
 ## Project State
 
 **Sequence:** Demo-first vertical-slice (user-directed override)
-**Phase:** Phase 19 — Frontend Product Transformation
-**Status:** IN PROGRESS (2026-09-10) — checkpoints 1-4 committed+pushed; checkpoint 5 E2E+docs in progress
+**Phase:** Phase 21 — SaaS Management + Public Landing Page
+**Status:** COMPLETE (2026-09-10) — committed + pushed; checkpoint closed via full 14-suite regression.
 
 ## Phase State
 
 **Completed (verified against codebase):**
+
+- Phase 21 — SaaS Management + Public Landing Page (committed + pushed 2026-09-10 `HEAD`): institute-managed user provisioning (`apps/api/src/users/*` — `GET/POST /users`, `PATCH /users/:userId/status`, INSTITUTE_ADMIN + TenantGuard + RolesGuard, role allow-list `TEACHER|STUDENT`, existing-user reuse w/ duplicate-member 409, self-deactivation 400, deactivation = per-institute membership status → TenantGuard 403); public registration removed (`POST /auth/register` 404, web `/register` deleted); seed adds `admin@catlium.dev` (INSTITUTE_ADMIN); public landing page at web `/` + `/users` + `/institute` admin views, middleware/layout/sidebar role gating; `scripts/e2e/saas_e2e.sh` PASS=39/39. Full 14-suite regression FAIL=0 (577 assertions: saas 39 / auth 14 / readiness 32 / web_smoke 24 / attempts 97 / practice 74 / workflow 33 / paper-pattern 75 / materials 21 / syllabus 39 / p8 86 / sec14 22 / demo 52 / api_contract 52). api+web typecheck + lint clean. Docs: `docs/api/users.md` new, auth.md register removed, architecture/CONVENTIONS prose aligned, tasks/user-validation/project-status updated.
+- Phase 20 — Demo Seed Enrichment + Student Journey Closure
 
 - Phase 1 — Backend Foundation & Authentication (identity, tenancy, jobs, roles)
 - Phase 2 — Academic Structure (subject → chapter → topic)
@@ -89,28 +92,28 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 | 16 | Testing & Demonstration Readiness | ✓ completed (E2E 2026-09-09, 11-suite regression 505 assertions FAIL=0) |
 | 17 | Backend-Complete Checkpoint | ✓ completed (PASSED 2026-09-09, regression 508 assertions FAIL=0) |
 | 18 | Paper Pattern / Blueprint (Backend) | ✓ completed (2026-09-09, regression 583 assertions FAIL=0, 12 suites) |
-| 19–26 | Frontend + Integration + Polish | ○ deferred (gate open — Phase 18 backend delivered) |
+| 19 | Frontend Product Transformation | ✓ completed (2026-09-10, web_workflow 33/33) |
+| 20 | Demo Seed Enrichment + Student Journey Closure | ✓ completed (2026-09-10, WF-11b 12/12 attempt loop) |
+| 21 | SaaS Management + Public Landing Page | ✓ completed (2026-09-10, saas_e2e 39/39 + 14-suite regression FAIL=0) |
+| 22–26 | Frontend + Integration + Polish | ○ deferred (gate open — Phase 21 delivered) |
 
 ## Current Task
 
-**Phase 18 — Paper Pattern / Blueprint (Backend) — COMPLETE (closed 2026-09-09).**
-The Paper Pattern / Blueprint backend is fully implemented and validated. Next per
-roadmap: **Phase 19 — Frontend Foundation** (app shell, auth screens, API client,
-session/role handling).
+**Phase 21 — SaaS Management + Public Landing Page — COMPLETE (closed 2026-09-10).**
+Institute-provisioned accounts + public landing + admin tooling delivered; full
+regression green. Next per roadmap: **WF-06..10 browser journey matrix** (requires
+disk headroom for demo image rebuilds).
 
 ## Session Continuity
 
-Last session: 2026-09-09 (Phase 18 Paper Pattern closed)
-Stopped at: Phase 18 — Paper Pattern / Blueprint COMPLETE
-(paper-patterns module: CRUD + DRAFT→REVIEW→APPROVED lifecycle + TEXT-source AI
-analysis + deterministic validation + assessment-from-blueprint + blueprint-
-constrained generation with satisfaction report + marks override; validate bug
-fixed (valid: false now correct); 75/75 E2E; full regression 583/583 FAIL=0;
-unit tests 13/13; typecheck/lint PASS; docs/api/paper-patterns.md + questions.md
-+ assessments.md + REQUIREMENTS.md + ROADMAP.md updated; frontend phases
-renumbered 19-26).
+Last session: 2026-09-10 (Phase 21 SaaS Management + Landing closed)
+Stopped at: Phase 21 — SaaS Management + Public Landing Page COMPLETE
+(institute-provisioned users via INSTITUTE_ADMIN-only /users API; public
+/auth/register removed; web landing page + /users + /institute admin; seed
+admin@catlium.dev; saas_e2e.sh 39/39; 14-suite regression 577 assertions
+FAIL=0; typecheck/lint clean; docs updated incl. docs/api/users.md).
 Clean tree, checkpoint pushed.
-Resume file: `.planning/ROADMAP.md` (Phase 19 — Frontend Foundation next)
+Resume file: `docs/project-status.md` (next: WF-06..10 browser matrix)
 
 ## Verification
 
@@ -132,6 +135,7 @@ Resume file: `.planning/ROADMAP.md` (Phase 19 — Frontend Foundation next)
 - Phase 16 (testing & demo readiness): **11-suite regression 505/505 green on the dockerized stack** — attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 / syllabus 39 / p8 86 / NEW auth 15 / NEW materials 21 / NEW web_smoke 20 / NEW docker_readiness 32 (seeded, full worker boundary). Compose at repo root; web :3001 public behind middleware auth guard; demo profile = seed (demo + p8 fixtures) + mock AI; env audited (Web/OmniRoute/Demo sections, no Ollama); login_user jar-staleness guard across 8 suites; typecheck/lint/build PASS. 2026-09-09
 - Known: zero automated test coverage across the codebase (manual E2E via shell scripts) — Phase 12 analytics logic has the project's first node:test unit coverage
 - Phase 18 (paper pattern / blueprint): `paper_pattern_e2e.sh` PASS=75 FAIL=0 (PP-01..15 — CRUD, validate, approve, analyse, assessment-from-blueprint, blueprint-constrained generation satisfied true/false, marks override, student 403, cross-tenant 403/404, no-cookie 401); full 12-suite regression 583/583 FAIL=0; `pnpm --filter @catlium/api run test:paper-patterns` 13/13 PASS (unit: validation logic); typecheck/lint PASS; validate bug fixed (`valid: false` now correct); docs/api/paper-patterns.md written. 2026-09-09
+- Phase 21 (SaaS management + landing): `saas_e2e.sh` PASS=39 FAIL=0 (SAAS-01..41 — register 404 (API + web), admin roster/create/conflict/validation, teacher+student 403 on /users, deactivate→TenantGuard 403→reactivate, foreign-institute 403, admin self-deactivate 400, web / users+institute pages); full 14-suite regression 577/577 FAIL=0 (saas 39 / auth 14 / readiness 32 / web_smoke 24 / attempts 97 / practice 74 / workflow 33 / paper-pattern 75 / materials 21 / syllabus 39 / p8 86 / sec14 22 / demo 52 / api_contract 52) vs live dockerized stack; api + web typecheck + eslint clean. 2026-09-10
 
 ## Decisions
 

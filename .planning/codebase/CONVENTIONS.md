@@ -26,8 +26,8 @@
 
 **Types:**
 - TypeScript: `PascalCase` for interfaces and type aliases. Domain input/response types are declared as interfaces at the top of the service file before the `@Injectable()` class (`SubjectInput`, `ChapterInput`, `TokenPair`, `SafeUser`, `MembershipWithRoles`, `Job`).
-- DTO classes exported with `Dto` suffix (`RegisterDto`, `CreateSubjectDto`, `UploadMaterialDto`).
-- Zod schemas use `Schema` suffix with infer-exports: `RegisterRequestSchema` + `type RegisterRequest = z.infer<...>` (`packages/contracts/src/index.ts`).
+- DTO classes exported with `Dto` suffix (`CreateUserDto`, `CreateSubjectDto`, `UploadMaterialDto`).
+- Zod schemas use `Schema` suffix with infer-exports: `CreateInstituteUserRequestSchema` + `type CreateInstituteUserRequest = z.infer<...>` (`packages/contracts/src/index.ts`).
 - Unions defined inline for enum-like string types: `type ScopeKind = 'subject' | 'chapter' | 'topic'`, `type MaterialStatus = 'ACTIVE' | 'ARCHIVED'`.
 
 ## Code Style

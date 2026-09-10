@@ -92,7 +92,7 @@
 **Shared Contracts Layer:**
 - Purpose: Single source of truth for request/response schemas, payload validation
 - Location: `packages/contracts/src/index.ts`
-- Contains: Zod schemas (`RoleEnum`, `RegisterRequestSchema`, `ContentPayloadSchemas`, `MaterialResponseSchema`, etc.) and inferred TS types
+- Contains: Zod schemas (`RoleEnum`, `InstituteUserSchema`, `CreateInstituteUserRequestSchema`, `ContentPayloadSchemas`, `MaterialResponseSchema`, etc.) and inferred TS types
 - Depends on: `zod`
 - Used by: API services (`ContentService.validatePayload`), and mirrored in the AI worker (`apps/workers/worker/ai/schemas.py`)
 
