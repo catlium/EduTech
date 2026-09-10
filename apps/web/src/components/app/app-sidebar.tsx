@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   BookOpen,
@@ -12,15 +12,17 @@ import {
   ScrollText,
   Target,
   GraduationCap,
+  Building2,
+  Users,
   LogOut,
-} from "lucide-react";
+} from 'lucide-react';
 
-import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth";
-import { useTenant, canManage } from "@/lib/tenant";
-import { BrandMark } from "@/components/app/brand-logo";
-import { ThemeToggle } from "@/components/app/theme-toggle";
-import { InstituteSwitcher } from "@/components/app/institute-switcher";
+import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
+import { useTenant, canManage, isInstituteAdmin } from '@/lib/tenant';
+import { BrandMark } from '@/components/app/brand-logo';
+import { ThemeToggle } from '@/components/app/theme-toggle';
+import { InstituteSwitcher } from '@/components/app/institute-switcher';
 import {
   Sidebar,
   SidebarContent,
@@ -32,27 +34,32 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from '@/components/ui/sidebar';
 
 const teacherNav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/subjects", label: "Subjects", icon: BookOpen },
-  { href: "/materials", label: "Materials", icon: FileText },
-  { href: "/content", label: "Learning Content", icon: BookMarked },
-  { href: "/questions", label: "Question Bank", icon: HelpCircle },
-  { href: "/assessments", label: "Assessments", icon: ClipboardList },
-  { href: "/paper-patterns", label: "Paper Patterns", icon: ScrollText },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/subjects', label: 'Subjects', icon: BookOpen },
+  { href: '/materials', label: 'Materials', icon: FileText },
+  { href: '/content', label: 'Learning Content', icon: BookMarked },
+  { href: '/questions', label: 'Question Bank', icon: HelpCircle },
+  { href: '/assessments', label: 'Assessments', icon: ClipboardList },
+  { href: '/paper-patterns', label: 'Paper Patterns', icon: ScrollText },
 ];
 
 const studentNav = [
-  { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/student/learning", label: "My Subjects", icon: GraduationCap },
+  { href: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/student/learning', label: 'My Subjects', icon: GraduationCap },
 ];
 
-const sharedNav = [{ href: "/practice", label: "Practice", icon: Target }];
+const sharedNav = [{ href: '/practice', label: 'Practice', icon: Target }];
+
+const adminNav = [
+  { href: '/institute', label: 'Institute', icon: Building2 },
+  { href: '/users', label: 'Users', icon: Users },
+];
 
 function isActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(href + "/");
+  return pathname === href || pathname.startsWith(href + '/');
 }
 
 export function AppSidebar() {
@@ -60,6 +67,7 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { institute } = useTenant();
   const teacher = canManage(institute);
+  const admin = isInstituteAdmin(institute);
 
   const primary = teacher ? teacherNav : studentNav;
 
@@ -69,12 +77,12 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link href={teacher ? "/dashboard" : "/student/dashboard"}>
+              <Link href={teacher ? '/dashboard' : '/student/dashboard'}>
                 <BrandMark />
                 <span className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">CatLium EduTech</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {teacher ? "Teaching workspace" : "Student learning"}
+                    {teacher ? 'Teaching workspace' : 'Student learning'}
                   </span>
                 </span>
               </Link>
@@ -86,15 +94,12 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>{teacher ? "Teaching" : "Student"}</SidebarGroupLabel>
+          <SidebarGroupLabel>{teacher ? 'Teaching' : 'Student'}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {primary.map((item) => (
                 <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(pathname, item.href)}
-                  >
+                  <SidebarMenuButton asChild isActive={isActive(pathname, item.href)}>
                     <Link href={item.href}>
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
@@ -112,10 +117,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {sharedNav.map((item) => (
                 <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(pathname, item.href)}
-                  >
+                  <SidebarMenuButton asChild isActive={isActive(pathname, item.href)}>
                     <Link href={item.href}>
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
@@ -126,6 +128,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {admin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminNav.map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive(pathname, item.href)}>
+                      <Link href={item.href}>
+                        <item.icon className="size-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
@@ -151,19 +173,21 @@ export function AppSidebar() {
 
 export function sideCrumb(pathname: string): { label: string; href: string } | null {
   const map = [
-    { href: "/dashboard", label: "Dashboard" },
-    { href: "/subjects", label: "Subjects" },
-    { href: "/materials", label: "Materials" },
-    { href: "/content", label: "Learning Content" },
-    { href: "/questions", label: "Question Bank" },
-    { href: "/assessments", label: "Assessments" },
-    { href: "/paper-patterns", label: "Paper Patterns" },
-    { href: "/student/dashboard", label: "Dashboard" },
-    { href: "/student/learning", label: "My Subjects" },
-    { href: "/practice", label: "Practice" },
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/subjects', label: 'Subjects' },
+    { href: '/materials', label: 'Materials' },
+    { href: '/content', label: 'Learning Content' },
+    { href: '/questions', label: 'Question Bank' },
+    { href: '/assessments', label: 'Assessments' },
+    { href: '/paper-patterns', label: 'Paper Patterns' },
+    { href: '/student/dashboard', label: 'Dashboard' },
+    { href: '/student/learning', label: 'My Subjects' },
+    { href: '/practice', label: 'Practice' },
+    { href: '/institute', label: 'Institute' },
+    { href: '/users', label: 'Users' },
   ];
   for (const item of map) {
-    if (pathname === item.href || pathname.startsWith(item.href + "/")) {
+    if (pathname === item.href || pathname.startsWith(item.href + '/')) {
       return item;
     }
   }

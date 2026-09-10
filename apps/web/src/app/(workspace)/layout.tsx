@@ -1,31 +1,39 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 
-import { useAuth } from "@/lib/auth";
-import { useTenant, canManage } from "@/lib/tenant";
-import { AppSidebar, sideCrumb } from "@/components/app/app-sidebar";
-import { AppBreadcrumbs } from "@/components/app/app-breadcrumbs";
-import { Forbidden } from "@/components/app/forbidden";
-import { PageLoader } from "@/components/app/loading";
-import { UserMenu } from "@/components/app/user-menu";
-import { ThemeToggle } from "@/components/app/theme-toggle";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+import { useAuth } from '@/lib/auth';
+import { useTenant, canManage, isInstituteAdmin } from '@/lib/tenant';
+import { AppSidebar, sideCrumb } from '@/components/app/app-sidebar';
+import { AppBreadcrumbs } from '@/components/app/app-breadcrumbs';
+import { Forbidden } from '@/components/app/forbidden';
+import { PageLoader } from '@/components/app/loading';
+import { UserMenu } from '@/components/app/user-menu';
+import { ThemeToggle } from '@/components/app/theme-toggle';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { Separator } from '@/components/ui/separator';
 
 const TEACHER_ONLY_PREFIXES = [
-  "/dashboard",
-  "/subjects",
-  "/materials",
-  "/questions",
-  "/assessments",
-  "/paper-patterns",
+  '/dashboard',
+  '/subjects',
+  '/materials',
+  '/questions',
+  '/assessments',
+  '/paper-patterns',
 ];
+
+const ADMIN_ONLY_PREFIXES = ['/institute', '/users'];
 
 function isTeacherOnly(pathname: string): boolean {
   return TEACHER_ONLY_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(prefix + "/"),
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
+  );
+}
+
+function isAdminOnly(pathname: string): boolean {
+  return ADMIN_ONLY_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
   );
 }
 
@@ -35,15 +43,15 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const { instituteId } = useTenant();
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace('/login');
   }, [loading, router, user]);
   useEffect(() => {
     if (loading) return;
-    if (user && memberships.length === 0) router.replace("/institutes");
+    if (user && memberships.length === 0) router.replace('/institutes');
   }, [loading, router, user, memberships]);
   useEffect(() => {
     if (loading) return;
-    if (user && memberships.length > 0 && !instituteId) router.replace("/institutes");
+    if (user && memberships.length > 0 && !instituteId) router.replace('/institutes');
   }, [loading, router, user, memberships, instituteId]);
 
   if (loading) {
@@ -58,16 +66,20 @@ function RoleGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { institute } = useTenant();
   const teacher = canManage(institute);
+  const admin = isInstituteAdmin(institute);
 
   useEffect(() => {
-    if (!teacher && (pathname === "/dashboard" || pathname === "/")) {
-      router.replace("/student/dashboard");
+    if (!teacher && pathname === '/dashboard') {
+      router.replace('/student/dashboard');
     }
   }, [pathname, router, teacher]);
 
+  if (isAdminOnly(pathname) && !admin) {
+    return <Forbidden />;
+  }
+
   const teacherOnly = isTeacherOnly(pathname);
   if (teacherOnly && !teacher) {
-    if (pathname === "/dashboard") return null;
     return <Forbidden />;
   }
   return <>{children}</>;
