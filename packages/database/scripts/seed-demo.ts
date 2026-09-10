@@ -64,10 +64,7 @@ async function upsertUser(db: ReturnType<typeof createDatabase>, email: string, 
   if (existing.length > 0) return existing[0]!;
 
   const passwordHash = await bcryptjs.hash(PASSWORD, 12);
-  const [row] = await db
-    .insert(users)
-    .values({ email, name, passwordHash })
-    .returning();
+  const [row] = await db.insert(users).values({ email, name, passwordHash }).returning();
   if (!row) throw new Error(`failed to create user ${email}`);
   return row;
 }
@@ -84,15 +81,16 @@ async function upsertMembership(
     .limit(1);
   if (existing.length > 0) return existing[0]!;
 
-  const [row] = await db
-    .insert(memberships)
-    .values({ userId, instituteId })
-    .returning();
+  const [row] = await db.insert(memberships).values({ userId, instituteId }).returning();
   if (!row) throw new Error(`failed to create membership for ${userId}`);
   return row;
 }
 
-async function ensureRole(db: ReturnType<typeof createDatabase>, membershipId: string, role: string) {
+async function ensureRole(
+  db: ReturnType<typeof createDatabase>,
+  membershipId: string,
+  role: string,
+) {
   await db.insert(membershipRoles).values({ membershipId, role }).onConflictDoNothing();
 }
 
@@ -109,10 +107,7 @@ async function upsertSubject(
     .limit(1);
   if (existing.length > 0) return existing[0]!;
 
-  const [row] = await db
-    .insert(subjects)
-    .values({ instituteId, name, slug })
-    .returning();
+  const [row] = await db.insert(subjects).values({ instituteId, name, slug }).returning();
   if (!row) throw new Error('failed to create demo subject');
   return row;
 }
@@ -279,7 +274,8 @@ const DEMO_SUBJECTS: DemoSubject[] = [
         stem: 'Opposite angles of a cyclic quadrilateral are',
         type: 'MCQ',
         difficulty: 'HARD',
-        explanation: 'Opposite angles of a cyclic quadrilateral sum to 180°, so they are supplementary.',
+        explanation:
+          'Opposite angles of a cyclic quadrilateral sum to 180°, so they are supplementary.',
         payload: {
           choices: [
             { id: 'mf1', text: 'supplementary' },
@@ -323,7 +319,13 @@ const DEMO_SUBJECTS: DemoSubject[] = [
         type: 'FILL_IN_BLANK',
         difficulty: 'MEDIUM',
         explanation: '1/3 = 0.333... which is a non-terminating, repeating decimal.',
-        payload: { acceptableAnswers: ['non-terminating repeating', 'repeating', 'non-terminating and repeating'] },
+        payload: {
+          acceptableAnswers: [
+            'non-terminating repeating',
+            'repeating',
+            'non-terminating and repeating',
+          ],
+        },
       },
     ],
     patternTitle: 'Mathematics — Term Blueprint',
@@ -495,10 +497,7 @@ async function upsertChapter(
     .where(and(eq(chapters.subjectId, subjectId), eq(chapters.slug, slug)))
     .limit(1);
   if (existing.length > 0) return existing[0]!;
-  const [row] = await db
-    .insert(chapters)
-    .values({ subjectId, name, slug, sortOrder })
-    .returning();
+  const [row] = await db.insert(chapters).values({ subjectId, name, slug, sortOrder }).returning();
   if (!row) throw new Error(`failed to create chapter ${slug}`);
   return row;
 }
@@ -516,10 +515,7 @@ async function upsertTopic(
     .where(and(eq(topics.chapterId, chapterId), eq(topics.slug, slug)))
     .limit(1);
   if (existing.length > 0) return existing[0]!;
-  const [row] = await db
-    .insert(topics)
-    .values({ chapterId, name, slug, sortOrder })
-    .returning();
+  const [row] = await db.insert(topics).values({ chapterId, name, slug, sortOrder }).returning();
   if (!row) throw new Error(`failed to create topic ${slug}`);
   return row;
 }
@@ -883,7 +879,11 @@ async function seedDemoCurriculum(db: ReturnType<typeof createDatabase>) {
             {
               id: 'block-3',
               type: 'list',
-              items: ['Understand the definitions and units', 'Work through the examples step by step', 'Attempt the practice questions before the quiz'],
+              items: [
+                'Understand the definitions and units',
+                'Work through the examples step by step',
+                'Attempt the practice questions before the quiz',
+              ],
             },
           ],
         },
@@ -897,10 +897,30 @@ async function seedDemoCurriculum(db: ReturnType<typeof createDatabase>) {
         payload: {
           title: `${topicNameFor(spec.contentTopicSlug)} — Flashcards`,
           cards: [
-            { id: 'f1', front: 'Define the core concept', back: 'A short, precise definition with one example.', difficulty: 'EASY' },
-            { id: 'f2', front: 'What is the key formula/rule?', back: 'State it, then note when it applies.', difficulty: 'MEDIUM' },
-            { id: 'f3', front: 'Common mistake for this topic?', back: 'Mixing up direction/units — always check the units.', difficulty: 'MEDIUM' },
-            { id: 'f4', front: 'Apply the rule to a quick example', back: 'One fully worked example with the answer highlighted.', difficulty: 'HARD' },
+            {
+              id: 'f1',
+              front: 'Define the core concept',
+              back: 'A short, precise definition with one example.',
+              difficulty: 'EASY',
+            },
+            {
+              id: 'f2',
+              front: 'What is the key formula/rule?',
+              back: 'State it, then note when it applies.',
+              difficulty: 'MEDIUM',
+            },
+            {
+              id: 'f3',
+              front: 'Common mistake for this topic?',
+              back: 'Mixing up direction/units — always check the units.',
+              difficulty: 'MEDIUM',
+            },
+            {
+              id: 'f4',
+              front: 'Apply the rule to a quick example',
+              back: 'One fully worked example with the answer highlighted.',
+              difficulty: 'HARD',
+            },
           ],
         },
       });
@@ -999,6 +1019,10 @@ async function main() {
 
   const institute = await upsertInstitute(db);
 
+  const admin = await upsertUser(db, 'admin@catlium.dev', 'Demo Institute Admin');
+  const adminMembership = await upsertMembership(db, admin.id, institute.id);
+  await ensureRole(db, adminMembership.id, 'INSTITUTE_ADMIN');
+
   const teacher = await upsertUser(db, 'teacher@catlium.dev', 'Demo Teacher');
   const teacherMembership = await upsertMembership(db, teacher.id, institute.id);
   await ensureRole(db, teacherMembership.id, 'INSTITUTE_ADMIN');
@@ -1013,6 +1037,7 @@ async function main() {
 
   console.log(
     `Seeded institute=${JSON.stringify({ id: institute.id, name: institute.name })}\n` +
+      `  admin@catlium.dev / ${PASSWORD}   (INSTITUTE_ADMIN)\n` +
       `  teacher@catlium.dev / ${PASSWORD}  (INSTITUTE_ADMIN, TEACHER)\n` +
       `  student@catlium.dev / ${PASSWORD}  (STUDENT)\n` +
       `  curriculum: Mathematics + Physics (chapters/topics, syllabus + reading materials,\n` +

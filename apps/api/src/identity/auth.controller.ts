@@ -13,7 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 
 import { AuthService } from './auth.service.js';
-import { RegisterDto, LoginDto } from './dto/auth.dto.js';
+import { LoginDto } from './dto/auth.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { CsrfGuard } from '../common/guards/csrf.guard.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
@@ -37,23 +37,6 @@ const AUTH_THROTTLE = {
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
-  @Post('register')
-  @HttpCode(HttpStatus.CREATED)
-  @Throttle(AUTH_THROTTLE)
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) response: Response) {
-    const user = await this.authService.register(dto.email, dto.name, dto.password);
-    const tokens = await this.authService.login(dto.email, dto.password);
-    const options = getCookieOptions();
-
-    setAccessCookie(response, tokens.tokens.accessToken, options);
-    setRefreshCookie(response, tokens.tokens.refreshToken, options);
-
-    const csrfToken = generateCsrfToken();
-    setCsrfCookie(response, csrfToken, options);
-
-    return { user };
-  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

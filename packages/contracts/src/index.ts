@@ -18,13 +18,6 @@ export type JobStatus = z.infer<typeof JobStatusEnum>;
 
 // ── Auth Contracts ──────────────────────────
 
-export const RegisterRequestSchema = z.object({
-  email: z.string().email().max(255),
-  name: z.string().min(1).max(255),
-  password: z.string().min(8).max(128),
-});
-export type RegisterRequest = z.infer<typeof RegisterRequestSchema>;
-
 export const LoginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -44,6 +37,36 @@ export const AuthResponseSchema = z.object({
   user: UserResponseSchema,
 });
 export type AuthResponse = z.infer<typeof AuthResponseSchema>;
+
+// ── Institute User Management Contracts ─────
+
+export const InstituteUserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  name: z.string(),
+  roles: z.array(RoleEnum),
+  status: z.enum(['active', 'deactivated']),
+  createdAt: z.string().datetime(),
+});
+export type InstituteUser = z.infer<typeof InstituteUserSchema>;
+
+export const CreateInstituteUserRequestSchema = z.object({
+  email: z.string().email().max(255),
+  name: z.string().min(1).max(255),
+  password: z.string().min(8).max(128),
+  role: z.enum(['TEACHER', 'STUDENT']),
+});
+export type CreateInstituteUserRequest = z.infer<typeof CreateInstituteUserRequestSchema>;
+
+export const UpdateUserStatusRequestSchema = z.object({
+  status: z.enum(['active', 'deactivated']),
+});
+export type UpdateUserStatusRequest = z.infer<typeof UpdateUserStatusRequestSchema>;
+
+export const InstituteUsersResponseSchema = z.object({
+  users: z.array(InstituteUserSchema),
+});
+export type InstituteUsersResponse = z.infer<typeof InstituteUsersResponseSchema>;
 
 // ── Job Contracts ───────────────────────────
 
@@ -534,10 +557,7 @@ export const QuestionPayloadSchemas = {
   TRUE_FALSE: TrueFalsePayloadSchema,
   FILL_IN_BLANK: FillInBlankPayloadSchema,
 } as const;
-export type QuestionPayload =
-  | McqPayload
-  | TrueFalsePayload
-  | FillInBlankPayload;
+export type QuestionPayload = McqPayload | TrueFalsePayload | FillInBlankPayload;
 
 export const CreateQuestionRequestSchema = z
   .object({
@@ -634,10 +654,16 @@ export const CreateAssessmentRequestSchema = z
     startsAt: z.string().datetime().optional(),
     endsAt: z.string().datetime().optional(),
   })
-  .refine((v) => v.startsAt === undefined || v.endsAt === undefined || new Date(v.startsAt) < new Date(v.endsAt), {
-    message: 'Schedule start must be before end',
-    path: ['schedule'],
-  });
+  .refine(
+    (v) =>
+      v.startsAt === undefined ||
+      v.endsAt === undefined ||
+      new Date(v.startsAt) < new Date(v.endsAt),
+    {
+      message: 'Schedule start must be before end',
+      path: ['schedule'],
+    },
+  );
 export type CreateAssessmentRequest = z.infer<typeof CreateAssessmentRequestSchema>;
 
 export const UpdateAssessmentRequestSchema = z.object({
@@ -1043,9 +1069,7 @@ export const PaperPatternTopicDistributionSchema = z.object({
   /* null percentage = explicit "unknown", never a fabricated value */
   percentage: z.number().min(0).max(100).nullable().optional(),
 });
-export type PaperPatternTopicDistribution = z.infer<
-  typeof PaperPatternTopicDistributionSchema
->;
+export type PaperPatternTopicDistribution = z.infer<typeof PaperPatternTopicDistributionSchema>;
 
 export const PaperPatternSectionSchema = z.object({
   id: z.string().uuid(),
@@ -1060,11 +1084,7 @@ export const PaperPatternSectionSchema = z.object({
   /* "attempt N of M" — for non-compulsory sections */
   attemptCount: z.number().int().min(1).nullable().optional(),
   difficultyDistribution: PaperPatternDifficultyDistributionSchema.nullable().optional(),
-  topicDistribution: z
-    .array(PaperPatternTopicDistributionSchema)
-    .max(100)
-    .nullable()
-    .optional(),
+  topicDistribution: z.array(PaperPatternTopicDistributionSchema).max(100).nullable().optional(),
 });
 export type PaperPatternSection = z.infer<typeof PaperPatternSectionSchema>;
 

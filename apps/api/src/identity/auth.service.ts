@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { eq } from 'drizzle-orm';
@@ -30,33 +30,6 @@ export class AuthService {
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly jwtService: JwtService,
   ) {}
-
-  async register(email: string, name: string, password: string): Promise<SafeUser> {
-    const normalizedEmail = normalizeEmail(email);
-
-    const existing = await this.db
-      .select()
-      .from(users)
-      .where(eq(users.email, normalizedEmail))
-      .limit(1);
-
-    if (existing.length > 0) {
-      throw new ConflictException('Email already registered');
-    }
-
-    const passwordHash = await bcryptjs.hash(password, 12);
-
-    const [user] = await this.db
-      .insert(users)
-      .values({
-        email: normalizedEmail,
-        name,
-        passwordHash,
-      })
-      .returning();
-
-    return this.toSafeUser(user!);
-  }
 
   async login(email: string, password: string): Promise<{ user: SafeUser; tokens: TokenPair }> {
     const normalizedEmail = normalizeEmail(email);
