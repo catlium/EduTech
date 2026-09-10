@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 current_phase: phase-19-frontend-transformation
 current_phase_name: Phase 19 — Frontend Product Transformation
 status: in-progress
-stopped_at: "Phase 19 — Frontend Product Transformation (2026-09-10): consolidated Phases 19-26 into one 5-checkpoint phase. Checkpoints 1-4 committed+pushed: 8b1844a (shell+design system+auth), fbda5d9 (teacher academic/syllabus/materials/AI content), 433692b (question bank+paper-pattern blueprint+assessment builder), 5ddfecc (student learning workspace+practice hub/player). Checkpoint 5 (web E2E suite scripts/e2e/web_workflow_e2e.sh PASS 33/33 against live web; responsive/a11y spot-check; ROADMAP/STATE/doc updates) in progress. Remaining after checkpoint 5: full-stack browser validation of teacher+student journeys against the docker demo env (deferred — host disk at 4.2G free, image builds need >6G; must run post-disk-reclaim) + FE-13 close."
-last_updated: "2026-09-10T10:30:00.000Z"
-state_head: 6ce1b04
+stopped_at: "Phase 19 — Frontend Product Transformation (2026-09-10): consolidated Phases 19-26 into one 5-checkpoint phase. Checkpoints 1-4 committed+pushed: 8b1844a, fbda5d9, 433692b, 5ddfecc. Checkpoint 5 (web E2E suite PASS 33/33 + ROADMAP/STATE/docs) committed 6ce1b04/9d4f2f8. Browser validation pass started against live demo stack (mock AI, seeded institute): web_workflow 33/33 + web_smoke 20/20 green; found + fixed login blocker — access/csrf cookies were Path=/api/v1 (invisible to :3001 middleware), now Path=/ (5b09480, hot-patched into running api container; docker compose build api deferred while host registry access is flaky). WF-06..10 browser journey matrix is the last outstanding item; api image rebuild pending network recovery."
+last_updated: "2026-09-10T11:30:00.000Z"
+state_head: 5b09480
 progress:
   total_phases: 17
   completed_phases: 17
