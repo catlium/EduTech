@@ -297,10 +297,10 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 - [x] FE-07 — question bank workspace (browse/filter/detail/preview, generate, approve/reject)
 - [x] FE-08 — paper patterns / blueprint UI (create→configure→analyze→review→approve→assessment)
 - [x] FE-09 — assessment builder + publishing
-- [~] FE-10 — student dashboard + learning workspace (subject→chapter→topic→content reading)
-- [ ] FE-11 — practice UI (flashcards + question practice, answer/rate, complete, history)
-- [ ] FE-12 — exam attempt UI polish + results/performance
-- [ ] FE-13 — browser/test validation + responsive/accessibility polish + docs
+- [x] FE-10 — student dashboard + learning workspace (subject→chapter→topic→content reading)
+- [x] FE-11 — practice UI (flashcards + question practice, answer/rate, complete, history)
+- [x] FE-12 — exam attempt UI polish + results/performance
+- [~] FE-13 — browser/test validation + responsive/accessibility polish + docs
       (Phase 18 backend delivered; frontend feature phases now underway)
 
 --

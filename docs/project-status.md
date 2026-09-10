@@ -2,10 +2,10 @@
 
 ## Phase 19 — Frontend Product Transformation (IN PROGRESS — 2026-09-10)
 
-**Checkpoints 1-3 of Phase 19 committed + pushed** (`8b1844a`, `fbda5d9`,
-`<next>`). The frontend has been moved off "CRUD data-viewer" onto a product
-shell + design system + teacher workflows. Remaining checkpoints: 4 (student
-learning/practice/exam), 5 (validation + polish + docs).
+**Checkpoints 1-4 of Phase 19 committed + pushed** (`8b1844a`, `fbda5d9`,
+`433692b`, `<next>`). The frontend has been moved off "CRUD data-viewer" onto
+a product shell + design system + teacher and student workflows. Remaining:
+checkpoint 5 (validation + polish + E2E + docs).
 
 ### What landed (checkpoint 1)
 
@@ -67,12 +67,34 @@ learning/practice/exam), 5 (validation + polish + docs).
   loading-state races.
 - Validation: web `pnpm typecheck` + `pnpm build` PASS (all routes compile).
 
+### What landed (checkpoint 4) — student learning + practice
+
+- **Student learning workspace** (`/student/learning`): My Subjects grid →
+  chapters/topics explorer → topic reading page. Content renderers for NOTE
+  blocks, SUMMARY, IMPORTANT_CONCEPTS, FLASHCARD_SET (flip cards), CORNELL_NOTE;
+  type filter chips; resilient payload fetching (allSettled per item, partial
+  failure surfaces as toast not page-blank).
+- **Practice hub + player** (`/practice` + `/practice/sessions/:id`): start
+  FLASHCARD (pick ACTIVE flashcard set) or QUESTION (subject→chapter→topic
+  cascade or whole bank) practice; 409 open-session handling; history with
+  CONTINUE/VIEW; session player with flip/rate flashcards (AGAIN/GOOD),
+  single-question drill (MCQ/TF/FIB) with gradable answer + reveal after
+  answering, navigator grid, complete-session ConfirmDialog, read-only review
+  for COMPLETED sessions. Cascade fetch race guarded via abort ref.
+- Exam attempt/result pages (existing from backend phases) validated in place;
+  only minor runtime fixes needed (loading races, abort guards).
+- **Code review pass** (checkpoint 3+4 files): response-envelope corrections
+  surfaced by reviewer vs controllers (analyze `{generation}`/lowercase job
+  statuses, validate `{valid,errors}`), Promise.all → allSettled hardening,
+  cascade cancellation, datetime-local prefill, unmount guards.
+- Validation: web `pnpm typecheck` + `pnpm build` PASS (all routes compile).
+
 ### Phase 19 checkpoint queue (planned commit series)
 
 1. ~~Foundation: shell + design system + auth~~ (done, `8b1844a`)
 2. ~~Teacher academic workspace + syllabus + materials + AI content~~ (done, `fbda5d9`)
-3. ~~Question bank + paper patterns/blueprint + assessment builder~~ (done)
-4. Student learning workspace + practice + exam attempt + results
+3. ~~Question bank + paper patterns/blueprint + assessment builder~~ (done, `433692b`)
+4. ~~Student learning workspace + practice + exam attempt + results~~ (done)
 5. Web E2E extension + responsive/accessibility polish + docs + full validation
 
 ## Phase 18 — Paper Pattern / Blueprint (Backend) ✓ (2026-09-09)
