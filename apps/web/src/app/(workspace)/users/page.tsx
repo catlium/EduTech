@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useSearchParams } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -72,12 +72,7 @@ export default function UsersPage() {
     if (searchParams.get('create') === '1') setCreateOpen(true);
   }, [searchParams]);
 
-  const form = useForm<CreateInstituteUserRequest>({
-    resolver: zodResolver(CreateInstituteUserRequestSchema),
-    defaultValues: { email: '', name: '', password: '', role: 'TEACHER' },
-  });
-
-  async function load(signal?: AbortSignal) {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(false);
     try {
@@ -89,7 +84,18 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    void load(ctrl.signal);
+    return () => ctrl.abort();
+  }, [load]);
+
+  const form = useForm<CreateInstituteUserRequest>({
+    resolver: zodResolver(CreateInstituteUserRequestSchema),
+    defaultValues: { email: '', name: '', password: '', role: 'TEACHER' },
+  });
 
   async function handleCreate(values: CreateInstituteUserRequest) {
     setCreating(true);
