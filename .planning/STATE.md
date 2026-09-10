@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 current_phase: phase-19-frontend-transformation
 current_phase_name: Phase 19 — Frontend Product Transformation
 status: in-progress
-stopped_at: "Phase 19 — Frontend Product Transformation (2026-09-10): consolidated Phases 19-26 into one 5-checkpoint phase. Checkpoints 1-4 committed+pushed: 8b1844a, fbda5d9, 433692b, 5ddfecc. Checkpoint 5 (web E2E suite PASS 33/33 + ROADMAP/STATE/docs) committed 6ce1b04/9d4f2f8. Browser validation pass started against live demo stack (mock AI, seeded institute): web_workflow 33/33 + web_smoke 20/20 green; found + fixed login blocker — access/csrf cookies were Path=/api/v1 (invisible to :3001 middleware), now Path=/ (5b09480, hot-patched into running api container; docker compose build api deferred while host registry access is flaky). WF-06..10 browser journey matrix is the last outstanding item; api image rebuild pending network recovery."
+stopped_at: "Phase 19 — Frontend Product Transformation (2026-09-10) + priority task: custom Paper Pattern builder (FE-14) committed 116fbb7 + pushed — sections → multi question-type rules, add/remove/reorder, live totals, difficulty/topic constraints, review-before-save, save via existing API; validated: node --test round-trip 4/4 + backend conformance, live API create→GET round-trip PASS, web_workflow_e2e 33/33, web typecheck+build. Docker demo stack up/healthy with baked login-cookie fix (Path=/). Next: Phase 20 — enrich demo seed (chapters/topics/materials/questions/blueprint/assessment) so teacher/student journeys are meaningful, then close WF-06..10 browser matrix, run full Docker+frontend+backend regression, docs, Phase 20 checkpoint."
 last_updated: "2026-09-10T11:30:00.000Z"
-state_head: 5b09480
+state_head: 116fbb7
 progress:
   total_phases: 17
   completed_phases: 17
