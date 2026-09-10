@@ -1318,6 +1318,35 @@ IN_PROGRESS attempt (excluded).
   deferred pending registry access (host network flaky). Re-run the browser
   journeys to close WF-06..10.
 
+### WF-11b — Seeded curriculum is attemptable end-to-end (2026-09-10) [x]
+
+- **Setup required:** docker demo stack up; seed applied
+  (`pnpm --filter @catlium/database exec tsx scripts/seed-demo.ts` → idempotent);
+  student@catlium.dev / `Password123!`; institute
+  `99999999-9999-9999-9999-999999999999`.
+- **Seed fixtures:** Mathematics + Physics (Algebra/Geometry/Number Systems +
+  Mechanics/Optics chapters; syllabus + reading materials with NOTE and
+  FLASHCARD_SET content; 19 approved manual questions; APPROVED 13-mark
+  blueprints; ACTIVE "… — End of Term Quiz" assessments).
+- **Endpoints:**
+  - `GET /api/v1/attempts/available` → quiz listed (student cookie).
+  - `POST /api/v1/attempts` `{"assessmentId":"<quiz id>"}` → 201, questions.
+  - `PUT /api/v1/attempts/:attemptId/questions/:attemptQuestionId`
+    `{"answer":{"choiceId":"<uuid>"|"value":<bool|string>}}` → accepted.
+  - `POST /api/v1/attempts/:attemptId/submit` → graded result.
+- **Payload:** all 10 questions answered correctly (MCQ choice from question
+  payload — note attempt payload strips `correctChoiceId`, so source the right
+  choice from the DB/teacher view; TF `{"value":true}`; FIB
+  `{"value":"1/2"}` / `{"value":"non-terminating repeating"}`).
+- **Expected output:** 10/10 answers `200`/`204`; submit returns
+  `{"status":"SUBMITTED","score":12,"totalMarks":12}`; score equals total
+  (100%). Earlier 400s root-caused: non-UUID `choiceId` rejected by
+  `validateAnswer` + stale seed question; both fixed (seed emits UUID choice
+  ids; stale literal-choice row removed and re-seeded).
+- **Regression:** `bash scripts/e2e/web_workflow_e2e.sh` → PASS 33/33;
+  `node --test apps/api/src/paper-patterns/paper-patterns.validation.test.ts`
+  → PASS; `pnpm --filter @catlium/web typecheck` + `@catlium/api` → clean.
+
 ### WF-11 — Custom Paper Pattern builder (2026-09-10) [x]
 
 - **Setup required:** docker demo stack up (`docker compose -f

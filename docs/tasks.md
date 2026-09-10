@@ -1,5 +1,24 @@
 # Task Tracker
 
+## Phase 20 — Demo Seed Enrichment + Student Journey Closure (2026-09-10)
+
+Enrich the demo seed with a real, attemptable curriculum and prove the
+student attempt loop end-to-end against the live stack.
+
+- [x] Seed enrichment (user scope: Mathematics + Physics, 2-3 chapters × 3-4
+      topics each, 1 syllabus material per subject, ~8-10 questions/subject,
+      1 approved blueprint, 1 active assessment per subject)
+- [x] Question blueprint + assessment fixtures (APPROVED patterns, ACTIVE
+      assessments, questions linked with marks, correct content payloads)
+- [x] Attemptable question payloads — MCQ choices carry UUID `choiceId`s so
+      the attempt answer validator accepts them (`toAttemptablePayload` maps
+      readable seed ids → `crypto.randomUUID()` at insert)
+- [x] Student journey proof vs live API: seeded quiz appears in
+      `/attempts/available`, attempt starts (201), 10/10 answers accepted
+      (MCQ `{choiceId}`, TF `{value}`, FIB `{value}`), submit → score 12/12
+- [x] Regression: web_workflow_e2e 33/33 PASS; paper-patterns unit tests
+      PASS; api + web typecheck clean
+
 ## Demo Milestone — end-to-end working demo (user-directed, 2026-09-08)
 
 ## Phase 16 — Testing & Demonstration Readiness (started/closed 2026-09-09)

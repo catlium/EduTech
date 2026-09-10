@@ -1,5 +1,42 @@
 # Project Status
 
+## Phase 20 — Demo Seed Enrichment + Student Journey Closure (2026-09-10)
+
+**Checkpoint committed + pushed.** The demo seed now carries a real, callable
+curriculum and the student attempt loop is proven end-to-end on the live stack.
+
+### What landed
+
+- **Seed enrichment** (`packages/database/scripts/seed-demo.ts`,
+  user-approved scope): Mathematics (Algebra/Geometry/Number Systems) +
+  Physics (Mechanics/Optics); syllabus + reading materials per subject
+  (NOTE + FLASHCARD_SET content); 19 approved manual questions; APPROVED
+  13-mark blueprints; ACTIVE "… — End of Term Quiz" assessments.
+- **Attemptable question payloads**: the answer validator requires UUID
+  `choiceId`s (and TF/FIB answers use `value`). Seed now maps its readable
+  choice ids → `crypto.randomUUID()` at insert (`toAttemptablePayload`);
+  the single stale literal-choice row was removed and re-seeded.
+- **Student journey proof** (live API): quiz in `/attempts/available` →
+  attempt 201 → 10/10 answers accepted → submit → `{"status":"SUBMITTED",
+  "score":12,"totalMarks":12}` (100%). Note: attempt payloads strip
+  `correctChoiceId` (students can't cheat); verified using DB-sourced answers.
+- **Regression**: web_workflow_e2e 33/33 PASS; paper-patterns node tests PASS
+  (13/13); api + web typecheck clean. DB data only (no migrations).
+
+### Validation
+
+- `bash scripts/e2e/web_workflow_e2e.sh` → PASS 33/33 (2026-09-10).
+- `node --test apps/api/src/paper-patterns/paper-patterns.validation.test.ts`
+  → PASS; `pnpm --filter @catlium/web typecheck` / `@catlium/api` → clean.
+- Docs: `docs/tasks.md` Phase 20, `docs/user-validation.md` WF-11b,
+  `.planning/STATE.md` updated.
+
+### Recommended next task
+
+- Close WF-06..10 browser journey matrix (disk-dependent; the login-cookie
+  fix already verified via curl, and the seeded student attempt loop is now
+  proven at the API level).
+
 ## Phase 19 — Frontend Product Transformation (IN PROGRESS — 2026-09-10)
 
 **Checkpoints 1-4 of Phase 19 committed + pushed** (`8b1844a`, `fbda5d9`,
