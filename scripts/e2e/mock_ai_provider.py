@@ -81,7 +81,10 @@ MOCK_QUESTIONS = [
         "difficulty": "EASY",
         "explanation": "Fractions and repeating decimals all land in the rationals.",
         "payload": {
-            "choices": [{"id": "A", "text": "Rational Numbers"}, {"id": "B", "text": "Irrational Numbers"}],
+            "choices": [
+                {"id": "A", "text": "Rational Numbers"},
+                {"id": "B", "text": "Irrational Numbers"},
+            ],
             "correctChoiceId": "A",
         },
     },
@@ -138,6 +141,94 @@ BLUEPRINT = {
     ],
 }
 
+# ── Content package: all 4 types in one response ────────────────────────────
+CONTENT_PACKAGE = {
+    "note": NOTE,
+    "summary": SUMMARY,
+    "flashcards": {
+        "title": "Rational Numbers — flashcards",
+        "description": "Key terms and concepts.",
+        "cards": [
+            {
+                "id": "fc1",
+                "front": "What is a rational number?",
+                "back": "A number expressible as p/q with q != 0.",
+            },
+            {
+                "id": "fc2",
+                "front": "Are terminating decimals rational?",
+                "back": "Yes, they can be written as a ratio.",
+            },
+        ],
+    },
+    "concepts": {
+        "title": "Rational Numbers — concepts",
+        "concepts": [
+            {
+                "name": "Rational number",
+                "description": "A number expressible as a fraction of two integers.",
+            },
+            {
+                "name": "Irrational number",
+                "description": "A number that cannot be expressed as p/q.",
+            },
+        ],
+    },
+}
+
+# ── Bank mode: produce questions covering all requested buckets ──────────────
+BANK_QUESTIONS = {
+    "questions": [
+        {
+            "stem": "Which set includes fractions and repeating decimals?",
+            "questionType": "MCQ",
+            "difficulty": "EASY",
+            "explanation": "Fractions and repeating decimals all land in the rationals.",
+            "payload": {
+                "choices": [
+                    {"id": "A", "text": "Rational Numbers"},
+                    {"id": "B", "text": "Irrational Numbers"},
+                ],
+                "correctChoiceId": "A",
+            },
+        },
+        {
+            "stem": "Rational numbers can be written as p/q with q != 0.",
+            "questionType": "TRUE_FALSE",
+            "difficulty": "MEDIUM",
+            "explanation": "Definition of a rational number.",
+            "payload": {"correctAnswer": True},
+        },
+        {
+            "stem": "The number 0.333... is _",
+            "questionType": "FILL_IN_BLANK",
+            "difficulty": "MEDIUM",
+            "payload": {"acceptableAnswers": ["rational", "a rational number", "1/3"]},
+        },
+        {
+            "stem": "Which of these is irrational?",
+            "questionType": "MCQ",
+            "difficulty": "HARD",
+            "payload": {
+                "choices": [{"id": "A", "text": "sqrt(2)"}, {"id": "B", "text": "0.5"}],
+                "correctChoiceId": "A",
+            },
+        },
+        {
+            "stem": "0.5 is a rational number.",
+            "questionType": "TRUE_FALSE",
+            "difficulty": "EASY",
+            "payload": {"correctAnswer": True},
+        },
+        {
+            "stem": "pi is _",
+            "questionType": "FILL_IN_BLANK",
+            "difficulty": "HARD",
+            "payload": {"acceptableAnswers": ["irrational", "an irrational number"]},
+        },
+    ],
+}
+
 
 def _pick(model: str, messages: list | None = None) -> dict:
     if "syllabus" in model:
@@ -154,6 +245,10 @@ def _pick(model: str, messages: list | None = None) -> dict:
     probe = " ".join(
         str(m.get("content", "")) for m in (messages or [])
     ).lower()
+    if "generate the following study resources" in probe:
+        return CONTENT_PACKAGE
+    if "required quotas" in probe or "generate" in probe and "questions covering" in probe:
+        return BANK_QUESTIONS
     if "study-summary" in probe or "study summary" in probe:
         return SUMMARY
     if "study notes" in probe:

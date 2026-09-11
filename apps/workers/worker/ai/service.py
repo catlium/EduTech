@@ -22,7 +22,7 @@ import logging
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ValidationError
@@ -38,16 +38,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC"}
+VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC", "CHAPTER", "SUBJECT"}
 
 QA_OPERATION = "AI_GENERATE_QUESTIONS"
 VALID_QUESTION_TYPES = {"MCQ", "TRUE_FALSE", "FILL_IN_BLANK"}
 VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
 
+CONTENT_PACKAGE_OPERATION = "AI_GENERATE_CONTENT_PACKAGE"
+ContentTypeName = Literal["note", "summary", "flashcards", "concepts"]
+
 SYLLABUS_OPERATION = "AI_GENERATE_SYLLABUS"
 BLUEPRINT_OPERATION = "AI_GENERATE_BLUEPRINT"
 
 MAX_QUESTION_COUNT = 50
+MAX_BANK_TOTAL = 200
 
 
 class GenerationError(Exception):
@@ -135,6 +139,18 @@ def _aggregate_concepts(results: list[dict[str, Any]], _limit: int | None = None
             seen.add(name)
             concepts.append(concept)
     return {"title": title, "concepts": concepts}
+
+
+# Canonical content type for each package key, with its payload model and the
+# deterministic per-type aggregator (shared with the single-type operations).
+CONTENT_PACKAGE_TYPES: dict[
+    ContentTypeName, tuple[str, type[BaseModel], Callable[..., dict[str, Any]]]
+] = {
+    "note": ("NOTE", schemas.NotePayload, _aggregate_note),
+    "summary": ("SUMMARY", schemas.SummaryPayload, _aggregate_summary),
+    "flashcards": ("FLASHCARD_SET", schemas.FlashcardSetPayload, _aggregate_flashcards),
+    "concepts": ("IMPORTANT_CONCEPTS", schemas.ImportantConceptsPayload, _aggregate_concepts),
+}
 
 
 def _aggregate_questions(results: list[dict[str, Any]], limit: int | None = None) -> dict[str, Any]:
@@ -257,7 +273,7 @@ class Operation:
     parse: Callable[[str], dict[str, Any]]
     model: type[BaseModel]
     default_title: str
-    aggregate: Callable[..., dict[str, Any]]
+    aggregate: Callable[..., dict[str, Any]] | None = None
 
 
 OPERATIONS: dict[str, Operation] = {
@@ -297,6 +313,15 @@ OPERATIONS: dict[str, Operation] = {
         default_title="AI-generated important concepts",
         aggregate=_aggregate_concepts,
     ),
+    CONTENT_PACKAGE_OPERATION: Operation(
+        operation=CONTENT_PACKAGE_OPERATION,
+        content_type="CONTENT_PACKAGE",
+        build_messages=generation.package.build_messages,
+        parse=generation.package.parse_package_json,
+        model=schemas.ContentPackage,
+        default_title="AI-generated content package",
+        aggregate=None,  # handled by _generate_content_package
+    ),
     QA_OPERATION: Operation(
         operation=QA_OPERATION,
         content_type="QUESTION",
@@ -327,6 +352,12 @@ OPERATIONS: dict[str, Operation] = {
 }
 
 
+def _aggregate(operation: Operation, outputs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Validate the operation's aggregator over per-chunk outputs into one payload."""
+    assert operation.aggregate is not None, f"{operation.operation} has no aggregator"
+    return operation.model.model_validate(operation.aggregate(outputs)).model_dump()
+
+
 def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
     db.update_job_status(job_id, "processing")
     try:
@@ -352,6 +383,12 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
             )
             return
 
+        if operation.operation == CONTENT_PACKAGE_OPERATION:
+            _generate_content_package(
+                job_id, institute_id, operation, source, materials, chunks, payload, context_meta
+            )
+            return
+
         provider = create_provider()
         outputs: list[dict[str, Any]] = []
         for index, chunk in enumerate(chunks):
@@ -362,7 +399,7 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
         output = (
             outputs[0]
             if len(outputs) == 1
-            else operation.model.model_validate(operation.aggregate(outputs)).model_dump()
+            else _aggregate(operation, outputs)
         )
         content_id = _persist(
             institute_id, job_id, operation, source, materials, context_meta, output
@@ -403,6 +440,24 @@ def _generate_questions(
     params = payload.get("params") or {}
     if not isinstance(params, dict):
         raise GenerationError("Invalid job payload")
+
+    # Bank mode: explicit (type, difficulty, count) buckets per subject/chapter/topic.
+    buckets = params.get("buckets")
+    if isinstance(buckets, list) and buckets:
+        _generate_bank_questions(
+            job_id,
+            institute_id,
+            operation,
+            source,
+            materials,
+            chunks,
+            payload,
+            context_meta,
+            buckets,
+        )
+        return
+
+    # Legacy single-type mode (backward compatible).
     type_ = str(params.get("questionType") or "MCQ")
     count_value: Any = params.get("count")
     difficulty = str(params.get("difficulty") or "MEDIUM")
@@ -436,10 +491,12 @@ def _generate_questions(
         )
         outputs.append(_validate_output(operation, raw))
 
+    assert operation.aggregate is not None
     aggregated = operation.model.model_validate(
         operation.aggregate(outputs, count_int)
     ).model_dump()
     scope = _resolve_scope(source, materials)
+    provenance = _build_question_provenance(job_id, source, materials, context_meta)
     question_ids = db.insert_generated_questions(
         institute_id,
         questions=aggregated["questions"],
@@ -447,6 +504,7 @@ def _generate_questions(
         chapter_id=scope["chapterId"],
         topic_id=scope["topicId"],
         created_by=source["requestedBy"],
+        provenance=provenance,
     )
     result: dict[str, Any] = {
         "count": len(question_ids),
@@ -467,6 +525,242 @@ def _generate_questions(
         )
     db.update_job_status(job_id, "completed", result=result)
     logger.info("AI questions generated: job=%s count=%s", job_id, len(question_ids))
+
+
+def _generate_bank_questions(
+    job_id: str,
+    institute_id: str,
+    operation: Operation,
+    source: dict[str, str],
+    materials: list[dict[str, Any]],
+    chunks: list[str],
+    payload: dict[str, Any],
+    context_meta: dict[str, Any],
+    buckets: list[dict[str, Any]],
+) -> None:
+    """Bank mode: generate per-bucket question quotas via a single provider call per chunk."""
+    bucket_specs: list[dict[str, Any]] = []
+    for b in buckets:
+        if not isinstance(b, dict):
+            raise GenerationError("Invalid bucket in job payload")
+        qt = b.get("questionType")
+        diff = b.get("difficulty")
+        cnt = b.get("count")
+        if qt not in VALID_QUESTION_TYPES or diff not in VALID_DIFFICULTIES:
+            raise GenerationError("Invalid questionType or difficulty in bucket")
+        if not isinstance(cnt, int) or isinstance(cnt, bool):
+            raise GenerationError("Invalid bucket count")
+        if not 1 <= cnt <= 100:
+            raise GenerationError("Bucket count must be between 1 and 100")
+        bucket_specs.append({"questionType": qt, "difficulty": diff, "count": cnt})
+
+    total_requested = sum(b["count"] for b in bucket_specs)
+    if total_requested > MAX_BANK_TOTAL:
+        raise GenerationError(f"Total requested questions must not exceed {MAX_BANK_TOTAL}")
+
+    quota_desc = ", ".join(
+        f"{b['questionType']} {b['difficulty']} x {b['count']}" for b in bucket_specs
+    )
+
+    provider = create_provider()
+    outputs: list[dict[str, Any]] = []
+    for index, chunk in enumerate(chunks):
+        label = _part_label(_source_label(source, materials), chunks, index)
+        raw = provider.complete(
+            generation.questions.build_bank_messages(
+                chunk, label, quota_desc=quota_desc, total=total_requested
+            )
+        )
+        outputs.append(_validate_output(operation, raw))
+
+    aggregated = _aggregate_questions(outputs, limit=total_requested)
+    validated = operation.model.model_validate(aggregated).model_dump()
+    all_questions = validated["questions"]
+
+    by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for q in all_questions:
+        key = (q["questionType"], q["difficulty"])
+        by_key.setdefault(key, []).append(q)
+
+    selected: list[dict[str, Any]] = []
+    result_buckets: list[dict[str, Any]] = []
+    for spec in bucket_specs:
+        key = (spec["questionType"], spec["difficulty"])
+        avail = by_key.get(key, [])
+        take = avail[: spec["count"]]
+        selected.extend(take)
+        result_buckets.append({
+            "questionType": spec["questionType"],
+            "difficulty": spec["difficulty"],
+            "requested": spec["count"],
+            "generated": len(take),
+        })
+
+    if not selected:
+        raise GenerationError("AI generated no valid questions for the requested buckets")
+
+    scope = _resolve_scope(source, materials)
+    provenance = _build_question_provenance(job_id, source, materials, context_meta)
+    question_ids = db.insert_generated_questions(
+        institute_id,
+        questions=selected,
+        subject_id=scope["subjectId"],
+        chapter_id=scope["chapterId"],
+        topic_id=scope["topicId"],
+        created_by=source["requestedBy"],
+        provenance=provenance,
+    )
+    db.update_job_status(
+        job_id,
+        "completed",
+        result={
+            "count": len(question_ids),
+            "questionIds": question_ids,
+            "buckets": result_buckets,
+            "totalGenerated": len(question_ids),
+            "sourceType": source["type"],
+            "sourceId": source["id"],
+            "materialIds": [str(m["id"]) for m in materials],
+            "chunks": context_meta["chunkCount"],
+        },
+    )
+    logger.info("AI bank questions generated: job=%s count=%s", job_id, len(question_ids))
+
+
+def _build_question_provenance(
+    job_id: str,
+    source: dict[str, str],
+    materials: list[dict[str, Any]],
+    context_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "operation": "AI_GENERATE_QUESTIONS",
+        "jobId": job_id,
+        "provider": "openai-compatible",
+        "model": settings.ai_model,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "sourceType": source["type"],
+        "sourceId": source["id"],
+        "materialIds": [str(m["id"]) for m in materials],
+        "includedMaterialCount": context_meta["includedCount"],
+        "sourceChars": context_meta["totalChars"],
+        "chunkCount": context_meta["chunkCount"],
+    }
+
+
+def _generate_content_package(
+    job_id: str,
+    institute_id: str,
+    operation: Operation,
+    source: dict[str, str],
+    materials: list[dict[str, Any]],
+    chunks: list[str],
+    payload: dict[str, Any],
+    context_meta: dict[str, Any],
+) -> None:
+    """Generate all requested content types in a single provider pass per chunk.
+
+    The model returns one JSON containing optional top-level keys (note,
+    summary, flashcards, concepts). Each requested type is aggregated across
+    chunks and persisted as its own content item, so every type is independently
+    viewable/editable. This satisfies the "generate once per source" principle:
+    one material (or topic) is processed exactly once per chunk, and the
+    response carries all requested types.
+    """
+    params = payload.get("params") or {}
+    raw_types = params.get("types") or ["note", "summary", "flashcards", "concepts"]
+    valid_keys: set[ContentTypeName] = set(CONTENT_PACKAGE_TYPES.keys())
+    types: list[ContentTypeName] = [t for t in raw_types if t in valid_keys]
+    if not types:
+        raise GenerationError("No valid content types requested")
+
+    provider = create_provider()
+    per_type_chunks: dict[ContentTypeName, list[dict[str, Any]]] = {t: [] for t in types}
+
+    for index, chunk in enumerate(chunks):
+        label = _part_label(_source_label(source, materials), chunks, index)
+        raw = provider.complete(operation.build_messages(chunk, label, types=types))
+        try:
+            parsed = operation.parse(raw)
+        except ValueError as exc:
+            raise GenerationError("AI returned an invalid response") from exc
+        try:
+            pkg = operation.model.model_validate(parsed)
+        except ValidationError as exc:
+            logger.warning("Content package output failed validation: %s", exc)
+            raise GenerationError("AI output failed validation") from exc
+        pkg_dump = pkg.model_dump()
+        for t in types:
+            raw_payload = pkg_dump.get(t)
+            if isinstance(raw_payload, dict):
+                per_type_chunks[t].append(raw_payload)
+
+    scope = _resolve_scope(source, materials)
+    ai_context: dict[str, Any] = {
+        "operation": CONTENT_PACKAGE_OPERATION,
+        "jobId": job_id,
+        "provider": "openai-compatible",
+        "model": settings.ai_model,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "sourceType": source["type"],
+        "sourceId": source["id"],
+        "includedMaterialCount": context_meta["includedCount"],
+        "excludedMaterialCount": context_meta["excludedCount"],
+        "sourceChars": context_meta["totalChars"],
+        "chunkCount": context_meta["chunkCount"],
+    }
+    source_reference: dict[str, Any] = {
+        "type": source["type"],
+        "id": source["id"],
+        "materialIds": [str(m["id"]) for m in materials],
+    }
+
+    content_ids: dict[str, str] = {}
+    for t in types:
+        chunks_payloads = per_type_chunks[t]
+        if not chunks_payloads:
+            continue
+        content_type_name, model_class, aggregator = CONTENT_PACKAGE_TYPES[t]
+        aggregated = aggregator(chunks_payloads)
+        validated = model_class.model_validate(aggregated).model_dump()
+        title = validated.get("title") or f"AI-generated {t.replace('_', ' ').lower()}"
+        if len(title) > 255:
+            title = title[:255]
+        content_id = db.insert_ai_content(
+            institute_id,
+            content_type=content_type_name,
+            subject_id=scope["subjectId"],
+            chapter_id=scope["chapterId"],
+            topic_id=scope["topicId"],
+            title=title,
+            payload=validated,
+            ai_context=ai_context,
+            source_reference=source_reference,
+            change_reason="Generated by AI from source materials",
+            created_by=source["requestedBy"],
+        )
+        content_ids[content_type_name] = content_id
+
+    if not content_ids:
+        raise GenerationError("AI generated no content for any requested type")
+
+    db.update_job_status(
+        job_id,
+        "completed",
+        result={
+            "contentIds": content_ids,
+            "types": list(content_ids.keys()),
+            "sourceType": source["type"],
+            "sourceId": source["id"],
+            "materialIds": [str(m["id"]) for m in materials],
+            "chunks": context_meta["chunkCount"],
+        },
+    )
+    logger.info(
+        "AI content package generated: job=%s types=%s",
+        job_id,
+        list(content_ids.keys()),
+    )
 
 
 def _generate_syllabus(
@@ -501,6 +795,7 @@ def _generate_syllabus(
         raw = provider.complete(operation.build_messages(chunk, label))
         outputs.append(_validate_output(operation, raw))
 
+    assert operation.aggregate is not None
     aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
 
     proposal_id = db.upsert_syllabus_proposal(
@@ -564,6 +859,7 @@ def _generate_blueprint(
         raw = provider.complete(operation.build_messages(chunk, label))
         outputs.append(_validate_output(operation, raw))
 
+    assert operation.aggregate is not None
     aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
 
     db.save_blueprint_analysis(
@@ -703,10 +999,25 @@ def _resolve_materials(institute_id: str, source: dict[str, str]) -> list[dict[s
             raise GenerationError("Source material has no extracted text")
         return [material]
 
-    materials = db.get_topic_materials(source["id"], institute_id)
-    if not materials:
-        raise GenerationError("No eligible READY materials found for topic")
-    return materials
+    if source["type"] == "TOPIC":
+        materials = db.get_topic_materials(source["id"], institute_id)
+        if not materials:
+            raise GenerationError("No eligible READY materials found for topic")
+        return materials
+
+    if source["type"] == "CHAPTER":
+        materials = db.get_chapter_materials(source["id"], institute_id)
+        if not materials:
+            raise GenerationError("No eligible READY materials found for chapter")
+        return materials
+
+    if source["type"] == "SUBJECT":
+        materials = db.get_subject_materials(source["id"], institute_id)
+        if not materials:
+            raise GenerationError("No eligible READY materials found for subject")
+        return materials
+
+    raise GenerationError("Invalid source type")
 
 
 def _build_context_chunks(materials: list[dict[str, Any]]) -> tuple[list[str], dict[str, Any]]:
@@ -761,7 +1072,13 @@ def _source_label(source: dict[str, str], materials: list[dict[str, Any]]) -> st
     if source["type"] == "MATERIAL":
         title = materials[0].get("title") or "material"
         return f"material: {title}"
-    return f"topic ({source['id']})"
+    if source["type"] == "TOPIC":
+        return f"topic ({source['id']})"
+    if source["type"] == "CHAPTER":
+        return f"chapter ({source['id']})"
+    if source["type"] == "SUBJECT":
+        return f"subject ({source['id']})"
+    return source["type"]
 
 
 def _validate_output(operation: Operation, raw: str) -> dict[str, Any]:
@@ -784,6 +1101,11 @@ def _resolve_scope(
 ) -> dict[str, str | None]:
     if source["type"] == "TOPIC":
         return {"subjectId": None, "chapterId": None, "topicId": source["id"]}
+    if source["type"] == "CHAPTER":
+        return {"subjectId": None, "chapterId": source["id"], "topicId": None}
+    if source["type"] == "SUBJECT":
+        return {"subjectId": source["id"], "chapterId": None, "topicId": None}
+    # MATERIAL scope taken from the material's own academic hierarchy.
     material = materials[0]
     return {
         "subjectId": material.get("subject_id"),

@@ -487,7 +487,7 @@ export type MaterialProcessResponse = z.infer<typeof MaterialProcessResponseSche
 //   { "operation": "AI_GENERATE_NOTE"|..., "source": { "type": "MATERIAL"|"TOPIC", "id": "uuid" }, "requestedBy": "uuid" }
 // and resolves the source text itself (no content embedded in the message).
 
-export const GenerationSourceTypeEnum = z.enum(['MATERIAL', 'TOPIC']);
+export const GenerationSourceTypeEnum = z.enum(['MATERIAL', 'TOPIC', 'CHAPTER', 'SUBJECT']);
 export type GenerationSourceType = z.infer<typeof GenerationSourceTypeEnum>;
 
 export const GenerationOperationEnum = z.enum([
@@ -513,6 +513,63 @@ export const GenerateContentResponseSchema = z.object({
   status: z.literal('QUEUED'),
 });
 export type GenerateContentResponse = z.infer<typeof GenerateContentResponseSchema>;
+
+// Reusable content package: one generation request producing all requested
+// content types for a source. The worker makes a single provider pass per
+// chunk and persists one content item per type (generate once, reuse until the
+// source changes or the teacher explicitly regenerates).
+
+export const ContentPackageTypeEnum = z.enum([
+  'NOTE',
+  'SUMMARY',
+  'FLASHCARD_SET',
+  'IMPORTANT_CONCEPTS',
+]);
+export type ContentPackageType = z.infer<typeof ContentPackageTypeEnum>;
+
+export const GenerateContentPackageRequestSchema = z.object({
+  sourceType: z.enum(['MATERIAL', 'TOPIC']),
+  sourceId: z.string().uuid(),
+  includeTypes: z.array(ContentPackageTypeEnum).min(1).optional(),
+});
+export type GenerateContentPackageRequest = z.infer<typeof GenerateContentPackageRequestSchema>;
+
+export const GenerateContentPackageResponseSchema = z.object({
+  jobId: z.string().uuid(),
+  operation: z.literal('AI_GENERATE_CONTENT_PACKAGE'),
+  sourceType: z.enum(['MATERIAL', 'TOPIC']),
+  sourceId: z.string().uuid(),
+  status: z.literal('QUEUED'),
+});
+export type GenerateContentPackageResponse = z.infer<typeof GenerateContentPackageResponseSchema>;
+
+// Generation status for a material's reusable content: per content type,
+// whether an AI-generated item exists for this source, whether it is stale
+// (source edited after generation), or currently generating (job active).
+
+export const ContentGenerationStateEnum = z.enum([
+  'not_generated',
+  'generating',
+  'generated',
+  'stale',
+  'failed',
+]);
+export type ContentGenerationState = z.infer<typeof ContentGenerationStateEnum>;
+
+export const ContentGenerationStatusSchema = z.object({
+  type: ContentPackageTypeEnum,
+  state: ContentGenerationStateEnum,
+  contentId: z.string().uuid().nullable(),
+  version: z.number().nullable(),
+  generatedAt: z.string().datetime().nullable(),
+});
+export type ContentGenerationStatus = z.infer<typeof ContentGenerationStatusSchema>;
+
+export const ContentGenerationStatusResponseSchema = z.object({
+  materialId: z.string().uuid(),
+  items: z.array(ContentGenerationStatusSchema),
+});
+export type ContentGenerationStatusResponse = z.infer<typeof ContentGenerationStatusResponseSchema>;
 
 // ── Question Contracts ─────────────────────
 
@@ -638,6 +695,126 @@ export const BatchQuestionActionRequestSchema = z.object({
   questionIds: z.array(z.string().uuid()).min(1),
 });
 export type BatchQuestionActionRequest = z.infer<typeof BatchQuestionActionRequestSchema>;
+
+// ── Question Bank Contracts ────────────────
+//
+// The bank is the `questions` table itself (scope + type + difficulty +
+// source + approval metadata makes it queryable). Bank generation is the same
+// AI_GENERATE_QUESTIONS operation, but parametrized with explicit
+// (type, difficulty, count) buckets so a subject/chapter/topic scope can be
+// filled once with a large enough pool instead of regenerating per assessment.
+
+export const GenerateBankBucketSchema = z.object({
+  questionType: QuestionTypeEnum,
+  difficulty: QuestionDifficultyEnum,
+  count: z.number().int().min(1).max(100),
+});
+export type GenerateBankBucket = z.infer<typeof GenerateBankBucketSchema>;
+
+export const QuestionBankScopeSchema = z
+  .object({
+    subjectId: z.string().uuid().optional(),
+    chapterId: z.string().uuid().optional(),
+    topicId: z.string().uuid().optional(),
+  })
+  .refine(
+    (v) => [v.subjectId, v.chapterId, v.topicId].filter((x) => x !== undefined).length === 1,
+    {
+      message: 'Exactly one of subjectId, chapterId, topicId must be provided',
+      path: ['scope'],
+    },
+  );
+export type QuestionBankScope = z.infer<typeof QuestionBankScopeSchema>;
+
+export const DifficultyDistributionSchema = z
+  .object({
+    EASY: z.number().int().min(0).max(100),
+    MEDIUM: z.number().int().min(0).max(100),
+    HARD: z.number().int().min(0).max(100),
+  })
+  .refine((v) => v.EASY + v.MEDIUM + v.HARD === 100, {
+    message: 'Difficulty distribution percentages must sum to 100',
+  });
+export type DifficultyDistribution = z.infer<typeof DifficultyDistributionSchema>;
+
+export const GenerateBankRequestSchema = z
+  .object({
+    ...QuestionBankScopeSchema.shape,
+    questionTypes: z.array(QuestionTypeEnum).min(1).max(3).optional(),
+    count: z.number().int().min(1).max(100),
+    difficultyDistribution: DifficultyDistributionSchema.optional(),
+    blueprintId: z.string().uuid().optional(),
+  });
+export type GenerateBankRequest = z.infer<typeof GenerateBankRequestSchema>;
+
+export const CountBucketSchema = z.object({
+  questionType: QuestionTypeEnum,
+  difficulty: QuestionDifficultyEnum,
+  count: z.number().int().min(0),
+});
+export type CountBucket = z.infer<typeof CountBucketSchema>;
+
+export const GenerateBankResponseSchema = z.object({
+  jobId: z.string().uuid(),
+  operation: z.literal('AI_GENERATE_QUESTIONS'),
+  sourceType: GenerationSourceTypeEnum,
+  sourceId: z.string().uuid(),
+  status: z.literal('QUEUED'),
+  buckets: z.array(GenerateBankBucketSchema),
+});
+export type GenerateBankResponse = z.infer<typeof GenerateBankResponseSchema>;
+
+export const QuestionBankStatsSchema = z.object({
+  total: z.number(),
+  usable: z.number(),
+  byType: z.object({
+    MCQ: z.number(),
+    TRUE_FALSE: z.number(),
+    FILL_IN_BLANK: z.number(),
+  }),
+  byDifficulty: z.object({
+    EASY: z.number(),
+    MEDIUM: z.number(),
+    HARD: z.number(),
+  }),
+  byApproval: z.object({
+    PENDING: z.number(),
+    APPROVED: z.number(),
+    REJECTED: z.number(),
+  }),
+});
+export type QuestionBankStats = z.infer<typeof QuestionBankStatsSchema>;
+
+export const GenerateMoreQuestionsRequestSchema = z.object({
+  ...QuestionBankScopeSchema.shape,
+  buckets: z.array(GenerateBankBucketSchema).min(1),
+  dryRun: z.boolean().optional(),
+});
+export type GenerateMoreQuestionsRequest = z.infer<typeof GenerateMoreQuestionsRequestSchema>;
+
+export const GenerateMoreBucketStatusSchema = z.object({
+  questionType: QuestionTypeEnum,
+  difficulty: QuestionDifficultyEnum,
+  requested: z.number(),
+  existing: z.number(),
+  deficit: z.number(),
+});
+export type GenerateMoreBucketStatus = z.infer<typeof GenerateMoreBucketStatusSchema>;
+
+export const GenerateMoreQuestionsResponseSchema = z.object({
+  generated: z.boolean(),
+  jobId: z.string().uuid().nullable(),
+  status: z.enum(['QUEUED', 'NO_ACTION']),
+  buckets: z.array(GenerateMoreBucketStatusSchema),
+  totalExisting: z.number(),
+  totalDeficit: z.number(),
+});
+export type GenerateMoreQuestionsResponse = z.infer<typeof GenerateMoreQuestionsResponseSchema>;
+
+// ── Export Contracts ────────────────────────
+
+export const ExportFormatEnum = z.enum(['pdf', 'docx']);
+export type ExportFormat = z.infer<typeof ExportFormatEnum>;
 
 // ── Assessment Contracts ────────────────────
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ClipboardList, ListOrdered, Plus, Trash2, Pencil } from "lucide-react";
+import { ArrowLeft, ClipboardList, ListOrdered, Plus, Trash2, Pencil, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -614,9 +614,20 @@ export default function AssessmentDetailPage() {
             {bankLoading ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Loading questions...</p>
             ) : filteredBank.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                {bankQuestions.length === 0 ? "No questions in the bank." : "No matching questions."}
-              </p>
+              <div className="py-8 text-center">
+                <p className="text-sm text-muted-foreground">
+                  {bankQuestions.length === 0
+                    ? "No approved questions in the bank for this scope."
+                    : "No matching questions."}
+                </p>
+                {bankQuestions.length === 0 && (
+                  <Button size="sm" variant="outline" className="mt-3" asChild>
+                    <Link href="/questions">
+                      <Sparkles className="mr-1 size-3.5" /> Generate questions in the bank
+                    </Link>
+                  </Button>
+                )}
+              </div>
             ) : (
               <>
                 <label className="flex items-center gap-3 rounded border px-3 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:bg-muted/50">

@@ -16,7 +16,11 @@ import {
 import { api, ApiError, waitForJob } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
 import { useTenant, canManage } from "@/lib/tenant";
-import type { MaterialResponse } from "@catlium/contracts";
+import type {
+  MaterialResponse,
+  ContentGenerationStatus,
+  ContentGenerationStatusResponse,
+} from "@catlium/contracts";
 import { PageHeader } from "@/components/app/page-header";
 import { StatusBadge } from "@/components/app/status-badge";
 import { ErrorState } from "@/components/app/error-state";
@@ -41,7 +45,9 @@ export default function MaterialDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [job, setJob] = useState<JobState>({ status: "idle" });
+  const [packageJob, setPackageJob] = useState<JobState>({ status: "idle" });
   const [confirmAction, setConfirmAction] = useState<"archive" | "activate" | null>(null);
+  const [genStatus, setGenStatus] = useState<ContentGenerationStatus[] | null>(null);
 
   const refresh = useCallback(() => {
     if (!institute) return;
@@ -60,6 +66,17 @@ export default function MaterialDetailPage() {
   useEffect(() => {
     return refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!institute) return;
+    const ctrl = new AbortController();
+    api<ContentGenerationStatusResponse>(`/content/generation-status?materialId=${materialId}`, {
+      signal: ctrl.signal,
+    })
+      .then((resp) => setGenStatus(resp.items))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [institute, materialId, packageJob.status, job.status]);
 
   const isProcessing = material?.processingStatus === "QUEUED" || material?.processingStatus === "PROCESSING";
 
@@ -98,6 +115,27 @@ export default function MaterialDetailPage() {
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Generation failed";
       setJob({ status: "error", message: msg });
+      toast.error(msg);
+    }
+  }
+
+  async function startGeneratePackage() {
+    setPackageJob({ status: "running", jobId: "", operation: "AI_GENERATE_CONTENT_PACKAGE" });
+    try {
+      const resp = await api<{ generation: { jobId: string } }>("/content/generate-package", {
+        method: "POST",
+        body: { sourceType: "MATERIAL", sourceId: materialId },
+      });
+      const jobId = resp.generation.jobId;
+      setPackageJob({ status: "running", jobId, operation: "AI_GENERATE_CONTENT_PACKAGE" });
+      await waitForJob(() =>
+        api<{ job: { status: string } }>(`/jobs/${jobId}`),
+      );
+      setPackageJob({ status: "done", contentId: "", operation: "AI_GENERATE_CONTENT_PACKAGE" });
+      toast.success("Content package created");
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Package generation failed";
+      setPackageJob({ status: "error", message: msg });
       toast.error(msg);
     }
   }
@@ -235,7 +273,7 @@ export default function MaterialDetailPage() {
                   key={op}
                   size="sm"
                   variant="outline"
-                  disabled={job.status === "running"}
+                  disabled={job.status === "running" || packageJob.status === "running"}
                   onClick={() => startGenerate(op)}
                 >
                   {job.status === "running" && job.operation === op ? (
@@ -247,7 +285,34 @@ export default function MaterialDetailPage() {
                 </Button>
               ),
             )}
+            <Button
+              size="sm"
+              disabled={packageJob.status === "running" || job.status === "running"}
+              onClick={() => startGeneratePackage()}
+            >
+              {packageJob.status === "running" ? (
+                <Loader2 className="mr-1 size-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="mr-1 size-3.5" />
+              )}
+              Generate All
+            </Button>
           </div>
+          {packageJob.status === "running" && (
+            <p className="text-sm text-muted-foreground animate-pulse">
+              Generating package (notes, summary, flashcards, concepts)…
+            </p>
+          )}
+          {packageJob.status === "error" && (
+            <p className="text-sm text-destructive">{packageJob.message}</p>
+          )}
+          {genStatus && (
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              {genStatus.map((item) => (
+                <GenStatusLine key={item.type} item={item} />
+              ))}
+            </div>
+          )}
           {job.status === "running" && (
             <p className="text-sm text-muted-foreground animate-pulse">
               Generating {operationLabel(job.operation)}…
@@ -298,4 +363,27 @@ function operationLabel(op: string): string {
     default:
       return op;
   }
+}
+
+function GenStatusLine({ item }: { item: ContentGenerationStatus }) {
+  const label = item.type.replace(/_/g, " ");
+  const state =
+    item.state === "not_generated"
+      ? { text: "Not generated", className: "text-muted-foreground" }
+      : item.state === "stale"
+        ? { text: "Stale (regenerate)", className: "text-amber-600" }
+        : item.state === "generated"
+          ? { text: "Generated", className: "text-emerald-600" }
+          : { text: item.state.replace(/_/g, " "), className: "text-muted-foreground" };
+  return (
+    <span className="inline-flex items-center gap-1.5 capitalize">
+      <span className="size-1.5 rounded-full bg-current" aria-hidden />
+      <span className={state.className}>{label}</span>
+      <span className="text-muted-foreground">·</span>
+      <span className={state.className}>{state.text}</span>
+      {item.contentId && (
+        <span className="text-muted-foreground">v{item.version}</span>
+      )}
+    </span>
+  );
 }

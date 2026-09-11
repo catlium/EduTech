@@ -1,10 +1,11 @@
-"""Content-generation operations: NOTE, SUMMARY, FLASHCARD_SET, IMPORTANT_CONCEPTS."""
+"""Content-generation operations and their prompt builders."""
 
 from worker.ai.generation import (
     blueprint,
     concepts,
     flashcards,
     note,
+    package,
     parse,
     prompt,
     questions,
@@ -17,6 +18,7 @@ __all__ = [
     "concepts",
     "flashcards",
     "note",
+    "package",
     "parse",
     "prompt",
     "questions",

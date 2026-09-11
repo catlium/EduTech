@@ -1,6 +1,53 @@
 # Project Status
 
-## Phase 22 — Product Completion: Ship the Working App First (2026-09-10)
+## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)
+
+**Goal:** one AI pass yields all study resources for a source; the `questions`
+table becomes the bank with stats + deficit-driven "generate more"; assessment
+creation never auto-triggers AI; DOCX + PDF export.
+
+### Completed
+
+- **Batch content package** — `POST /content/generate-package` runs one
+  worker job (`AI_GENERATE_CONTENT_PACKAGE`) that calls the provider once per
+  chunk and aggregates note/summary/flashcards/concepts into independent
+  content items, all in one API call. `GET /content/generation-status` reports
+  the latest generated content per type with a stale flag
+  (material edited after generation).
+- **Question bank** — bank = `questions` table (per user decision, no new
+  table). `GET /questions/bank/stats` (scoped), `POST /questions/generate-more`
+  computes deficit vs APPROVED+ACTIVE questions and queues generation for the
+  missing buckets only; dryRun reports without queueing. Worker gen makes one
+  provider call per chunk covering all requested bucket quotas, then groups,
+  dedupes, and slices per bucket. Provenance recorded on each question.
+- **No auto-trigger** — assessment/question creation and generation flows never
+  automatically generate questions; UIs show deficit + explicit action
+  (per user decision).
+- **Export** — `apps/api/src/export/`: content/questions/assessment exports as
+  PDF (pdfkit) or DOCX (docx). Renderers intentionally omit answers.
+- **Frontend** — materials page: "Generate All" + per-type status badges;
+  questions page: bank panel (scope, stats, bucket dialog, check deficits,
+  generate missing); assessment picker: empty-state link to bank generation.
+- **Mock AI** — `scripts/e2e/mock_ai_provider.py` dispatches CONTENT_PACKAGE +
+  BANK_QUESTIONS canned responses by prompt probe (model-agnostic).
+
+### Validation
+
+- `pnpm typecheck` / `pnpm lint` — PASS (10 / 9 tasks).
+- `pnpm --filter @catlium/api build` + `pnpm --filter @catlium/web build` — PASS.
+- Worker ruff + mypy + import check — PASS; pytest 16 PASS.
+- Export unit tests (`node --test`, 5) — PASS.
+- Live-route spot check — PENDING (`docs/user-validation.md` Phase 23).
+
+### Known issues / deferred
+
+- PDF renderer uses pdfkit's default Helvetica — non-latin glyphs unsupported
+  (`ponytail:` ceiling noted in renderers).
+
+### Latest checkpoint
+
+Phase 23 implementation-complete, validation PASS, docs updated. Next:
+live-route spot check on the demo stack; then close any findings.
 
 **Priority redirected from exhaustive browser testing to delivering the
 working product.** Comprehensive test suites are now a guardrail, not the

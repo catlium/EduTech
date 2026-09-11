@@ -139,6 +139,18 @@ class GeneratedQuestions(BaseModel):
     questions: list[GeneratedQuestion] = Field(min_length=1)
 
 
+class ContentPackage(BaseModel):
+    """One provider response covering all requested content-package resources.
+
+    Each top-level key is optional so a request can target any subset of types.
+    """
+
+    note: NotePayload | None = None
+    summary: SummaryPayload | None = None
+    flashcards: FlashcardSetPayload | None = None
+    concepts: ImportantConceptsPayload | None = None
+
+
 # ── AI syllabus generation ─────────────────────────────────
 
 

@@ -21,6 +21,7 @@ import {
   GenerateQuestionsDto,
   BatchQuestionActionDto,
 } from './dto/question-generation.dto.js';
+import { GenerateBankDto, GenerateMoreDto } from './dto/question-bank.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -39,6 +40,8 @@ export class QuestionsController {
     private readonly questionsService: QuestionsService,
     private readonly generationService: QuestionGenerationService,
   ) {}
+
+  // ── CRUD ───────────────────────────────────────────────────────────
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -120,6 +123,8 @@ export class QuestionsController {
     await this.questionsService.deleteQuestion(tenant.instituteId, questionId);
   }
 
+  // ── Legacy generation (backward compatible) ────────────────────────
+
   @Post('generate')
   @HttpCode(HttpStatus.ACCEPTED)
   @RequiredRoles(...WRITE_ROLES)
@@ -155,6 +160,90 @@ export class QuestionsController {
       },
     };
   }
+
+  // ── Question bank ──────────────────────────────────────────────────
+
+  @Post('bank/generate')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async bankGenerate(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: GenerateBankDto,
+  ) {
+    // Build (type, difficulty, count) buckets from the request config.
+    const types = dto.questionTypes ?? (['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'] as const);
+    const dist = dto.difficultyDistribution ?? { EASY: 0, MEDIUM: 100, HARD: 0 };
+    const perTypeCount = Math.max(1, Math.floor(dto.count / types.length));
+
+    const buckets = types.flatMap((qt) =>
+      (['EASY', 'MEDIUM', 'HARD'] as const).map((diff) => {
+        const pct = dist[diff] ?? 0;
+        const count = Math.round(perTypeCount * (pct / 100));
+        return { questionType: qt, difficulty: diff, count };
+      }),
+    ).filter((b) => b.count > 0);
+
+    if (buckets.length === 0) {
+      buckets.push({ questionType: 'MCQ', difficulty: 'MEDIUM', count: dto.count });
+    }
+
+    const generation = await this.generationService.requestBankGeneration(
+      tenant.instituteId,
+      user.userId,
+      {
+        subjectId: dto.subjectId,
+        chapterId: dto.chapterId,
+        topicId: dto.topicId,
+        questionTypes: dto.questionTypes,
+        count: dto.count,
+        difficultyDistribution: dto.difficultyDistribution,
+        blueprintId: dto.blueprintId,
+      },
+      buckets,
+    );
+    return { generation };
+  }
+
+  @Get('bank/stats')
+  @RequiredRoles(...WRITE_ROLES)
+  async bankStats(
+    @Tenant() tenant: TenantContext,
+    @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
+    @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
+    @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
+  ) {
+    const stats = await this.generationService.getBankStats(tenant.instituteId, {
+      subjectId,
+      chapterId,
+      topicId,
+    });
+    return { stats };
+  }
+
+  @Post('generate-more')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async generateMore(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: GenerateMoreDto,
+  ) {
+    const result = await this.generationService.computeDeficitsAndGenerateMore(
+      tenant.instituteId,
+      user.userId,
+      {
+        subjectId: dto.subjectId,
+        chapterId: dto.chapterId,
+        topicId: dto.topicId,
+        buckets: dto.buckets,
+        dryRun: dto.dryRun,
+      },
+    );
+    return { result };
+  }
+
+  // ── Approval actions ───────────────────────────────────────────────
 
   @Post('batch-approve')
   @RequiredRoles(...WRITE_ROLES)

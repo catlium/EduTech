@@ -15,6 +15,54 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)
+
+Status: `[ ]` not run — code-complete + automated validation PASS; live-route
+spot check pending (demo stack with mock AI).
+
+- **Generate all content at once (P1)** — `[ ]` not run
+  - Setup: dev stack up + demo seed, teacher@catlium.dev, a MATERIAL with
+    processed text; mock AI enabled (`WORKER_AI_MODEL=auto`).
+  - Endpoint: `POST /api/v1/content/generate-package`
+  - Payload: `{"sourceType":"MATERIAL","sourceId":"<material id>","types":["note","summary","flashcards","concepts"]}`
+  - Expected: `202` + job id; worker completes; one content item per requested
+    type appears (each independently viewable); jobs/:id result has 4
+    `contentIds`.
+- **Content generation status per material (P1)** — `[ ]` not run
+  - Setup: above.
+  - Endpoint: `GET /api/v1/content/generation-status?materialId=<material id>`
+  - Expected: per-type `{status: "generated"|"stale"|"not_generated", version,
+    updatedAt}`; editing the material afterwards flips the item to `stale`.
+- **Question bank stats (P2)** — `[ ]` not run
+  - Setup: demo seed with a topic + open questions; teacher cookie.
+  - Endpoint: `GET /api/v1/questions/bank/stats?topicId=<id>`
+  - Expected: totals + per-type/difficulty/approval distribution for that scope.
+- **Generate more / deficit flow (P2)** — `[ ]` not run
+  - Setup: above.
+  - Endpoint: `POST /api/v1/questions/generate-more` (dry run)
+  - Payload: `{"topicId":"<id>","buckets":[{"questionType":"MCQ","difficulty":"EASY","count":10}],"dryRun":true}`
+  - Expected: `{generated:false,status:"NO_ACTION",buckets:[...],totalExisting,
+    totalDeficit}` — deficit = requested − APPROVED+ACTIVE existing; no job queued.
+  - Repeat with `"dryRun":false`: queues a job for the deficit buckets only;
+    duplicate of an active non-dry run `409`.
+- **Export (P6)** — `[ ]` not run
+  - Setup: any content item + assessment with questions; teacher cookie.
+  - Endpoint: `GET /api/v1/export/content/:contentId?format=pdf` (also `docx`),
+    `GET /api/v1/export/questions?topicId=<id>&format=docx`, `GET
+    /api/v1/export/assessment/:assessmentId?format=pdf`
+  - Expected: valid file download; PDF opens, DOCX opens in Word; question/assessment
+    exports omit the answer key.
+- **Frontend (P7)** — `[ ]` not run
+  - Setup: demo stack; teacher cookie.
+  - Endpoint / behavior: material detail "Generate All" starts the package job
+    and shows per-type status badges; /questions shows the bank panel (scope,
+    stats, generate dialog, check deficits, generate missing); assessment
+    add-questions dialog shows empty-state "Generate questions in the bank"
+    link when the bank has no approved questions for the scope.
+  - Expected: as described; generation never triggers automatically.
+
+---
+
 ## Phase 17 — Backend-Complete Checkpoint
 
 Status: `[x]` **PASS (2026-09-09)** — four-subagent backend gate (module

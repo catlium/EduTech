@@ -404,3 +404,117 @@ Response:
 ```json
 { "updated": 2, "questionIds": ["uuid", "uuid"] }
 ```
+
+## Bank stats
+
+```
+GET /questions/bank/stats
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`.
+
+Returns the question-bank distribution for a scope. Scope is exactly one of
+`subjectId`, `chapterId`, `topicId` (anyone may be omitted for institute-wide
+stats).
+
+Query:
+
+```
+GET /questions/bank/stats?topicId=<uuid>
+```
+
+Response:
+
+```json
+{
+  "scope": { "subjectId": null, "chapterId": null, "topicId": "uuid" },
+  "total": 12,
+  "byType": { "MCQ": 8, "TRUE_FALSE": 2, "FILL_IN_BLANK": 2 },
+  "byDifficulty": { "EASY": 4, "MEDIUM": 5, "HARD": 3 },
+  "byApproval": { "PENDING": 5, "APPROVED": 7, "REJECTED": 0 }
+}
+```
+
+## Generate bank questions (multi-type)
+
+```
+POST /questions/bank/generate
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `202 Accepted`.
+
+Single call that expands a distribution into per-type/per-difficulty buckets and
+enqueues one `AI_GENERATE_QUESTIONS` job (the bank is the `questions` table; no
+separate bank table).
+
+Body:
+
+```json
+{
+  "topicId": "uuid",
+  "questionTypes": ["MCQ", "TRUE_FALSE"],
+  "count": 20,
+  "difficultyDistribution": { "EASY": 0.4, "MEDIUM": 0.4, "HARD": 0.2 }
+}
+```
+
+| Field                   | Required | Notes |
+|-------------------------|----------|-------|
+| `topicId` / `subjectId` / `chapterId` | one of | scope |
+| `questionTypes`         | yes      | non-empty subset of the three types |
+| `count`                 | yes      | 1–200 (per `difficultyDistribution`, split into per-bucket quotas) |
+| `difficultyDistribution`| no       | weights that sum to 1; defaults to EASY .33 / MEDIUM .34 / HARD .33 |
+
+Per-bucket quota = rounded proportion of `count`. Response is the queued
+`generation` object (jobId/operation/sourceType/sourceId/status).
+
+## Generate more questions (deficit-driven)
+
+```
+POST /questions/generate-more
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `202 Accepted` (or `200` for a
+`dryRun`).
+
+Recomputes the bank deficit for the requested buckets versus **existing
+APPROVED + ACTIVE** questions in the same scope, then queues generation for the
+missing quantities only. Assessment/question creation never auto-triggers
+generation — this endpoint is the explicit refill action.
+
+Body:
+
+```json
+{
+  "topicId": "uuid",
+  "buckets": [
+    { "questionType": "MCQ", "difficulty": "EASY", "count": 10 },
+    { "questionType": "TRUE_FALSE", "difficulty": "MEDIUM", "count": 5 }
+  ],
+  "dryRun": true
+}
+```
+
+| Field     | Required | Values |
+|-----------|----------|--------|
+| scope     | one of `subjectId`/`chapterId`/`topicId` | uuid |
+| `buckets` | yes      | 1–20 entries, per-bucket `count` 1–100, totals ≤ 200 |
+| `dryRun`  | no       | boolean; `true` reports the deficit without queueing |
+
+`dryRun: true` response (`200`):
+
+```json
+{
+  "generated": false,
+  "status": "NO_ACTION",
+  "buckets": [
+    { "questionType": "MCQ", "difficulty": "EASY", "requested": 10, "existing": 3, "deficit": 7 }
+  ],
+  "totalExisting": 3,
+  "totalDeficit": 7
+}
+```
+
+Without `dryRun`: queues a job for the deficit buckets; returns the queued
+`generation` object. A duplicate active (queued/processing) non-dry run for the
+same scope returns `409`.

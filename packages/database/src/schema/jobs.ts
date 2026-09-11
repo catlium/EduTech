@@ -36,7 +36,7 @@ export const jobs = pgTable(
         sql`((payload -> 'source' ->> 'id'))`,
       )
       .where(
-        sql`type IN ('AI_GENERATE_NOTE', 'AI_GENERATE_SUMMARY', 'AI_GENERATE_FLASHCARDS', 'AI_GENERATE_CONCEPTS', 'AI_GENERATE_SYLLABUS', 'AI_GENERATE_QUESTIONS', 'AI_GENERATE_BLUEPRINT') AND status IN ('queued', 'processing')`,
+        sql`type IN ('AI_GENERATE_NOTE', 'AI_GENERATE_SUMMARY', 'AI_GENERATE_FLASHCARDS', 'AI_GENERATE_CONCEPTS', 'AI_GENERATE_CONTENT_PACKAGE', 'AI_GENERATE_SYLLABUS', 'AI_GENERATE_QUESTIONS', 'AI_GENERATE_BLUEPRINT') AND status IN ('queued', 'processing')`,
       ),
   ],
 );

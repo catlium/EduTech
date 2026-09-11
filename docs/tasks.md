@@ -1,5 +1,47 @@
 # Task Tracker
 
+## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)
+
+- [x] P0 contracts: `GenerationSourceTypeEnum` (MATERIAL/TOPIC/CHAPTER/SUBJECT),
+      generate-content-package DTO, question-bank stats + generate-more schemas
+- [x] P0 migration 0016: `questions.provenance` jsonb + `AI_GENERATE_CONTENT_PACKAGE`
+      added to `jobs_active_generation_unique` dedup index
+- [x] P1 jobs mapping: `AI_GENERATE_CONTENT_PACKAGE` → `ai_generation` queue
+- [x] P1 worker package op: single-pass-per-chunk generation of
+      note/summary/flashcards/concepts in one provider call; per-type aggregation
+      + independent content items; provenance filled
+- [x] P1 API: `POST /content/generate-package` (MATERIAL|TOPIC source) +
+      `GET /content/generation-status?materialId=` (latest per type, stale flag)
+- [x] P2 worker bank: `AI_GENERATE_QUESTIONS` accepts `params.buckets`
+      (questionType/difficulty/count); one provider call per chunk covering all
+      requested quotas; grouping + dedup + slice per bucket
+- [x] P2 API: `GET /questions/bank/stats` (scope-selectable), `POST
+      /questions/generate-more` (deficit vs APPROVED+ACTIVE existing; dryRun
+      returns requested/existing/deficit without queueing; non-dry queues only
+      deficits)
+- [x] P2 mock provider: `CONTENT_PACKAGE` + `BANK_QUESTIONS` canned responses +
+      prompt-probe dispatch (no model dependency)
+- [x] P5 snapshot-immutability verification: `assessment_questions` references
+      questions by UUID; `attempt_questions` + `practice_session_items`
+      snapshot at start — no change needed (documented decision)
+- [x] P6 export: `GET /export/content/:contentId`, `GET /export/questions`,
+      `GET /export/assessment/:assessmentId` with `?format=pdf|docx` (docx +
+      pdfkit); renderers omit answers (no answer-key leak); docx→pdf safe for
+      latin content (`ponytail:` note — Helvetica defaults, no unicode glyphs)
+- [x] P7a web materials page: "Generate All" (package job + wait) + per-type
+      status badges (not_generated/stale/generated v{version}) via GenStatusLine
+- [x] P7b web questions page: QuestionBankPanel (stats card + scope selects,
+      bank-dialog with bucket-row editor, check-deficits dryRun table, generate
+      missing); wired into page
+- [x] P7c web assessment picker: availability empty state + "Generate questions
+      in the bank" link (generation stays on the /questions page — no auto
+      trigger from assessment creation)
+- [x] P8 validation: `pnpm typecheck` (10), `pnpm lint` (9),
+      `pnpm --filter @catlium/api build`, `pnpm --filter @catlium/web build`,
+      worker `ruff` + `mypy` + import check, worker pytest 16 PASS,
+      export unit tests 5 PASS
+- [ ] P9 user-manual spot-check of live routes (see `docs/user-validation.md`)
+
 ## Phase 22 — Product Completion: Ship the Working App First (2026-09-10)
 
 Priority redirected from exhaustive testing to delivering the working

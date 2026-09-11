@@ -120,6 +120,37 @@ def get_topic_materials(topic_id: str, institute_id: str) -> list[dict[str, Any]
         ).fetchall()
 
 
+def get_chapter_materials(chapter_id: str, institute_id: str) -> list[dict[str, Any]]:
+    """READY materials whose scope is the given chapter (direct or via topic)."""
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT m.* FROM materials m"
+            " LEFT JOIN topics t ON m.topic_id = t.id"
+            " WHERE m.institute_id = %s"
+            " AND m.status = 'ACTIVE' AND m.processing_status = 'READY'"
+            " AND m.text_content IS NOT NULL AND length(btrim(m.text_content)) > 0"
+            " AND (m.chapter_id = %s OR t.chapter_id = %s)"
+            " ORDER BY m.created_at ASC",
+            (institute_id, chapter_id, chapter_id),
+        ).fetchall()
+
+
+def get_subject_materials(subject_id: str, institute_id: str) -> list[dict[str, Any]]:
+    """READY materials whose scope falls under the given subject."""
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT m.* FROM materials m"
+            " LEFT JOIN topics t ON m.topic_id = t.id"
+            " LEFT JOIN chapters c ON COALESCE(m.chapter_id, t.chapter_id) = c.id"
+            " WHERE m.institute_id = %s"
+            " AND m.status = 'ACTIVE' AND m.processing_status = 'READY'"
+            " AND m.text_content IS NOT NULL AND length(btrim(m.text_content)) > 0"
+            " AND (m.subject_id = %s OR c.subject_id = %s)"
+            " ORDER BY m.created_at ASC",
+            (institute_id, subject_id, subject_id),
+        ).fetchall()
+
+
 def insert_ai_content(
     institute_id: str,
     *,
@@ -190,6 +221,7 @@ def insert_generated_questions(
     chapter_id: str | None,
     topic_id: str | None,
     created_by: str,
+    provenance: dict[str, Any] | None = None,
 ) -> list[str]:
     """Persist AI-generated questions as PENDING rows in the ``questions`` table.
 
@@ -207,9 +239,9 @@ def insert_generated_questions(
                 "INSERT INTO questions"
                 " (institute_id, subject_id, chapter_id, topic_id, stem, question_type,"
                 "  difficulty, explanation, payload, source, approval_status, status,"
-                "  created_by, updated_by)"
+                "  created_by, updated_by, provenance)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AI_GENERATED', 'PENDING',"
-                "  'ACTIVE', %s, %s)"
+                "  'ACTIVE', %s, %s, %s)"
                 " RETURNING id",
                 (
                     institute_id,
@@ -223,6 +255,7 @@ def insert_generated_questions(
                     Jsonb(q["payload"]),
                     created_by,
                     created_by,
+                    Jsonb(provenance) if provenance is not None else None,
                 ),
             )
             row = cur.fetchone()

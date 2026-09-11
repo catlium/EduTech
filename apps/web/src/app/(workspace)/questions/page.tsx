@@ -25,6 +25,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { useTenant, canManage } from "@/lib/tenant";
+import { QuestionBankPanel } from "@/components/questions/question-bank-panel";
 import { PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { ErrorState } from "@/components/app/error-state";
@@ -70,6 +71,9 @@ import type {
   FillInBlankPayload,
   McqPayload,
   TrueFalsePayload,
+  QuestionBankStats,
+  GenerateMoreQuestionsResponse,
+  GenerateMoreBucketStatus,
 } from "@catlium/contracts";
 import {
   CreateQuestionRequestSchema,
@@ -81,6 +85,12 @@ import {
 const QUESTION_TYPES = ["MCQ", "TRUE_FALSE", "FILL_IN_BLANK"] as const;
 const DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
 const STATUS_TABS = ["all", "PENDING", "APPROVED", "REJECTED"] as const;
+
+interface BankBucketRow {
+  questionType: QuestionType;
+  difficulty: QuestionDifficulty;
+  count: number;
+}
 
 const DEFAULT_CASCADE = { subjectId: "", chapterId: "", topicId: "" };
 type Cascade = typeof DEFAULT_CASCADE;
@@ -850,6 +860,15 @@ export default function QuestionsListPage() {
           )
         }
       />
+
+      <div className="mb-4">
+        <QuestionBankPanel
+          subjects={subjects}
+          chapters={chapters}
+          topics={topics}
+          onChanged={() => void refresh()}
+        />
+      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative">

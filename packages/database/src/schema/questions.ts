@@ -29,6 +29,9 @@ export const questions = pgTable(
     explanation: text('explanation'),
     payload: jsonb('payload').notNull(),
     source: varchar('source', { length: 20 }).notNull().default('MANUAL'),
+    // AI-generation provenance: operation, jobId, provider, model, generatedAt,
+    // source reference (filled by the worker for AI_GENERATED questions).
+    provenance: jsonb('provenance'),
     approvalStatus: varchar('approval_status', { length: 20 }).notNull().default('PENDING'),
     status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
     createdBy: uuid('created_by')

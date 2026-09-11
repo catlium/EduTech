@@ -56,3 +56,41 @@ def build_messages(
 
 def parse_questions_json(content: str) -> dict[str, Any]:
     return parse_json_object(content)
+
+
+_SYSTEM_BANK_TEMPLATE = (
+    "You are a question generator for an education platform. Given the source "
+    "material, produce questions covering the following required quotas: "
+    "{quota_desc}. Total: {total} questions. Respond with ONLY a JSON object "
+    "and nothing else (no markdown code fences) matching exactly this schema:\n"
+    '{{ "questions": [\n'
+    "  {{\n"
+    '    "stem": string,\n'
+    '    "questionType": "MCQ" | "TRUE_FALSE" | "FILL_IN_BLANK",\n'
+    '    "difficulty": "EASY" | "MEDIUM" | "HARD",\n'
+    '    "explanation": string (optional),\n'
+    '    "payload": {{\n'
+    '      "MCQ": {{"choices": [{{"id": string, "text": string}}], "correctChoiceId": string}},\n'
+    '      "TRUE_FALSE": {{"correctAnswer": boolean}},\n'
+    '      "FILL_IN_BLANK": {{"acceptableAnswers": [string]}}\n'
+    "    }}\n"
+    "  }}\n"
+    "]}}\n"
+    "Each question must have questionType and difficulty fields matching one "
+    "of the requested quotas. For MCQ, provide at least two choices and set "
+    'correctChoiceId to the id of the correct choice. "explanation" is optional.'
+)
+
+
+def build_bank_messages(
+    context: str, source_label: str, *, quota_desc: str, total: int
+) -> list[dict[str, str]]:
+    user_prompt = (
+        f"Source material ({source_label}):\n\n{context}\n\n"
+        f"Generate {total} questions covering the requested quotas. Return only JSON."
+    )
+    system = _SYSTEM_BANK_TEMPLATE.format(quota_desc=quota_desc, total=total)
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_prompt},
+    ]

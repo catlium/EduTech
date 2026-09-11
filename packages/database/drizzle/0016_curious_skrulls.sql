@@ -1,0 +1,3 @@
+DROP INDEX "jobs_active_generation_unique";--> statement-breakpoint
+ALTER TABLE "questions" ADD COLUMN "provenance" jsonb;--> statement-breakpoint
+CREATE UNIQUE INDEX "jobs_active_generation_unique" ON "jobs" USING btree ("institute_id",((payload -> 'operation')),((payload -> 'source' ->> 'type')),((payload -> 'source' ->> 'id'))) WHERE type IN ('AI_GENERATE_NOTE', 'AI_GENERATE_SUMMARY', 'AI_GENERATE_FLASHCARDS', 'AI_GENERATE_CONCEPTS', 'AI_GENERATE_CONTENT_PACKAGE', 'AI_GENERATE_SYLLABUS', 'AI_GENERATE_QUESTIONS', 'AI_GENERATE_BLUEPRINT') AND status IN ('queued', 'processing');
