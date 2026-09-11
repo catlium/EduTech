@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Building2, ShieldCheck, UserPlus, Users, UserCog } from 'lucide-react';
 
@@ -19,8 +19,10 @@ export default function InstitutePage() {
   const [users, setUsers] = useState<InstituteUser[] | null>(null);
   const [subjects, setSubjects] = useState<SubjectResponse[] | null>(null);
   const [error, setError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    if (!institute) return;
     const ctrl = new AbortController();
     setError(false);
     Promise.all([
@@ -36,7 +38,15 @@ export default function InstitutePage() {
         setError(true);
       });
     return () => ctrl.abort();
-  }, []);
+  }, [institute, retryToken]);
+
+  useEffect(() => load(), [load]);
+
+  function onRetry() {
+    setUsers(null);
+    setSubjects(null);
+    setRetryToken((t) => t + 1);
+  }
 
   const teachers = users?.filter((u) => u.roles.includes('TEACHER')) ?? [];
   const students = users?.filter((u) => u.roles.includes('STUDENT')) ?? [];
@@ -64,7 +74,7 @@ export default function InstitutePage() {
       />
 
       {error ? (
-        <ErrorState onRetry={() => setError(false)} />
+        <ErrorState onRetry={onRetry} />
       ) : users === null || subjects === null ? (
         <SkeletonCards count={4} />
       ) : (

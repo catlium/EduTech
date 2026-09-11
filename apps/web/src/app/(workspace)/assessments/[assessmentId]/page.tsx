@@ -59,7 +59,14 @@ function scheduleRange(startsAt?: string | null, endsAt?: string | null): string
     new Date(v).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   if (startsAt && endsAt) return `${fmt(startsAt)} – ${fmt(endsAt)}`;
   if (startsAt) return `From ${fmt(startsAt)}`;
-  return `Until ${fmt(endsAt!)}`;
+  return `Until ${endsAt!}`;
+}
+
+function toLocalInput(dt?: string | null): string | undefined {
+  if (!dt) return undefined;
+  const d = new Date(dt);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function workflowHint(status: AssessmentResponse["status"]): string | null {
@@ -85,6 +92,7 @@ export default function AssessmentDetailPage() {
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editInstructions, setEditInstructions] = useState("");
   const editForm = useForm<UpdateAssessmentRequest>({
     resolver: zodResolver(UpdateAssessmentRequestSchema),
   });
@@ -154,9 +162,10 @@ export default function AssessmentDetailPage() {
       description: assessment.description ?? undefined,
       durationMinutes: assessment.durationMinutes ?? undefined,
       maxMarks: assessment.maxMarks ?? undefined,
-      startsAt: assessment.startsAt?.slice(0, 16) ?? undefined,
-      endsAt: assessment.endsAt?.slice(0, 16) ?? undefined,
+      startsAt: toLocalInput(assessment.startsAt),
+      endsAt: toLocalInput(assessment.endsAt),
     });
+    setEditInstructions((assessment.instructions as { text?: string } | null)?.text ?? "");
     setEditOpen(true);
   }
 
@@ -164,6 +173,9 @@ export default function AssessmentDetailPage() {
     if (!assessment) return;
     setEditSubmitting(true);
     try {
+      const instructions = editInstructions.trim()
+        ? { text: editInstructions.trim() }
+        : null;
       const res = await api<{ assessment: AssessmentResponse }>(`/assessments/${assessment.id}`, {
         method: "PATCH",
         body: {
@@ -172,6 +184,7 @@ export default function AssessmentDetailPage() {
           maxMarks: values.maxMarks ?? null,
           startsAt: values.startsAt ?? null,
           endsAt: values.endsAt ?? null,
+          instructions,
         },
       });
       setAssessment(res.assessment);
@@ -413,6 +426,17 @@ export default function AssessmentDetailPage() {
           {scheduleRange(assessment.startsAt, assessment.endsAt) && (
             <p className="mt-1 text-muted-foreground">{scheduleRange(assessment.startsAt, assessment.endsAt)}</p>
           )}
+          {assessment.description && (
+            <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{assessment.description}</p>
+          )}
+          {(assessment.instructions as { text?: string } | null)?.text && (
+            <div className="mt-3 rounded-md bg-muted p-3 text-sm">
+              <p className="font-medium">Instructions</p>
+              <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                {(assessment.instructions as { text?: string }).text}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -530,6 +554,17 @@ export default function AssessmentDetailPage() {
                   })}
                 />
               </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-instructions">Instructions (one per line)</Label>
+              <Textarea
+                id="edit-instructions"
+                className="resize-none"
+                rows={3}
+                value={editInstructions}
+                onChange={(e) => setEditInstructions(e.target.value)}
+                placeholder="Read carefully before answering..."
+              />
             </div>
             {editForm.formState.errors.startsAt?.message && (
               <p className="text-sm text-destructive">{editForm.formState.errors.startsAt.message}</p>

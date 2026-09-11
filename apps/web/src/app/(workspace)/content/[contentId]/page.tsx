@@ -85,7 +85,7 @@ export default function ContentDetailPage() {
     if (!editDraft) return;
     setSaving(true);
     try {
-      await api(`/content/${contentId}`, { method: 'PATCH', body: JSON.stringify({ payload: editDraft }) });
+      await api(`/content/${contentId}`, { method: 'PATCH', body: { payload: editDraft } });
       toast.success('Content updated');
       setEditDraft(null);
       refresh();

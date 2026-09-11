@@ -125,7 +125,6 @@ export default function PatternBuilderPage() {
 
   const [assessmentOpen, setAssessmentOpen] = useState(false);
   const [assessmentTitle, setAssessmentTitle] = useState('');
-  const [assessmentMaxMarks, setAssessmentMaxMarks] = useState<number | ''>('');
   const [creatingAssessment, setCreatingAssessment] = useState(false);
 
   const alive = useRef(true);
@@ -407,7 +406,6 @@ export default function PatternBuilderPage() {
     try {
       const body: Record<string, unknown> = {};
       if (assessmentTitle.trim()) body.title = assessmentTitle.trim();
-      if (assessmentMaxMarks !== '') body.maxMarks = Number(assessmentMaxMarks);
       const { assessment } = await api<{ assessment: { id: string } }>(
         `/paper-patterns/${pattern.id}/assessment`,
         { method: 'POST', body },
@@ -479,6 +477,7 @@ export default function PatternBuilderPage() {
   }
 
   const canApprove = pattern.status !== 'APPROVED';
+  const readOnly = pattern.status === 'APPROVED';
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -500,9 +499,11 @@ export default function PatternBuilderPage() {
               <StatusBadge status={pattern.status} />
               {isTeacher && (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
-                    Analyze
-                  </Button>
+                  {!readOnly && (
+                    <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
+                      Analyze
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={onValidate} disabled={validating}>
                     {validating && <Loader2 className="mr-1 size-3 animate-spin" />}
                     Validate
@@ -520,21 +521,28 @@ export default function PatternBuilderPage() {
                         setAssessmentTitle(
                           pattern.title ? `${pattern.title} — Assessment` : 'Assessment',
                         );
-                        setAssessmentMaxMarks(totals.marks || '');
                         setAssessmentOpen(true);
                       }}
                     >
                       Create Assessment
                     </Button>
                   )}
-                  <Button size="sm" onClick={() => setReviewOpen(true)}>
-                    <Eye className="mr-1 size-3.5" /> Review &amp; Save
-                  </Button>
+                  {!readOnly && (
+                    <Button size="sm" onClick={() => setReviewOpen(true)}>
+                      <Eye className="mr-1 size-3.5" /> Review &amp; Save
+                    </Button>
+                  )}
                 </>
               )}
             </div>
           }
         />
+
+        {readOnly && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            This pattern is approved and read-only. Create an assessment from it instead.
+          </div>
+        )}
 
         {/* structure-loaded banner */}
         {structureLoaded && pattern.structure === null && sections.length > 0 && (
@@ -1230,16 +1238,10 @@ export default function PatternBuilderPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="assess-marks">Max marks</Label>
-                <Input
-                  id="assess-marks"
-                  type="number"
-                  min={1}
-                  value={assessmentMaxMarks}
-                  onChange={(e) =>
-                    setAssessmentMaxMarks(e.target.value ? Number(e.target.value) : '')
-                  }
-                />
+                <span className="text-sm font-medium">Total marks</span>
+                <p className="rounded-md bg-muted px-3 py-2 text-sm">
+                  {totals.marks > 0 ? totals.marks : '—'}
+                </p>
               </div>
             </div>
             <DialogFooter>

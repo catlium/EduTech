@@ -126,6 +126,7 @@ export default function MaterialsListPage() {
 
   const uploadFileRef = useRef<HTMLInputElement>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadTitle, setUploadTitle] = useState("");
 
   const textForm = useForm<CreateTextMaterialRequest>({
     resolver: zodResolver(CreateTextMaterialRequestSchema),
@@ -328,6 +329,7 @@ export default function MaterialsListPage() {
     try {
       const form = new FormData();
       form.append("file", uploadFile);
+      form.append("title", uploadTitle.trim());
       if (scope.topicId) form.append("topicId", scope.topicId);
       else if (scope.chapterId) form.append("chapterId", scope.chapterId);
       else form.append("subjectId", scope.subjectId);
@@ -338,6 +340,7 @@ export default function MaterialsListPage() {
       toast.success("File uploaded");
       setDialogMode(null);
       setUploadFile(null);
+      setUploadTitle("");
       if (uploadFileRef.current) uploadFileRef.current.value = "";
       setScope((s) => ({ ...s, subjectId: "", chapterId: "", topicId: "" }));
       refresh();
@@ -661,6 +664,16 @@ export default function MaterialsListPage() {
           </DialogHeader>
           <form onSubmit={onUpload} className="space-y-4">
             <div className="grid gap-2">
+              <Label htmlFor="upload-title">Title *</Label>
+              <Input
+                id="upload-title"
+                value={uploadTitle}
+                placeholder="e.g. Chapter 4 — Photosynthesis"
+                onChange={(e) => setUploadTitle(e.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="upload-file">File *</Label>
               <Input
                 id="upload-file"
@@ -677,7 +690,7 @@ export default function MaterialsListPage() {
               <Button type="button" variant="ghost" onClick={() => setDialogMode(null)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || !uploadFile || !scopeId}>
+              <Button type="submit" disabled={submitting || !uploadFile || !scopeId || !uploadTitle.trim()}>
                 {submitting ? "Uploading…" : "Upload"}
               </Button>
             </DialogFooter>

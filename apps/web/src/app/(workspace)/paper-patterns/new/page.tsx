@@ -23,8 +23,6 @@ import {
 } from "@/components/ui/select";
 import type { SubjectResponse } from "@catlium/contracts";
 
-const SOURCE_TYPES = ["MANUAL", "TEXT", "MATERIAL", "PREVIOUS_YEAR_PAPER"] as const;
-
 export default function NewPaperPatternPage() {
   const router = useRouter();
   const { institute } = useTenant();
@@ -32,7 +30,6 @@ export default function NewPaperPatternPage() {
   const [subjectId, setSubjectId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [sourceType, setSourceType] = useState<string>("MANUAL");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -46,13 +43,11 @@ export default function NewPaperPatternPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!institute || !subjectId) return;
+    if (!institute || !subjectId || !title.trim()) return;
     setSubmitting(true);
     try {
-      const body: Record<string, unknown> = { subjectId };
-      if (title.trim()) body.title = title.trim();
+      const body: Record<string, unknown> = { subjectId, title: title.trim() };
       if (description.trim()) body.description = description.trim();
-      if (sourceType !== "MANUAL") body.sourceType = sourceType;
       const { pattern } = await api<{ pattern: { id: string } }>("/paper-patterns", {
         method: "POST",
         body,
@@ -95,12 +90,13 @@ export default function NewPaperPatternPage() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="title">Title</Label>
+              <Label htmlFor="title">Title *</Label>
               <Input
                 id="title"
                 placeholder="e.g. Midterm Blueprint"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                required
               />
             </div>
             <div className="grid gap-2">
@@ -113,26 +109,11 @@ export default function NewPaperPatternPage() {
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-            <div className="grid gap-2">
-              <Label>Source type</Label>
-              <Select value={sourceType} onValueChange={setSourceType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SOURCE_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t.replace(/_/g, " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => router.back()}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || !subjectId}>
+              <Button type="submit" disabled={submitting || !subjectId || !title.trim()}>
                 {submitting ? "Creating..." : "Create Pattern"}
               </Button>
             </div>

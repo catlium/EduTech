@@ -111,9 +111,7 @@ export default function DashboardPage() {
   );
   const hasProcessing = processingMaterials.length > 0;
 
-  const pendingQuestions = questions.filter(
-    (q) => q.status === "DRAFT" || q.status === "REVIEW",
-  );
+const pendingQuestions = questions.filter((q) => q.approvalStatus === "PENDING");
 
   return (
     <div className="space-y-8">
