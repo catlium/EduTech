@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Search,
   Sparkles,
   Trash2,
   X,
@@ -354,6 +355,7 @@ export default function QuestionsListPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [difficultyFilter, setDifficultyFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<QuestionListItem | null>(null);
@@ -788,7 +790,8 @@ export default function QuestionsListPage() {
     (q) =>
       (statusFilter === "all" || q.approvalStatus === statusFilter) &&
       (typeFilter === "all" || q.questionType === typeFilter) &&
-      (difficultyFilter === "all" || q.difficulty === difficultyFilter),
+      (difficultyFilter === "all" || q.difficulty === difficultyFilter) &&
+      (!search.trim() || q.stem.toLowerCase().includes(search.trim().toLowerCase())),
   );
 
   const scopeLabel = (q: QuestionListItem): string => {
@@ -847,6 +850,15 @@ export default function QuestionsListPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search questions…"
+            className="h-8 w-56 pl-7"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <Tabs value={statusFilter} onValueChange={setStatusFilter}>
           <TabsList>
             {STATUS_TABS.map((status) => (

@@ -66,6 +66,7 @@ export class QuestionsController {
     difficulty?: 'EASY' | 'MEDIUM' | 'HARD',
     @Query('approvalStatus', new ParseEnumPipe(['PENDING', 'APPROVED', 'REJECTED'], { optional: true }))
     approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED',
+    @Query('q') q?: string,
     @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
     @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
     @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
@@ -74,6 +75,7 @@ export class QuestionsController {
       questionType,
       difficulty,
       approvalStatus,
+      q,
       subjectId,
       chapterId,
       topicId,

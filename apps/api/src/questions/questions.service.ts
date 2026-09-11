@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc, inArray, type SQL } from 'drizzle-orm';
+import { eq, and, desc, ilike, inArray, type SQL } from 'drizzle-orm';
 import { questions, subjects, chapters, topics } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { QuestionPayloadSchemas } from '@catlium/contracts';
@@ -15,6 +15,7 @@ interface ListQuestionFilters {
   questionType?: QuestionType;
   difficulty?: QuestionDifficulty;
   approvalStatus?: QuestionApprovalStatus;
+  q?: string;
   subjectId?: string;
   chapterId?: string;
   topicId?: string;
@@ -87,6 +88,9 @@ export class QuestionsService {
     }
     if (filters.approvalStatus !== undefined) {
       conditions.push(eq(questions.approvalStatus, filters.approvalStatus));
+    }
+    if (filters.q) {
+      conditions.push(ilike(questions.stem, `%${filters.q}%`));
     }
     if (filters.subjectId !== undefined) {
       conditions.push(eq(questions.subjectId, filters.subjectId));
