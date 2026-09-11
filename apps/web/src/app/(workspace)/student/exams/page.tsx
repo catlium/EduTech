@@ -9,6 +9,8 @@ import { formatDateTime } from "@/lib/utils";
 import { useTenant } from "@/lib/tenant";
 import { PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
+import { ErrorState } from "@/components/app/error-state";
+import { SkeletonCards } from "@/components/app/loading";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +30,7 @@ export default function StudentExamsPage() {
   const [open, setOpen] = useState<AvailableAssessment[]>([]);
   const [history, setHistory] = useState<AttemptHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!institute) return;
@@ -40,14 +43,25 @@ export default function StudentExamsPage() {
         setOpen(avail.assessments);
         setHistory(mine.attempts);
       })
-      .catch((error) => {
-        if (error instanceof ApiError) toast.error(error.message);
+      .catch((err) => {
+        if (!(err instanceof DOMException && err.name === "AbortError")) {
+          setError(err instanceof ApiError ? err.message : "Failed to load exams");
+        }
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
   }, [institute]);
 
   if (!institute) return null;
+
+  if (error) {
+    return (
+      <div>
+        <PageHeader title="Exams" />
+        <ErrorState description={error} onRetry={() => window.location.reload()} />
+      </div>
+    );
+  }
 
   const openCount = open.length;
   const inProgress = history.filter((a) => a.status === "IN_PROGRESS");
@@ -63,7 +77,7 @@ export default function StudentExamsPage() {
           <CalendarClock className="size-4 text-muted-foreground" /> Open exams ({openCount})
         </h2>
         {loading ? (
-          <p className="text-muted-foreground">Loading…</p>
+          <SkeletonCards count={3} />
         ) : open.length === 0 ? (
           <EmptyState
             icon={<ClipboardList className="size-8" />}
@@ -123,7 +137,7 @@ export default function StudentExamsPage() {
           <History className="size-4 text-muted-foreground" /> My attempts
         </h2>
         {loading ? (
-          <p className="text-muted-foreground">Loading…</p>
+          <SkeletonCards count={2} />
         ) : history.length === 0 ? (
           <EmptyState
             icon={<Trophy className="size-8" />}

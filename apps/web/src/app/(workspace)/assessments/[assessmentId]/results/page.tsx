@@ -10,6 +10,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
 import { useTenant } from "@/lib/tenant";
 import { PageHeader } from "@/components/app/page-header";
+import { SkeletonCards } from "@/components/app/loading";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -67,11 +68,7 @@ export default function AssessmentResultsPage() {
       />
 
       {loading ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          </CardContent>
-        </Card>
+        <SkeletonCards count={4} />
       ) : (
         <>
           <Card>

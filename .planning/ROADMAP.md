@@ -22,8 +22,7 @@ Frontend is part of the master roadmap and has its own implementation phases (no
 ## Completion Summary (verified against codebase)
 
 - ✓ Complete: Phases 1-18 + demo milestone Waves 0-4 (backend fully green; Phase 18 Paper Pattern backend COMPLETE 2026-09-09)
-- ◆ Next: Phase 19 — Frontend Foundation (gate open)
-- ○ Not started: Frontend integration phases (19-26) — gate open, can begin
+- ◆ IN PROGRESS: Phase 19 — Frontend Product Transformation (core learning depth). Frontend workstreams 20-26 are sub-scopes of this phase: 20-23 PARTIALLY IMPLEMENTED, 24 IMPLEMENTED, 25 DEFERRED, 26 REMAINING.
 
 ## Phase 1 — Backend Foundation & Authentication ✓
 
@@ -257,65 +256,104 @@ lint/build PASS. Reqs TST-01..07.
 > (sources: `docs/project-status.md`, `docs/tasks.md` FE-01..FE-13), per the
 > Phase 19 brief: (1) shell+design system+auth `8b1844a`, (2) teacher academic/
 > syllabus/materials/AI `fbda5d9`, (3) question bank+blueprint+assessment
-> `433692b`, (4) student learning+practice+exam `5ddfecc`, (5) E2E+polish+docs
-> (in progress). Phase 18 backend API docs per feature are cross-linked below.
+> `433692b`, (4) student learning+practice+exam `5ddfecc`, (5) product polish +
+> core-learning depth + docs close (IN PROGRESS). Phase 18 backend API docs per
+> feature are cross-linked below.
 
-## Phase 19 — Frontend Product Transformation ◆  PARTIAL (checkpoints 1-4 done; 5 IN PROGRESS)
+## Phase 19 — Frontend Product Transformation ◆ IN PROGRESS (2026-09-11)
 
-**Goal:** Product-grade shadcn/ui frontend across teacher + student journeys.
-**Scope:** Phases 20-26 below all land under this consolidated phase.
-**Status:** PARTIAL as of 2026-09-11. **Implemented** (checkpoints 1-4, committed+ pushed: `8b1844a`, `fbda5d9`, `433692b`, `5ddfecc`): app shell + design system + auth; teacher academic/syllabus/materials/AI; question bank + blueprint + assessment builder; student learning/practice/exam/attempts/result; teacher analytics + profile. FE-01..12 implemented. **Remaining implementation:** checkpoint 5 — product polish pass + docs close (FE-13). **Deferred (recorded, not dead):** full browser-journey matrix + cross-browser regression (WF-06..10) — run only after the product is substantially complete (BUILD-FIRST directive 2026-09-11). Phases 20-26 below are NOT standalone deliverables; they are the checklist for this consolidated phase, with phase 19 their only upstream.
+**Goal:** Product-grade shadcn/ui frontend across teacher + student journeys,
+with the **core learning experience** (AI Notes → Flashcards → Questions →
+Practice → Examination → Results) genuinely usable — not just wired routes.
 
-> ⚠️ **Roapruth correction 2026-09-11:** earlier revisions mis-stated Phases 20-26 as "DELIVERED under consolidated Phase 19." They are not delivered: the consolidated phase checkpoint 5 is still in progress and the browser-matrix validation for FE-13..15 is deferred. Statuses below reflect implemented-vs-remaining, not a completion claim.
+**Status: IN PROGRESS as of 2026-09-11. What is COMPLETE** (checkpoints 1-4,
+committed + pushed: `8b1844a`, `fbda5d9`, `433692b`, `5ddfecc`): app shell +
+design system + auth; teacher academic/syllabus/materials management; question
+bank + blueprint + assessment builder; student learning/practice/exam/attempts/
+result; teacher analytics + profile. All of these are MEETS-basic-barrier:
+routes exist, are wired to the live API, and pass typecheck/build/lint.
 
-## Phase 20 — Frontend Teacher Workflows: Academic, Materials, AI ◆ ○
+**What is NOT complete — the current focus of checkpoint 5:** the core learning
+features below are not yet a *polished learning product*. They are implemented
+to a basic level and need real UX depth before the product is complete.
+Phases 20-26 below are WORKSTREAMS / SUB-SCOPES of this consolidated phase,
+NOT completed deliverables. Each carries its own honest status below.
 
-**Goal:** Teacher UI for the core learning loop.
-**Scope:** Academic structure management (subject/chapter/topic + ordering); learning-materials management (upload, list, metadata, processing status, retry); AI summaries, AI flashcards, and important-concepts generation/retrieval/display.
-**Success Criteria:** A teacher can manage their academic structure and materials and trigger/view AI-generated study content in the UI.
-**Status:** ✓ IMPLEMENTED under consolidated Phase 19 (2026-09-10); phase still OPEN / checkpoint 5 (polish+E2E) pending. Reqs: FE-02..04.
+**Deferred (recorded, not dead):** full browser-journey matrix + cross-browser
+regression (WF-06..10). These are NOT the next priority — core learning depth
+comes first. They run only after the product is substantially complete.
 
-## Phase 21 — Frontend Question Bank & Exam Authoring ◆ ○
+> ⚠️ **Truth correction 2026-09-11 (user directive):** earlier revisions
+> mis-stated Phases 20-26 as "DELIVERED under consolidated Phase 19." That is
+> false and misleading. Implementing a router page or wiring an existing
+> endpoint is NOT delivering a learning product. Statuses below now use
+> IMPLEMENTED / PARTIALLY IMPLEMENTED / IN PROGRESS / REMAINING / DEFERRED and
+> reflect genuine functionality, not route existence.
 
-**Goal:** Teacher UI for question and assessment management.
-**Scope:** Question bank (manual create, AI question generation, review/approval/rejection, filtering); quiz/examination authoring (add/remove questions, duration, max marks, instructions, scheduling, publish).
-**Success Criteria:** A teacher can author questions, approve/reject them, and create/publish an assessment in the UI.
-**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10) — CORE FLOWS IMPLEMENTED + wired to live API; browser-matrix validation + checkpoint-5 polish DEFERRED (phase still open). Reqs: FE-05..06.
+## Phase 20 — Workstream: Academic, Materials, AI Content ◆ IN PROGRESS
 
-## Phase 22 — Frontend Student Examination & Results ◆ ○
+**Goal:** Teacher core learning loop + student notes experience.
+**Scope:** Academic structure (done); materials management (done); AI content
+generation + **Notes/Summary product**. Generate, review, edit, activate;
+student browse-by-subject, proper reading experience (typography, headings,
+key concepts, important points, associated topic), loading/empty/error states.
+**Status:** PARTIALLY IMPLEMENTED. Academic structure + materials management
+COMPLETE. AI content generation + content list/detail pages exist and are API
+wired, but the **Notes reading experience is not yet a real notes product**
+(polish, edit-notes UX, provenance display, student browsing depth pending).
+Reqs: FE-02..04.
 
-**Goal:** Student-facing exam attempt and results UI.
-**Scope:** Available-exam list; start attempt / answer / update / submit; attempt state + timer; results (score, correct/incorrect, question-level) with security enforced (no correct-answer exposure during an active attempt).
-**Success Criteria:** A student can take an assessment end-to-end and view their result.
-**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10) — CORE FLOWS IMPLEMENTED + wired to live API; browser-matrix validation + checkpoint-5 polish DEFERRED (phase still open). Reqs: FE-07..08.
+## Phase 21 — Workstream: Question Bank & Exam Authoring ◆ IN PROGRESS
 
-## Phase 23 — Frontend Teacher Analytics & Practice ◆ ○
+**Goal:** Teacher question workflow + student question practice.
+**Scope:** Question bank (manual create, AI generation, review/approve/reject,
+**edit**, filters, detail view, topic/chapter association); student practice
+(topic-based, difficulty-based, feedback, explanation/review, history).
+**Status:** PARTIALLY IMPLEMENTED. Bank CRUD + filters + edit + batch
+approve/reject COMPLETE. Assessment authoring COMPLETE. Student-side question
+practice exists in `/practice` but needs depth (topic/difficulty-based flows +
+feedback/review quality). Reqs: FE-05..06.
 
-**Goal:** Teacher analytics dashboard + student practice UI.
-**Scope:** Teacher view of assessment analytics (average/highest/lowest, question accuracy, topic/difficulty performance); student practice (flashcards and questions, ungraded, with history).
-**Success Criteria:** Teacher sees per-assessment stats; student completes practice sessions independent of exam scoring.
-**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10) — CORE FLOWS IMPLEMENTED + wired to live API; browser-matrix validation + checkpoint-5 polish DEFERRED (phase still open). Reqs: FE-09..10.
+## Phase 22 — Workstream: Student Examination & Results ◆ IN PROGRESS
 
-## Phase 24 — Backend/Frontend Integration & API Contract Verification ◆ ○
+**Goal:** Student exam attempt and results UI.
+**Scope:** Available-exam list; start/answer/submit; timer; results review
+(score, correct/incorrect, question-level); answer-key security during attempt.
+**Status:** MOSTLY IMPLEMENTED. End-to-end attempt loop + results + timer +
+auto-submit all COMPLETE and API-wired. Remaining: polish-grade edge states.
+Reqs: FE-07..08.
 
-**Goal:** Wire the frontend to the live backend; verify each consumed endpoint from the frontend against `docs/api/`.
-**Scope:** Full API integration of all frontend features; frontend-driven API contract verification (method, path, auth, authorization, request/response, status codes, error format, pagination, filtering).
-**Success Criteria:** Every frontend feature operates against the real backend per the `docs/api/` contract.
-**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10) — CORE FLOWS IMPLEMENTED + wired to live API; browser-matrix validation + checkpoint-5 polish DEFERRED (phase still open). Reqs: FE-11, FE-12.
+## Phase 23 — Workstream: Teacher Analytics & Practice ◆ IN PROGRESS
 
-## Phase 25 — End-to-End & Security Testing ◆ ○
+**Goal:** Teacher analytics + student practice UI.
+**Scope:** Assessment analytics (COMPLETE); student practice — flashcards
+study tool (front/back flip, next/prev, progress, restart) and question drill
+with feedback/history.
+**Status:** PARTIALLY IMPLEMENTED. Teacher analytics COMPLETE. Practice sessions
+exist (start/history/player) but are **not yet a polished study tool** — the
+flashcard study interface and question-practice feedback need product depth.
+Reqs: FE-09..10.
 
-**Goal:** End-to-end testing of complete user journeys and authentication/security behavior across the stack.
-**Scope:** Full E2E flows (teacher material→AI→exam; student attempt→result); authentication/security testing (role restrictions, cross-tenant isolation, answer-key security); error/loading/empty states verified across flows.
-**Success Criteria:** Complete journeys pass; security rules hold end-to-end; all UI states handled.
-**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10) — CORE FLOWS IMPLEMENTED + wired to live API; browser-matrix validation + checkpoint-5 polish DEFERRED (phase still open). Reqs: FE-13, FE-14.
+## Phase 24 — Workstream: Backend/Frontend Integration ◆ IN PROGRESS
 
-## Phase 26 — Final Polish & Demonstration Readiness ◆ ○
+**Goal:** Frontend wired to live backend per `docs/api/` contract.
+**Scope:** Verify each consumed endpoint from the frontend.
+**Status:** IMPLEMENTED for existing features (all consume live API). Ongoing —
+each new core-learning depth fix must stay contract-correct. Reqs: FE-11, FE-12.
 
-**Goal:** Final UI/UX polish and readiness for a college demonstration.
-**Scope:** UI/UX polish, demo data/flow readiness, cross-browser/responsive checks, accessibility basics, final end-to-end run.
-**Success Criteria:** The full-stack application is polished and demonstrable end-to-end.
-**Status:** ✓ DELIVERED under consolidated Phase 19 (2026-09-10) — CORE FLOWS IMPLEMENTED + wired to live API; browser-matrix validation + checkpoint-5 polish DEFERRED (phase still open). Reqs: FE-15.
+## Phase 25 — Workstream: End-to-End & Security Testing ◆ DEFERRED
+
+**Goal:** E2E user journeys + security behavior across the stack.
+**Status:** DEFERRED (user directive 2026-09-11). Lightweight validation only
+(typecheck/build/lint + targeted sanity) while core learning depth is built.
+Error/loading/empty states are handled inline per feature. Reqs: FE-13, FE-14.
+
+## Phase 26 — Workstream: Final Polish & Demonstration Readiness ◆ REMAINING
+
+**Goal:** Final UI/UX polish + demonstration readiness.
+**Scope:** Cross-browser/responsive, accessibility basics, final end-to-end run.
+**Status:** REMAINING — runs after core learning features reach product depth.
+Reqs: FE-15.
 
 ---
 
@@ -324,8 +362,8 @@ lint/build PASS. Reqs TST-01..07.
 - Backend phases: 17
 - Backend ✓ Complete: 15 (Phases 1-15)
 - Demo milestone waves: 4 (Waves 0-4 ✓ complete, closed 2026-09-08)
-- Later backend phases: 2 (Phases 16-17), Phase 16 ✓ complete, Phase 17 next
-- Frontend/integration phases: 8 (Phases 18-25), deferred (demo milestone frontend shipped as Wave 3)
+- Later backend phases: 2 (Phases 16-17), Phase 16 ✓ complete, Phase 17 ✓ passed
+- Frontend: 1 consolidated phase (Phase 19) with 7 workstreams (former 20-26) — IN PROGRESS, core-learning focus
 - Frontend is part of the master roadmap (NOT out of scope)
 - Monorepo retained for both backend and frontend
 
@@ -344,5 +382,7 @@ lint/build PASS. Reqs TST-01..07.
 9. ✅ Phase 17 backend-complete checkpoint (closed 2026-09-09, 508/508)
 10. ✅ Phase 18 Paper Pattern / Blueprint backend (closed 2026-09-09, 583/583)
 
-**→ NEXT: Phase 19 — Frontend Foundation** (app shell, auth screens, API client,
-session/role handling). Frontend phases 19–26 can now begin.
+**→ NEXT: finish Phase 19 checkpoint 5 — core learning depth.** Priority order:
+1) AI Notes product (student reading experience + teacher edit/review), 2)
+Flashcard study tool, 3) Question practice depth. Browser-matrix validation
+(FE-13..15) stays deferred until the product is substantially complete.

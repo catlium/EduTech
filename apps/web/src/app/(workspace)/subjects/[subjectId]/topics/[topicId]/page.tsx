@@ -157,14 +157,19 @@ export default function TopicPage() {
           <div className="space-y-2">
             {materials.map((mat) => (
               <Card key={mat.id}>
-                <CardContent className="flex items-center gap-3 p-3">
-                  <FileText className="size-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{mat.title}</p>
-                    <p className="text-xs text-muted-foreground">{mat.materialType}</p>
-                  </div>
-                  <StatusBadge status={mat.processingStatus} />
-                  <StatusBadge status={mat.status} />
+                <CardContent className="p-0">
+                  <Link
+                    href={`/materials/${mat.id}`}
+                    className="flex items-center gap-3 rounded-md p-3 hover:bg-accent/50"
+                  >
+                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{mat.title}</p>
+                      <p className="text-xs text-muted-foreground">{mat.materialType}</p>
+                    </div>
+                    <StatusBadge status={mat.processingStatus} />
+                    <StatusBadge status={mat.status} />
+                  </Link>
                 </CardContent>
               </Card>
             ))}

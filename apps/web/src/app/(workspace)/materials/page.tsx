@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   FileText,
@@ -14,6 +14,7 @@ import {
   Archive,
   Eye,
   CheckCircle2,
+  X,
 } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
@@ -79,13 +80,6 @@ interface ScopeState {
   topicId: string;
 }
 
-function scopeLabel(m: MaterialResponse): string {
-  if (m.topicId) return m.topicId.slice(0, 8);
-  if (m.chapterId) return m.chapterId.slice(0, 8);
-  if (m.subjectId) return m.subjectId.slice(0, 8);
-  return "Unscoped";
-}
-
 function materialTypeLabel(m: MaterialResponse): string {
   if (m.fileName) {
     const ext = m.fileName.split(".").pop()?.toUpperCase();
@@ -98,10 +92,22 @@ export default function MaterialsListPage() {
   const { institute } = useTenant();
   const isTeacher = canManage(institute);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [materials, setMaterials] = useState<MaterialResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [scopeFilter, setScopeFilter] = useState(() => ({
+    subjectId: searchParams.get("subject") ?? "",
+    chapterId: searchParams.get("chapter") ?? "",
+    topicId: searchParams.get("topic") ?? "",
+  }));
+
+  const [hierarchy, setHierarchy] = useState<{
+    chapters: ChapterResponse[];
+    topics: TopicResponse[];
+  }>({ chapters: [], topics: [] });
 
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -138,6 +144,34 @@ export default function MaterialsListPage() {
   useEffect(() => {
     return fetchSubjects();
   }, [fetchSubjects]);
+
+  useEffect(() => {
+    if (scope.subjects.length === 0) return;
+    const ctrl = new AbortController();
+    Promise.all(
+      scope.subjects.map((s) =>
+        api<{ chapters: ChapterResponse[] }>(`/academic/subjects/${s.id}/chapters`, {
+          signal: ctrl.signal,
+        }),
+      ),
+    )
+      .then(async (results) => {
+        const chapters = results.flatMap((r) => r.chapters);
+        setHierarchy((h) => ({ ...h, chapters }));
+        return Promise.all(
+          chapters.map((c) =>
+            api<{ topics: TopicResponse[] }>(`/academic/chapters/${c.id}/topics`, {
+              signal: ctrl.signal,
+            }),
+          ),
+        );
+      })
+      .then((topicsResults) => {
+        setHierarchy((h) => ({ ...h, topics: topicsResults.flatMap((r) => r.topics) }));
+      })
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [scope.subjects]);
 
   const fetchChapters = useCallback(
     (subjectId: string) => {
@@ -183,6 +217,9 @@ export default function MaterialsListPage() {
     const params = new URLSearchParams();
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (processingFilter !== "all") params.set("processingStatus", processingFilter);
+    if (scopeFilter.topicId) params.set("topicId", scopeFilter.topicId);
+    else if (scopeFilter.chapterId) params.set("chapterId", scopeFilter.chapterId);
+    else if (scopeFilter.subjectId) params.set("subjectId", scopeFilter.subjectId);
     const qs = params.toString();
     api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ""}`, {
       signal: ctrl.signal,
@@ -195,7 +232,7 @@ export default function MaterialsListPage() {
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [institute, statusFilter, processingFilter]);
+  }, [institute, statusFilter, processingFilter, scopeFilter]);
 
   useEffect(() => {
     return refresh();
@@ -220,6 +257,27 @@ export default function MaterialsListPage() {
   }, [materials]);
 
   const scopeId = scope.topicId || scope.chapterId || scope.subjectId;
+
+  const subjectNames = new Map(scope.subjects.map((s) => [s.id, s.name]));
+  const chapterNames = new Map(hierarchy.chapters.map((c) => [c.id, c.name]));
+  const topicNames = new Map(hierarchy.topics.map((t) => [t.id, t.name]));
+
+  function materialScopeLabel(m: MaterialResponse): string {
+    if (m.topicId) return topicNames.get(m.topicId) ?? m.topicId.slice(0, 8);
+    if (m.chapterId) return chapterNames.get(m.chapterId) ?? m.chapterId.slice(0, 8);
+    if (m.subjectId) return subjectNames.get(m.subjectId) ?? m.subjectId.slice(0, 8);
+    return "Unscoped";
+  }
+
+  const filterLabel =
+    (scopeFilter.topicId && topicNames.get(scopeFilter.topicId)) ||
+    (scopeFilter.chapterId && chapterNames.get(scopeFilter.chapterId)) ||
+    (scopeFilter.subjectId && subjectNames.get(scopeFilter.subjectId)) ||
+    "selected scope";
+
+  function clearScopeFilter() {
+    setScopeFilter({ subjectId: "", chapterId: "", topicId: "" });
+  }
 
   function applyScope(field: "subjectId" | "chapterId" | "topicId", value: string) {
     textForm.setValue(field, value);
@@ -433,6 +491,15 @@ export default function MaterialsListPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        {(scopeFilter.subjectId || scopeFilter.chapterId || scopeFilter.topicId) && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2">
+            <p className="text-sm">Showing materials for:</p>
+            <span className="text-sm font-medium">{filterLabel}</span>
+            <Button size="sm" variant="ghost" onClick={clearScopeFilter}>
+              <X className="mr-1 size-3.5" /> Clear
+            </Button>
+          </div>
+        )}
         <Tabs value={processingFilter} onValueChange={setProcessingFilter}>
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
@@ -498,7 +565,7 @@ export default function MaterialsListPage() {
                 key={m.id}
                 icon={<FileText className="size-4" />}
                 title={m.title}
-                subtitle={`${materialTypeLabel(m)} · ${scopeLabel(m)} · ${formatDate(m.createdAt)}`}
+                subtitle={`${materialTypeLabel(m)} · ${materialScopeLabel(m)} · ${formatDate(m.createdAt)}`}
                 badges={
                   <>
                     <StatusBadge status={m.processingStatus} />

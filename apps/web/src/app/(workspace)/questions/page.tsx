@@ -14,6 +14,7 @@ import {
   Circle,
   CircleCheck,
   MoreHorizontal,
+  Pencil,
   Plus,
   Sparkles,
   Trash2,
@@ -32,6 +33,7 @@ import { SkeletonRows } from "@/components/app/loading";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -71,6 +73,8 @@ import type {
 import {
   CreateQuestionRequestSchema,
   GenerateQuestionsRequestSchema,
+  UpdateQuestionRequestSchema,
+  type UpdateQuestionRequest,
 } from "@catlium/contracts";
 
 const QUESTION_TYPES = ["MCQ", "TRUE_FALSE", "FILL_IN_BLANK"] as const;
@@ -355,6 +359,8 @@ export default function QuestionsListPage() {
   const [deleteTarget, setDeleteTarget] = useState<QuestionListItem | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<QuestionListItem | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [createCascade, setCreateCascade] = useState<Cascade>(DEFAULT_CASCADE);
   const [generateCascade, setGenerateCascade] = useState<Cascade>(DEFAULT_CASCADE);
@@ -366,6 +372,11 @@ export default function QuestionsListPage() {
   const [mcqCorrectId, setMcqCorrectId] = useState("");
   const [tfAnswer, setTfAnswer] = useState(true);
   const [fibAnswers, setFibAnswers] = useState([""]);
+
+  const [editChoices, setEditChoices] = useState<{ id: string; text: string }[]>([]);
+  const [editCorrectId, setEditCorrectId] = useState("");
+  const [editTfAnswer, setEditTfAnswer] = useState(true);
+  const [editFibAnswers, setEditFibAnswers] = useState<string[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -399,6 +410,32 @@ export default function QuestionsListPage() {
     resolver: zodResolver(GenerateFormSchema),
     defaultValues: { questionType: "MCQ", count: 5, difficulty: "" },
   });
+
+  const editForm = useForm<ManualFormValues>({
+    resolver: zodResolver(ManualFormSchema),
+    defaultValues: { stem: "", questionType: "MCQ", difficulty: "", explanation: "" },
+  });
+
+  function openEdit(q: QuestionListItem) {
+    setEditTarget(q);
+    editForm.reset({
+      stem: q.stem,
+      questionType: q.questionType,
+      difficulty: q.difficulty,
+      explanation: q.explanation ?? "",
+    });
+    if (q.questionType === "MCQ") {
+      const payload = q.payload as unknown as McqPayload;
+      setEditChoices(payload.choices.map((c) => ({ id: c.id, text: c.text })));
+      setEditCorrectId(payload.correctChoiceId);
+    } else if (q.questionType === "TRUE_FALSE") {
+      const payload = q.payload as unknown as TrueFalsePayload;
+      setEditTfAnswer(payload.correctAnswer);
+    } else {
+      const payload = q.payload as unknown as FillInBlankPayload;
+      setEditFibAnswers(payload.acceptableAnswers.map((a) => a));
+    }
+  }
 
   const refresh = useCallback(() => {
     if (!institute) return;
@@ -515,6 +552,111 @@ export default function QuestionsListPage() {
     setMcqCorrectId("");
     setTfAnswer(true);
     setFibAnswers([""]);
+  }
+
+  function buildPayload(
+    questionType: QuestionType,
+    choices: { id: string; text: string }[],
+    correctId: string,
+    tfValue: boolean,
+    fib: string[],
+  ): Record<string, unknown> | null {
+    if (questionType === "MCQ") {
+      const cleaned = choices.map((c) => ({ ...c, text: c.text.trim() })).filter((c) => c.text);
+      if (cleaned.length < 2) {
+        toast.error("Add at least 2 choices");
+        return null;
+      }
+      if (!cleaned.some((c) => c.id === correctId)) {
+        toast.error("Mark one choice as correct");
+        return null;
+      }
+      return { choices: cleaned, correctChoiceId: correctId };
+    }
+    if (questionType === "TRUE_FALSE") {
+      return { correctAnswer: tfValue };
+    }
+    const acceptableAnswers = fib.map((a) => a.trim()).filter(Boolean);
+    if (acceptableAnswers.length === 0) {
+      toast.error("Add at least 1 acceptable answer");
+      return null;
+    }
+    return { acceptableAnswers };
+  }
+
+  async function onSaveEdit() {
+    if (!editTarget) return;
+    const values = editForm.getValues();
+    const payload = buildPayload(
+      editTarget.questionType,
+      editChoices,
+      editCorrectId,
+      editTfAnswer,
+      editFibAnswers,
+    );
+    if (!payload) return;
+    const patch: UpdateQuestionRequest = {
+      stem: values.stem,
+      difficulty: values.difficulty || editTarget.difficulty,
+      explanation: values.explanation || "",
+      payload,
+    };
+    const parsed = UpdateQuestionRequestSchema.safeParse(patch);
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Invalid question");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api(`/questions/${editTarget.id}`, { method: "PATCH", body: patch });
+      toast.success("Question updated");
+      setEditTarget(null);
+      void refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update question");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allSelected = visible.length > 0 && visible.every((q) => next.has(q.id));
+      for (const q of visible) {
+        if (allSelected) next.delete(q.id);
+        else next.add(q.id);
+      }
+      return next;
+    });
+  }
+
+  async function runBatch(action: "approve" | "reject") {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setSubmitting(true);
+    try {
+      const { updated } = await api<{ updated: number }>(
+        action === "approve" ? "/questions/batch-approve" : "/questions/batch-reject",
+        { method: "POST", body: { questionIds: ids } },
+      );
+      toast.success(`${updated} question${updated !== 1 ? "s" : ""} ${action}ed`);
+      setSelected(new Set());
+      void refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : `Failed to ${action} questions`);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function resetManual() {
@@ -658,6 +800,7 @@ export default function QuestionsListPage() {
 
   const rowActions = (q: QuestionListItem) => {
     const actions: { label: string; icon: React.ReactNode; onClick: () => void; destructive?: boolean }[] = [];
+    actions.push({ label: "Edit", icon: <Pencil className="size-4" />, onClick: () => openEdit(q) });
     if (q.approvalStatus === "PENDING") {
       actions.push({ label: "Approve", icon: <Check className="size-4" />, onClick: () => onApprove(q) });
       actions.push({ label: "Reject", icon: <X className="size-4" />, onClick: () => onReject(q) });
@@ -739,6 +882,20 @@ export default function QuestionsListPage() {
             ))}
           </SelectContent>
         </Select>
+        {isTeacher && visible.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-8"
+            onClick={toggleAllVisible}
+          >
+            {selected.size > 0 && selected.size < visible.length
+              ? "Clear visible"
+              : visible.every((q) => selected.has(q.id))
+                ? "Select none"
+                : "Select all"}
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -759,12 +916,48 @@ export default function QuestionsListPage() {
         <p className="text-sm text-muted-foreground">No questions match the current filters.</p>
       ) : (
         <div className="space-y-3">
+          {isTeacher && selected.size > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-4 py-2.5">
+              <p className="text-sm">
+                <span className="font-medium">{selected.size}</span> selected
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={submitting}
+                  onClick={() => setSelected(new Set())}
+                >
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={submitting}
+                  onClick={() => void runBatch("reject")}
+                >
+                  <X className="mr-1 size-3.5" /> Reject
+                </Button>
+                <Button size="sm" disabled={submitting} onClick={() => void runBatch("approve")}>
+                  <Check className="mr-1 size-3.5" /> Approve
+                </Button>
+              </div>
+            </div>
+          )}
           {visible.map((q) => {
             const expanded = expandedId === q.id;
             return (
               <Card key={q.id}>
                 <CardContent className="pt-5">
                   <div className="flex items-start gap-3">
+                    {isTeacher && (
+                      <Checkbox
+                        className="mt-2 shrink-0"
+                        checked={selected.has(q.id)}
+                        onCheckedChange={() => toggleSelected(q.id)}
+                        aria-label={`Select question ${q.stem.slice(0, 40)}`}
+                      />
+                    )}
                     <button
                       type="button"
                       className="flex-1 text-left"
@@ -1055,6 +1248,110 @@ export default function QuestionsListPage() {
         destructive
         onConfirm={onDelete}
       />
+
+      <Dialog
+        open={editTarget !== null}
+        onOpenChange={(o) => !o && setEditTarget(null)}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit question</DialogTitle>
+            <DialogDescription>
+              Update the stem, difficulty, explanation, or answer payload. The question type and
+              scope cannot be changed.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); void onSaveEdit(); }} className="space-y-4">
+            <div className="grid gap-2">
+              <Label>Question Type</Label>
+              <Input value={editTarget?.questionType.replace(/_/g, " ")} disabled />
+            </div>
+            <div className="grid gap-2">
+              <Label>Difficulty</Label>
+              <Select
+                value={editForm.watch("difficulty")}
+                onValueChange={(v) =>
+                  editForm.setValue("difficulty", v as ManualFormValues["difficulty"])
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Optional" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No difficulty</SelectItem>
+                  {DIFFICULTIES.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-stem">Stem *</Label>
+              <Textarea
+                id="edit-stem"
+                placeholder="Enter the question stem"
+                className="min-h-24"
+                {...editForm.register("stem")}
+              />
+              {editForm.formState.errors.stem && (
+                <p className="text-sm text-destructive">
+                  {editForm.formState.errors.stem.message}
+                </p>
+              )}
+            </div>
+            {editTarget?.questionType === "MCQ" && (
+              <McqEditor
+                choices={editChoices}
+                correctId={editCorrectId}
+                setChoices={setEditChoices}
+                setCorrectId={setEditCorrectId}
+              />
+            )}
+            {editTarget?.questionType === "TRUE_FALSE" && (
+              <div className="grid gap-2">
+                <Label>Correct answer</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={editTfAnswer ? "default" : "outline"}
+                    onClick={() => setEditTfAnswer(true)}
+                  >
+                    True
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={!editTfAnswer ? "default" : "outline"}
+                    onClick={() => setEditTfAnswer(false)}
+                  >
+                    False
+                  </Button>
+                </div>
+              </div>
+            )}
+            {editTarget?.questionType === "FILL_IN_BLANK" && (
+              <FibEditor answers={editFibAnswers} setAnswers={setEditFibAnswers} />
+            )}
+            <div className="grid gap-2">
+              <Label htmlFor="edit-explanation">Explanation</Label>
+              <Textarea
+                id="edit-explanation"
+                placeholder="Optional explanation"
+                {...editForm.register("explanation")}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setEditTarget(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Saving…" : "Save changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

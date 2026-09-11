@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Timer, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +53,7 @@ export default function AttemptPlayerPage() {
   const { institute } = useTenant();
   const [attempt, setAttempt] = useState<AttemptDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Answer | null>>({});
   const [saving, setSaving] = useState(false);
@@ -74,7 +76,12 @@ export default function AttemptPlayerPage() {
         setAnswers(map);
       })
       .catch((error) => {
-        if (error instanceof ApiError) toast.error(error.message);
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (error instanceof ApiError && error.status === 404) {
+          setLoadError("not-found");
+        } else {
+          setLoadError(error instanceof ApiError ? error.message : "Failed to load attempt");
+        }
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
@@ -133,11 +140,61 @@ export default function AttemptPlayerPage() {
   );
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading…</p>;
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <Card>
+          <CardContent className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
+            Loading…
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loadError === "not-found") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <Card>
+          <CardContent className="space-y-3 py-12 text-center">
+            <AlertTriangle className="mx-auto size-8 text-muted-foreground" />
+            <p className="text-sm font-medium">Attempt not found</p>
+            <p className="text-xs text-muted-foreground">
+              This attempt may have been removed, or you may not have access.
+            </p>
+            <Button size="sm" asChild>
+              <Link href="/student/exams">Back to exams</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <Card>
+          <CardContent className="space-y-3 py-12 text-center">
+            <p className="text-sm text-muted-foreground">{loadError}</p>
+            <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   if (!attempt || !question) {
-    return <p className="text-muted-foreground">Attempt not found.</p>;
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            Attempt not found.
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const low = remaining !== null && remaining <= 60_000;

@@ -19,7 +19,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 
-type Tab = "all" | "NOTE" | "SUMMARY" | "FLASHCARD_SET" | "IMPORTANT_CONCEPTS";
+type Tab = "all" | "NOTE" | "SUMMARY" | "FLASHCARD_SET" | "IMPORTANT_CONCEPTS" | "CORNELL_NOTE";
 
 const contentTypeLabel: Record<string, string> = {
   NOTE: "Notes",
@@ -129,6 +129,7 @@ export default function ContentListPage() {
             <TabsTrigger value="SUMMARY">Summaries</TabsTrigger>
             <TabsTrigger value="FLASHCARD_SET">Flashcards</TabsTrigger>
             <TabsTrigger value="IMPORTANT_CONCEPTS">Concepts</TabsTrigger>
+            <TabsTrigger value="CORNELL_NOTE">Cornell</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
