@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Archive, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Archive, CheckCircle2, ChevronLeft, ChevronRight, Pencil, ExternalLink } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -20,8 +20,10 @@ import { PageHeader } from '@/components/app/page-header';
 import { StatusBadge } from '@/components/app/status-badge';
 import { ErrorState } from '@/components/app/error-state';
 import { ConfirmDialog } from '@/components/app/confirm-dialog';
+import { ContentPayloadEditor, type ContentType } from '@/components/app/content-payload-editor';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 
 export default function ContentDetailPage() {
@@ -76,6 +78,24 @@ export default function ContentDetailPage() {
     }
   }
 
+  const [editDraft, setEditDraft] = useState<Record<string, unknown> | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function saveEdit() {
+    if (!editDraft) return;
+    setSaving(true);
+    try {
+      await api(`/content/${contentId}`, { method: 'PATCH', body: JSON.stringify({ payload: editDraft }) });
+      toast.success('Content updated');
+      setEditDraft(null);
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to update content');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) {
     return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
   }
@@ -107,6 +127,11 @@ export default function ContentDetailPage() {
           actions={
             isTeacher && (
               <div className="flex gap-2">
+                {isTeacher && (
+                  <Button size="sm" variant="outline" onClick={() => setEditDraft(payload)}>
+                    <Pencil className="mr-1 size-3.5" /> Edit
+                  </Button>
+                )}
                 {content.status === 'DRAFT' && (
                   <Button size="sm" onClick={() => setConfirmAction('activate')}>
                     <CheckCircle2 className="mr-1 size-3.5" /> Activate
@@ -131,6 +156,8 @@ export default function ContentDetailPage() {
 
       <Separator />
 
+      <ProvenanceCard content={content} />
+
       {content.type === 'NOTE' && <NoteView payload={payload as unknown as NotePayload} />}
       {content.type === 'SUMMARY' && <SummaryView payload={payload as unknown as SummaryPayload} />}
       {content.type === 'FLASHCARD_SET' && (
@@ -142,6 +169,29 @@ export default function ContentDetailPage() {
       {content.type === 'CORNELL_NOTE' && (
         <CornellView payload={payload as unknown as CornellNotePayload} />
       )}
+
+      <Dialog open={editDraft !== null} onOpenChange={(o) => !o && setEditDraft(null)}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit {content.type.replace(/_/g, ' ').toLowerCase()}</DialogTitle>
+          </DialogHeader>
+          {editDraft && (
+            <ContentPayloadEditor
+              type={content.type as ContentType}
+              payload={editDraft}
+              onChange={setEditDraft}
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDraft(null)}>
+              Cancel
+            </Button>
+            <Button onClick={saveEdit} disabled={saving}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmAction === 'activate'}
@@ -332,5 +382,53 @@ function CornellView({ payload }: { payload: CornellNotePayload }) {
         </div>
       )}
     </div>
+  );
+}
+
+function ProvenanceCard({ content }: { content: ContentResponse }) {
+  const ai = content.current.aiContext as Record<string, unknown> | null;
+  const ref = content.current.sourceReference as Record<string, unknown> | null;
+  const materialId = ref?.type === 'MATERIAL' ? (ref.materialId as string | undefined) ?? String(ref.id ?? '') : undefined;
+  const materialIds = ref?.materialIds as string[] | undefined;
+  const firstMaterial = materialId ?? materialIds?.[0];
+  const isAiGenerated = content.source === 'AI_GENERATED' || ai?.operation != null;
+
+  if (!isAiGenerated && !firstMaterial) return null;
+
+  const rows: { label: string; value: string }[] = [];
+  if (isAiGenerated) {
+    const op = ai?.operation ? String(ai.operation) : content.source.replace('AI_', '').toLowerCase();
+    const model = String(ai?.model ?? '');
+    const provider = String(ai?.provider ?? '');
+    const generatedAt = String(ai?.generatedAt ?? '');
+    rows.push({ label: 'Generated by', value: [op, model, provider].filter(Boolean).join(' · ') || content.source });
+    if (generatedAt) {
+      rows.push({ label: 'Generated on', value: formatDateTime(generatedAt) });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Source</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1 text-sm">
+        {firstMaterial ? (
+          <a
+            href={`/materials/${firstMaterial}`}
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            <ExternalLink className="size-3.5" /> View source material
+          </a>
+        ) : (
+          <p>From topic content</p>
+        )}
+        {rows.map((r) => (
+          <p key={r.label} className="text-muted-foreground">
+            <span className="font-medium">{r.label}:</span> {r.value}
+          </p>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

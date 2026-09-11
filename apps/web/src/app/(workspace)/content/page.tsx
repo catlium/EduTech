@@ -60,10 +60,10 @@ export default function ContentListPage() {
     setError(null);
     const ctrl = new AbortController();
     const params = new URLSearchParams();
-    if (tab !== "all") params.set("contentType", tab);
+    if (tab !== "all") params.set("type", tab);
     const qs = params.toString();
-    api<{ content: ContentListItem[] }>(`/content${qs ? `?${qs}` : ""}`, { signal: ctrl.signal })
-      .then(({ content }) => setContent(content))
+    api<{ contents: ContentListItem[] }>(`/content${qs ? `?${qs}` : ""}`, { signal: ctrl.signal })
+      .then(({ contents }) => setContent(contents))
       .catch((err) => {
         if (!(err instanceof DOMException && err.name === "AbortError")) {
           setError(err instanceof ApiError ? err.message : "Failed to load content");
