@@ -71,7 +71,7 @@ export async function api<T>(
     signal,
   });
 
-  if (response.status === 401 && method.toUpperCase() !== "GET") {
+  if (response.status === 401) {
     onUnauthorized();
   }
 

@@ -36,6 +36,7 @@ type ReadyContent = {
   title: string;
   version: number;
   payload: Payload;
+  source: Payload | null;
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -91,6 +92,7 @@ export default function TopicReadingPage() {
               title: content.title,
               version: content.current.version,
               payload: content.current.payload,
+              source: content.current.sourceReference ?? null,
             });
           } else {
             failed.push(cId);
@@ -175,6 +177,9 @@ export default function TopicReadingPage() {
 }
 
 function ContentCard({ content }: { content: ReadyContent }) {
+  const materialIds = Array.isArray(content.source?.materialIds)
+    ? content.source.materialIds
+    : [];
   return (
     <Card>
       <CardHeader className="grid-cols-[auto_1fr_auto] items-center gap-2">
@@ -186,6 +191,11 @@ function ContentCard({ content }: { content: ReadyContent }) {
       </CardHeader>
       <CardContent className="text-sm leading-relaxed text-foreground">
         <PayloadView type={content.type} payload={content.payload} />
+        {materialIds.length > 0 && (
+          <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
+            Prepared from {materialIds.length} source material{materialIds.length !== 1 ? "s" : ""}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

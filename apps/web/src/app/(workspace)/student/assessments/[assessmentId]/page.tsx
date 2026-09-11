@@ -143,9 +143,17 @@ export default function AssessmentIntroPage() {
               </Link>
             </Button>
           ) : (
-            <Button className="w-full" onClick={onStart} disabled={starting}>
+            <Button
+              className="w-full"
+              onClick={onStart}
+              disabled={starting || assessment.questionCount === 0}
+            >
               <Play className="mr-1 size-4" />
-              {starting ? "Starting…" : "Start attempt"}
+              {assessment.questionCount === 0
+                ? "No questions yet"
+                : starting
+                  ? "Starting…"
+                  : "Start attempt"}
             </Button>
           )}
         </CardContent>

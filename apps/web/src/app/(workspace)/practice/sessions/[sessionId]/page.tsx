@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, Eye, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Eye, Pencil, RotateCcw, X } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -320,6 +320,7 @@ export default function PracticeSessionPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!institute || !params.sessionId) return;
@@ -383,6 +384,7 @@ export default function PracticeSessionPage() {
         { method: "PUT", body: { answer } },
       );
       replaceItem(item);
+      setEditingId(null);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to save answer");
     } finally {
@@ -477,7 +479,14 @@ export default function PracticeSessionPage() {
         <div className="mx-auto max-w-xl space-y-4">
           <StatusBadge status={session.status} />
           {items.length === 0 ? (
-            <EmptyState title="No cards in this session" description="This flashcard set appears to be empty." />
+            <EmptyState
+              title="No cards in this session"
+              description="This flashcard set appears to be empty. Complete the session to clear it."
+            >
+              <Button size="sm" onClick={() => setConfirmOpen(true)}>
+                Complete session
+              </Button>
+            </EmptyState>
           ) : (
             <>
               <div className="flex items-center gap-2">
@@ -533,7 +542,12 @@ export default function PracticeSessionPage() {
           <Card>
             <CardContent className="space-y-5 p-6">
               {!current ? (
-                <p className="text-sm text-muted-foreground">No questions in this session.</p>
+                <div className="space-y-4 py-4 text-center">
+                  <p className="text-sm text-muted-foreground">No questions in this session.</p>
+                  <Button size="sm" onClick={() => setConfirmOpen(true)}>
+                    Complete session
+                  </Button>
+                </div>
               ) : (
                 <>
                   <div className="flex items-start justify-between gap-2">
@@ -545,11 +559,16 @@ export default function PracticeSessionPage() {
                     </span>
                   </div>
                   <p className="text-base leading-relaxed">{current.prompt}</p>
-                  {current.answer !== undefined ? (
-                    <AnsweredFeedback item={current} />
+                  {current.answer !== undefined && editingId !== current.id ? (
+                    <div className="space-y-3">
+                      <AnsweredFeedback item={current} />
+                      <Button size="sm" variant="outline" onClick={() => setEditingId(current.id)}>
+                        <Pencil className="mr-1 size-3.5" /> Change answer
+                      </Button>
+                    </div>
                   ) : (
                     <QuestionAnswerer
-                      key={current.id}
+                      key={editingId === current.id ? `editing-${current.id}` : current.id}
                       item={current}
                       answering={saving === current.id}
                       onAnswer={(a) => void answer(current.id, a)}

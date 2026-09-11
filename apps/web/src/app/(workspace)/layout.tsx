@@ -18,6 +18,7 @@ const TEACHER_ONLY_PREFIXES = [
   '/dashboard',
   '/subjects',
   '/materials',
+  '/content',
   '/questions',
   '/assessments',
   '/paper-patterns',

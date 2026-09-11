@@ -46,7 +46,7 @@ export function StatusBadge({
   tone?: Tone;
   className?: string;
 }) {
-  const resolved = tone ?? statusTone[status] ?? "neutral";
+  const resolved = tone ?? statusTone[status] ?? statusTone[status.toUpperCase()] ?? "neutral";
   return (
     <Badge
       variant="secondary"

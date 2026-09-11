@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
-import { api } from "./api";
+import { api, setActiveInstituteId } from "./api";
 import type { MembershipListItem, UserResponse } from "@catlium/contracts";
 
 interface AuthState {
@@ -53,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setMemberships([]);
+    setActiveInstituteId(null);
     router.replace("/login");
   }, [router]);
 
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const onUnauthorized = () => {
       setUser(null);
       setMemberships([]);
+      setActiveInstituteId(null);
       router.replace("/login");
     };
     window.addEventListener("catlium:unauthorized", onUnauthorized);

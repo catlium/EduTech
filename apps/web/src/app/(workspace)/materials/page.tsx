@@ -88,6 +88,20 @@ function materialTypeLabel(m: MaterialResponse): string {
   return m.materialType;
 }
 
+function materialsQuery(
+  statusFilter: string,
+  processingFilter: string,
+  scopeFilter: { subjectId: string; chapterId: string; topicId: string },
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (statusFilter !== "all") params.set("status", statusFilter);
+  if (processingFilter !== "all") params.set("processingStatus", processingFilter);
+  if (scopeFilter.topicId) params.set("topicId", scopeFilter.topicId);
+  else if (scopeFilter.chapterId) params.set("chapterId", scopeFilter.chapterId);
+  else if (scopeFilter.subjectId) params.set("subjectId", scopeFilter.subjectId);
+  return params;
+}
+
 export default function MaterialsListPage() {
   const { institute } = useTenant();
   const isTeacher = canManage(institute);
@@ -130,7 +144,7 @@ export default function MaterialsListPage() {
 
   const textForm = useForm<CreateTextMaterialRequest>({
     resolver: zodResolver(CreateTextMaterialRequestSchema),
-    defaultValues: { title: "", text: "" },
+    defaultValues: { title: "", description: "", text: "" },
   });
 
   const fetchSubjects = useCallback(() => {
@@ -215,13 +229,7 @@ export default function MaterialsListPage() {
     setLoading(true);
     setError(null);
     const ctrl = new AbortController();
-    const params = new URLSearchParams();
-    if (statusFilter !== "all") params.set("status", statusFilter);
-    if (processingFilter !== "all") params.set("processingStatus", processingFilter);
-    if (scopeFilter.topicId) params.set("topicId", scopeFilter.topicId);
-    else if (scopeFilter.chapterId) params.set("chapterId", scopeFilter.chapterId);
-    else if (scopeFilter.subjectId) params.set("subjectId", scopeFilter.subjectId);
-    const qs = params.toString();
+    const qs = materialsQuery(statusFilter, processingFilter, scopeFilter).toString();
     api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ""}`, {
       signal: ctrl.signal,
     })
@@ -247,7 +255,10 @@ export default function MaterialsListPage() {
     if (polling.length === 0) return;
     const ctrl = new AbortController();
     const id = setInterval(() => {
-      api<{ materials: MaterialResponse[] }>("/materials", { signal: ctrl.signal })
+      const qs = materialsQuery(statusFilter, processingFilter, scopeFilter).toString();
+      api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ""}`, {
+        signal: ctrl.signal,
+      })
         .then(({ materials }) => setMaterials(materials))
         .catch(() => {});
     }, 3000);
@@ -255,7 +266,7 @@ export default function MaterialsListPage() {
       ctrl.abort();
       clearInterval(id);
     };
-  }, [materials]);
+  }, [materials, statusFilter, processingFilter, scopeFilter]);
 
   const scopeId = scope.topicId || scope.chapterId || scope.subjectId;
 
@@ -294,7 +305,11 @@ export default function MaterialsListPage() {
     }
     setSubmitting(true);
     try {
-      const body: Record<string, string> = { title: values.title, text: values.text };
+      const body: Record<string, string> = {
+        title: values.title,
+        text: values.text,
+        ...(values.description ? { description: values.description } : {}),
+      };
       if (values.topicId) body.topicId = values.topicId;
       else if (values.chapterId) body.chapterId = values.chapterId;
       else body.subjectId = values.subjectId!;
@@ -550,10 +565,10 @@ export default function MaterialsListPage() {
             const isProcessing = m.processingStatus === "QUEUED" || m.processingStatus === "PROCESSING";
             const menuItems: { label: string; icon: React.ReactNode; onClick: () => void; destructive?: boolean }[] = [];
 
-            if (m.sourceType === "UPLOAD" && m.processingStatus === "UPLOADED") {
+            if (m.status === "ACTIVE" && m.sourceType === "UPLOAD" && m.processingStatus === "UPLOADED") {
               menuItems.push({ label: "Process", icon: <Play className="size-4" />, onClick: () => processMaterial(m.id) });
             }
-            if (m.processingStatus === "FAILED") {
+            if (m.status === "ACTIVE" && m.processingStatus === "FAILED") {
               menuItems.push({ label: "Retry", icon: <RefreshCw className="size-4" />, onClick: () => retryMaterial(m.id) });
             }
             if (m.status === "ACTIVE") {
@@ -622,6 +637,19 @@ export default function MaterialsListPage() {
                     <FormLabel>Title *</FormLabel>
                     <FormControl>
                       <Input {...field} placeholder="Material title" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={textForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Optional description" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

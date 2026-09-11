@@ -804,7 +804,9 @@ export default function QuestionsListPage() {
   const rowActions = (q: QuestionListItem) => {
     const actions: { label: string; icon: React.ReactNode; onClick: () => void; destructive?: boolean }[] = [];
     actions.push({ label: "Edit", icon: <Pencil className="size-4" />, onClick: () => openEdit(q) });
-    if (q.approvalStatus === "PENDING") {
+    if (q.status === "ARCHIVED") {
+      actions.push({ label: "Activate", icon: <CheckCircle2 className="size-4" />, onClick: () => onActivate(q) });
+    } else if (q.approvalStatus === "PENDING") {
       actions.push({ label: "Approve", icon: <Check className="size-4" />, onClick: () => onApprove(q) });
       actions.push({ label: "Reject", icon: <X className="size-4" />, onClick: () => onReject(q) });
     } else if (q.approvalStatus === "APPROVED") {
@@ -979,6 +981,7 @@ export default function QuestionsListPage() {
                         <Badge variant="secondary">{q.questionType}</Badge>
                         <StatusBadge status={q.difficulty} />
                         <StatusBadge status={q.approvalStatus} />
+                        <StatusBadge status={q.status} />
                         <span className="text-xs text-muted-foreground">{scopeLabel(q)}</span>
                         <span className="text-xs text-muted-foreground">
                           {formatDate(q.createdAt)}

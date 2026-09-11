@@ -395,11 +395,18 @@ function QuestionAnswerer({
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
+  // ponytail: debounce saves 500ms after typing stops; blur flushes a still-pending
+  // draft so clicking Submit doesn't drop the last keystroke. If this ever loses an
+  // answer under real use, replace with explicit flush on the submit handler.
+  function flush() {
+    if (draft !== text) onChange({ value: draft });
+  }
   return (
     <div className="space-y-2">
       <Label>Your answer</Label>
       <Input
         value={draft}
+        onBlur={flush}
         placeholder="Type your answer…"
         onChange={(e) => setDraft(e.target.value)}
       />
