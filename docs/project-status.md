@@ -54,6 +54,46 @@ history rows, action buttons).
 - Profile page ("Profile (coming soon)" in user menu)
 - Teacher vs student payload renderers diverge slightly (cosmetic)
 
+## Core Learning Depth — Notes → Flashcards → Questions (2026-09-11)
+
+Product is functionally API-wired end-to-end but the core learning content
+surfaces were not yet product-grade. This session closed the real gaps found
+by audit (see `docs/tasks.md`). Commits `b7f5982`, `6236287`.
+
+**Teacher content management**
+- Fixed the broken teacher content list: it sent `contentType` as the filter
+  param (backend expects `type`) and read `content` from a response that
+  returns `contents` — the whole Notes/Flashcard management surface was dead.
+- Added per-type content payload editors (Note blocks with heading/paragraph/
+  list, Summary fields, Flashcard cards + difficulty, Important Concepts,
+  Cornell sections) wired into an Edit dialog on content detail; saves via
+  `PATCH /content/:id` (new version, change type EDIT).
+- Content detail now shows a provenance "Source" card: link back to the
+  source material and operation/model/generatedAt for AI-generated content.
+
+**Student notes reading**
+- The SUMMARY renderer dropped `keyConcepts` and `importantPoints`; now
+  rendered alongside the summary text. NOTE/SUMMARY/CONCEPTS cards verified.
+
+**Question practice — explanations**
+- `practice_session_items` gains an `explanation` snapshot (migration 0015,
+  applied to dev DB). `questionItems` snapshots `questions.explanation`;
+  `serializeItem` returns it only after the student answers that item (the
+  explanation may reference the key), matching the answer-key-free-until-
+  answered posture. Contract gains optional `explanation`; rendered in the
+  answered feedback and the completed-session review.
+
+**Flashcard study**
+- Replaced the all-cards-at-once list (every card's answer always visible)
+  with a focused one-card-at-a-time study loop: flip → rate Again/Good →
+  auto-advance to the next card, with prev/next and progress.
+
+**Validation:** contracts/api/web typecheck PASS, web production build PASS,
+full repo `pnpm typecheck` PASS.
+
+**Pending:** spot-check student notes reading in a live browser; profile page;
+browser-journey matrix deferred per testing policy.
+
 ### Infra notes
 
 - Host disk hit 100% twice during web image rebuilds → reclaimed via `docker

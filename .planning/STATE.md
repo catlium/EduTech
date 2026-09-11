@@ -99,16 +99,21 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Current Task
 
-**Phase 22 — Product Completion: core feature set complete.** Both guardrails
-PASS (teacher 17 milestones, student 11). Student exams hub built (resume +
-history). Profile page is the last minor UX gap. Docs update + commit + push
-pending.
+**Phase 22 — Product Completion: core learning depth.** ROADMAP corrected:
+phases 20-26 are workstreams of IN-PROGRESS Phase 19 (honest statuses).
+Core-learning gaps closed: teacher content list fix + per-type content
+editing + provenance, student SUMMARY key/concepts/points, question
+explanations in practice (migration 0015), card-by-card flashcard study.
+Profile page is the last minor UX gap. Docs updated; commit + push pending.
 
 ## Session Continuity
 
-Last session: 2026-09-11 (Phase 22 student exams hub built)
-Stopped at: docs update + commit + push for student exams hub
-Resume file: `docs/project-status.md` (next: profile page or user-identified gaps)
+Last session: 2026-09-11 (core learning depth — commits `b7f5982`,
+`6236287`; docs updated)
+Stopped at: push pending for core-learning-depth checkpoint
+Resume file: `docs/project-status.md` (next: spot-check student notes
+reading in a live browser after rebuilding the stack; then profile page or
+user-identified gaps)
 
 ## Verification
 

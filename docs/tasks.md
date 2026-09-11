@@ -21,7 +21,31 @@ checks), not the deliverable.
       `listMine` history endpoint; contracts `AttemptHistoryItemSchema`;
       student nav + breadcrumb "Exams" link; dashboard/assessment "Continue
       attempt" buttons; typecheck + browser smoke PASS
-- [~] Next: Profile page replacing "Profile (coming soon)" in user menu
+
+## Phase 22 — Core Learning Depth (Notes → Flashcards → Questions, 2026-09-11)
+
+Product is functionally complete but NOT yet polish-complete. Per user
+correction: ROADMAP.md phases 20-26 are workstreams/sub-scopes of Phase 19
+with honest IMPLEMENTED / PARTIALLY IMPLEMENTED / IN PROGRESS / REMAINING /
+DEFERRED statuses. Remaining work is core learning depth, not new modules.
+
+- [x] fix(web): teacher content list BROKEN (sent `contentType` param, backend
+      expects `type`; destructured `content`, backend returns `contents`) —
+      unblocked all teacher Notes/Flashcard management
+- [x] content editor: per-type payload editors (Note blocks, Summary,
+      Flashcards, Concepts, Cornell) in an Edit dialog → PATCH /content/:id
+      (new version, changeType EDIT); provenance Source card on content
+      detail (source-material link, operation/model/generatedAt)
+- [x] fix(student): SUMMARY renderer dropped keyConcepts + importantPoints —
+      now rendered alongside summary text
+- [x] questions→practice: explanations reach students — snapshot
+      `practice_session_items.explanation` (migration 0015), serialize only
+      after answering, contract `explanation` field, render in feedback +
+      review
+- [x] flashcard practice → one-card-at-a-time study loop (flip → rate
+      again/good → auto-advance)
+- [ ] Student notes: confirm reading polish across NOTE/SUMMARY/CONCEPTS
+      cards (spot-check in browser)
 - [ ] Defer until product substantially complete: full regression matrix,
       exhaustive E2E, cross-browser, API-contract verification
 - [ ] Then: re-close WF-06..10 browser journey matrix (expanded s03/s04
