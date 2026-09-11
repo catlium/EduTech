@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 current_phase: phase-22-product-completion
 current_phase_name: Phase 22 — Product Completion: Ship Working App First
 status: in-progress
-stopped_at: "Priority redirected: ship the working product first, comprehensive testing is a guardrail. Frontend audited page-by-page vs intended teacher + student workflows — every step is wired to the live API (no mocks/stubs/hardcoded data, all sidebar links resolve, no dead onClicks). Real gaps found + fixed: (1) /users roster never loaded on mount; (2) teacher content detail did not render CORNELL_NOTE; (3) teacher topic rows in subject detail were non-navigable (chapter-tree rendered a dead <div> for canManage users, Link only for non-teachers) — now always a Link to the topic page. New zero-dep browser harness scripts/e2e/browser_journeys.mjs (s01 public/auth, s02 institute admin provisioning + boundaries, s03 teacher nav incl. expanded chapter + topic + syllabus route) — all PASS against the rebuilt stack. Remaining product gaps are minor/won't-block: personnel Profile page (user-menu says 'coming soon'), local PaperPattern interface duplication, summary-card view consistency between teacher/student payload renderers. No large test suites scheduled; incremental fixes + typecheck/lint/build + live-route spot checks as guardrails. Infra: host disk twice hit 100% during web image rebuilds; reclaimed via builder prune + unused-volume prune (9G free). Commits this session: 6f973a5, 906f480, 1ed3716, 0eb7ac1."
-last_updated: "2026-09-10T19:40:00.000Z"
-state_head: 0eb7ac1
+stopped_at: "Student exams hub built + validated. Core feature set complete for teacher + student workflows. Both guardrails PASS (teacher 17 milestones, student 11 milestones). Next: docs commit + push, then any remaining gaps."
+last_updated: "2026-09-11T00:00:00.000Z"
+state_head: eff0b53
 progress:
-  total_phases: 17
-  completed_phases: 17
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 22
+  completed_phases: 22
+  total_plans: 12
+  completed_plans: 12
   percent: 100
 ---
 
@@ -99,21 +99,16 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Current Task
 
-**Phase 21 — SaaS Management + Public Landing Page — COMPLETE (closed 2026-09-10).**
-Institute-provisioned accounts + public landing + admin tooling delivered; full
-regression green. Next per roadmap: **WF-06..10 browser journey matrix** (requires
-disk headroom for demo image rebuilds).
+**Phase 22 — Product Completion: core feature set complete.** Both guardrails
+PASS (teacher 17 milestones, student 11). Student exams hub built (resume +
+history). Profile page is the last minor UX gap. Docs update + commit + push
+pending.
 
 ## Session Continuity
 
-Last session: 2026-09-10 (Phase 21 SaaS Management + Landing closed)
-Stopped at: Phase 21 — SaaS Management + Public Landing Page COMPLETE
-(institute-provisioned users via INSTITUTE_ADMIN-only /users API; public
-/auth/register removed; web landing page + /users + /institute admin; seed
-admin@catlium.dev; saas_e2e.sh 39/39; 14-suite regression 577 assertions
-FAIL=0; typecheck/lint clean; docs updated incl. docs/api/users.md).
-Clean tree, checkpoint pushed.
-Resume file: `docs/project-status.md` (next: WF-06..10 browser matrix)
+Last session: 2026-09-11 (Phase 22 student exams hub built)
+Stopped at: docs update + commit + push for student exams hub
+Resume file: `docs/project-status.md` (next: profile page or user-identified gaps)
 
 ## Verification
 

@@ -33,10 +33,25 @@ New zero-dependency browser harness `scripts/e2e/browser_journeys.mjs`
 (public/auth, institute-admin provisioning + role boundaries, teacher
 navigation incl. chapter expand + topic) — all PASS on the rebuilt stack.
 
+### Student Exams hub — built + validated (2026-09-11)
+
+New `/student/exams` page with two sections: Open exams (available +
+in-progress with resume) and My attempts (history with score). Backend
+`listAvailable` now returns `inProgressAttemptId`; new `listMine` history
+endpoint. Teacher dashboard + student assessment detail now show "Continue
+attempt" when in-progress. Sidebar "Exams" link for students.
+
+Files: `student/exams/page.tsx`, `attempts.controller.ts`,
+`attempts.service.ts`, `contracts/src/index.ts` (AttemptHistoryItemSchema),
+`app-sidebar.tsx` (student nav + breadcrumb), `student/dashboard/page.tsx`,
+`student/assessments/[assessmentId]/page.tsx`.
+
+Typecheck PASS. Images rebuilt. Browser smoke PASS (sidebar link, sections,
+history rows, action buttons).
+
 ### Remaining minor (non-blocking) gaps
 
 - Profile page ("Profile (coming soon)" in user menu)
-- `PaperPattern` interface duplicated locally in pattern pages
 - Teacher vs student payload renderers diverge slightly (cosmetic)
 
 ### Infra notes

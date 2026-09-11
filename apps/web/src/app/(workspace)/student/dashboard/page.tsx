@@ -75,9 +75,15 @@ export default function StudentDashboardPage() {
                   </p>
                   <Badge variant="secondary">{a.status}</Badge>
                 </div>
-                <Button size="sm" asChild>
-                  <Link href={`/student/assessments/${a.id}`}>View & start</Link>
-                </Button>
+                {a.inProgressAttemptId ? (
+                  <Button size="sm" asChild>
+                    <Link href={`/student/attempts/${a.inProgressAttemptId}`}>Continue attempt</Link>
+                  </Button>
+                ) : (
+                  <Button size="sm" asChild>
+                    <Link href={`/student/assessments/${a.id}`}>View & start</Link>
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ))}

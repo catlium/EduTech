@@ -871,8 +871,26 @@ export const AvailableAssessmentSchema = z.object({
   endsAt: z.string().datetime().nullable(),
   status: AssessmentStatusEnum,
   questionCount: z.number().int(),
+  inProgressAttemptId: z.string().uuid().nullable(),
 });
 export type AvailableAssessment = z.infer<typeof AvailableAssessmentSchema>;
+
+// Student's own attempt history row (for the student "My exams" hub).
+// Deliberately answer-free — same sanitization promise as the other student
+// attempt contracts in this section.
+export const AttemptHistoryItemSchema = z.object({
+  id: z.string().uuid(),
+  assessmentId: z.string().uuid(),
+  assessmentTitle: z.string(),
+  status: AttemptStatusEnum,
+  startedAt: z.string().datetime(),
+  deadline: z.string().datetime().nullable(),
+  submittedAt: z.string().datetime().nullable(),
+  score: z.number().int().nullable(),
+  totalMarks: z.number().int().nullable(),
+  questionCount: z.number().int(),
+});
+export type AttemptHistoryItem = z.infer<typeof AttemptHistoryItemSchema>;
 
 export const StartAttemptRequestSchema = z.object({
   assessmentId: z.string().uuid(),

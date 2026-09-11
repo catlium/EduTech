@@ -135,10 +135,19 @@ export default function AssessmentIntroPage() {
             </AlertDescription>
           </Alert>
 
-          <Button className="w-full" onClick={onStart} disabled={starting}>
-            <Play className="mr-1 size-4" />
-            {starting ? "Starting…" : "Start attempt"}
-          </Button>
+          {assessment.inProgressAttemptId ? (
+            <Button className="w-full" asChild>
+              <Link href={`/student/attempts/${assessment.inProgressAttemptId}`}>
+                <Play className="mr-1 size-4" />
+                Continue attempt
+              </Link>
+            </Button>
+          ) : (
+            <Button className="w-full" onClick={onStart} disabled={starting}>
+              <Play className="mr-1 size-4" />
+              {starting ? "Starting…" : "Start attempt"}
+            </Button>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -5,7 +5,7 @@ import {
   NotFoundException,
   Inject,
 } from '@nestjs/common';
-import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 
 import {
   assessments,
@@ -164,7 +164,7 @@ export class AttemptsService {
 
   // ── Student endpoints ──────────────────────
 
-  async listAvailable(instituteId: string) {
+  async listAvailable(instituteId: string, studentId: string) {
     const now = new Date();
     const rows = await this.db
       .select()
@@ -180,6 +180,12 @@ export class AttemptsService {
       .groupBy(assessmentQuestions.assessmentId);
     const counts = new Map(countsRows.map((r) => [r.assessmentId, r.count]));
 
+    const inProgressRows = await this.db
+      .select({ assessmentId: attempts.assessmentId, attemptId: attempts.id })
+      .from(attempts)
+      .where(and(eq(attempts.instituteId, instituteId), eq(attempts.studentId, studentId), eq(attempts.status, 'IN_PROGRESS')));
+    const inProgressByAssessment = new Map(inProgressRows.map((r) => [r.assessmentId, r.attemptId]));
+
     const assessmentsOut = rows
       .filter((a) => (a.startsAt ? a.startsAt <= now : true) && (a.endsAt ? a.endsAt >= now : true))
       .map((a) => ({
@@ -193,8 +199,43 @@ export class AttemptsService {
         endsAt: a.endsAt,
         status: a.status,
         questionCount: counts.get(a.id) ?? 0,
+        inProgressAttemptId: inProgressByAssessment.get(a.id) ?? null,
       }));
     return { assessments: assessmentsOut };
+  }
+
+  /** Student's own attempt history, newest first. */
+  async listMine(instituteId: string, studentId: string) {
+    const rows = await this.db
+      .select({
+        id: attempts.id,
+        assessmentId: attempts.assessmentId,
+        assessmentTitle: assessments.title,
+        status: attempts.status,
+        startedAt: attempts.startedAt,
+        deadline: attempts.deadline,
+        submittedAt: attempts.submittedAt,
+        score: attempts.score,
+        totalMarks: attempts.totalMarks,
+      })
+      .from(attempts)
+      .innerJoin(assessments, eq(assessments.id, attempts.assessmentId))
+      .where(and(eq(attempts.instituteId, instituteId), eq(attempts.studentId, studentId)))
+      .orderBy(desc(attempts.startedAt));
+
+    const countRows = await this.db
+      .select({
+        attemptId: attemptQuestions.attemptId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(attemptQuestions)
+      .where(inArray(attemptQuestions.attemptId, rows.map((r) => r.id)))
+      .groupBy(attemptQuestions.attemptId);
+    const counts = new Map(countRows.map((r) => [r.attemptId, r.count]));
+
+    return {
+      attempts: rows.map((r) => ({ ...r, questionCount: counts.get(r.id) ?? 0 })),
+    };
   }
 
   /**

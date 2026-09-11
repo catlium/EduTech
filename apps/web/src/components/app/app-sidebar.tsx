@@ -49,6 +49,7 @@ const teacherNav = [
 const studentNav = [
   { href: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/student/learning', label: 'My Subjects', icon: GraduationCap },
+  { href: '/student/exams', label: 'Exams', icon: ClipboardList },
 ];
 
 const sharedNav = [{ href: '/practice', label: 'Practice', icon: Target }];
@@ -182,6 +183,7 @@ export function sideCrumb(pathname: string): { label: string; href: string } | n
     { href: '/paper-patterns', label: 'Paper Patterns' },
     { href: '/student/dashboard', label: 'Dashboard' },
     { href: '/student/learning', label: 'My Subjects' },
+    { href: '/student/exams', label: 'Exams' },
     { href: '/practice', label: 'Practice' },
     { href: '/institute', label: 'Institute' },
     { href: '/users', label: 'Users' },

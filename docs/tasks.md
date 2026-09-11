@@ -16,6 +16,11 @@ checks), not the deliverable.
 - [x] Zero-dep browser harness `scripts/e2e/browser_journeys.mjs`
       (s01 public/auth, s02 admin provisioning + boundaries, s03 teacher nav)
       — all PASS on rebuilt stack
+- [x] Student Exams hub: `/student/exams` (open exams + in-progress resume +
+      attempt history); backend `listAvailable` inProgressAttemptId +
+      `listMine` history endpoint; contracts `AttemptHistoryItemSchema`;
+      student nav + breadcrumb "Exams" link; dashboard/assessment "Continue
+      attempt" buttons; typecheck + browser smoke PASS
 - [~] Next: Profile page replacing "Profile (coming soon)" in user menu
 - [ ] Defer until product substantially complete: full regression matrix,
       exhaustive E2E, cross-browser, API-contract verification
