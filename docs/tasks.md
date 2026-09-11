@@ -45,11 +45,34 @@ DEFERRED statuses. Remaining work is core learning depth, not new modules.
 - [x] flashcard practice → one-card-at-a-time study loop (flip → rate
       again/good → auto-advance)
 - [x] question bank: stem text search (`/questions?q=` ILIKE + toolbar box)
+- [x] Frontend completion audit — 4 explore subagents (Admin, Teacher
+      Academic/Materials, Teacher Exam/Analytics, Student) → prioritized fix
+      queue of ~20 items
+- [x] fix(web): repair broken teacher workflows (`86f91ed`) — upload dialog
+      missing `title` (all uploads 400'd), content PATCH double-stringify
+      (all editing broken), paper-pattern sourceType fake field (400), pattern
+      assessment `maxMarks` (400), institute Retry dead, dashboard
+      pending-questions field, assessment edit timezone shift + instructions
+      uneditable/hidden
+- [x] fix(web): close real UX gaps (`47568ba`) — APPROVED pattern read-only
+      (409 loop), empty practice session dead-end, practice Change answer,
+      FIB debounce data-loss, materials poll dropping filters, Process/Retry
+      on ARCHIVED (409), text-material description, question restore for
+      ARCHIVED, StatusBadge lowercase, logout stale instituteId, GET-401
+      silent death, `/content` teacher guard, student topic source-materials
+      provenance
 - [x] Implementation complete for manual validation (2026-09-11) —
-      integration commits `126311a`, `b7f5982`, `6236287`, `c8151b8`
+      integration commits `126311a`, `b7f5982`, `6236287`, `c8151b8`,
+      `86f91ed`, `47568ba`
 - [~] USER MANUAL VALIDATION — user is personally verifying admin/teacher/
       student workflows + core AI learning flow; findings become the next
       backlog (do NOT invent a backlog proactively)
+- [-][deferred] Attempt-result explanations per question (practice already has
+      this mechanism; attempt path needs snapshot + migration + contract)
+- [-][deferred] Teacher drill-down into individual attempt answers — no
+      teacher-scoped `GET /attempts/:id` endpoint exists (member-scoped only)
+- [-][deferred] Access-token auto-refresh (15-min TTL currently bounces to
+      login); cheaper GET-401 gate shipped in `47568ba`
 - [ ] Close manual-validation findings (bugs / missing features / broken
       workflows / UX-API issues) as reported
 - [ ] Defer until manual findings are closed: full regression matrix,

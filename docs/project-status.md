@@ -54,6 +54,53 @@ history rows, action buttons).
 - Profile page ("Profile (coming soon)" in user menu)
 - Teacher vs student payload renderers diverge slightly (cosmetic)
 
+## Frontend Completion Audit — Gap Fixes (2026-09-11)
+
+Four parallel explore audits (Admin, Teacher Academic/Materials, Teacher
+Exam/Analytics, Student) produced a prioritized fix queue. Two coherent fix
+commits shipped. **STATUS — implementation complete for user manual
+validation; exhaustive testing remains deferred.** Typecheck + lint + `next
+build` PASS after each commit.
+
+### `86f91ed` fix(web): repair broken teacher workflows (guaranteed breakages)
+
+- Materials upload dialog always 400'd — missing required `title` field. Added
+  the field and now sends it.
+- Content PATCH double-stringified the body — ALL content editing was broken
+  server-side. Fixed.
+- Paper pattern create sent a `sourceType` the backend rejects (400); the
+  selector was fake (backend hardcodes MANUAL) and is removed. Title now
+  required.
+- Pattern → "Create Assessment" sent `maxMarks` → 400 whenever marks were set;
+  the input was dead (service uses structure total). Replaced with read-only
+  total display.
+- Institute page Retry button was a no-op (refetch never re-ran).
+- Dashboard "pending questions" hint filtered on non-existent statuses.
+- Assessment edit dialog: datetime-local prefill shifted times by the UTC/local
+  offset (stored ISO was sliced, not converted); instructions were never
+  editable and never shown.
+
+### `47568ba` fix(web): close real UX gaps (teacher + student)
+
+- APPROVED pattern detail is now read-only (Analyze/Review&Save hidden, banner
+  shown) — previously every save attempt 409'd.
+- Practice: empty sessions were a dead-end (no way to complete); added Complete
+  buttons. Answered questions now offer "Change answer" (server upserts).
+- Attempt FIB answers could be lost if the 500ms debounce was still pending on
+  submit; blur now flushes.
+- Materials polling dropped active filters (archived/processing/scope); Process
+  and Retry on ARCHIVED materials 409'd — now hidden.
+- Text material dialog gained the optional description field.
+- Question bank: archived questions looked identical to active and couldn't be
+  restored — status badge added + Activate action when ARCHIVED.
+- StatusBadge tone lookup now case-insensitive (lowercase academic statuses).
+- Logout/401 now clear the stale active institute id; GET 401s no longer die
+  silently (all 401s bounce to login). `/content` added to teacher-only routes.
+
+Deferred (needs backend work): attempt-result explanations per question, teacher
+drill-down into individual attempt answers (no endpoint), token auto-refresh
+(15-min TTL) — noted in `docs/tasks.md`.
+
 ## Core Learning Depth — Notes → Flashcards → Questions (2026-09-11)
 
 Product is functionally API-wired end-to-end but the core learning content
