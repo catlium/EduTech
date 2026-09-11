@@ -60,6 +60,14 @@ Product is functionally API-wired end-to-end but the core learning content
 surfaces were not yet product-grade. This session closed the real gaps found
 by audit (see `docs/tasks.md`). Commits `b7f5982`, `6236287`.
 
+**STATUS — implementation complete for user manual validation.** The user is
+personally testing every workflow (admin/teacher/student + the core
+Material → AI → Notes → Flashcards → Questions → Teacher review → Student
+learning → Practice → Examination → Results flow). The product is NOT declared
+production-ready on the basis of typecheck/build alone; exhaustive
+browser/cross-browser/E2E validation remains deferred until the user's manual
+findings are addressed and the resulting feedback backlog is closed.
+
 **Teacher content management**
 - Fixed the broken teacher content list: it sent `contentType` as the filter
   param (backend expects `type`) and read `content` from a response that
@@ -91,8 +99,9 @@ by audit (see `docs/tasks.md`). Commits `b7f5982`, `6236287`.
 **Validation:** contracts/api/web typecheck PASS, web production build PASS,
 full repo `pnpm typecheck` PASS.
 
-**Pending:** spot-check student notes reading in a live browser; profile page;
-browser-journey matrix deferred per testing policy.
+**Pending:** user manual validation of all workflows; then fix the findings
+as the next development backlog. Profile page; browser-journey matrix —
+deferred until manual findings are closed.
 
 ### Infra notes
 

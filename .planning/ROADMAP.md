@@ -22,7 +22,7 @@ Frontend is part of the master roadmap and has its own implementation phases (no
 ## Completion Summary (verified against codebase)
 
 - ✓ Complete: Phases 1-18 + demo milestone Waves 0-4 (backend fully green; Phase 18 Paper Pattern backend COMPLETE 2026-09-09)
-- ◆ IN PROGRESS: Phase 19 — Frontend Product Transformation (core learning depth). Frontend workstreams 20-26 are sub-scopes of this phase: 20-23 PARTIALLY IMPLEMENTED, 24 IMPLEMENTED, 25 DEFERRED, 26 REMAINING.
+- ◆ IN PROGRESS: Phase 19 — Frontend Product Transformation (core learning depth). Implementation complete for user manual validation (2026-09-11); exhaustive browser/cross-browser testing deferred. Frontend workstreams 20-26 are sub-scopes of this phase: 20-23 MOSTLY IMPLEMENTED (awaiting manual validation), 24 IMPLEMENTED, 25 DEFERRED, 26 REMAINING.
 
 ## Phase 1 — Backend Foundation & Authentication ✓
 
@@ -260,28 +260,38 @@ lint/build PASS. Reqs TST-01..07.
 > core-learning depth + docs close (IN PROGRESS). Phase 18 backend API docs per
 > feature are cross-linked below.
 
-## Phase 19 — Frontend Product Transformation ◆ IN PROGRESS (2026-09-11)
+## Phase 19 — Frontend Product Transformation ◆ IN PROGRESS — awaiting user manual validation (2026-09-11)
 
 **Goal:** Product-grade shadcn/ui frontend across teacher + student journeys,
 with the **core learning experience** (AI Notes → Flashcards → Questions →
 Practice → Examination → Results) genuinely usable — not just wired routes.
 
-**Status: IN PROGRESS as of 2026-09-11. What is COMPLETE** (checkpoints 1-4,
-committed + pushed: `8b1844a`, `fbda5d9`, `433692b`, `5ddfecc`): app shell +
-design system + auth; teacher academic/syllabus/materials management; question
-bank + blueprint + assessment builder; student learning/practice/exam/attempts/
-result; teacher analytics + profile. All of these are MEETS-basic-barrier:
-routes exist, are wired to the live API, and pass typecheck/build/lint.
+**Status: IN PROGRESS as of 2026-09-11 — implementation complete for manual
+validation.** What is COMPLETE (checkpoints 1-4, committed + pushed:
+`8b1844a`, `fbda5d9`, `433692b`, `5ddfecc`): app shell + design system + auth;
+teacher academic/syllabus/materials management; question bank + blueprint +
+assessment builder; student learning/practice/exam/attempts/result; teacher
+analytics + profile.
 
-**What is NOT complete — the current focus of checkpoint 5:** the core learning
-features below are not yet a *polished learning product*. They are implemented
-to a basic level and need real UX depth before the product is complete.
-Phases 20-26 below are WORKSTREAMS / SUB-SCOPES of this consolidated phase,
-NOT completed deliverables. Each carries its own honest status below.
+**Checkpoint 5 implementation work done 2026-09-11** (committed + pushed:
+`126311a`, `b7f5982`, `6236287`, `c8151b8`): teacher content editing
+(NOTE/SUMMARY/FLASHCARD_SET/IMPORTANT_CONCEPTS/CORNELL_NOTE payload editors,
+PATCH flow) + provenance; student summary key-concepts/important-points
+rendering; flashcard card-by-card study loop; question explanations surfaced
+in practice; question bank search + batch approve/reject + edit; material
+filtering + scope links; exams hub/resume; results skeleton; practice player
+404 handling.
+
+**Current gate — USER MANUAL VALIDATION.** The user is now personally testing
+every workflow (admin/teacher/student + the core Material → AI → Notes →
+Flashcards → Questions → Review → Student → Practice → Examination → Results
+flow). The implementation is NOT claimed to be production-ready on the basis
+of typecheck/build alone; formal/exhaustive browser and cross-browser
+validation remains deferred until manual findings are addressed.
 
 **Deferred (recorded, not dead):** full browser-journey matrix + cross-browser
-regression (WF-06..10). These are NOT the next priority — core learning depth
-comes first. They run only after the product is substantially complete.
+regression (WF-06..10), exhaustive E2E, comprehensive test suites. They run
+only after the user's manual validation findings are addressed.
 
 > ⚠️ **Truth correction 2026-09-11 (user directive):** earlier revisions
 > mis-stated Phases 20-26 as "DELIVERED under consolidated Phase 19." That is
@@ -297,11 +307,13 @@ comes first. They run only after the product is substantially complete.
 generation + **Notes/Summary product**. Generate, review, edit, activate;
 student browse-by-subject, proper reading experience (typography, headings,
 key concepts, important points, associated topic), loading/empty/error states.
-**Status:** PARTIALLY IMPLEMENTED. Academic structure + materials management
-COMPLETE. AI content generation + content list/detail pages exist and are API
-wired, but the **Notes reading experience is not yet a real notes product**
-(polish, edit-notes UX, provenance display, student browsing depth pending).
-Reqs: FE-02..04.
+**Status:** MOSTLY IMPLEMENTED — implementation complete for manual
+validation (2026-09-11). Academic structure + materials management COMPLETE.
+AI content generation + content list/detail pages API-wired. Content detail
+has per-type payload editors (Notes/Summary/Flashcards/Concepts/Cornell) via
+PATCH + provenance Source card; student summary renders key concepts +
+important points. Content of this workstream is part of the pending user
+manual validation. Reqs: FE-02..04.
 
 ## Phase 21 — Workstream: Question Bank & Exam Authoring ◆ IN PROGRESS
 
@@ -309,10 +321,12 @@ Reqs: FE-02..04.
 **Scope:** Question bank (manual create, AI generation, review/approve/reject,
 **edit**, filters, detail view, topic/chapter association); student practice
 (topic-based, difficulty-based, feedback, explanation/review, history).
-**Status:** PARTIALLY IMPLEMENTED. Bank CRUD + filters + edit + batch
-approve/reject COMPLETE. Assessment authoring COMPLETE. Student-side question
-practice exists in `/practice` but needs depth (topic/difficulty-based flows +
-feedback/review quality). Reqs: FE-05..06.
+**Status:** MOSTLY IMPLEMENTED — implementation complete for manual
+validation (2026-09-11). Bank CRUD + filters + stem search + edit + batch
+approve/reject COMPLETE. Assessment authoring COMPLETE. Student practice
+exposes question explanations post-answer with review feedback; flashcard
+practice is a card-by-card study loop. Content of this workstream is part of
+the pending user manual validation. Reqs: FE-05..06.
 
 ## Phase 22 — Workstream: Student Examination & Results ◆ IN PROGRESS
 
@@ -329,10 +343,12 @@ Reqs: FE-07..08.
 **Scope:** Assessment analytics (COMPLETE); student practice — flashcards
 study tool (front/back flip, next/prev, progress, restart) and question drill
 with feedback/history.
-**Status:** PARTIALLY IMPLEMENTED. Teacher analytics COMPLETE. Practice sessions
-exist (start/history/player) but are **not yet a polished study tool** — the
-flashcard study interface and question-practice feedback need product depth.
-Reqs: FE-09..10.
+**Status:** MOSTLY IMPLEMENTED — implementation complete for manual
+validation (2026-09-11). Teacher analytics COMPLETE. Practice: flashcard study
+tool is a focused one-card-at-a-time flip/rate/auto-advance loop; question
+drill shows answer feedback + explanation with completed-session review and
+history. Content of this workstream is part of the pending user manual
+validation. Reqs: FE-09..10.
 
 ## Phase 24 — Workstream: Backend/Frontend Integration ◆ IN PROGRESS
 
@@ -363,7 +379,7 @@ Reqs: FE-15.
 - Backend ✓ Complete: 15 (Phases 1-15)
 - Demo milestone waves: 4 (Waves 0-4 ✓ complete, closed 2026-09-08)
 - Later backend phases: 2 (Phases 16-17), Phase 16 ✓ complete, Phase 17 ✓ passed
-- Frontend: 1 consolidated phase (Phase 19) with 7 workstreams (former 20-26) — IN PROGRESS, core-learning focus
+- Frontend: 1 consolidated phase (Phase 19) with 7 workstreams (former 20-26) — IN PROGRESS, implementation complete for user manual validation; exhaustive testing deferred
 - Frontend is part of the master roadmap (NOT out of scope)
 - Monorepo retained for both backend and frontend
 
@@ -382,7 +398,18 @@ Reqs: FE-15.
 9. ✅ Phase 17 backend-complete checkpoint (closed 2026-09-09, 508/508)
 10. ✅ Phase 18 Paper Pattern / Blueprint backend (closed 2026-09-09, 583/583)
 
-**→ NEXT: finish Phase 19 checkpoint 5 — core learning depth.** Priority order:
-1) AI Notes product (student reading experience + teacher edit/review), 2)
-Flashcard study tool, 3) Question practice depth. Browser-matrix validation
-(FE-13..15) stays deferred until the product is substantially complete.
+**→ CURRENT: USER MANUAL VALIDATION.** The user is personally testing all
+admin/teacher/student workflows and the core AI learning flow (Material → AI
+Notes → Flashcards → Questions → Teacher review → Student learning →
+Practice → Examination → Results). Implementation is complete enough for this
+validation; the product is NOT declared production-ready on typecheck/build
+alone.
+
+**→ AFTER VALIDATION FEEDBACK:** address the user's findings (bugs, missing
+features, broken workflows, UX/API issues, incomplete-feeling surfaces) as the
+next development backlog. **→ THEN (deferred until findings are closed):**
+borderline browser-matrix validation (FE-13..15), cross-browser/responsive,
+accessibility pass, final demonstration readiness.
+
+No new product features are being invented proactively ahead of the user's
+manual validation.

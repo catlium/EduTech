@@ -44,9 +44,15 @@ DEFERRED statuses. Remaining work is core learning depth, not new modules.
       review
 - [x] flashcard practice → one-card-at-a-time study loop (flip → rate
       again/good → auto-advance)
-- [ ] Student notes: confirm reading polish across NOTE/SUMMARY/CONCEPTS
-      cards (spot-check in browser)
-- [ ] Defer until product substantially complete: full regression matrix,
+- [x] question bank: stem text search (`/questions?q=` ILIKE + toolbar box)
+- [x] Implementation complete for manual validation (2026-09-11) —
+      integration commits `126311a`, `b7f5982`, `6236287`, `c8151b8`
+- [~] USER MANUAL VALIDATION — user is personally verifying admin/teacher/
+      student workflows + core AI learning flow; findings become the next
+      backlog (do NOT invent a backlog proactively)
+- [ ] Close manual-validation findings (bugs / missing features / broken
+      workflows / UX-API issues) as reported
+- [ ] Defer until manual findings are closed: full regression matrix,
       exhaustive E2E, cross-browser, API-contract verification
 - [ ] Then: re-close WF-06..10 browser journey matrix (expanded s03/s04
       scenarios for syllabus/material/content/question/pattern/assessment/
