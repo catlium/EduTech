@@ -299,7 +299,13 @@ export class PracticeService {
     }
 
     const rows = await this.db
-      .select({ id: questions.id, stem: questions.stem, questionType: questions.questionType, payload: questions.payload })
+      .select({
+        id: questions.id,
+        stem: questions.stem,
+        questionType: questions.questionType,
+        payload: questions.payload,
+        explanation: questions.explanation,
+      })
       .from(questions)
       .where(and(...scope))
       .orderBy(asc(questions.createdAt));
@@ -312,6 +318,7 @@ export class PracticeService {
       reveal: null,
       questionType: q.questionType,
       payload: q.payload as unknown as Record<string, unknown>,
+      explanation: q.explanation ?? undefined,
     }));
   }
 
@@ -352,10 +359,12 @@ export class PracticeService {
       rating: undefined as 'AGAIN' | 'GOOD' | undefined,
       isCorrect: undefined as boolean | undefined,
       reveal: undefined as string | undefined,
+      explanation: undefined as string | undefined,
     };
 
     // Cards are content, not keys: a FLASHCARD item always shows its back
-    // face. A QUESTION item only reveals the answer after it is answered.
+    // face. A QUESTION item only reveals the answer AND explanation after the
+    // student answers that item (the explanation may reference the key).
     if (item.questionType) {
       if (!response) return base;
       const { correctAnswer } = gradeAnswer(item.questionType, item.payload, response.answer);
@@ -364,6 +373,7 @@ export class PracticeService {
         answer: response.answer,
         isCorrect: response.isCorrect ?? false,
         reveal: JSON.stringify(correctAnswer),
+        explanation: item.explanation ?? undefined,
       };
     }
     return { ...base, reveal: item.reveal ?? undefined, rating: response?.rating ?? undefined };

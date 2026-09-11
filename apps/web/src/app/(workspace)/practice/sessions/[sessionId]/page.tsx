@@ -79,6 +79,14 @@ function AnsweredFeedback({ item }: { item: Item }) {
         <span className="text-muted-foreground">Correct answer: </span>
         <span className="font-medium text-emerald-600">{revealText(item)}</span>
       </p>
+      {item.explanation && (
+        <p className="rounded-md bg-muted/40 p-3 text-sm leading-relaxed">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Explanation
+          </span>
+          {item.explanation}
+        </p>
+      )}
     </div>
   );
 }
@@ -308,7 +316,7 @@ export default function PracticeSessionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState<string[]>([]);
+  const [cardFlipped, setCardFlipped] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -350,7 +358,7 @@ export default function PracticeSessionPage() {
     );
   }
 
-  async function rate(itemId: string, rating: "AGAIN" | "GOOD") {
+  async function rate(itemId: string, rating: "AGAIN" | "GOOD", advance: () => void) {
     setSaving(itemId);
     try {
       const { item } = await api<{ item: Item }>(
@@ -358,6 +366,8 @@ export default function PracticeSessionPage() {
         { method: "PUT", body: { rating } },
       );
       replaceItem(item);
+      setCardFlipped(false);
+      advance();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to save rating");
     } finally {
@@ -394,8 +404,8 @@ export default function PracticeSessionPage() {
     }
   }
 
-  function toggleFlip(itemId: string) {
-    setFlipped((prev) => (prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]));
+  function toggleFlip() {
+    setCardFlipped((f) => !f);
   }
 
   if (!institute) return null;
@@ -464,24 +474,58 @@ export default function PracticeSessionPage() {
           ))}
         </div>
       ) : isFlashcard ? (
-        <div className="space-y-3">
+        <div className="mx-auto max-w-xl space-y-4">
           <StatusBadge status={session.status} />
-          {items.map((item, i) => (
-            <div key={item.id} className="space-y-1">
-              <span className="ml-1 text-xs uppercase tracking-wide text-muted-foreground">
-                Card {i + 1} of {items.length}
-              </span>
-              <FlashcardItem
-                item={item}
-                flipped={flipped.includes(item.id)}
-                saving={saving === item.id}
-                onFlip={() => toggleFlip(item.id)}
-                onRate={(rating) => void rate(item.id, rating)}
-              />
-            </div>
-          ))}
-          {items.length === 0 && (
+          {items.length === 0 ? (
             <EmptyState title="No cards in this session" description="This flashcard set appears to be empty." />
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={index === 0}
+                  onClick={() => {
+                    setIndex((i) => i - 1);
+                    setCardFlipped(false);
+                  }}
+                >
+                  <ArrowLeft className="mr-1 size-4" /> Previous
+                </Button>
+                <span className="flex-1 text-center text-xs uppercase tracking-wide text-muted-foreground">
+                  Card {index + 1} of {items.length} · {answeredCount} rated
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={index === items.length - 1}
+                  onClick={() => {
+                    setIndex((i) => i + 1);
+                    setCardFlipped(false);
+                  }}
+                >
+                  Next <ArrowRight className="ml-1 size-4" />
+                </Button>
+              </div>
+              <FlashcardItem
+                item={items[index]}
+                flipped={cardFlipped}
+                saving={saving === items[index].id}
+                onFlip={toggleFlip}
+                onRate={(rating) =>
+                  void rate(
+                    items[index].id,
+                    rating,
+                    () => index < items.length - 1 && setIndex((i) => i + 1),
+                  )
+                }
+              />
+              {allAnswered && (
+                <Button className="w-full" onClick={() => setConfirmOpen(true)}>
+                  Complete session
+                </Button>
+              )}
+            </>
           )}
         </div>
       ) : (

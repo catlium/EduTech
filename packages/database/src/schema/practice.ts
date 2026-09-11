@@ -76,6 +76,9 @@ export const practiceSessionItems = pgTable(
     prompt: text('prompt').notNull(),
     reveal: text('reveal'),
     questionType: varchar('question_type', { length: 30 }),
+    // Snapshot of the source question's explanation, shown to the student
+    // after answering when present (only set for QUESTION items).
+    explanation: text('explanation'),
     payload: jsonb('payload').notNull(),
   },
   (table) => [unique('practice_session_items_unique').on(table.sessionId, table.sourceKey)],

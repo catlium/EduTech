@@ -260,8 +260,36 @@ function NotePayloadView({ payload }: { payload: Payload }) {
 
 function SummaryPayloadView({ payload }: { payload: Payload }) {
   const summary = typeof payload.summary === "string" ? payload.summary : null;
-  if (!summary) return <UnavailableNote />;
-  return <p className="whitespace-pre-wrap">{summary}</p>;
+  const keyConcepts = Array.isArray(payload.keyConcepts) ? payload.keyConcepts : [];
+  const importantPoints = Array.isArray(payload.importantPoints) ? payload.importantPoints : [];
+  if (!summary && keyConcepts.length === 0 && importantPoints.length === 0)
+    return <UnavailableNote />;
+
+  return (
+    <div className="space-y-4">
+      {summary && <p className="whitespace-pre-wrap">{summary}</p>}
+      {keyConcepts.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-sm font-semibold">Key concepts</p>
+          <ul className="list-disc space-y-1 pl-5">
+            {keyConcepts.map((kc, i) => (
+              <li key={i}>{String(kc)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {importantPoints.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-sm font-semibold">Important points</p>
+          <ul className="list-disc space-y-1 pl-5">
+            {importantPoints.map((p, i) => (
+              <li key={i}>{String(p)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ConceptsPayloadView({ payload }: { payload: Payload }) {

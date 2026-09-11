@@ -1,0 +1,1 @@
+ALTER TABLE "practice_session_items" ADD COLUMN "explanation" text;

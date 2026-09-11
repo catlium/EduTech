@@ -1015,6 +1015,8 @@ export const PracticeSessionItemSchema = z.object({
   prompt: z.string(),
   reveal: z.string().optional(),
   questionType: z.string().optional(),
+  // Question explanation, only present after the item is answered.
+  explanation: z.string().optional(),
   answer: z.unknown().optional(),
   rating: FlashcardRatingSchema.optional(),
   isCorrect: z.boolean().optional(),
