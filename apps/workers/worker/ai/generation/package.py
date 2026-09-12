@@ -20,10 +20,28 @@ _SYSTEM_PROMPT = (
     '  "note": {"title": string (optional), "blocks": [\n'
     '    {"id": string, "type": "heading", "content": string},\n'
     '    {"id": string, "type": "paragraph", "content": string},\n'
-    '    {"id": string, "type": "list", "items": [string]}\n'
+    '    {"id": string, "type": "list", "items": [string]},\n'
+    '    {"id": string, "type": "steps", "title": string (optional), "items": [string]},\n'
+    '    {"id": string, "type": "table", "caption": string (optional), '
+    '"headers": [string] (optional), "rows": [[string]]},\n'
+    '    {"id": string, "type": "formula", "content": string},\n'
+    '    {"id": string, "type": "example", "title": string (optional), "content": string},\n'
+    '    {"id": string, "type": "callout", "variant": "note"|"tip"|"warning"|"important", '
+    '"content": string},\n'
+    '    {"id": string, "type": "timeline", "caption": string (optional), '
+    '"events": [{"period": string, "title": string, "description": string (optional)}]},\n'
+    '    {"id": string, "type": "diagram", "kind": "flowchart"|"concept_map", '
+    '"caption": string (optional), "nodes": [{"id": string, "label": string}], '
+    '"edges": [{"from": string, "to": string, "label": string (optional)}]},\n'
+    '    {"id": string, "type": "chart", "chartType": "bar"|"line"|"pie", '
+    '"caption": string (optional), "data": [{"label": string, "value": number}]}\n'
     "  ]},\n"
     '  "summary": {"title": string (optional), "summary": string, '
-    '"keyConcepts": [string], "importantPoints": [string]},\n'
+    '"keyConcepts": [string], "importantPoints": [string], '
+    '"examples": [{"topic": string (optional), "content": string}] (optional), '
+    '"furtherLearning": [{"title": string, "url": string, '
+    '"kind": "documentation"|"video"|"course"|"website"|"reference", '
+    '"note": string (optional)}] (optional)},\n'
     '  "flashcards": {"title": string (optional), "description": string (optional), '
     '"cards": [{"id": string, "front": string, "back": string}]},\n'
     '  "concepts": {"title": string (optional), "concepts": [{"name": string, '
@@ -31,13 +49,21 @@ _SYSTEM_PROMPT = (
     "}\n"
     "Only include the keys for the requested resources. Each non-null resource "
     "must contain at least one block/item/card/concept. Every block/card/concept "
-    "needs a unique id."
+    "needs a unique id.\n"
+    "Guidance:\n"
+    "- In the note, use structured visual blocks ONLY when they genuinely improve "
+    "understanding (process -> flowchart, comparison -> table, data -> chart, "
+    "progression -> timeline, system -> diagram, math -> formula + worked example). "
+    "When prose is clearer, use paragraph/list. Do NOT force visuals everywhere.\n"
+    "- Include useful examples (concept -> explanation -> example -> takeaway) where they "
+    "aid understanding; never filler examples.\n"
+    '- "furtherLearning" (in note/summary) is OPTIONAL and must list only real, '
+    "authoritative resources with real URLs. NEVER fabricate URLs, titles, or authors. "
+    "If you cannot confidently provide a real URL, omit the list rather than inventing links."
 )
 
 
-def build_messages(
-    context: str, source_label: str, *, types: list[str]
-) -> list[dict[str, str]]:
+def build_messages(context: str, source_label: str, *, types: list[str]) -> list[dict[str, str]]:
     user_prompt = (
         f"Source material ({source_label}):\n\n{context}\n\n"
         f"Generate the following study resources: {', '.join(types)}. "

@@ -228,28 +228,140 @@ export type ContentChangeType = z.infer<typeof ContentChangeTypeEnum>;
 
 const PayloadId = z.string().min(1).max(128);
 
+export const NoteHeadingBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('heading'),
+  content: z.string().min(1),
+});
+
+export const NoteParagraphBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('paragraph'),
+  content: z.string().min(1),
+});
+
+export const NoteListBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('list'),
+  items: z.array(z.string()).min(1),
+});
+
+export const NoteStepsBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('steps'),
+  title: z.string().max(255).optional(),
+  items: z.array(z.string()).min(1),
+});
+
+export const NoteTableBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('table'),
+  caption: z.string().max(255).optional(),
+  headers: z.array(z.string().min(1).max(500)).max(12).optional(),
+  rows: z.array(z.array(z.string().min(1).max(2000)).max(12)).min(1).max(100),
+});
+
+export const NoteFormulaBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('formula'),
+  content: z.string().min(1).max(2000),
+});
+
+export const NoteExampleBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('example'),
+  title: z.string().max(255).optional(),
+  content: z.string().min(1).max(5000),
+});
+
+export const NoteCalloutBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('callout'),
+  variant: z.enum(['note', 'tip', 'warning', 'important']).default('note'),
+  content: z.string().min(1).max(2000),
+});
+
+export const NoteTimelineEventSchema = z.object({
+  period: z.string().min(1).max(255),
+  title: z.string().min(1).max(500),
+  description: z.string().max(2000).optional(),
+});
+
+export const NoteTimelineBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('timeline'),
+  caption: z.string().max(255).optional(),
+  events: z.array(NoteTimelineEventSchema).min(1).max(50),
+});
+
+export const NoteDiagramNodeSchema = z.object({
+  id: z.string().min(1).max(64),
+  label: z.string().min(1).max(500),
+});
+
+export const NoteDiagramEdgeSchema = z.object({
+  from: z.string().min(1).max(64),
+  to: z.string().min(1).max(64),
+  label: z.string().max(255).optional(),
+});
+
+export const NoteDiagramBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('diagram'),
+  kind: z.enum(['flowchart', 'concept_map']),
+  caption: z.string().max(255).optional(),
+  nodes: z.array(NoteDiagramNodeSchema).min(1).max(30),
+  edges: z.array(NoteDiagramEdgeSchema).max(60).default([]),
+});
+
+export const NoteChartDatumSchema = z.object({
+  label: z.string().min(1).max(255),
+  value: z.number().min(0),
+});
+
+export const NoteChartBlockSchema = z.object({
+  id: PayloadId,
+  type: z.literal('chart'),
+  chartType: z.enum(['bar', 'line', 'pie']),
+  caption: z.string().max(255).optional(),
+  data: z.array(NoteChartDatumSchema).min(1).max(50),
+});
+
 export const NoteBlockSchema = z.discriminatedUnion('type', [
-  z.object({
-    id: PayloadId,
-    type: z.literal('heading'),
-    content: z.string().min(1),
-  }),
-  z.object({
-    id: PayloadId,
-    type: z.literal('paragraph'),
-    content: z.string().min(1),
-  }),
-  z.object({
-    id: PayloadId,
-    type: z.literal('list'),
-    items: z.array(z.string()).min(1),
-  }),
+  NoteHeadingBlockSchema,
+  NoteParagraphBlockSchema,
+  NoteListBlockSchema,
+  NoteStepsBlockSchema,
+  NoteTableBlockSchema,
+  NoteFormulaBlockSchema,
+  NoteExampleBlockSchema,
+  NoteCalloutBlockSchema,
+  NoteTimelineBlockSchema,
+  NoteDiagramBlockSchema,
+  NoteChartBlockSchema,
 ]);
 export type NoteBlock = z.infer<typeof NoteBlockSchema>;
+export type NoteListBlock = z.infer<typeof NoteListBlockSchema>;
+export type NoteStepsBlock = z.infer<typeof NoteStepsBlockSchema>;
+export type NoteTableBlock = z.infer<typeof NoteTableBlockSchema>;
+export type NoteDiagramBlock = z.infer<typeof NoteDiagramBlockSchema>;
+export type NoteChartBlock = z.infer<typeof NoteChartBlockSchema>;
+
+export const FurtherLearningResourceSchema = z.object({
+  title: z.string().min(1).max(500),
+  url: z.string().url().max(1000),
+  kind: z.enum(['documentation', 'video', 'course', 'website', 'reference']).default('website'),
+  note: z.string().max(500).optional(),
+});
+export type FurtherLearningResource = z.infer<typeof FurtherLearningResourceSchema>;
 
 export const NotePayloadSchema = z.object({
   title: z.string().max(255).optional(),
   blocks: z.array(NoteBlockSchema).min(1),
+  /* Authoritative external resources for deeper study. Never fabricated by the
+   * generator — kept separate from the AI core content so a missing/incomplete
+   * list never compromises the generated body. */
+  furtherLearning: z.array(FurtherLearningResourceSchema).max(50).optional(),
 });
 export type NotePayload = z.infer<typeof NotePayloadSchema>;
 
@@ -294,6 +406,18 @@ export const SummaryPayloadSchema = z.object({
   summary: z.string().min(1).max(20000),
   keyConcepts: z.array(z.string().min(1).max(1000)).min(1),
   importantPoints: z.array(z.string().min(1).max(2000)).min(1),
+  /* Concept → explanation → example → takeaway. Examples are generated only
+   * where they genuinely aid understanding (never filler). */
+  examples: z
+    .array(
+      z.object({
+        topic: z.string().min(1).max(500).optional(),
+        content: z.string().min(1).max(5000),
+      }),
+    )
+    .max(20)
+    .optional(),
+  furtherLearning: z.array(FurtherLearningResourceSchema).max(50).optional(),
 });
 export type SummaryPayload = z.infer<typeof SummaryPayloadSchema>;
 
@@ -573,8 +697,130 @@ export type ContentGenerationStatusResponse = z.infer<typeof ContentGenerationSt
 
 // ── Question Contracts ─────────────────────
 
+/** Open-ended reference to a question type (predefined template OR a custom
+ * type created by the institute). Never a closed enum — the API validates the
+ * code exists in the question_types table. */
+export const QuestionTypeRefSchema = z.string().min(1).max(64);
+export type QuestionTypeRef = z.infer<typeof QuestionTypeRefSchema>;
+
+/** Predefined startter templates seeded globally. They are suggestions, not a
+ * limit: institutes may create custom types with any code. */
+export const PredefinedQuestionTypeEnum = z.enum([
+  'MCQ',
+  'TRUE_FALSE',
+  'FILL_IN_BLANK',
+  'DEFINITION',
+  'VERY_SHORT_ANSWER',
+  'SHORT_ANSWER',
+  'BRIEF_ANSWER',
+  'LONG_ANSWER',
+  'MATCH_THE_FOLLOWING',
+  'CASE_STUDY',
+  'NUMERICAL',
+]);
+export type PredefinedQuestionType = z.infer<typeof PredefinedQuestionTypeEnum>;
+
+/* Backwards-compatible alias kept for code that only deals with the original
+ * self-grading objective trio. */
 export const QuestionTypeEnum = z.enum(['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK']);
 export type QuestionType = z.infer<typeof QuestionTypeEnum>;
+
+/** The payload shape every question MUST follow, keyed by the type's answer
+ * format (not by the type code). New formats later = one more entry here. */
+export const AnswerFormatEnum = z.enum([
+  'MCQ',
+  'TRUE_FALSE',
+  'FILL_IN_BLANK',
+  'TEXT',
+  'MATCHING',
+  'NUMERICAL',
+]);
+export type AnswerFormat = z.infer<typeof AnswerFormatEnum>;
+
+export const QuestionTypeKindEnum = z.enum(['OBJECTIVE', 'SUBJECTIVE']);
+export type QuestionTypeKind = z.infer<typeof QuestionTypeKindEnum>;
+
+export const McqFormatPayloadSchema = z.object({
+  choices: z
+    .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
+    .min(2)
+    .max(10),
+  correctChoiceId: z.string().min(1).max(64),
+});
+
+export const TrueFalseFormatPayloadSchema = z.object({
+  correctAnswer: z.boolean(),
+});
+
+export const FillInBlankFormatPayloadSchema = z.object({
+  acceptableAnswers: z.array(z.string().min(1)).min(1).max(10),
+});
+
+export const TextFormatPayloadSchema = z.object({
+  modelAnswer: z.string().min(1).max(4000),
+});
+
+export const MatchingFormatPayloadSchema = z.object({
+  left: z
+    .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
+    .min(2)
+    .max(10),
+  right: z
+    .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
+    .min(2)
+    .max(10),
+  matches: z.record(z.string().min(1).max(64), z.string().min(1).max(64)),
+});
+
+export const NumericalFormatPayloadSchema = z.object({
+  modelAnswer: z.number(),
+  tolerance: z.number().min(0).max(10).optional(),
+});
+
+export const FormatPayloadSchemas = {
+  MCQ: McqFormatPayloadSchema,
+  TRUE_FALSE: TrueFalseFormatPayloadSchema,
+  FILL_IN_BLANK: FillInBlankFormatPayloadSchema,
+  TEXT: TextFormatPayloadSchema,
+  MATCHING: MatchingFormatPayloadSchema,
+  NUMERICAL: NumericalFormatPayloadSchema,
+} as const;
+
+export const QuestionTypeDefinitionSchema = z.object({
+  id: z.string(),
+  code: QuestionTypeRefSchema,
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
+  instructions: z.string().max(2000).nullable().optional(),
+  answerFormat: AnswerFormatEnum,
+  kind: QuestionTypeKindEnum,
+  defaultMarks: z.number().int().min(1).max(1000).nullable().optional(),
+  allowedDifficulties: z.array(z.enum(['EASY','MEDIUM','HARD'])).max(3).nullable().optional(),
+  evaluationConfig: z.record(z.string(), z.unknown()).nullable().optional(),
+  isGlobal: z.boolean(),
+  active: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type QuestionTypeDefinition = z.infer<typeof QuestionTypeDefinitionSchema>;
+
+export const CreateQuestionTypeRequestSchema = z.object({
+  name: z.string().min(1).max(100),
+  code: QuestionTypeRefSchema.optional(),
+  description: z.string().max(500).optional(),
+  instructions: z.string().max(2000).optional(),
+  answerFormat: AnswerFormatEnum,
+  kind: QuestionTypeKindEnum,
+  defaultMarks: z.number().int().min(1).max(1000).optional(),
+  allowedDifficulties: z.array(z.enum(['EASY','MEDIUM','HARD'])).max(3).optional(),
+  evaluationConfig: z.record(z.string(), z.unknown()).optional(),
+});
+export type CreateQuestionTypeRequest = z.infer<typeof CreateQuestionTypeRequestSchema>;
+
+export const ListQuestionTypesResponseSchema = z.object({
+  types: z.array(QuestionTypeDefinitionSchema),
+});
+export type ListQuestionTypesResponse = z.infer<typeof ListQuestionTypesResponseSchema>;
 
 export const QuestionDifficultyEnum = z.enum(['EASY', 'MEDIUM', 'HARD']);
 export type QuestionDifficulty = z.infer<typeof QuestionDifficultyEnum>;
@@ -619,7 +865,7 @@ export type QuestionPayload = McqPayload | TrueFalsePayload | FillInBlankPayload
 export const CreateQuestionRequestSchema = z
   .object({
     stem: z.string().min(1).max(20000),
-    questionType: QuestionTypeEnum,
+    questionType: QuestionTypeRefSchema,
     difficulty: QuestionDifficultyEnum.optional(),
     explanation: z.string().max(20000).optional(),
     source: QuestionSourceEnum,
@@ -627,7 +873,11 @@ export const CreateQuestionRequestSchema = z
     ...AcademicScopeFields,
   })
   .superRefine((value, ctx) => {
-    const result = QuestionPayloadSchemas[value.questionType].safeParse(value.payload);
+    // Built-in codes get client-side payload validation; custom codes
+    // (any string) are validated server-side against the type's answer format.
+    const schema = (QuestionPayloadSchemas as Record<string, import('zod').ZodTypeAny | undefined>)[value.questionType];
+    if (!schema) return;
+    const result = schema.safeParse(value.payload);
     if (!result.success) {
       ctx.addIssue({
         code: 'custom',
@@ -657,7 +907,7 @@ export const QuestionResponseSchema = z.object({
   chapterId: z.string().uuid().nullable(),
   topicId: z.string().uuid().nullable(),
   stem: z.string(),
-  questionType: QuestionTypeEnum,
+  questionType: QuestionTypeRefSchema,
   difficulty: QuestionDifficultyEnum,
   explanation: z.string().nullable(),
   payload: z.record(z.string(), z.unknown()),
@@ -676,7 +926,7 @@ export type QuestionListItem = z.infer<typeof QuestionListItemSchema>;
 
 export const GenerateQuestionsRequestSchema = z.object({
   topicId: z.string().uuid(),
-  questionType: QuestionTypeEnum,
+  questionType: QuestionTypeRefSchema,
   count: z.number().int().min(1).max(50),
   difficulty: QuestionDifficultyEnum.optional(),
 });
@@ -705,7 +955,7 @@ export type BatchQuestionActionRequest = z.infer<typeof BatchQuestionActionReque
 // filled once with a large enough pool instead of regenerating per assessment.
 
 export const GenerateBankBucketSchema = z.object({
-  questionType: QuestionTypeEnum,
+  questionType: QuestionTypeRefSchema,
   difficulty: QuestionDifficultyEnum,
   count: z.number().int().min(1).max(100),
 });
@@ -740,7 +990,7 @@ export type DifficultyDistribution = z.infer<typeof DifficultyDistributionSchema
 export const GenerateBankRequestSchema = z
   .object({
     ...QuestionBankScopeSchema.shape,
-    questionTypes: z.array(QuestionTypeEnum).min(1).max(3).optional(),
+    questionTypes: z.array(QuestionTypeRefSchema).min(1).max(32).optional(),
     count: z.number().int().min(1).max(100),
     difficultyDistribution: DifficultyDistributionSchema.optional(),
     blueprintId: z.string().uuid().optional(),
@@ -748,11 +998,32 @@ export const GenerateBankRequestSchema = z
 export type GenerateBankRequest = z.infer<typeof GenerateBankRequestSchema>;
 
 export const CountBucketSchema = z.object({
-  questionType: QuestionTypeEnum,
+  questionType: QuestionTypeRefSchema,
   difficulty: QuestionDifficultyEnum,
   count: z.number().int().min(0),
 });
 export type CountBucket = z.infer<typeof CountBucketSchema>;
+
+export const DeriveDistributionRequestSchema = z.object({
+  ...QuestionBankScopeSchema.shape,
+  count: z.number().int().min(1).max(500),
+});
+export type DeriveDistributionRequest = z.infer<typeof DeriveDistributionRequestSchema>;
+
+export const DerivedDistributionBucketSchema = z.object({
+  questionType: QuestionTypeRefSchema,
+  difficulty: QuestionDifficultyEnum,
+  percentage: z.number().int().min(0).max(100),
+});
+export type DerivedDistributionBucket = z.infer<typeof DerivedDistributionBucketSchema>;
+
+export const DeriveDistributionResponseSchema = z.object({
+  sources: z.array(z.string()),
+  count: z.number().int(),
+  distribution: z.array(DerivedDistributionBucketSchema),
+  buckets: z.array(CountBucketSchema),
+});
+export type DeriveDistributionResponse = z.infer<typeof DeriveDistributionResponseSchema>;
 
 export const GenerateBankResponseSchema = z.object({
   jobId: z.string().uuid(),
@@ -764,14 +1035,18 @@ export const GenerateBankResponseSchema = z.object({
 });
 export type GenerateBankResponse = z.infer<typeof GenerateBankResponseSchema>;
 
+export const GenerateBankFromBlueprintRequestSchema = z.object({
+  blueprintId: z.string().uuid(),
+  ...QuestionBankScopeSchema.shape,
+});
+export type GenerateBankFromBlueprintRequest = z.infer<
+  typeof GenerateBankFromBlueprintRequestSchema
+>;
+
 export const QuestionBankStatsSchema = z.object({
   total: z.number(),
   usable: z.number(),
-  byType: z.object({
-    MCQ: z.number(),
-    TRUE_FALSE: z.number(),
-    FILL_IN_BLANK: z.number(),
-  }),
+  byType: z.record(QuestionTypeRefSchema, z.number()),
   byDifficulty: z.object({
     EASY: z.number(),
     MEDIUM: z.number(),
@@ -793,7 +1068,7 @@ export const GenerateMoreQuestionsRequestSchema = z.object({
 export type GenerateMoreQuestionsRequest = z.infer<typeof GenerateMoreQuestionsRequestSchema>;
 
 export const GenerateMoreBucketStatusSchema = z.object({
-  questionType: QuestionTypeEnum,
+  questionType: QuestionTypeRefSchema,
   difficulty: QuestionDifficultyEnum,
   requested: z.number(),
   existing: z.number(),
@@ -980,7 +1255,7 @@ export type StudentQuestionPayload = z.infer<typeof StudentQuestionPayloadSchema
 export const StudentAttemptQuestionSchema = z.object({
   attemptQuestionId: z.string().uuid(),
   questionId: z.string().uuid(),
-  questionType: QuestionTypeEnum,
+  questionType: QuestionTypeRefSchema,
   stem: z.string(),
   payload: StudentQuestionPayloadSchema,
   sortOrder: z.number(),
@@ -1118,7 +1393,7 @@ export const QuestionAccuracyMetricSchema = z.object({
   stem: z.string(),
   sortOrder: z.number().int(),
   marks: z.number().int(),
-  questionType: QuestionTypeEnum,
+  questionType: QuestionTypeRefSchema,
   difficulty: QuestionDifficultyEnum,
   responses: z.number().int(),
   correctCount: z.number().int(),
@@ -1229,8 +1504,9 @@ export type PracticeSessionListItem = z.infer<typeof PracticeSessionListItemSche
 //
 // A paper pattern is a reusable, tenant-scoped exam blueprint: total marks,
 // duration, instructions and an ordered set of sections. Each section declares
-// a question type (reusing the existing objective QuestionTypeEnum — no new
-// question types), question count, marks per question, whether it is
+// a question type (any code from question_types — predefined template OR a
+// custom institute-created type; validated at runtime, never a closed enum),
+// question count, marks per question, whether it is
 // compulsory ("attempt all") or offers a choice ("attempt N of M"), and
 // optional difficulty/topic *percentage* distributions. Nullable fields
 // represent explicit uncertainty — e.g. an AI analysis that could not infer a
@@ -1272,7 +1548,7 @@ export const PaperPatternSectionSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1).max(100),
   /* absent/undefined = unspecified or mixed-type section (no descriptive type exists yet) */
-  questionType: QuestionTypeEnum.optional(),
+  questionType: QuestionTypeRefSchema.optional(),
   /* null = unknown (teacher/AI could not state it) */
   count: z.number().int().min(1).nullable().optional(),
   marksPerQuestion: z.number().int().min(1).nullable().optional(),

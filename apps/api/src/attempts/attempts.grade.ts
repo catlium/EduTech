@@ -1,5 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
-
 interface GradedAnswer {
   isCorrect: boolean;
   correctAnswer: Record<string, unknown>;
@@ -15,24 +13,36 @@ function normalizeBlank(value: unknown): string {
 
 /**
  * Deterministic, server-side grading of one snapshotted question. Pure —
- * never throws for well-formed stored data; the snapshot payload and the
- * saved answer were already validated at write time.
+ * never throws; dispatch is by answer format, so a custom question type that
+ * reuses a known format (or an unknown future format) grades without a 400.
+ * Subjective/text answers are not auto-graded → isCorrect=false, marks 0.
+ *
+ * `answerFormat` is the persisted answer format on the question row (set from
+ * the question-type definition at write time). Legacy rows predating that
+ * column fall back to questionType.toUpperCase() — the predefined types'
+ * codes match their formats 1:1.
  */
-export function gradeAnswer(questionType: string, payload: unknown, answer: unknown): GradedAnswer {
+export function gradeAnswer(
+  questionType: string,
+  payload: unknown,
+  answer: unknown,
+  answerFormat?: string | null,
+): GradedAnswer {
   const a = (answer ?? {}) as Record<string, unknown>;
-  if (questionType === 'MCQ') {
+  const fmt = (answerFormat ?? questionType).toUpperCase();
+  if (fmt === 'MCQ') {
     const correctChoiceId = (payload as { correctChoiceId?: string })['correctChoiceId'];
     const choiceId = a['choiceId'];
     return { isCorrect: isUuid(choiceId) && choiceId === correctChoiceId, correctAnswer: { choiceId: correctChoiceId } };
   }
-  if (questionType === 'TRUE_FALSE') {
+  if (fmt === 'TRUE_FALSE') {
     const correctValue = (payload as { correctAnswer?: boolean })['correctAnswer'];
     return {
       isCorrect: typeof a['value'] === 'boolean' && a['value'] === correctValue,
       correctAnswer: { value: correctValue },
     };
   }
-  if (questionType === 'FILL_IN_BLANK') {
+  if (fmt === 'FILL_IN_BLANK') {
     const acceptable = ((payload as { acceptableAnswers?: unknown })['acceptableAnswers'] ?? []) as unknown[];
     const correctValue = acceptable.length > 0 ? acceptable[0] : '';
     return {
@@ -40,5 +50,30 @@ export function gradeAnswer(questionType: string, payload: unknown, answer: unkn
       correctAnswer: { value: correctValue },
     };
   }
-  throw new BadRequestException(`Unsupported question type: ${questionType}`);
+  if (fmt === 'NUMERICAL') {
+    const model = (payload as { modelAnswer?: number })['modelAnswer'];
+    const tolerance = (payload as { tolerance?: number })['tolerance'] ?? 0;
+    const attempted = typeof a['value'] === 'number' ? a['value'] : parseFloat(String(a['value']));
+    const correctValue = typeof model === 'number' ? model : NaN;
+    const isCorrect =
+      typeof correctValue === 'number' &&
+      Number.isFinite(correctValue) &&
+      typeof attempted === 'number' &&
+      Number.isFinite(attempted) &&
+      Math.abs(attempted - correctValue) <= tolerance;
+    return { isCorrect, correctAnswer: { value: correctValue, tolerance } };
+  }
+  if (fmt === 'MATCHING') {
+    const correct = (payload as { matches?: Record<string, string> })['matches'] ?? {};
+    const attempted = (a['matches'] ?? {}) as Record<string, string>;
+    const correctKeys = Object.keys(correct);
+    const attemptedKeys = Object.keys(attempted);
+    const isCorrect =
+      correctKeys.every((k) => attempted[k] !== undefined && attempted[k] === correct[k]) &&
+      attemptedKeys.every((k) => correct[k] !== undefined);
+    return { isCorrect, correctAnswer: { matches: correct } };
+  }
+  // TEXT and any unknown/custom format: not auto-graded.
+  const modelAnswer = (payload as { modelAnswer?: string })['modelAnswer'] ?? '';
+  return { isCorrect: false, correctAnswer: { modelAnswer: String(modelAnswer) } };
 }

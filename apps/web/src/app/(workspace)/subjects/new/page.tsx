@@ -35,8 +35,9 @@ export default function NewSubjectPage() {
     defaultValues: { name: "", slug: "", description: "" },
   });
 
+  const name = form.watch("name");
+
   useEffect(() => {
-    const name = form.watch("name");
     if (name && !form.formState.dirtyFields.slug) {
       const slug = name
         .toLowerCase()
@@ -44,7 +45,7 @@ export default function NewSubjectPage() {
         .replace(/(^-|-$)/g, "");
       form.setValue("slug", slug, { shouldValidate: true });
     }
-  }, [form]);
+  }, [name, form]);
 
   async function onSubmit(values: CreateSubjectRequest) {
     if (!institute) return;

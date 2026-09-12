@@ -73,6 +73,7 @@ export const attemptQuestions = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     marks: integer('marks').notNull().default(1),
     questionType: varchar('question_type', { length: 30 }).notNull(),
+    answerFormat: varchar('answer_format', { length: 50 }),
     stem: text('stem').notNull(),
     payload: jsonb('payload').notNull(),
   },

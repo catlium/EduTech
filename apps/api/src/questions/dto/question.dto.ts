@@ -7,7 +7,6 @@ import {
   IsUUID,
 } from 'class-validator';
 
-type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 type QuestionSource = 'MANUAL' | 'AI_GENERATED';
 
@@ -36,8 +35,10 @@ export class CreateQuestionDto {
   @MaxLength(20000)
   stem!: string;
 
-  @IsIn(['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'])
-  questionType!: QuestionType;
+  /* Open question-type code (predefined or custom) — existence checked in the service. */
+  @IsString()
+  @MaxLength(64)
+  questionType!: string;
 
   @IsOptional()
   @IsIn(['EASY', 'MEDIUM', 'HARD'])

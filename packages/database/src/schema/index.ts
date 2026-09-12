@@ -7,6 +7,7 @@ export { subjects, chapters, topics } from './academic.js';
 export { contentItems, contentVersions } from './content.js';
 export { materials } from './materials.js';
 export { questions } from './questions.js';
+export { questionTypes } from './question-types.js';
 export { assessments, assessmentQuestions } from './examinations.js';
 export { paperPatterns } from './paper-patterns.js';
 export { syllabusProposals } from './syllabus.js';

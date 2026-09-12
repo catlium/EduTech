@@ -63,7 +63,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type {
   QuestionListItem,
-  QuestionType,
   QuestionDifficulty,
   SubjectResponse,
   ChapterResponse,
@@ -84,10 +83,13 @@ import {
 
 const QUESTION_TYPES = ["MCQ", "TRUE_FALSE", "FILL_IN_BLANK"] as const;
 const DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
+
+/* Question-type codes are open data (predefined or custom). */
+const QuestionTypeCodeSchema = z.string().min(1).max(64);
 const STATUS_TABS = ["all", "PENDING", "APPROVED", "REJECTED"] as const;
 
 interface BankBucketRow {
-  questionType: QuestionType;
+  questionType: string;
   difficulty: QuestionDifficulty;
   count: number;
 }
@@ -97,14 +99,14 @@ type Cascade = typeof DEFAULT_CASCADE;
 
 const ManualFormSchema = z.object({
   stem: z.string().min(1, "Stem is required"),
-  questionType: z.enum(QUESTION_TYPES),
+  questionType: QuestionTypeCodeSchema,
   difficulty: z.enum(DIFFICULTIES).or(z.literal("")),
   explanation: z.string().optional(),
 });
 type ManualFormValues = z.infer<typeof ManualFormSchema>;
 
 const GenerateFormSchema = z.object({
-  questionType: z.enum(QUESTION_TYPES),
+  questionType: QuestionTypeCodeSchema,
   count: z.coerce.number().int().min(1, "Between 1 and 50").max(50, "Between 1 and 50"),
   difficulty: z.enum(DIFFICULTIES).or(z.literal("")),
 });
@@ -567,7 +569,7 @@ export default function QuestionsListPage() {
   }
 
   function buildPayload(
-    questionType: QuestionType,
+    questionType: string,
     choices: { id: string; text: string }[],
     correctId: string,
     tfValue: boolean,
@@ -1064,7 +1066,7 @@ export default function QuestionsListPage() {
               <Select
                 value={manualForm.watch("questionType")}
                 onValueChange={(v) => {
-                  manualForm.setValue("questionType", v as QuestionType);
+                  manualForm.setValue("questionType", v);
                   resetPayload();
                 }}
               >
@@ -1203,7 +1205,7 @@ export default function QuestionsListPage() {
               <Select
                 value={generateForm.watch("questionType")}
                 onValueChange={(v) =>
-                  generateForm.setValue("questionType", v as QuestionType)
+                  generateForm.setValue("questionType", v)
                 }
               >
                 <SelectTrigger>

@@ -235,13 +235,16 @@ def insert_generated_questions(
     ids: list[str] = []
     with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
         for q in questions:
+            # Effective answer format mirrors the GeneratedQuestion validator:
+            # the LLM may omit it, in which case the type code is the format.
+            answer_format = (q.get("answerFormat") or q["questionType"]).upper()
             cur.execute(
                 "INSERT INTO questions"
                 " (institute_id, subject_id, chapter_id, topic_id, stem, question_type,"
-                "  difficulty, explanation, payload, source, approval_status, status,"
-                "  created_by, updated_by, provenance)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AI_GENERATED', 'PENDING',"
-                "  'ACTIVE', %s, %s, %s)"
+                "  answer_format, difficulty, explanation, payload, source,"
+                "  approval_status, status, created_by, updated_by, provenance)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'AI_GENERATED',"
+                "  'PENDING', 'ACTIVE', %s, %s, %s)"
                 " RETURNING id",
                 (
                     institute_id,
@@ -250,6 +253,7 @@ def insert_generated_questions(
                     topic_id,
                     q["stem"],
                     q["questionType"],
+                    answer_format,
                     q["difficulty"],
                     q.get("explanation"),
                     Jsonb(q["payload"]),

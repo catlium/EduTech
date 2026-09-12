@@ -41,22 +41,42 @@ export class AttemptsService {
 
   /**
    * Student-safe projection of a question payload: drops the answer-bearing
-   * field(s) of every question type. Single sanitization point for all
-   * student-facing attempt endpoints.
+   * field(s) of every answer format. Single sanitization point for all
+   * student-facing attempt endpoints. Dispatch is by format so custom types
+   * (e.g. DIAGRAM_LABELING → MATCHING) sanitize correctly; falls back to the
+   * question type code for legacy rows (predefined codes == formats).
    */
-  private sanitizePayload(payload: unknown, questionType: string): Record<string, unknown> {
-    if (questionType === 'MCQ') {
+  private sanitizePayload(
+    payload: unknown,
+    questionType: string,
+    answerFormat?: string | null,
+  ): Record<string, unknown> {
+    const fmt = (answerFormat ?? questionType).toUpperCase();
+    if (fmt === 'MCQ') {
       return { choices: ((payload as { choices?: unknown })['choices'] ?? []) as unknown };
+    }
+    if (fmt === 'MATCHING') {
+      // Students need the two column lists to match, never the key.
+      return {
+        left: ((payload as { left?: unknown })['left'] ?? []) as unknown,
+        right: ((payload as { right?: unknown })['right'] ?? []) as unknown,
+      };
     }
     return {};
   }
 
-  private validateAnswer(questionType: string, payload: unknown, answer: unknown): void {
+  private validateAnswer(
+    questionType: string,
+    payload: unknown,
+    answer: unknown,
+    answerFormat?: string | null,
+  ): void {
     if (typeof answer !== 'object' || answer === null || Array.isArray(answer)) {
       throw new BadRequestException('Answer must be an object');
     }
+    const fmt = (answerFormat ?? questionType).toUpperCase();
     const a = answer as Record<string, unknown>;
-    if (questionType === 'MCQ') {
+    if (fmt === 'MCQ') {
       const choiceId = a['choiceId'];
       if (!isUuid(choiceId)) {
         throw new BadRequestException('MCQ answer must include a choiceId');
@@ -67,17 +87,35 @@ export class AttemptsService {
       if (!choices.some((c) => c.id === choiceId)) {
         throw new BadRequestException('choiceId is not a valid choice for this question');
       }
-    } else if (questionType === 'TRUE_FALSE') {
+    } else if (fmt === 'TRUE_FALSE') {
       if (typeof a['value'] !== 'boolean') {
         throw new BadRequestException('TRUE_FALSE answer must be a boolean value');
       }
-    } else if (questionType === 'FILL_IN_BLANK') {
+    } else if (fmt === 'FILL_IN_BLANK') {
       if (typeof a['value'] !== 'string' || a['value'].length === 0 || a['value'].length > 500) {
         throw new BadRequestException('FILL_IN_BLANK answer must be a non-empty string (max 500 chars)');
       }
-    } else {
-      throw new BadRequestException(`Unsupported question type: ${questionType}`);
+    } else if (fmt === 'MATCHING') {
+      const attempted = (a['matches'] ?? {}) as Record<string, string>;
+      if (typeof attempted !== 'object' || Array.isArray(attempted)) {
+        throw new BadRequestException('MATCHING answer must include a matches map');
+      }
+      const left = ((payload as { left?: Array<{ id?: string }> })['left'] ?? []) as Array<{ id?: string }>;
+      const right = ((payload as { right?: Array<{ id?: string }> })['right'] ?? []) as Array<{ id?: string }>;
+      const leftIds = new Set(left.map((x) => x.id));
+      const rightIds = new Set(right.map((x) => x.id));
+      for (const [leftId, rightId] of Object.entries(attempted)) {
+        if (!leftIds.has(leftId)) throw new BadRequestException('matches contains an unknown left item');
+        if (!rightIds.has(rightId)) throw new BadRequestException('matches contains an unknown right item');
+      }
+    } else if (fmt === 'NUMERICAL') {
+      const num = typeof a['value'] === 'number' ? a['value'] : parseFloat(String(a['value']));
+      if (!Number.isFinite(num)) {
+        throw new BadRequestException('NUMERICAL answer must be a number');
+      }
     }
+    // TEXT and unknown/custom formats: any object is accepted; the evaluator
+    // never auto-grades subjective answers.
   }
 
   private async getAssessment(instituteId: string, assessmentId: string) {
@@ -147,7 +185,7 @@ export class AttemptsService {
     const graded = aqRows.map((aq) => {
       const res = responses.get(aq.id);
       const { isCorrect } = res
-        ? gradeAnswer(aq.questionType, aq.payload, res.answer)
+        ? gradeAnswer(aq.questionType, aq.payload, res.answer, aq.answerFormat)
         : { isCorrect: false };
       return { attemptQuestionId: aq.id, isCorrect, marksAwarded: isCorrect ? aq.marks : 0 };
     });
@@ -281,6 +319,7 @@ export class AttemptsService {
         marks: assessmentQuestions.marks,
         stem: questions.stem,
         questionType: questions.questionType,
+        answerFormat: questions.answerFormat,
         payload: questions.payload,
       })
       .from(assessmentQuestions)
@@ -319,6 +358,7 @@ export class AttemptsService {
             sortOrder: l.sortOrder,
             marks: l.marks,
             questionType: l.questionType,
+            answerFormat: l.answerFormat,
             stem: l.stem,
             payload: l.payload as unknown as Record<string, unknown>,
           })),
@@ -382,7 +422,7 @@ export class AttemptsService {
         .limit(1);
       if (!aq) throw new NotFoundException('Question not found in this attempt');
 
-      this.validateAnswer(aq.questionType, aq.payload, answer);
+      this.validateAnswer(aq.questionType, aq.payload, answer, aq.answerFormat);
 
       // Duplicate-write safe: unique (attemptId, attemptQuestionId) → upsert.
       await tx
@@ -448,13 +488,18 @@ export class AttemptsService {
 
     const questionsOut = aqRows.map((aq) => {
       const res = responses.get(aq.id);
-      const { isCorrect, correctAnswer } = gradeAnswer(aq.questionType, aq.payload, res?.answer ?? {});
+      const { isCorrect, correctAnswer } = gradeAnswer(
+        aq.questionType,
+        aq.payload,
+        res?.answer ?? {},
+        aq.answerFormat,
+      );
       return {
         attemptQuestionId: aq.id,
         questionId: aq.questionId,
         questionType: aq.questionType,
         stem: aq.stem,
-        payload: this.sanitizePayload(aq.payload, aq.questionType),
+        payload: this.sanitizePayload(aq.payload, aq.questionType, aq.answerFormat),
         sortOrder: aq.sortOrder,
         marks: aq.marks,
         answer: res?.answer ?? null,
@@ -586,7 +631,7 @@ export class AttemptsService {
       questionId: aq.questionId,
       questionType: aq.questionType,
       stem: aq.stem,
-      payload: this.sanitizePayload(aq.payload, aq.questionType),
+      payload: this.sanitizePayload(aq.payload, aq.questionType, aq.answerFormat),
       sortOrder: aq.sortOrder,
       marks: aq.marks,
       ...(withAnswers ? { answer: answerMap.get(aq.id) ?? null } : {}),

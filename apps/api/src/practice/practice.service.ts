@@ -303,6 +303,7 @@ export class PracticeService {
         id: questions.id,
         stem: questions.stem,
         questionType: questions.questionType,
+        answerFormat: questions.answerFormat,
         payload: questions.payload,
         explanation: questions.explanation,
       })
@@ -317,6 +318,7 @@ export class PracticeService {
       prompt: q.stem,
       reveal: null,
       questionType: q.questionType,
+      answerFormat: q.answerFormat,
       payload: q.payload as unknown as Record<string, unknown>,
       explanation: q.explanation ?? undefined,
     }));
@@ -333,7 +335,7 @@ export class PracticeService {
       throw new BadRequestException('answer required for question item');
     }
     if (dto.rating) throw new BadRequestException('rating is not valid for question items');
-    const { isCorrect } = gradeAnswer(item.questionType ?? '', item.payload, dto.answer);
+    const { isCorrect } = gradeAnswer(item.questionType ?? '', item.payload, dto.answer, item.answerFormat);
     return { answer: dto.answer, rating: null, isCorrect };
   }
 
@@ -367,7 +369,7 @@ export class PracticeService {
     // student answers that item (the explanation may reference the key).
     if (item.questionType) {
       if (!response) return base;
-      const { correctAnswer } = gradeAnswer(item.questionType, item.payload, response.answer);
+      const { correctAnswer } = gradeAnswer(item.questionType, item.payload, response.answer, item.answerFormat);
       return {
         ...base,
         answer: response.answer,

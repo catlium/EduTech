@@ -21,6 +21,7 @@ import { StatusBadge } from '@/components/app/status-badge';
 import { ErrorState } from '@/components/app/error-state';
 import { ConfirmDialog } from '@/components/app/confirm-dialog';
 import { ContentPayloadEditor, type ContentType } from '@/components/app/content-payload-editor';
+import { NoteBlocks, FurtherLearning } from '@/components/content/note-blocks';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -216,33 +217,9 @@ export default function ContentDetailPage() {
 
 function NoteView({ payload }: { payload: NotePayload }) {
   return (
-    <div className="max-w-none space-y-4">
-      {payload.blocks.map((block) => {
-        if (block.type === 'heading') {
-          return (
-            <h3 key={block.id} className="text-lg font-semibold">
-              {block.content}
-            </h3>
-          );
-        }
-        if (block.type === 'paragraph') {
-          return (
-            <p key={block.id} className="text-sm leading-relaxed">
-              {block.content}
-            </p>
-          );
-        }
-        if (block.type === 'list') {
-          return (
-            <ul key={block.id} className="list-disc space-y-1 pl-5 text-sm">
-              {block.items.map((item, i) => (
-                <li key={i}>{item}</li>
-              ))}
-            </ul>
-          );
-        }
-        return null;
-      })}
+    <div className="space-y-4">
+      <NoteBlocks blocks={payload.blocks} />
+      <FurtherLearning resources={payload.furtherLearning ?? []} />
     </div>
   );
 }
@@ -273,6 +250,18 @@ function SummaryView({ payload }: { payload: SummaryPayload }) {
           </ul>
         </div>
       )}
+      {payload.examples && payload.examples.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Examples</h3>
+          {payload.examples.map((ex, i) => (
+            <div key={i} className="rounded-lg border-l-4 border-primary bg-muted/20 p-3">
+              {ex.topic && <p className="text-xs font-semibold uppercase tracking-wide text-primary">{ex.topic}</p>}
+              <p className="mt-1 whitespace-pre-wrap text-sm">{ex.content}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <FurtherLearning resources={payload.furtherLearning ?? []} />
     </div>
   );
 }

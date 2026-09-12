@@ -2,17 +2,17 @@ import { Injectable, NotFoundException, BadRequestException, Inject } from '@nes
 import { eq, and, desc, ilike, inArray, type SQL } from 'drizzle-orm';
 import { questions, subjects, chapters, topics } from '@catlium/database';
 import type { Database } from '@catlium/database';
-import { QuestionPayloadSchemas } from '@catlium/contracts';
+import { FormatPayloadSchemas, QuestionPayloadSchemas, type QuestionTypeDefinition } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { QuestionTypesService } from './question-types.service.js';
 
 type ScopeKind = 'subject' | 'chapter' | 'topic';
-type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 type QuestionSource = 'MANUAL' | 'AI_GENERATED';
 type QuestionApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 interface ListQuestionFilters {
-  questionType?: QuestionType;
+  questionType?: string;
   difficulty?: QuestionDifficulty;
   approvalStatus?: QuestionApprovalStatus;
   q?: string;
@@ -23,7 +23,7 @@ interface ListQuestionFilters {
 
 interface CreateQuestionInput {
   stem: string;
-  questionType: QuestionType;
+  questionType: string;
   difficulty?: QuestionDifficulty;
   explanation?: string;
   source: QuestionSource;
@@ -39,12 +39,16 @@ type QuestionUpdateInput = Partial<
 
 @Injectable()
 export class QuestionsService {
-  constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE_TOKEN) private readonly db: Database,
+    private readonly typesService: QuestionTypesService,
+  ) {}
 
   // ── Create ────────────────────────────────
 
   async createQuestion(instituteId: string, createdBy: string, input: CreateQuestionInput) {
-    this.validatePayload(input.questionType, input.payload);
+    const type = await this.typesService.findByCode(instituteId, input.questionType);
+    this.validatePayload(type, input.payload);
 
     const scope = this.resolveScope(input);
 
@@ -61,6 +65,7 @@ export class QuestionsService {
         topicId: scope.kind === 'topic' ? scope.id : null,
         stem: input.stem,
         questionType: input.questionType,
+        answerFormat: type.answerFormat,
         difficulty: input.difficulty ?? 'MEDIUM',
         explanation: input.explanation ?? null,
         payload: input.payload,
@@ -134,7 +139,8 @@ export class QuestionsService {
     const existing = await this.getQuestion(instituteId, questionId);
 
     if (patch.payload !== undefined) {
-      this.validatePayload(existing.questionType as QuestionType, patch.payload);
+      const type = await this.typesService.findByCode(instituteId, existing.questionType);
+      this.validatePayload(type, patch.payload);
     }
 
     const [question] = await this.db
@@ -219,15 +225,42 @@ export class QuestionsService {
 
   // ── Helpers ───────────────────────────────
 
-  private validatePayload(questionType: QuestionType, payload: Record<string, unknown>): void {
-    const schema = QuestionPayloadSchemas[questionType];
+  private validatePayload(
+    type: QuestionTypeDefinition,
+    payload: Record<string, unknown>,
+  ): void {
+    /* Per-format payload schema (a custom type reusing a known answer format
+     * is validated like the predefined one). Legacy payloads keyed by the old
+     * built-in codes are still validated via QuestionPayloadSchemas. */
+    const schema =
+      FormatPayloadSchemas[type.answerFormat as keyof typeof FormatPayloadSchemas] ??
+      QuestionPayloadSchemas[type.code as keyof typeof QuestionPayloadSchemas];
+
+    if (!schema) {
+      // Unknown future format → generic object check only (forward-compatible).
+      this.checkRecordPayload(type.code, payload);
+      return;
+    }
+
     const result = schema.safeParse(payload);
 
     if (!result.success) {
       const issue = result.error.issues[0];
       const path = issue?.path.length ? issue.path.join('.') : 'root';
       throw new BadRequestException(
-        `Invalid ${questionType} payload: ${path} — ${issue?.message ?? 'does not match schema'}`,
+        `Invalid ${type.code} payload: ${path} — ${issue?.message ?? 'does not match schema'}`,
+      );
+    }
+  }
+
+  private checkRecordPayload(questionType: string, payload: Record<string, unknown>): void {
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      Array.isArray(payload)
+    ) {
+      throw new BadRequestException(
+        `Invalid ${questionType} payload: expected an object`,
       );
     }
   }

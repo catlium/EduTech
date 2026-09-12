@@ -84,9 +84,7 @@ def _aggregate_note(results: list[dict[str, Any]], _limit: int | None = None) ->
 
 def _aggregate_summary(results: list[dict[str, Any]], _limit: int | None = None) -> dict[str, Any]:
     title = next((r["title"] for r in results if r.get("title")), None)
-    summary = "\n\n".join(
-        r["summary"].strip() for r in results if (r.get("summary") or "").strip()
-    )
+    summary = "\n\n".join(r["summary"].strip() for r in results if (r.get("summary") or "").strip())
     key_concepts = _ordered_unique(
         [item for r in results for item in (r.get("keyConcepts") or []) if isinstance(item, str)]
     )
@@ -396,11 +394,7 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
             raw = provider.complete(operation.build_messages(chunk, label))
             outputs.append(_validate_output(operation, raw))
 
-        output = (
-            outputs[0]
-            if len(outputs) == 1
-            else _aggregate(operation, outputs)
-        )
+        output = outputs[0] if len(outputs) == 1 else _aggregate(operation, outputs)
         content_id = _persist(
             institute_id, job_id, operation, source, materials, context_meta, output
         )
@@ -462,8 +456,10 @@ def _generate_questions(
     count_value: Any = params.get("count")
     difficulty = str(params.get("difficulty") or "MEDIUM")
 
-    if type_ not in VALID_QUESTION_TYPES:
-        raise GenerationError("Invalid question type in job payload")
+    types_map = params.get("types") or {}
+    answer_format = str(types_map.get(type_) or type_).upper()
+    if answer_format not in schemas.QUESTION_FORMATS:
+        raise GenerationError("Unsupported answer format for question type in job payload")
     if difficulty not in VALID_DIFFICULTIES:
         raise GenerationError("Invalid difficulty in job payload")
     try:
@@ -487,6 +483,7 @@ def _generate_questions(
                 type_=type_,
                 count=per_chunk_count,
                 difficulty=difficulty,
+                answer_format=answer_format,
             )
         )
         outputs.append(_validate_output(operation, raw))
@@ -520,9 +517,7 @@ def _generate_questions(
     # aggregate) so the teacher can see whether the declared quotas held.
     blueprint = params.get("blueprint")
     if isinstance(blueprint, dict):
-        result["blueprint"] = _compute_blueprint_satisfaction(
-            aggregated["questions"], blueprint
-        )
+        result["blueprint"] = _compute_blueprint_satisfaction(aggregated["questions"], blueprint)
     db.update_job_status(job_id, "completed", result=result)
     logger.info("AI questions generated: job=%s count=%s", job_id, len(question_ids))
 
@@ -539,6 +534,9 @@ def _generate_bank_questions(
     buckets: list[dict[str, Any]],
 ) -> None:
     """Bank mode: generate per-bucket question quotas via a single provider call per chunk."""
+    types_map = payload.get("params") or {} if isinstance(payload.get("params"), dict) else {}
+    types_map = types_map.get("types") or {} if isinstance(types_map, dict) else {}
+
     bucket_specs: list[dict[str, Any]] = []
     for b in buckets:
         if not isinstance(b, dict):
@@ -546,21 +544,28 @@ def _generate_bank_questions(
         qt = b.get("questionType")
         diff = b.get("difficulty")
         cnt = b.get("count")
-        if qt not in VALID_QUESTION_TYPES or diff not in VALID_DIFFICULTIES:
+        if not isinstance(qt, str) or diff not in VALID_DIFFICULTIES:
             raise GenerationError("Invalid questionType or difficulty in bucket")
+        answer_format = str(types_map.get(qt) or qt).upper()
+        if answer_format not in schemas.QUESTION_FORMATS:
+            raise GenerationError(f"Unsupported answer format for bucket type '{qt}'")
         if not isinstance(cnt, int) or isinstance(cnt, bool):
             raise GenerationError("Invalid bucket count")
         if not 1 <= cnt <= 100:
             raise GenerationError("Bucket count must be between 1 and 100")
-        bucket_specs.append({"questionType": qt, "difficulty": diff, "count": cnt})
+        bucket_specs.append(
+            {"questionType": qt, "difficulty": diff, "count": cnt, "answerFormat": answer_format}
+        )
 
     total_requested = sum(b["count"] for b in bucket_specs)
     if total_requested > MAX_BANK_TOTAL:
         raise GenerationError(f"Total requested questions must not exceed {MAX_BANK_TOTAL}")
 
     quota_desc = ", ".join(
-        f"{b['questionType']} {b['difficulty']} x {b['count']}" for b in bucket_specs
+        f"{b['questionType']} ({b['answerFormat']}) {b['difficulty']} x {b['count']}"
+        for b in bucket_specs
     )
+    format_map = {b["questionType"]: b["answerFormat"] for b in bucket_specs}
 
     provider = create_provider()
     outputs: list[dict[str, Any]] = []
@@ -568,7 +573,11 @@ def _generate_bank_questions(
         label = _part_label(_source_label(source, materials), chunks, index)
         raw = provider.complete(
             generation.questions.build_bank_messages(
-                chunk, label, quota_desc=quota_desc, total=total_requested
+                chunk,
+                label,
+                quota_desc=quota_desc,
+                total=total_requested,
+                format_map=format_map,
             )
         )
         outputs.append(_validate_output(operation, raw))
@@ -589,12 +598,14 @@ def _generate_bank_questions(
         avail = by_key.get(key, [])
         take = avail[: spec["count"]]
         selected.extend(take)
-        result_buckets.append({
-            "questionType": spec["questionType"],
-            "difficulty": spec["difficulty"],
-            "requested": spec["count"],
-            "generated": len(take),
-        })
+        result_buckets.append(
+            {
+                "questionType": spec["questionType"],
+                "difficulty": spec["difficulty"],
+                "requested": spec["count"],
+                "generated": len(take),
+            }
+        )
 
     if not selected:
         raise GenerationError("AI generated no valid questions for the requested buckets")

@@ -7,19 +7,22 @@ import {
   IsIn,
   IsInt,
   IsOptional,
+  IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
 export class GenerateBankBucketDto {
-  @IsIn(['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'])
-  questionType!: QuestionType;
+  /* Open question-type code (predefined or custom) — existence checked in the service. */
+  @IsString()
+  @MaxLength(64)
+  questionType!: string;
 
   @IsIn(['EASY', 'MEDIUM', 'HARD'])
   difficulty!: QuestionDifficulty;
@@ -51,9 +54,10 @@ export class GenerateBankDto extends QuestionBankScopeDto {
   @IsArray()
   @ArrayNotEmpty()
   @ArrayMinSize(1)
-  @ArrayMaxSize(3)
-  @IsIn(['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'], { each: true })
-  questionTypes?: QuestionType[];
+  @ArrayMaxSize(32)
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  questionTypes?: string[];
 
   @Type(() => Number)
   @IsInt()
@@ -83,4 +87,20 @@ export class GenerateMoreDto extends QuestionBankScopeDto {
   @IsOptional()
   @IsBoolean()
   dryRun?: boolean;
+}
+
+/** Derive target buckets from an approved paper pattern's structure. */
+export class GenerateBankFromBlueprintDto extends QuestionBankScopeDto {
+  @IsUUID()
+  blueprintId!: string;
+}
+
+/** Derive a type×difficulty distribution proposal from existing
+ * bank questions + approved paper patterns, for a target bank size. */
+export class DeriveDistributionDto extends QuestionBankScopeDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  count!: number;
 }

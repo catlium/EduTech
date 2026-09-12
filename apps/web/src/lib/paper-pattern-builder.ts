@@ -1,4 +1,3 @@
-import type { QuestionType } from "@catlium/contracts";
 
 /* ── Paper Pattern Builder model ─────────────────────────────────────────────
    The backend stores a flat sections[] each with ONE question type. The
@@ -19,7 +18,7 @@ export interface TopicRow {
 
 export interface Rule {
   id: string;
-  questionType: "" | QuestionType;
+  questionType: string;
   count: number | null;
   marksPerQuestion: number | null;
   difficulty: Difficulty;
@@ -37,7 +36,7 @@ export interface Section {
 export interface BackendSection {
   id: string;
   name: string;
-  questionType?: QuestionType;
+  questionType?: string;
   count?: number | null;
   marksPerQuestion?: number | null;
   totalMarks?: number | null;
@@ -47,14 +46,14 @@ export interface BackendSection {
   topicDistribution?: { name: string; percentage?: number | null }[] | null;
 }
 
-export const TYPE_OPTIONS: ("" | QuestionType)[] = ["", "MCQ", "TRUE_FALSE", "FILL_IN_BLANK"];
+export const TYPE_OPTIONS: string[] = ["", "MCQ", "TRUE_FALSE", "FILL_IN_BLANK"];
 export const TYPE_LABELS: Record<string, string> = {
   MCQ: "MCQ",
   TRUE_FALSE: "True/False",
   FILL_IN_BLANK: "Fill in the Blank",
 };
 
-export const STEM_RE = /^(.*) — (MCQ|TRUE_FALSE|FILL_IN_BLANK)(?: · \d+)?$/;
+export const STEM_RE = /^(.*) — (.+?)(?: · \d+)?$/;
 
 export function emptyRule(): Rule {
   return {

@@ -76,6 +76,9 @@ export const practiceSessionItems = pgTable(
     prompt: text('prompt').notNull(),
     reveal: text('reveal'),
     questionType: varchar('question_type', { length: 30 }),
+    // Answer format snapshot for grading custom types whose code is not a
+    // format name (e.g. DIAGRAM_LABELING -> MATCHING).
+    answerFormat: varchar('answer_format', { length: 50 }),
     // Snapshot of the source question's explanation, shown to the student
     // after answering when present (only set for QUESTION items).
     explanation: text('explanation'),

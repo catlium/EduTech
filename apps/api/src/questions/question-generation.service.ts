@@ -12,28 +12,29 @@ import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
+import { QuestionTypesService } from './question-types.service.js';
+import { buildBucketsFromBlueprint } from './build-bank-buckets.js';
 
 const OPERATION = 'AI_GENERATE_QUESTIONS';
 
-type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
 interface GenerateQuestionsInput {
   topicId: string;
-  questionType: QuestionType;
+  questionType: string;
   count: number;
   difficulty?: QuestionDifficulty;
   blueprintId?: string;
 }
 
 export interface BankBucket {
-  questionType: QuestionType;
+  questionType: string;
   difficulty: QuestionDifficulty;
   count: number;
 }
 
 export interface BucketStatus {
-  questionType: QuestionType;
+  questionType: string;
   difficulty: QuestionDifficulty;
   requested: number;
   existing: number;
@@ -45,6 +46,7 @@ export class QuestionGenerationService {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly jobs: JobsService,
+    private readonly typesService: QuestionTypesService,
   ) {}
 
   // ── Legacy single-type generation (backward compatible) ────────────
@@ -56,6 +58,8 @@ export class QuestionGenerationService {
   ) {
     const topic = await this.assertTopicInInstitute(instituteId, input.topicId);
 
+    const typeFormats = await this.resolveTypeFormats(instituteId, [input.questionType]);
+
     const payload: Record<string, unknown> = {
       operation: OPERATION,
       source: { type: 'TOPIC', id: input.topicId },
@@ -64,6 +68,7 @@ export class QuestionGenerationService {
         questionType: input.questionType,
         count: input.count,
         difficulty: input.difficulty ?? 'MEDIUM',
+        types: typeFormats,
       },
     };
 
@@ -143,7 +148,7 @@ export class QuestionGenerationService {
       subjectId?: string;
       chapterId?: string;
       topicId?: string;
-      questionTypes?: QuestionType[];
+      questionTypes?: string[];
       count: number;
       difficultyDistribution?: Record<QuestionDifficulty, number>;
       blueprintId?: string;
@@ -151,6 +156,11 @@ export class QuestionGenerationService {
     buckets: BankBucket[],
   ) {
     const scope = await this.resolveScopeOrThrow(instituteId, input);
+
+    const typeFormats = await this.resolveTypeFormats(
+      instituteId,
+      buckets.map((b) => b.questionType),
+    );
 
     // Build worker payload
     const workerSource = this.scopeToWorkerSource(scope);
@@ -164,6 +174,7 @@ export class QuestionGenerationService {
           difficulty: b.difficulty,
           count: b.count,
         })),
+        types: typeFormats,
       },
     };
 
@@ -216,6 +227,67 @@ export class QuestionGenerationService {
     };
   }
 
+  // ── Blueprint-driven bank generation ────────────────────────────────
+
+  async getApprovedPattern(
+    instituteId: string,
+    blueprintId: string,
+  ): Promise<{ id: string; subjectId: string; structure: Record<string, unknown> }> {
+    const [pattern] = await this.db
+      .select()
+      .from(paperPatterns)
+      .where(and(eq(paperPatterns.id, blueprintId), eq(paperPatterns.instituteId, instituteId)))
+      .limit(1);
+    if (!pattern) throw new NotFoundException('Paper pattern not found');
+    if (pattern.status !== 'APPROVED') {
+      throw new BadRequestException('Blueprint must be an approved paper pattern');
+    }
+    if (!pattern.structure) {
+      throw new BadRequestException('Blueprint has no structure to generate from');
+    }
+    return {
+      id: pattern.id,
+      subjectId: pattern.subjectId,
+      structure: pattern.structure as Record<string, unknown>,
+    };
+  }
+
+  async generateFromBlueprint(
+    instituteId: string,
+    userId: string,
+    input: { blueprintId: string; subjectId?: string; chapterId?: string; topicId?: string },
+  ) {
+    const pattern = await this.getApprovedPattern(instituteId, input.blueprintId);
+    const scope = await this.resolveScopeOrThrow(instituteId, input);
+    const scopeSubjectId = await this.scopeSubjectId(instituteId, scope);
+    if (scopeSubjectId !== pattern.subjectId) {
+      throw new BadRequestException('Blueprint subject must match the generation scope subject');
+    }
+
+    const sections = Array.isArray(pattern.structure['sections'])
+      ? (pattern.structure as { sections: unknown[] }).sections
+      : [];
+    const buckets = buildBucketsFromBlueprint(sections as Parameters<typeof buildBucketsFromBlueprint>[0]);
+    if (buckets.length === 0) {
+      throw new BadRequestException(
+        'Blueprint has no section with a concrete question type and count to generate',
+      );
+    }
+
+    return this.requestBankGeneration(
+      instituteId,
+      userId,
+      {
+        subjectId: input.subjectId,
+        chapterId: input.chapterId,
+        topicId: input.topicId,
+        count: buckets.reduce((sum, b) => sum + b.count, 0),
+        blueprintId: pattern.id,
+      },
+      buckets,
+    );
+  }
+
   // ── Bank stats ─────────────────────────────────────────────────────
 
   async getBankStats(
@@ -240,24 +312,166 @@ export class QuestionGenerationService {
       .where(where)
       .groupBy(questions.questionType, questions.difficulty, questions.approvalStatus);
 
-    const byType: Record<QuestionType, number> = { MCQ: 0, TRUE_FALSE: 0, FILL_IN_BLANK: 0 };
+    const byType: Record<string, number> = {};
     const byDifficulty: Record<QuestionDifficulty, number> = { EASY: 0, MEDIUM: 0, HARD: 0 };
     const byApproval: Record<string, number> = { PENDING: 0, APPROVED: 0, REJECTED: 0 };
     let total = 0;
     let usable = 0;
 
     for (const row of rows) {
-      const qt = row.questionType as QuestionType;
       const diff = row.difficulty as QuestionDifficulty;
       const app = row.approvalStatus;
       total += row.count;
-      if (byType[qt] !== undefined) byType[qt] += row.count;
+      byType[row.questionType] = (byType[row.questionType] ?? 0) + row.count;
       if (byDifficulty[diff] !== undefined) byDifficulty[diff] += row.count;
       if (byApproval[app] !== undefined) byApproval[app] += row.count;
       if (app === 'APPROVED') usable += row.count;
     }
 
     return { total, usable, byType, byDifficulty, byApproval };
+  }
+
+  // ── Derive a question-type/difficulty distribution from existing resources ──
+
+  /** Build a proposed (type × difficulty) distribution for a target count by
+   * weighing existing bank questions in scope AND approved paper patterns for
+   * the scope's subject. Purely deterministic — no LLM, output shown to the
+   * teacher before generation so they can tweak it. */
+  async deriveDistribution(
+    instituteId: string,
+    scope: { subjectId?: string; chapterId?: string; topicId?: string },
+    count: number,
+  ) {
+    const resolved = await this.resolveScopeOrThrow(instituteId, scope);
+    const subjectId = await this.scopeSubjectId(instituteId, resolved);
+
+    const signals = new Map<string, number>(); // `${type}|${difficulty}`
+    const sources: string[] = [];
+
+    // Signal 1: existing bank questions in scope.
+    const existingCounts = await this.db
+      .select({
+        questionType: questions.questionType,
+        difficulty: questions.difficulty,
+        value: sql<number>`count(*)::int`,
+      })
+      .from(questions)
+      .where(
+        and(
+          eq(questions.instituteId, instituteId),
+          eq(questions.approvalStatus, 'APPROVED'),
+          eq(questions.status, 'ACTIVE'),
+          resolved.kind === 'subject'
+            ? eq(questions.subjectId, resolved.id)
+            : resolved.kind === 'chapter'
+              ? eq(questions.chapterId, resolved.id)
+              : eq(questions.topicId, resolved.id),
+        ),
+      )
+      .groupBy(questions.questionType, questions.difficulty);
+
+    for (const row of existingCounts) {
+      const key = `${row.questionType}|${row.difficulty}`;
+      signals.set(key, (signals.get(key) ?? 0) + row.value);
+    }
+    if (existingCounts.length > 0) sources.push(`existing question bank (${existingCounts.length} type/difficulty groups)`);
+
+    // Signal 2: approved paper patterns on the scope subject.
+    const patterns = await this.db
+      .select()
+      .from(paperPatterns)
+      .where(
+        and(
+          eq(paperPatterns.instituteId, instituteId),
+          eq(paperPatterns.subjectId, subjectId),
+          eq(paperPatterns.status, 'APPROVED'),
+        ),
+      );
+
+    for (const pattern of patterns) {
+      const sections = Array.isArray((pattern.structure as Record<string, unknown> | null)?.['sections'])
+        ? (pattern.structure as { sections: Array<Record<string, unknown>> }).sections
+        : [];
+      let added = 0;
+      for (const section of sections) {
+        const type = section['questionType'];
+        const qCount = section['count'];
+        if (typeof type !== 'string' || typeof qCount !== 'number' || !(qCount > 0)) continue;
+        const diffDist = section['difficultyDistribution'] as
+          | Record<string, number>
+          | undefined;
+        if (diffDist && typeof diffDist === 'object') {
+          for (const diff of ['EASY', 'MEDIUM', 'HARD'] as const) {
+            const pct = diffDist[diff];
+            if (typeof pct === 'number' && pct > 0) {
+              const key = `${type}|${diff}`;
+              signals.set(key, (signals.get(key) ?? 0) + (qCount * pct) / 100);
+              added += 1;
+            }
+          }
+        } else {
+          for (const diff of ['EASY', 'MEDIUM', 'HARD'] as const) {
+            const key = `${type}|${diff}`;
+            signals.set(key, (signals.get(key) ?? 0) + qCount / 3);
+            added += 1;
+          }
+        }
+      }
+      if (added > 0) sources.push(`paper pattern '${pattern.title}'`); // ponytail: pattern.weight we use question count directly
+    }
+
+    // No signal at all → neutral starter proposal the teacher can edit.
+    if (signals.size === 0) {
+      return {
+        sources: [],
+        count,
+        distribution: [
+          { questionType: 'MCQ', difficulty: 'EASY', percentage: 0 },
+          { questionType: 'MCQ', difficulty: 'MEDIUM', percentage: 30 },
+          { questionType: 'MCQ', difficulty: 'HARD', percentage: 0 },
+          { questionType: 'SHORT_ANSWER', difficulty: 'MEDIUM', percentage: 30 },
+          { questionType: 'LONG_ANSWER', difficulty: 'MEDIUM', percentage: 40 },
+        ],
+        buckets: [
+          { questionType: 'MCQ', difficulty: 'MEDIUM', count: Math.round(count * 0.3) },
+          { questionType: 'SHORT_ANSWER', difficulty: 'MEDIUM', count: Math.round(count * 0.3) },
+          { questionType: 'LONG_ANSWER', difficulty: 'MEDIUM', count: Math.min(count, Math.max(1, Math.round(count * 0.4))) },
+        ],
+      };
+    }
+
+    const totalSignal = [...signals.values()].reduce((a, b) => a + b, 0);
+
+    // Targeted allocation across the derived combos (largest remainder).
+    const combos = [...signals.entries()].sort((a, b) => b[1] - a[1]);
+    const raw = combos.map(([key, weight]) => {
+      const [questionType, difficulty] = key.split('|');
+      return {
+        questionType: questionType!,
+        difficulty: difficulty as QuestionDifficulty,
+        exact: (count * weight) / totalSignal,
+      };
+    });
+
+    const floors = raw.map((r) => ({ ...r, floor: Math.floor(r.exact) }));
+    const remainder = count - floors.reduce((a, r) => a + r.floor, 0);
+    floors
+      .sort((a, b) => (b.exact - b.floor) - (a.exact - a.floor))
+      .forEach((r, i) => {
+        if (i < remainder) r.floor += 1;
+      });
+
+    const buckets = floors
+      .filter((r) => r.floor > 0)
+      .map((r) => ({ questionType: r.questionType, difficulty: r.difficulty, count: r.floor }));
+
+    const distribution = buckets.map((b) => ({
+      questionType: b.questionType,
+      difficulty: b.difficulty,
+      percentage: Math.round((b.count / count) * 100),
+    }));
+
+    return { sources, count, distribution, buckets };
   }
 
   // ── Generate more (deficit computation + optional queue) ────────────
@@ -396,6 +610,40 @@ export class QuestionGenerationService {
   ): { type: string; id: string } {
     const typeMap = { subject: 'SUBJECT', chapter: 'CHAPTER', topic: 'TOPIC' } as const;
     return { type: typeMap[scope.kind], id: scope.id };
+  }
+
+  /** Validate each question-type code against the type table (global or
+   * institute-scoped) and return the worker answer-format map, so generation
+   * can emit ANY type — predefined or custom — by its configuration. */
+  private async resolveTypeFormats(
+    instituteId: string,
+    codes: string[],
+  ): Promise<Record<string, string>> {
+    const formats: Record<string, string> = {};
+    for (const code of new Set(codes)) {
+      const type = await this.typesService.findByCode(instituteId, code);
+      formats[code] = type.answerFormat;
+    }
+    return formats;
+  }
+
+  /** Resolve the subject a scope belongs to (for e.g. blueprint subject checks). */
+  private async scopeSubjectId(
+    instituteId: string,
+    scope: { kind: 'subject' | 'chapter' | 'topic'; id: string },
+  ): Promise<string> {
+    if (scope.kind === 'subject') return scope.id;
+    if (scope.kind === 'chapter') {
+      const [row] = await this.db
+        .select({ subjectId: subjects.id })
+        .from(chapters)
+        .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
+        .where(and(eq(chapters.id, scope.id), eq(subjects.instituteId, instituteId)))
+        .limit(1);
+      if (!row) throw new NotFoundException('Chapter not found');
+      return row.subjectId;
+    }
+    return (await this.assertTopicInInstitute(instituteId, scope.id)).subjectId;
   }
 
   private async countApprovedQuestions(

@@ -24,7 +24,11 @@ export const questions = pgTable(
     chapterId: uuid('chapter_id').references(() => chapters.id, { onDelete: 'cascade' }),
     topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }),
     stem: text('stem').notNull(),
-    questionType: varchar('question_type', { length: 30 }).notNull(),
+    questionType: varchar('question_type', { length: 64 }).notNull(),
+    // The answer format the payload follows. Set from the question-type
+    // definition (or worker output) at write time so grading and practice
+    // rendering stay correct even if the type's definition changes later.
+    answerFormat: varchar('answer_format', { length: 50 }),
     difficulty: varchar('difficulty', { length: 20 }).notNull().default('MEDIUM'),
     explanation: text('explanation'),
     payload: jsonb('payload').notNull(),

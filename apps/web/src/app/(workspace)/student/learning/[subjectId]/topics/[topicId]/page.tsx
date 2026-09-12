@@ -26,7 +26,10 @@ import type {
   TopicResponse,
   ContentResponse,
   ContentListItem,
+  NoteBlock,
+  FurtherLearningResource,
 } from "@catlium/contracts";
+import { NoteBlocks, FurtherLearning } from "@/components/content/note-blocks";
 
 type Payload = Record<string, unknown>;
 
@@ -227,43 +230,12 @@ function UnavailableNote() {
 }
 
 function NotePayloadView({ payload }: { payload: Payload }) {
-  const blocks = Array.isArray(payload.blocks) ? payload.blocks : null;
-  if (!blocks || blocks.length === 0) return <UnavailableNote />;
-
+  const blocks = (Array.isArray(payload.blocks) ? payload.blocks : []) as NoteBlock[];
+  if (blocks.length === 0) return <UnavailableNote />;
   return (
-    <div className="space-y-3">
-      {blocks.map((raw, i) => {
-        const block = raw as {
-          type?: string;
-          content?: string;
-          text?: string;
-          items?: unknown[];
-          level?: number;
-        };
-        const text = block.content ?? block.text ?? "";
-        if (block.type === "heading") {
-          return (
-            <h3 key={i} className="text-lg font-semibold">
-              {text}
-            </h3>
-          );
-        }
-        if (block.type === "list") {
-          const items = Array.isArray(block.items) ? block.items : [];
-          return (
-            <ul key={i} className="list-disc space-y-1 pl-5">
-              {items.map((item, j) => (
-                <li key={j}>{String(item)}</li>
-              ))}
-            </ul>
-          );
-        }
-        return (
-          <p key={i} className="whitespace-pre-wrap">
-            {text}
-          </p>
-        );
-      })}
+    <div className="space-y-4">
+      <NoteBlocks blocks={blocks} />
+      <FurtherLearning resources={(payload.furtherLearning ?? []) as FurtherLearningResource[]} />
     </div>
   );
 }
@@ -298,6 +270,23 @@ function SummaryPayloadView({ payload }: { payload: Payload }) {
           </ul>
         </div>
       )}
+      {Array.isArray(payload.examples) && payload.examples.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">Examples</p>
+          {payload.examples.map((ex, i) => {
+            const e = ex as { topic?: string; content?: string };
+            return (
+              <div key={i} className="rounded-lg border-l-4 border-primary bg-muted/20 p-3">
+                {e.topic && (
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">{e.topic}</p>
+                )}
+                {e.content && <p className="mt-1 whitespace-pre-wrap text-sm">{e.content}</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <FurtherLearning resources={(payload.furtherLearning ?? []) as FurtherLearningResource[]} />
     </div>
   );
 }

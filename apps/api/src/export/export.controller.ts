@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query, Res, UseGuards, ParseUUIDPipe, ParseEnumPipe } from '@nestjs/common';
 import type { Response } from 'express';
 
-import type { ExportService } from './export.service.js';
+import { ExportService } from './export.service.js';
 import { sendDoc } from './export.renderers.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';

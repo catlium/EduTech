@@ -6,7 +6,7 @@ import { GenerationService } from './generation.service.js';
 import { JobsModule } from '../jobs/jobs.module.js';
 
 @Module({
-  controllers: [ContentController, GenerationController],
+  controllers: [GenerationController, ContentController],
   providers: [ContentService, GenerationService],
   exports: [ContentService],
   imports: [JobsModule],

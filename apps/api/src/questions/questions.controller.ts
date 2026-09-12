@@ -21,7 +21,8 @@ import {
   GenerateQuestionsDto,
   BatchQuestionActionDto,
 } from './dto/question-generation.dto.js';
-import { GenerateBankDto, GenerateMoreDto } from './dto/question-bank.dto.js';
+import { GenerateBankDto, GenerateMoreDto, GenerateBankFromBlueprintDto, DeriveDistributionDto } from './dto/question-bank.dto.js';
+import { buildBankBuckets, QUESTION_TYPES } from './build-bank-buckets.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -63,8 +64,7 @@ export class QuestionsController {
   @RequiredRoles(...WRITE_ROLES)
   async list(
     @Tenant() tenant: TenantContext,
-    @Query('questionType', new ParseEnumPipe(['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'], { optional: true }))
-    questionType?: 'MCQ' | 'TRUE_FALSE' | 'FILL_IN_BLANK',
+    @Query('questionType') questionType?: string,
     @Query('difficulty', new ParseEnumPipe(['EASY', 'MEDIUM', 'HARD'], { optional: true }))
     difficulty?: 'EASY' | 'MEDIUM' | 'HARD',
     @Query('approvalStatus', new ParseEnumPipe(['PENDING', 'APPROVED', 'REJECTED'], { optional: true }))
@@ -172,21 +172,12 @@ export class QuestionsController {
     @Body() dto: GenerateBankDto,
   ) {
     // Build (type, difficulty, count) buckets from the request config.
-    const types = dto.questionTypes ?? (['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'] as const);
-    const dist = dto.difficultyDistribution ?? { EASY: 0, MEDIUM: 100, HARD: 0 };
-    const perTypeCount = Math.max(1, Math.floor(dto.count / types.length));
-
-    const buckets = types.flatMap((qt) =>
-      (['EASY', 'MEDIUM', 'HARD'] as const).map((diff) => {
-        const pct = dist[diff] ?? 0;
-        const count = Math.round(perTypeCount * (pct / 100));
-        return { questionType: qt, difficulty: diff, count };
-      }),
-    ).filter((b) => b.count > 0);
-
-    if (buckets.length === 0) {
-      buckets.push({ questionType: 'MCQ', difficulty: 'MEDIUM', count: dto.count });
-    }
+    const types = dto.questionTypes ?? QUESTION_TYPES;
+    const buckets = buildBankBuckets({
+      questionTypes: types,
+      count: dto.count,
+      difficultyDistribution: dto.difficultyDistribution,
+    });
 
     const generation = await this.generationService.requestBankGeneration(
       tenant.instituteId,
@@ -240,7 +231,42 @@ export class QuestionsController {
         dryRun: dto.dryRun,
       },
     );
-    return { result };
+    return result;
+  }
+
+  @Post('bank/derive')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async deriveDistribution(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: DeriveDistributionDto,
+  ) {
+    return this.generationService.deriveDistribution(
+      tenant.instituteId,
+      { subjectId: dto.subjectId, chapterId: dto.chapterId, topicId: dto.topicId },
+      dto.count,
+    );
+  }
+
+  @Post('bank/generate-blueprint')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async bankGenerateFromBlueprint(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: GenerateBankFromBlueprintDto,
+  ) {
+    const generation = await this.generationService.generateFromBlueprint(
+      tenant.instituteId,
+      user.userId,
+      {
+        blueprintId: dto.blueprintId,
+        subjectId: dto.subjectId,
+        chapterId: dto.chapterId,
+        topicId: dto.topicId,
+      },
+    );
+    return { generation };
   }
 
   // ── Approval actions ───────────────────────────────────────────────

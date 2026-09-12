@@ -24,18 +24,18 @@ _SYSTEM_TEMPLATE = (
     "ordered set of sections. Each section declares a question type (MCQ, "
     "TRUE_FALSE, or FILL_IN_BLANK), how many questions it holds, marks per "
     "question, whether the section is compulsory (attempt all of its questions) "
-    "or offers a choice (\"attempt N of M\"), and — only when the material "
+    'or offers a choice ("attempt N of M"), and — only when the material '
     "clearly supports it — a difficulty split (EASY/MEDIUM/HARD percentages "
     "summing to 100) and a topic split (percentages summing to 100). Any field "
     "the source material does not support must be omitted or null — never "
     "invented. Respond with ONLY a JSON object and nothing else (no markdown "
     "code fences) matching exactly this schema:\n"
-    '{\n'
+    "{\n"
     '  "totalMarks": integer >= 1,\n'
     '  "durationMinutes": integer >= 1,\n'
     '  "instructions": [string],\n'
     '  "sections": [\n'
-    '    {\n'
+    "    {\n"
     '      "name": string (short, unique),\n'
     '      "questionType": "MCQ" | "TRUE_FALSE" | "FILL_IN_BLANK" (omit when mixed),\n'
     '      "count": integer >= 1 (nullable),\n'
@@ -45,8 +45,8 @@ _SYSTEM_TEMPLATE = (
     '      "attemptCount": integer >= 1 (nullable; use for optional sections),\n'
     '      "difficultyDistribution": {"EASY": int, "MEDIUM": int, "HARD": int} (optional),\n'
     '      "topicDistribution": [{"name": string, "percentage": int (nullable)}] (optional)\n'
-    '    }\n'
-    '  ]\n'
+    "    }\n"
+    "  ]\n"
     "}\n"
     '"sections" must contain at least 1 and at most 50 items, each with a short, '
     "unique name. Do not include individual questions — only the pattern."

@@ -3,6 +3,7 @@
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -15,19 +16,38 @@ import {
 } from "@/components/ui/select";
 import type {
   NotePayload,
+  NoteBlock,
   SummaryPayload,
   FlashcardSetPayload,
   ImportantConceptsPayload,
   CornellNotePayload,
+  FurtherLearningResource,
 } from "@catlium/contracts";
 
 const DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
 
-type BlockEditorDraft = {
-  id: string;
-  type: "heading" | "paragraph" | "list";
-  text: string;
+const FURTHER_LEARNING_KINDS = [
+  "documentation",
+  "video",
+  "course",
+  "website",
+  "reference",
+] as const;
+
+const RICH_BLOCK_LABEL: Record<string, string> = {
+  steps: "Steps",
+  table: "Table",
+  formula: "Formula",
+  example: "Example",
+  callout: "Callout",
+  timeline: "Timeline",
+  diagram: "Diagram",
+  chart: "Chart",
 };
+
+type BlockEditorDraft =
+  | { kind: "text"; id: string; type: "heading" | "paragraph" | "list"; text: string }
+  | { kind: "rich"; id: string; block: NoteBlock };
 
 export type ContentType =
   | "NOTE"
@@ -85,57 +105,213 @@ function NoteEditor({
 }) {
   return (
     <div className="space-y-3">
-      {draft.map((block, i) => (
-        <div key={block.id} className="grid gap-2 rounded-lg border p-3">
-          <div className="flex items-center gap-2">
-            <Select
-              value={block.type}
-              onValueChange={(v) => {
+      {draft.map((block, i) =>
+        block.kind === "rich" ? (
+          <div key={block.id} className="grid gap-2 rounded-lg border border-dashed p-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{RICH_BLOCK_LABEL[block.block.type] ?? block.block.type}</Badge>
+              <span className="text-xs text-muted-foreground">
+                Read-only block — remove to replace
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 ml-auto"
+                onClick={() => setDraft(draft.filter((_, j) => j !== i))}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div key={block.id} className="grid gap-2 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <Select
+                value={block.type}
+                onValueChange={(v) => {
+                  const next = [...draft];
+                  next[i] = { ...block, type: v as "heading" | "paragraph" | "list" };
+                  setDraft(next);
+                }}
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="heading">Heading</SelectItem>
+                  <SelectItem value="paragraph">Paragraph</SelectItem>
+                  <SelectItem value="list">List</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 ml-auto"
+                onClick={() => setDraft(draft.filter((_, j) => j !== i))}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+            <Textarea
+              value={block.text}
+              placeholder={block.type === "list" ? "One list item per line" : "Block text"}
+              className="min-h-20"
+              onChange={(e) => {
                 const next = [...draft];
-                next[i] = { ...next[i], type: v as BlockEditorDraft["type"] };
+                next[i] = { ...block, text: e.target.value };
                 setDraft(next);
               }}
-            >
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="heading">Heading</SelectItem>
-                <SelectItem value="paragraph">Paragraph</SelectItem>
-                <SelectItem value="list">List</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 ml-auto"
-              onClick={() => setDraft(draft.filter((_, j) => j !== i))}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            />
           </div>
-          <Textarea
-            value={block.text}
-            placeholder={block.type === "list" ? "One list item per line" : "Block text"}
-            className="min-h-20"
-            onChange={(e) => {
-              const next = [...draft];
-              next[i] = { ...next[i], text: e.target.value };
-              setDraft(next);
-            }}
-          />
-        </div>
-      ))}
+        ),
+      )}
       <Button
         type="button"
         variant="outline"
         size="sm"
         onClick={() =>
-          setDraft([...draft, { id: crypto.randomUUID(), type: "paragraph", text: "" }])
+          setDraft([...draft, { kind: "text", id: crypto.randomUUID(), type: "paragraph", text: "" }])
         }
       >
         <Plus className="mr-1 size-3.5" /> Add block
+      </Button>
+    </div>
+  );
+}
+
+function FurtherLearningEditor({
+  resources,
+  onChange,
+}: {
+  resources: FurtherLearningResource[];
+  onChange: (r: FurtherLearningResource[]) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <Label>Further learning</Label>
+      <div className="space-y-2">
+        {resources.map((r, i) => (
+          <div key={i} className="grid gap-2 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <Input
+                value={r.title ?? ""}
+                placeholder="Title"
+                onChange={(e) => {
+                  const next = [...resources];
+                  next[i] = { ...r, title: e.target.value };
+                  onChange(next);
+                }}
+              />
+              <Select
+                value={r.kind}
+                onValueChange={(v) => {
+                  const next = [...resources];
+                  next[i] = { ...r, kind: v as (typeof FURTHER_LEARNING_KINDS)[number] };
+                  onChange(next);
+                }}
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FURTHER_LEARNING_KINDS.map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {k}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={() => onChange(resources.filter((_, j) => j !== i))}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+            <Input
+              value={r.url ?? ""}
+              placeholder="https://…"
+              onChange={(e) => {
+                const next = [...resources];
+                next[i] = { ...r, url: e.target.value };
+                onChange(next);
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() =>
+          onChange([...resources, { title: "", url: "", kind: "website" }])
+        }
+      >
+        <Plus className="mr-1 size-3.5" /> Add resource
+      </Button>
+    </div>
+  );
+}
+
+function SummaryExamplesEditor({
+  examples,
+  onChange,
+}: {
+  examples: { topic?: string; content: string }[];
+  onChange: (x: { topic?: string; content: string }[]) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <Label>Examples</Label>
+      <div className="space-y-2">
+        {examples.map((ex, i) => (
+          <div key={i} className="grid gap-2 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <Input
+                value={ex.topic ?? ""}
+                placeholder="Topic"
+                onChange={(e) => {
+                  const next = [...examples];
+                  next[i] = { ...ex, topic: e.target.value };
+                  onChange(next);
+                }}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={() => onChange(examples.filter((_, j) => j !== i))}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+            <Textarea
+              value={ex.content ?? ""}
+              placeholder="Example content"
+              className="min-h-20"
+              onChange={(e) => {
+                const next = [...examples];
+                next[i] = { ...ex, content: e.target.value };
+                onChange(next);
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => onChange([...examples, { content: "" }])}
+      >
+        <Plus className="mr-1 size-3.5" /> Add example
       </Button>
     </div>
   );
@@ -253,32 +429,41 @@ export function ContentPayloadEditor({
   onChange: (payload: Record<string, unknown>) => void;
 }) {
   if (type === "NOTE") {
-    const draft: BlockEditorDraft[] = (payload.blocks as NotePayload["blocks"])
-      ?.map((b) =>
-        b.type === "list"
-          ? { id: b.id, type: b.type, text: b.items.join("\n") }
-          : { id: b.id, type: b.type, text: b.content },
-      )
-      .filter((b) => b) ?? [{ id: crypto.randomUUID(), type: "paragraph", text: "" }];
+    const note = payload as unknown as NotePayload;
+    const raw = note.blocks ?? [];
+    const draft: BlockEditorDraft[] =
+      raw.length === 0
+        ? [{ kind: "text", id: crypto.randomUUID(), type: "paragraph", text: "" }]
+        : raw.map((b) =>
+            b.type === "heading" || b.type === "paragraph" || b.type === "list"
+              ? b.type === "list"
+                ? { kind: "text", id: b.id, type: b.type, text: b.items.join("\n") }
+                : { kind: "text", id: b.id, type: b.type, text: b.content }
+              : { kind: "rich", id: b.id, block: b },
+          );
 
     return (
-      <NoteEditor
-        draft={draft}
-        setDraft={(next) => {
-          const cleaned: NotePayload["blocks"] = next
-            .filter((b) => b.text.trim())
-            .map((b) =>
-              b.type === "list"
-                ? {
-                    id: b.id,
-                    type: "list",
-                    items: b.text.split("\n").map((t) => t.trim()).filter(Boolean),
-                  }
-                : { id: b.id, type: b.type, content: b.text },
+      <div className="space-y-4">
+        <NoteEditor
+          draft={draft}
+          setDraft={(next) => {
+            const cleaned: NotePayload["blocks"] = next.flatMap((b) =>
+              b.kind === "rich"
+                ? [b.block]
+                : b.text.trim()
+                  ? b.type === "list"
+                    ? [{ id: b.id, type: "list" as const, items: b.text.split("\n").map((t) => t.trim()).filter(Boolean) }]
+                    : [{ id: b.id, type: b.type, content: b.text }]
+                  : [],
             );
-          onChange({ ...payload, blocks: cleaned });
-        }}
-      />
+            onChange({ ...payload, blocks: cleaned });
+          }}
+        />
+        <FurtherLearningEditor
+          resources={note.furtherLearning ?? []}
+          onChange={(r) => onChange({ ...payload, furtherLearning: r })}
+        />
+      </div>
     );
   }
 
@@ -310,6 +495,14 @@ export function ContentPayloadEditor({
             addLabel="Add point"
           />
         </div>
+        <SummaryExamplesEditor
+          examples={p.examples ?? []}
+          onChange={(x) => onChange({ ...payload, examples: x })}
+        />
+        <FurtherLearningEditor
+          resources={p.furtherLearning ?? []}
+          onChange={(r) => onChange({ ...payload, furtherLearning: r })}
+        />
       </div>
     );
   }

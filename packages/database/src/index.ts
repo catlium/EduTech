@@ -23,6 +23,7 @@ export { subjects, chapters, topics } from './schema/academic.js';
 export { contentItems, contentVersions } from './schema/content.js';
 export { materials } from './schema/materials.js';
 export { questions } from './schema/questions.js';
+export { questionTypes } from './schema/question-types.js';
 export { assessments, assessmentQuestions } from './schema/examinations.js';
 export { paperPatterns } from './schema/paper-patterns.js';
 export { syllabusProposals } from './schema/syllabus.js';

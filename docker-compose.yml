@@ -250,7 +250,10 @@ services:
       WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
       WORKER_DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
       WORKER_STORAGE_DIR: /storage
-      WORKER_AI_PROVIDER_URL: ${WORKER_AI_PROVIDER_URL:-http://omniroute:20128/v1}
+      # Containerized worker reaches the internal OmniRoute gateway by name
+      # (never by the browser/host address). Host-based dev sets its own
+      # WORKER_AI_PROVIDER_URL (127.0.0.1:20128) outside compose.
+      WORKER_AI_PROVIDER_URL: http://omniroute:20128/v1
       # OmniRoute endpoint key (issued in the OmniRoute dashboard). Sent
       # to the gateway as `Authorization: Bearer <key>`.
       WORKER_AI_API_KEY: ${WORKER_AI_API_KEY:-}
