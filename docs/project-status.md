@@ -83,11 +83,25 @@ readout with AI buttons). Implemented in
   material identity fields (PDF, fileName, mimeType, fileSize 1089026) verified.
 - graphify graph updated (AST rebuild, no API cost).
 
+### Completed — P1.6 Questions List Scope Filter (2026-09-12)
+
+The last open P1 gap (and Phase 24 C5): the `/questions` list had no scope
+filter — cascades existed only in the create/generate dialogs. The list now
+gains the shared `ScopeCascade` (subject→chapter→topic) plus active-filter
+chips (scope, search, type, difficulty, status) and Clear all, mirroring the
+content/materials filter bars. Filtering is client-side over the in-memory
+list, consistent with this page's existing status/type/difficulty/search
+filters (the page already fetches the full institute set; the list endpoint
+has no pagination).
+
+- `pnpm --filter @catlium/web typecheck` + `next build` PASS.
+
 ### Checkpoint
 
-- **Commit:** `feat(web): material detail workspace with scope, processing, text, and generated-resource cards`
-- **SHA:** `707f0c5` (pushed to `main`).
-- **Recommended next task:** P2 — real syllabus/material workflows (audit existing workflows first; do not rebuild working functionality).
+- **Commit:** `feat(web): questions list scope filter + active-filter chips`
+- **SHA:** (pushed to `main`).
+- **Recommended next task:** P2 — real syllabus/material workflows (audit
+  existing workflows first; do not rebuild working functionality).
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 

@@ -29,6 +29,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { useTenant, canManage } from "@/lib/tenant";
 import { QuestionBankPanel } from "@/components/questions/question-bank-panel";
 import { PageHeader } from "@/components/app/page-header";
+import { ScopeCascade, FilterChip } from "@/components/app/scope-cascade";
 import { EmptyState } from "@/components/app/empty-state";
 import { ErrorState } from "@/components/app/error-state";
 import { StatusBadge } from "@/components/app/status-badge";
@@ -370,6 +371,7 @@ export default function QuestionsListPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [difficultyFilter, setDifficultyFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [listCascade, setListCascade] = useState<Cascade>(DEFAULT_CASCADE);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<QuestionListItem | null>(null);
@@ -814,7 +816,10 @@ export default function QuestionsListPage() {
       (statusFilter === "all" || q.approvalStatus === statusFilter) &&
       (typeFilter === "all" || q.questionType === typeFilter) &&
       (difficultyFilter === "all" || q.difficulty === difficultyFilter) &&
-      (!search.trim() || q.stem.toLowerCase().includes(search.trim().toLowerCase())),
+      (!search.trim() || q.stem.toLowerCase().includes(search.trim().toLowerCase())) &&
+      (!listCascade.subjectId || q.subjectId === listCascade.subjectId) &&
+      (!listCascade.chapterId || q.chapterId === listCascade.chapterId) &&
+      (!listCascade.topicId || q.topicId === listCascade.topicId),
   );
 
   const scopeLabel = (q: QuestionListItem): string => {
@@ -949,6 +954,77 @@ export default function QuestionsListPage() {
           </Button>
         )}
       </div>
+
+      <div className="mb-4">
+        <ScopeCascade
+          cascade={listCascade}
+          subjects={subjects}
+          chapters={chapters}
+          topics={topics}
+          onChange={setListCascade}
+        />
+      </div>
+
+      {(listCascade.subjectId ||
+        listCascade.chapterId ||
+        listCascade.topicId ||
+        search.trim() ||
+        statusFilter !== "all" ||
+        typeFilter !== "all" ||
+        difficultyFilter !== "all") && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {listCascade.subjectId && (
+            <FilterChip
+              label={subjectName.get(listCascade.subjectId) ?? "Subject"}
+              onClear={() => setListCascade((c) => ({ ...c, subjectId: "", chapterId: "", topicId: "" }))}
+            />
+          )}
+          {listCascade.chapterId && (
+            <FilterChip
+              label={chapterName.get(listCascade.chapterId) ?? "Chapter"}
+              onClear={() => setListCascade((c) => ({ ...c, chapterId: "", topicId: "" }))}
+            />
+          )}
+          {listCascade.topicId && (
+            <FilterChip
+              label={topicName.get(listCascade.topicId) ?? "Topic"}
+              onClear={() => setListCascade((c) => ({ ...c, topicId: "" }))}
+            />
+          )}
+          {search.trim() && (
+            <FilterChip label={`“${search.trim()}”`} onClear={() => setSearch("")} />
+          )}
+          {typeFilter !== "all" && (
+            <FilterChip label={typeFilter.replace(/_/g, " ")} onClear={() => setTypeFilter("all")} />
+          )}
+          {difficultyFilter !== "all" && (
+            <FilterChip
+              label={difficultyFilter.replace(/_/g, " ")}
+              onClear={() => setDifficultyFilter("all")}
+            />
+          )}
+          {statusFilter !== "all" && (
+            <FilterChip
+              label={statusFilter.replace(/_/g, " ")}
+              onClear={() => setStatusFilter("all")}
+            />
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs"
+            onClick={() => {
+              setListCascade(DEFAULT_CASCADE);
+              setSearch("");
+              setTypeFilter("all");
+              setDifficultyFilter("all");
+              setStatusFilter("all");
+            }}
+          >
+            Clear all
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <SkeletonRows rows={5} />

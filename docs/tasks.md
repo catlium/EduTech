@@ -34,6 +34,17 @@ Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
       generation-status states, PATCH update + revert → 200, UPLOAD identity
       fields) against the running demo stack
 
+### Goal: P1.6 Questions List Scope Filter
+
+- [x] Q1 `/questions` page list gains the shared `ScopeCascade` (subject→chapter→
+      topic) + active-filter chips (scope/search/type/difficulty/status) +
+      Clear all — closes the last open P1 gap ("cascades exist only in
+      create/generate dialogs") and Phase 24 C5
+- [x] Q2 Client-side filtering via existing in-memory list + name maps (the page
+      already fetches the full institute set and client-filters status/type/
+      difficulty/search — no server round-trip needed, consistent with the page)
+- [x] Q3 Validation: `pnpm --filter @catlium/web typecheck` + `next build` PASS
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`
@@ -55,7 +66,7 @@ Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`
 - [ ] C3 Web material detail: academic scope + extracted-text preview + child
       content list links
 - [ ] C4 Web content detail: academic breadcrumb + scope display
-- [ ] C5 Web questions page: scope filtering consistent with resources pattern
+- [x] C5 Web questions page: scope filtering consistent with resources pattern
 - [ ] C6 Web subject/chapter/topic pages: surface materials + content + question
       counts (extend existing chapter-tree/topic pages)
 - [ ] C1 Web content page: filter bar (scope cascade + type + debounced search) +
@@ -65,7 +76,7 @@ Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`
 - [ ] C3 Web material detail: academic scope + extracted-text preview + child
       content list links
 - [ ] C4 Web content detail: academic breadcrumb + scope display
-- [ ] C5 Web questions page: scope filtering consistent with resources pattern
+- [x] C5 Web questions page: scope filtering consistent with resources pattern
 - [ ] C6 Web subject/chapter/topic pages: surface materials + content + question
       counts (extend existing chapter-tree/topic pages)
 - [ ] D1 P19 live targeted happy path (full chain → process → package incl
