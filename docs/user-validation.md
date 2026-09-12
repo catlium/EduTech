@@ -165,6 +165,30 @@ autonomously"); P1.5 items below.
     Activate button; clicking it flips status to ACTIVE and it reappears in
     student/practice reads.
 
+### P4 — Question bank / type / paper-pattern correctness (2026-09-12)
+
+- **Edited TEXT/MATCHING/NUMERICAL questions no longer crash or lose data** —
+  `[x]` 2026-09-12 (code-level: guarded read + save blocked for unsupported
+  types; typecheck/lint pass), browser pending (web image predates change)
+  - Setup: dev stack; the bank contains a TEXT or MATCHING question.
+  - Expected: clicking Edit opens the dialog showing stem/difficulty/
+    explanation + a "use the question bank panel" notice — no crash; Save
+    cannot mangle the answer payload.
+
+- **AI-blueprinted paper pattern keeps section types through apply + save** —
+  `[ ]` not run live (unit tests 4/4 pass on the parse/flatten change)
+  - Setup: dev stack; subject with bank + a `DRAFT` paper pattern; mock AI
+    blueprint analyze → apply proposal → save.
+  - Expected: saved pattern sections retain `questionType` (MCQ/TF/FIB);
+    `POST /paper-patterns/:id/generation-plan`-style generation from the
+    blueprint does not 400 with "no section with a concrete question type".
+
+- **Bank stats match the deficit math** — `[ ]` not run live
+  - Setup: dev stack; archive or reject at least one question in scope.
+  - Endpoint: `GET /api/v1/questions/bank/stats?...`
+  - Expected: `total` = only ACTIVE questions; `usable` = ACTIVE+APPROVED;
+    the same numbers drive the generation deficit banner.
+
 ---
 
 ## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)

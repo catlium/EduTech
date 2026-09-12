@@ -175,6 +175,38 @@ editing via PATCH.
 
 - **Commit:** `aeca2d1` `feat(content): auto-activate AI content, versioned regen, reachable Cornell`
 
+### In progress — P4 Question Bank / Type / Paper-Pattern Correctness (2026-09-12)
+
+Audit-first pass completed: question types are data-driven (11 predefined
+codes, 6 answer formats, custom types allowed); MCQ/TF/FIB creation is solid;
+worker formats payloads per LLM-emitted type. Twelve concrete defects found;
+four high-severity items landed in `048ed11` (`fix(questions): edit-dialog data
+loss, blueprint type round-trip, bank stats`). Session paused mid-P4 at user
+request; remaining tracked in `docs/tasks.md`.
+
+**What landed (`048ed11`):**
+
+1. **Question edit dialog crash + data loss fixed** — unsafe cast of
+   TEXT/MATCHING/NUMERICAL payloads to `acceptableAnswers.map(...)` crashed;
+   save silently coerced them to FIB shape (payload destroyed). Now guarded:
+   only MCQ/TRUE_FALSE/FILL_IN_BLANK editable here; other types get a
+   "use the question bank panel" notice and no save.
+2. **Blueprint section questionType survives round-trip** — web applied AI
+   proposals by decoding type from the section-name " — TYPE" suffix only;
+   worker emits explicit `section.questionType` but the field was ignored on
+   load. `parseBackendSections` now trusts the field; `flattenSections` also
+   persists `totalMarks`.
+3. **Bank stats now match deficit math** — stats counted all rows (incl.
+   ARCHIVED/REJECTED) for `total`/`usable`, while deficit calculation used
+   `countApprovedQuestions` = ACTIVE + APPROVED. Stats now filter
+   `status = ACTIVE`.
+
+**Paused:** MCQ choice-id UUID guard relaxation (sites identified at
+`attempts.grade.ts:36`, `attempts.service.ts:81`; not yet edited). Resume at
+task P4.4 in `docs/tasks.md`. Deferred items: matching UI, pattern type
+existence guard, blueprint-to-assessment quotas, worker drift check, publish-
+dialog 0-question guard.
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 **Goal:** the academic hierarchy (Subject → Chapter → Topic → Material →
