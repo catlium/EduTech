@@ -85,9 +85,9 @@ readout with AI buttons). Implemented in
 
 ### Checkpoint
 
-- **Commit:** (pending — see git log after commit)
-- **Recommended next task:** P2 — real syllabus/material workflows (audit
-  existing workflows first; do not rebuild working functionality).
+- **Commit:** `feat(web): material detail workspace with scope, processing, text, and generated-resource cards`
+- **SHA:** `707f0c5` (pushed to `main`).
+- **Recommended next task:** P2 — real syllabus/material workflows (audit existing workflows first; do not rebuild working functionality).
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
