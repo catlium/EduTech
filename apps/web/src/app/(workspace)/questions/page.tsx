@@ -451,7 +451,7 @@ export default function QuestionsListPage() {
       setEditTfAnswer(payload.correctAnswer);
     } else {
       const payload = q.payload as unknown as FillInBlankPayload;
-      setEditFibAnswers(payload.acceptableAnswers.map((a) => a));
+      setEditFibAnswers((payload.acceptableAnswers ?? []).map((a) => a));
     }
   }
 
@@ -603,12 +603,16 @@ export default function QuestionsListPage() {
     if (questionType === "TRUE_FALSE") {
       return { correctAnswer: tfValue };
     }
-    const acceptableAnswers = fib.map((a) => a.trim()).filter(Boolean);
-    if (acceptableAnswers.length === 0) {
-      toast.error("Add at least 1 acceptable answer");
-      return null;
+    if (questionType === "FILL_IN_BLANK") {
+      const acceptableAnswers = fib.map((a) => a.trim()).filter(Boolean);
+      if (acceptableAnswers.length === 0) {
+        toast.error("Add at least 1 acceptable answer");
+        return null;
+      }
+      return { acceptableAnswers };
     }
-    return { acceptableAnswers };
+    toast.error("This question type can't be edited here — use the question bank panel");
+    return null;
   }
 
   async function onSaveEdit() {
@@ -1461,6 +1465,11 @@ export default function QuestionsListPage() {
             )}
             {editTarget?.questionType === "FILL_IN_BLANK" && (
               <FibEditor answers={editFibAnswers} setAnswers={setEditFibAnswers} />
+            )}
+            {editTarget && !["MCQ", "TRUE_FALSE", "FILL_IN_BLANK"].includes(editTarget.questionType) && (
+              <p className="text-sm text-muted-foreground">
+                This question type is edited in the question bank panel.
+              </p>
             )}
             <div className="grid gap-2">
               <Label htmlFor="edit-explanation">Explanation</Label>

@@ -295,7 +295,10 @@ export class QuestionGenerationService {
     instituteId: string,
     scope: { subjectId?: string; chapterId?: string; topicId?: string },
   ) {
-    const conditions: SQL[] = [eq(questions.instituteId, instituteId)];
+    const conditions: SQL[] = [
+      eq(questions.instituteId, instituteId),
+      eq(questions.status, 'ACTIVE'),
+    ];
     if (scope.subjectId) conditions.push(eq(questions.subjectId, scope.subjectId));
     if (scope.chapterId) conditions.push(eq(questions.chapterId, scope.chapterId));
     if (scope.topicId) conditions.push(eq(questions.topicId, scope.topicId));

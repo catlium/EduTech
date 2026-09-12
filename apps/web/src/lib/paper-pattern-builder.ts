@@ -158,6 +158,7 @@ export function flattenSections(sections: Section[]): BackendSection[] {
         questionType: r.questionType || undefined,
         count: r.count,
         marksPerQuestion: r.marksPerQuestion,
+        totalMarks: ruleSubtotal(r),
         compulsory: s.compulsory,
         attemptCount: s.attemptCount,
         difficultyDistribution: difficultyDone
@@ -201,7 +202,7 @@ export function parseBackendSections(secs: BackendSection[]): Section[] {
         const m = STEM_RE.exec(sec.name);
         return {
           id: crypto.randomUUID(),
-          questionType: (m ? m[2] : "") as Rule["questionType"],
+          questionType: (sec.questionType || (m ? m[2] : "")) as Rule["questionType"],
           count: sec.count ?? null,
           marksPerQuestion: sec.marksPerQuestion ?? null,
           difficulty: {
