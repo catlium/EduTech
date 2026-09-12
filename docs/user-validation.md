@@ -125,6 +125,46 @@ autonomously"); P1.5 items below.
   - Expected: job fails with `Source material does not belong to the target
     subject` before any provider call; no proposal row is written.
 
+### P3 — Generated-content semantics (2026-09-12)
+
+- **AI content auto-activates** — `[x]` 2026-09-12 (verified at function level
+  on a scratch DB: `insert_ai_content` persists status ACTIVE; also verified
+  by reading the demo DB has no textless READY materials)
+  - Setup: dev stack + demo seed + mock AI; the worker built from current
+    source (image predates the change for a full browser run).
+  - Flow: teacher opens a READY material → Generate a Note → student Learning
+    Content page (student:)
+  - Expected: the generated note appears under student reads immediately (no
+    teacher Activate click); `GET /api/v1/content?type=NOTE&status=ACTIVE`
+    returns it.
+
+- **Regenerate versions, never duplicates** — `[x]` 2026-09-12 (function-level
+  check on a scratch DB: same item id on regenerate, v1 CREATION → v2
+  REGENERATION, current_version 2, one content_items row)
+  - Setup: dev stack; a material with an existing generated NOTE.
+  - Flow: material detail → Regenerate (stale item) → poll job → inspect DB.
+  - Expected: `SELECT count(*) FROM content_items WHERE type='NOTE' AND
+    source='AI_GENERATED'` for that source stays 1; `GET
+    /content/<id>/versions` shows v1 CREATION + v2 REGENERATION; generation-
+    status still reports a single well-defined state.
+
+- **Generate all produces all five types incl. Cornell** — `[ ]` browser/data
+  pending (real provider/mock must return a cornell key in the package; mock
+  canned responses may not include it)
+  - Setup: dev stack, READY material, worker built from current source.
+  - Endpoint: `POST /api/v1/content/generate-package`
+  - Payload: `{"sourceType":"MATERIAL","sourceId":"<material id>"}`
+  - Expected: jobs/:id result has 5 contentIds (NOTE, SUMMARY,
+    FLASHCARD_SET, IMPORTANT_CONCEPTS, CORNELL_NOTE); material detail
+    generation-status shows all five `generated`.
+
+- **ARCHIVED items reactivate** — `[ ]` browser pending (web image predates
+  the change)
+  - Setup: dev stack; one ARCHIVED content item.
+  - Expected: on the content list and detail pages the ARCHIVED item shows an
+    Activate button; clicking it flips status to ACTIVE and it reappears in
+    student/practice reads.
+
 ---
 
 ## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)

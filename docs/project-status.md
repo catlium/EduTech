@@ -135,6 +135,46 @@ typecheck/lint/mypy.
 - Commit: `fix(seed): write full scope chain in demo inserts` (`fcd9adc`),
   plus uncommitted syllabus/workers fix pending checkpoint.
 
+### Completed — P3 Learning-Content Semantics & Reuse (2026-09-12)
+
+Audit-first pass over the generated-content subsystem (schema → API → worker →
+web) against the derived-content product rules. No rewrite; four real gaps
+fixed.
+
+**What changed (`aeca2d1`):**
+
+1. **Auto-activate** — worker persists AI content items `ACTIVE` (was `DRAFT`).
+   Students now see generated content immediately (their reads filter
+   `status=ACTIVE`); teachers no longer need a manual Activate click. This is
+   the product rule "derived resources MUST NOT require approval" — the web
+   copy already promised it.
+2. **Versioned regeneration** — regenerating the same institute+type+
+   `source_reference` now updates the existing item (`current_version` bump +
+   appended `REGENERATION` version) instead of inserting a duplicate. Matches
+   `docs/architecture/content.md`; the generation-status query can no longer
+   pick an arbitrary duplicate row.
+3. **Cornell reachable** — `CORNELL_NOTE` added to the generate-package
+   `includeTypes` DTO and the worker default package types; Generate all
+   produces all five types.
+4. **includeTypes mapping fixed** — API names are normalized to worker package
+   keys (`FLASHCARD_SET→flashcards`, `CORNELL_NOTE→cornell`). The old
+   includeTypes path passed uppercase names the worker dropped — a latent
+   dead-code break.
+5. **Reactivation** — ARCHIVED content items can be activated again from the
+   list and detail pages (API supported it; UI only showed Activate for DRAFT).
+
+**Validation:** `pnpm typecheck` 10/10, `pnpm lint` 9/9, web build, `ruff` +
+`mypy` PASS; worker upsert+versioning proven against a scratch DB (first call →
+ACTIVE item v1/CREATION; regenerate → same id v2/REGENERATION, title+scope
+updated; distinct type → distinct item).
+
+**Deferred product decisions (P3.7):** "Improve with AI" endpoint+UI; DELETE
+endpoint (archive covers it); stale-detection noise (title/status edits mark
+content stale); version-history UI (API exists, no web consumer); title/scope
+editing via PATCH.
+
+- **Commit:** `aeca2d1` `feat(content): auto-activate AI content, versioned regen, reachable Cornell`
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 **Goal:** the academic hierarchy (Subject → Chapter → Topic → Material →

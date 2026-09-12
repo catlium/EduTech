@@ -64,14 +64,41 @@ Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
 - [x] P2.4 Worker defense-in-depth: `_generate_syllabus` now rejects a
       material whose subject doesn't match the job payload's subject before
       calling the provider
-- [ ] P2.5 Confirm the confirmed-syllabus dead end: a CONFIRMED syllabus can
+- [-] P2.5 Confirm the confirmed-syllabus dead end: a CONFIRMED syllabus can
       never be amended/reopened through the product (generate → 409,
       PATCH → 409, worker upsert raises). Deliberate design boundary — product
-      decision needed (deferred; do not rebuild syllabus module semantics)
+      decision needed (deferred 2026-09-12 per user; do not rebuild syllabus
+      module semantics)
 - [ ] P2.6 Validation: live smoke of fallback (textless material → immediate
       400) and worker scope guard against the demo stack (deferred — no
       textless READY material exists in demo data; guard paths covered by
       typecheck/lint/mypy)
+
+### Goal: P3 Learning-Content Semantics & Reuse (audit-first)
+
+- [x] P3.1 Audit the generated-content subsystem (schema → API → worker →
+      web) vs the derived-content product rules. Real gaps found: AI content
+      persisted DRAFT (students never see it until a manual Activate),
+      Cornell unreachable, regenerate duplicates items, ARCHIVED items
+      can't be reactivated from the UI.
+- [x] P3.2 Auto-activate: worker writes AI content items ACTIVE (was DRAFT);
+      regenerate auto-activates existing DRAFT items too (worker upsert)
+- [x] P3.3 Versioned regeneration: worker upserts by institute+type+
+      source_reference (type,id); regenerate bumps current_version + appends
+      a REGENERATION content_versions row instead of duplicating — verified
+      on a scratch DB (v1 CREATION → v2 REGENERATION, same item id, ACTIVE)
+- [x] P3.4 Cornell reachable: CORNELL_NOTE added to generate-package
+      includeTypes DTO + worker default package types (Generate all now
+      produces all five types)
+- [x] P3.5 includeTypes mapping: API names normalized to worker package keys
+      (FLASHCARD_SET→flashcards, CORNELL_NOTE→cornell) — was a latent
+      dead-code path that dropped every requested type
+- [x] P3.6 Reactivation: ARCHIVED content items regain Activate on list +
+      detail pages (API already supported it)
+- [ ] P3.7 Deferred product decisions: "Improve with AI" endpoint/UI (real
+      build); DELETE endpoint (archive covers it); stale-detection noise
+      (title/status edits mark content stale); content version-history UI
+      (API exists, no consumer); title/scope not editable via PATCH
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
