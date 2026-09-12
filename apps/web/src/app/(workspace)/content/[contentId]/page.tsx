@@ -18,6 +18,7 @@ import type {
 } from '@catlium/contracts';
 import { PageHeader } from '@/components/app/page-header';
 import { StatusBadge } from '@/components/app/status-badge';
+import { ScopeBreadcrumb } from '@/components/app/scope-cascade';
 import { ErrorState } from '@/components/app/error-state';
 import { ConfirmDialog } from '@/components/app/confirm-dialog';
 import { ContentPayloadEditor, type ContentType } from '@/components/app/content-payload-editor';
@@ -177,6 +178,11 @@ export default function ContentDetailPage() {
           <StatusBadge status={content.source} />
           <span className="text-muted-foreground">{formatDateTime(content.createdAt)}</span>
         </div>
+        <ScopeBreadcrumb
+          subjectId={content.subjectId}
+          chapterId={content.chapterId}
+          topicId={content.topicId}
+        />
       </div>
 
       <Separator />

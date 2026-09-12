@@ -105,6 +105,7 @@ export class MaterialsController {
     processingStatus?: string,
     @Query('status', new ParseEnumPipe(['ACTIVE', 'ARCHIVED'], { optional: true }))
     status?: 'ACTIVE' | 'ARCHIVED',
+    @Query('q') q?: string,
     @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
     @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
     @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
@@ -114,6 +115,7 @@ export class MaterialsController {
       sourceType,
       processingStatus,
       status,
+      q,
       subjectId,
       chapterId,
       topicId,

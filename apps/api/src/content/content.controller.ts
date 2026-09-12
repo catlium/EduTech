@@ -61,6 +61,7 @@ export class ContentController {
     type?: 'NOTE' | 'FLASHCARD_SET' | 'CORNELL_NOTE' | 'SUMMARY' | 'IMPORTANT_CONCEPTS',
     @Query('status', new ParseEnumPipe(['DRAFT', 'ACTIVE', 'ARCHIVED'], { optional: true }))
     status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED',
+    @Query('q') q?: string,
     @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
     @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
     @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
@@ -68,6 +69,7 @@ export class ContentController {
     const contents = await this.contentService.listContent(tenant.instituteId, {
       type,
       status,
+      q,
       subjectId,
       chapterId,
       topicId,

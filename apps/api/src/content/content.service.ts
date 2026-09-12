@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, ilike } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { contentItems, contentVersions } from '@catlium/database';
 import type { Database } from '@catlium/database';
@@ -38,6 +38,7 @@ interface UpdateContentInput {
 interface ListContentFilters {
   type?: ContentType;
   status?: ContentStatus;
+  q?: string;
   subjectId?: string;
   chapterId?: string;
   topicId?: string;
@@ -100,6 +101,7 @@ export class ContentService {
 
     if (filters.type) conditions.push(eq(contentItems.type, filters.type));
     if (filters.status) conditions.push(eq(contentItems.status, filters.status));
+    if (filters.q) conditions.push(ilike(contentItems.title, `%${filters.q}%`));
     if (filters.subjectId) conditions.push(eq(contentItems.subjectId, filters.subjectId));
     if (filters.chapterId) conditions.push(eq(contentItems.chapterId, filters.chapterId));
     if (filters.topicId) conditions.push(eq(contentItems.topicId, filters.topicId));

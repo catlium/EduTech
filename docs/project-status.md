@@ -1,5 +1,42 @@
 # Project Status
 
+## Phase 27 — Product Validation & Enhancement (2026-09-12)
+
+**Goal:** make the already-built platform work as a coherent, real educational
+product. Close functional gaps, improve UX/product quality, and complete
+important product capabilities using real API/database data.
+
+Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
+
+### Completed — P1 Resource Discovery (filter bars + search)
+
+- **Backend search `q` param:** added to GET /content (title `ILIKE`) and GET
+  /materials (title+description `ILIKE`, nullable `or()` asserted) list
+  endpoints. `pnpm typecheck` PASS.
+- **Content page (`content/page.tsx`):** full rewrite — ScopeCascade
+  (subject→chapter→topic), debounced search input, existing type tabs, active
+  filter chips, Clear-all, and URL sync (`subject/chapter/topic/q/type`). All
+  filters are server-side.
+- **Materials page (`materials/page.tsx`):** ScopeCascade in the filter bar,
+  debounced search input, existing processing-status tabs + status select,
+  active filter chips, Clear-all, and URL sync (`subject/chapter/topic/q`).
+- **Shared `FilterChip`** component added to `scope-cascade.tsx` (reused by both
+  list pages).
+- **Detail-page scope display:** new shared `ScopeBreadcrumb` component (fetches
+  names via `GET /academic/subjects|chapters|topics/:id` and renders
+  `Subject → Chapter → Topic`). Added to material detail page (under the title)
+  and content detail page (under the status badges).
+
+### In progress
+
+- B7 Docs finalization + commit + push.
+
+### Pending
+
+- Questions page scope filter (C5 in planning) — client-side filter only, no
+  server-side scope filter yet.
+- `docs/user-validation.md` entries for P1 filter-bar workflows.
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 **Goal:** the academic hierarchy (Subject → Chapter → Topic → Material →

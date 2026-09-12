@@ -1,5 +1,19 @@
 # Task Tracker
 
+## Phase 27 — Product Validation & Enhancement (2026-09-12)
+
+Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
+
+### Goal: P1 Resource Discovery — Filter Bars + Scope Display
+
+- [x] B1 Backend: add `q` search param to GET /content and GET /materials list endpoints
+- [x] B2 Content page: scope cascade + debounced search + tabs + chips + clear-all + URL sync
+- [x] B3 Materials page: scope cascade + debounced search + processing/status filters + chips + clear-all + URL sync
+- [x] B4 Material detail: academic scope display (shared `ScopeBreadcrumb`)
+- [x] B5 Content detail: academic scope breadcrumb (shared `ScopeBreadcrumb`)
+- [x] B6 Validation: typecheck / lint / web build PASS
+- [~] B7 Docs: update `docs/project-status.md`, commit + push
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`

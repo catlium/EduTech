@@ -23,6 +23,7 @@ import type {
 } from "@catlium/contracts";
 import { PageHeader } from "@/components/app/page-header";
 import { StatusBadge } from "@/components/app/status-badge";
+import { ScopeBreadcrumb } from "@/components/app/scope-cascade";
 import { ErrorState } from "@/components/app/error-state";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -210,6 +211,12 @@ export default function MaterialDetailPage() {
         </Button>
         <PageHeader title={material.title} />
       </div>
+
+      <ScopeBreadcrumb
+        subjectId={material.subjectId}
+        chapterId={material.chapterId}
+        topicId={material.topicId}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 text-sm">

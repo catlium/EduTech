@@ -14,7 +14,7 @@ import {
   Archive,
   Eye,
   CheckCircle2,
-  X,
+  Search,
 } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
@@ -68,6 +68,11 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  ScopeCascade,
+  FilterChip,
+} from "@/components/app/scope-cascade";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
 type DialogMode = null | "text" | "upload";
 
@@ -92,6 +97,7 @@ function materialsQuery(
   statusFilter: string,
   processingFilter: string,
   scopeFilter: { subjectId: string; chapterId: string; topicId: string },
+  search: string,
 ): URLSearchParams {
   const params = new URLSearchParams();
   if (statusFilter !== "all") params.set("status", statusFilter);
@@ -99,6 +105,7 @@ function materialsQuery(
   if (scopeFilter.topicId) params.set("topicId", scopeFilter.topicId);
   else if (scopeFilter.chapterId) params.set("chapterId", scopeFilter.chapterId);
   else if (scopeFilter.subjectId) params.set("subjectId", scopeFilter.subjectId);
+  if (search) params.set("q", search);
   return params;
 }
 
@@ -128,6 +135,8 @@ export default function MaterialsListPage() {
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [processingFilter, setProcessingFilter] = useState<string>("all");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const [scope, setScope] = useState<ScopeState>({
     subjects: [],
@@ -229,7 +238,7 @@ export default function MaterialsListPage() {
     setLoading(true);
     setError(null);
     const ctrl = new AbortController();
-    const qs = materialsQuery(statusFilter, processingFilter, scopeFilter).toString();
+    const qs = materialsQuery(statusFilter, processingFilter, scopeFilter, debouncedSearch).toString();
     api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ""}`, {
       signal: ctrl.signal,
     })
@@ -241,7 +250,7 @@ export default function MaterialsListPage() {
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [institute, statusFilter, processingFilter, scopeFilter]);
+  }, [institute, statusFilter, processingFilter, scopeFilter, debouncedSearch]);
 
   useEffect(() => {
     return refresh();
@@ -255,7 +264,7 @@ export default function MaterialsListPage() {
     if (polling.length === 0) return;
     const ctrl = new AbortController();
     const id = setInterval(() => {
-      const qs = materialsQuery(statusFilter, processingFilter, scopeFilter).toString();
+      const qs = materialsQuery(statusFilter, processingFilter, scopeFilter, debouncedSearch).toString();
       api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ""}`, {
         signal: ctrl.signal,
       })
@@ -266,7 +275,17 @@ export default function MaterialsListPage() {
       ctrl.abort();
       clearInterval(id);
     };
-  }, [materials, statusFilter, processingFilter, scopeFilter]);
+  }, [materials, statusFilter, processingFilter, scopeFilter, debouncedSearch]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (scopeFilter.subjectId) params.set("subject", scopeFilter.subjectId);
+    if (scopeFilter.chapterId) params.set("chapter", scopeFilter.chapterId);
+    if (scopeFilter.topicId) params.set("topic", scopeFilter.topicId);
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    const qs = params.toString();
+    router.replace(`/materials${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [scopeFilter, debouncedSearch, router]);
 
   const scopeId = scope.topicId || scope.chapterId || scope.subjectId;
 
@@ -281,14 +300,9 @@ export default function MaterialsListPage() {
     return "Unscoped";
   }
 
-  const filterLabel =
-    (scopeFilter.topicId && topicNames.get(scopeFilter.topicId)) ||
-    (scopeFilter.chapterId && chapterNames.get(scopeFilter.chapterId)) ||
-    (scopeFilter.subjectId && subjectNames.get(scopeFilter.subjectId)) ||
-    "selected scope";
-
-  function clearScopeFilter() {
+  function clearAllFilters() {
     setScopeFilter({ subjectId: "", chapterId: "", topicId: "" });
+    setSearch("");
   }
 
   function applyScope(field: "subjectId" | "chapterId" | "topicId", value: string) {
@@ -508,36 +522,75 @@ export default function MaterialsListPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {(scopeFilter.subjectId || scopeFilter.chapterId || scopeFilter.topicId) && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2">
-            <p className="text-sm">Showing materials for:</p>
-            <span className="text-sm font-medium">{filterLabel}</span>
-            <Button size="sm" variant="ghost" onClick={clearScopeFilter}>
-              <X className="mr-1 size-3.5" /> Clear
+      <div className="mb-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search materials…"
+              className="h-8 w-56 pl-7"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <Tabs value={processingFilter} onValueChange={setProcessingFilter}>
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="UPLOADED">Uploaded</TabsTrigger>
+              <TabsTrigger value="QUEUED">Queued</TabsTrigger>
+              <TabsTrigger value="PROCESSING">Processing</TabsTrigger>
+              <TabsTrigger value="READY">Ready</TabsTrigger>
+              <TabsTrigger value="FAILED">Failed</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="ACTIVE">Active</SelectItem>
+              <SelectItem value="ARCHIVED">Archived</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <ScopeCascade
+          cascade={scopeFilter}
+          subjects={scope.subjects}
+          chapters={hierarchy.chapters}
+          topics={hierarchy.topics}
+          onChange={setScopeFilter}
+        />
+
+        {(scopeFilter.subjectId || scopeFilter.chapterId || scopeFilter.topicId || debouncedSearch) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {scopeFilter.subjectId && (
+              <FilterChip
+                label={subjectNames.get(scopeFilter.subjectId) ?? "Subject"}
+                onClear={() => setScopeFilter((s) => ({ ...s, subjectId: "" }))}
+              />
+            )}
+            {scopeFilter.chapterId && (
+              <FilterChip
+                label={chapterNames.get(scopeFilter.chapterId) ?? "Chapter"}
+                onClear={() => setScopeFilter((s) => ({ ...s, chapterId: "" }))}
+              />
+            )}
+            {scopeFilter.topicId && (
+              <FilterChip
+                label={topicNames.get(scopeFilter.topicId) ?? "Topic"}
+                onClear={() => setScopeFilter((s) => ({ ...s, topicId: "" }))}
+              />
+            )}
+            {debouncedSearch && (
+              <FilterChip label={`“${debouncedSearch}”`} onClear={() => setSearch("")} />
+            )}
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={clearAllFilters}>
+              Clear all
             </Button>
           </div>
         )}
-        <Tabs value={processingFilter} onValueChange={setProcessingFilter}>
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="UPLOADED">Uploaded</TabsTrigger>
-            <TabsTrigger value="QUEUED">Queued</TabsTrigger>
-            <TabsTrigger value="PROCESSING">Processing</TabsTrigger>
-            <TabsTrigger value="READY">Ready</TabsTrigger>
-            <TabsTrigger value="FAILED">Failed</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[130px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All status</SelectItem>
-            <SelectItem value="ACTIVE">Active</SelectItem>
-            <SelectItem value="ARCHIVED">Archived</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {loading ? (

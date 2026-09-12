@@ -15,6 +15,37 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Phase 27 — Product Validation & Enhancement (2026-09-12)
+
+Status: `[ ]` not run — code-complete + automated validation PASS (typecheck,
+lint, web build); live-route spot check pending (dev/demo stack).
+
+### P1 — Content & materials filter bars
+
+- **Content page filter bar (search + scope cascade)** — `[ ]` not run
+  - Setup: dev stack up + demo seed, teacher@catlium.dev logged in.
+  - Endpoint: `GET /api/v1/content?q=photosynthesis&subjectId=<id>`
+  - Expected: only content whose title matches `photosynthesis` and whose scope
+    is subject `<id>` (or a descendant) is listed; the URL shows
+    `?q=photosynthesis&subject=...`; typing a scope/search updates the URL;
+    chips render each active filter and clear individually; Clear all resets.
+
+- **Materials page filter bar (search + scope cascade + tabs)** — `[ ]` not run
+  - Setup: dev stack up + demo seed, teacher@catlium.dev logged in.
+  - Endpoint: `GET /api/v1/materials?q=digest&status=ACTIVE`
+  - Expected: matching materials listed; `?q=...&subject=...` reflected in URL;
+    chips per active filter + Clear all; processing tabs + status select still
+    work and combine with scope/search.
+
+- **Detail-page scope breadcrumb** — `[ ]` not run
+  - Setup: dev stack up + demo seed.
+  - Endpoint: `GET /api/v1/materials/<id>` and `GET /api/v1/content/<id>`
+  - Expected: material detail shows `Subject → Chapter → Topic` under the
+    title; content detail shows the same breadcrumb under the status badges;
+    names resolve via `/api/v1/academic/{subjects|chapters|topics}/<id>`.
+
+---
+
 ## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)
 
 Status: `[ ]` not run — code-complete + automated validation PASS; live-route

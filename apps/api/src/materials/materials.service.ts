@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, ilike, or } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
@@ -44,6 +44,7 @@ interface ListMaterialFilters {
   sourceType?: string;
   processingStatus?: string;
   status?: MaterialStatus;
+  q?: string;
   subjectId?: string;
   chapterId?: string;
   topicId?: string;
@@ -148,6 +149,14 @@ export class MaterialsService {
       conditions.push(eq(materials.processingStatus, filters.processingStatus));
     }
     if (filters.status) conditions.push(eq(materials.status, filters.status));
+    if (filters.q) {
+      conditions.push(
+        or(
+          ilike(materials.title, `%${filters.q}%`),
+          ilike(materials.description, `%${filters.q}%`),
+        )!,
+      );
+    }
     if (filters.subjectId) conditions.push(eq(materials.subjectId, filters.subjectId));
     if (filters.chapterId) conditions.push(eq(materials.chapterId, filters.chapterId));
     if (filters.topicId) conditions.push(eq(materials.topicId, filters.topicId));
