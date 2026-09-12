@@ -12,7 +12,27 @@ Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
 - [x] B4 Material detail: academic scope display (shared `ScopeBreadcrumb`)
 - [x] B5 Content detail: academic scope breadcrumb (shared `ScopeBreadcrumb`)
 - [x] B6 Validation: typecheck / lint / web build PASS
-- [~] B7 Docs: update `docs/project-status.md`, commit + push
+- [x] B7 Docs: update `docs/project-status.md`, commit + push
+
+### Goal: P1.5 Material Detail Workspace
+
+- [x] M1 Contracts: add `textContent` to `MaterialResponseSchema` (the API
+      already returns the raw row incl. textContent — typed it, no endpoint change)
+- [x] M2 Rebuild `/materials/[materialId]` into a workspace:
+      identity strip (sourceType, type, fileName/mimeType/size, created/updated,
+      description), academic-scope card (shared `ScopeBreadcrumb`), processing
+      card (UPLOADED→QUEUED→PROCESSING→READY stepper + FAILED, timestamps,
+      state explanation), source/extracted-text card
+      (600-char preview + expand, state-aware upload explanation),
+      generated-resources card (per-type rows NOTE/SUMMARY/FLASHCARD_SET/
+      IMPORTANT_CONCEPTS/CORNELL_NOTE with state chip + contentId Open /
+      Generate / Regenerate actions; CORNELL_NOTE only via Generate all)
+- [x] M3 Teacher actions moved to header: Process / Retry / Archive / Activate
+      + new Edit dialog (PATCH /materials/:id title/description — no UI existed)
+- [x] M4 Validation: `pnpm typecheck` (10) + `pnpm lint` (9) + web build PASS;
+      live smoke of every consumed endpoint (material detail w/ textContent,
+      generation-status states, PATCH update + revert → 200, UPLOAD identity
+      fields) against the running demo stack
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 

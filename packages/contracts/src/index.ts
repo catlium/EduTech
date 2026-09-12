@@ -589,6 +589,7 @@ export const MaterialResponseSchema = z.object({
   fileSize: z.number().nullable(),
   storageProvider: z.string(),
   storageKey: z.string().nullable(),
+  textContent: z.string().nullable(),
   processingStatus: MaterialProcessingStatusEnum,
   status: MaterialStatusEnum,
   createdBy: z.string().uuid(),

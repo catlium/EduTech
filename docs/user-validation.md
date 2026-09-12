@@ -17,8 +17,59 @@ three marker states and block milestone closure until resolved.
 
 ## Phase 27 — Product Validation & Enhancement (2026-09-12)
 
-Status: `[ ]` not run — code-complete + automated validation PASS (typecheck,
-lint, web build); live-route spot check pending (dev/demo stack).
+Status: `[x]` P1 code-complete + automated validation PASS (typecheck 10/10,
+lint 9/9, web build); live data-contract smoke PASS (2026-09-12). P1 manual
+browser validation deferred per user decision ("continue working
+autonomously"); P1.5 items below.
+
+### P1.5 — Material detail workspace (2026-09-12)
+
+- **Material identity + scope + processing readout** — `[~]` API-verified 2026-09-12,
+  browser not yet run (web image predates the change)
+  - Setup: demo stack up + seed, teacher@catlium.dev logged in; web rebuilt with
+    the new page.
+  - Endpoint: `GET /api/v1/materials/<id>` (verified live: `textContent` present —
+    TEXT material returned 929-char payload; UPLOAD material returned
+    `sourceType: "UPLOAD"`, `materialType: "PDF"`, `fileName`, `mimeType`,
+    `fileSize: 1089026`).
+  - Expected: detail page shows identity strip (sourceType, type badge, file
+    name + size for uploads, created/updated), Academic scope card with
+    `Subject → Chapter → Topic` breadcrumb, Processing card with
+    UPLOADED→QUEUED→PROCESSING→READY stepper + FAILED error text + timestamps.
+
+- **Source / extracted text card** — `[~]` API-verified, browser pending
+  - Endpoint: `GET /api/v1/materials/<id>` → `material.textContent`.
+  - Expected: extracted text renders in a scrollable block, truncated to a
+    600-char preview with a "Show full text (N chars)" toggle; READY TEXT
+    materials explain text is stored directly; UPLOAD materials in UPLOADED/
+    FAILED show the state explanation + inline Process/Retry.
+
+- **Generated resources rows** — `[~]` API-verified, browser pending
+  - Endpoint: `GET /api/v1/content/generation-status?materialId=<id>` (verified
+    live: 5 items NOTE/SUMMARY/FLASHCARD_SET/IMPORTANT_CONCEPTS/CORNELL_NOTE
+    with `state` `generated`|`not_generated`, `contentId`, `version`,
+    `generatedAt`).
+  - Expected: one row per content type; generated → green state line
+    (date + v version) + Open button navigating to `/content/<contentId>`;
+    stale → amber "regenerate for accuracy" + Regenerate; not generated →
+    Generate button (CORNELL_NOTE row shows "Created with Generate all" and no
+    button); Generate all still runs the package job.
+
+- **Edit metadata dialog** — `[x]` API-verified 2026-09-12 (PATCH flow proven
+  against live API, incl. revert); dialog UI not yet browser-run.
+  - Endpoint: `PATCH /api/v1/materials/:id`
+  - Payload: `{"title":"How Neural Networks Learn","description":"NN overview"}`
+  - Expected: `200` (verified) echoing updated material; reverting
+    `{"description":null}` → `200`; dialog Edit button → form prefilled with
+    current title/description → Save shows toast + refreshed page; empty title
+    blocked client-side ("Title is required").
+
+- **Teacher actions in header** — `[~]` browser pending
+  - Expected: Edit / Process (only when sourceType UPLOAD + processingStatus
+    UPLOADED) / Retry (only FAILED|QUEUED) / Archive or Activate (per status);
+    Process/Retry/Archive/Activate behave as documented in Phase 23.
+
+---
 
 ### P1 — Content & materials filter bars
 

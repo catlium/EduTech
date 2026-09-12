@@ -41,6 +41,54 @@ Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
 - **SHA:** `7e21893` (pushed to `main`).
 - **Recommended next task:** run the P1 user-validation items (`docs/user-validation.md`) against the demo stack, or proceed to **P2 — real syllabus/material workflows** per the Phase 27 work order.
 
+### Completed — P1.5 Material Detail Workspace (2026-09-12)
+
+The material detail page is now a real workspace (previously just a CRUD
+readout with AI buttons). Implemented in
+`apps/web/src/app/(workspace)/materials/[materialId]/page.tsx`:
+
+- **Material identity strip** under the header: sourceType (UPLOAD/TEXT),
+  type badge (file extension / materialType), fileName + mimeType + humanized
+  fileSize (`formatBytes`) for uploads, created/updated dates, description.
+- **Academic scope card**: shared `ScopeBreadcrumb` (Subject → Chapter → Topic,
+  names fetched from `/academic/*`), with a clear "not attached to any scope"
+  state when unscoped.
+- **Processing card**: UPLOADED → QUEUED → PROCESSING → READY stepper chips +
+  progress bar + FAILED chip (with `processError`), per-state explanatory text
+  (TEXT materials explain they need no OCR), started/completed timestamps,
+  live 3s polling while processing.
+- **Source & extracted text card**: `material.textContent` from the API (already
+  returned raw — contract now types it via `textContent` on
+  `MaterialResponseSchema`); 600-char preview + expand toggle. UPLOAD materials
+  in UPLOADED/FAILED states show the state explanation with the matching
+  Process/Retry action inline; READY shows the extracted plaintext.
+- **Generated resources card**: per-content-type rows (NOTE, SUMMARY,
+  FLASHCARD_SET, IMPORTANT_CONCEPTS, CORNELL_NOTE) driven by
+  `GET /content/generation-status?materialId=` — generated (with date + v
+  version) → Open button to `/content/:id`; stale → Regenerate; not generated →
+  Generate (CORNELL_NOTE excluded — package-only, labelled "Created with
+  Generate all"); generating/failed states covered. Generate-all (package) kept.
+- **Teacher actions in the header**: Process / Retry / Archive / Activate kept;
+  new **Edit dialog** (PATCH `/materials/:id` title + description — the endpoint
+  existed but had no UI).
+
+### Validation
+
+- `pnpm typecheck` — 10/10 PASS; `pnpm lint` — 9/9 PASS;
+  `pnpm --filter @catlium/web build` PASS (all routes compile).
+- Live smoke against the running demo stack (single login, rate-limiter aware):
+  material detail returns `textContent` (929-char real material verified);
+  `generation-status` returns all 5 types with `generated`/`not_generated`/
+  `stale` states; PATCH title+description → 200 then revert → 200; UPLOAD
+  material identity fields (PDF, fileName, mimeType, fileSize 1089026) verified.
+- graphify graph updated (AST rebuild, no API cost).
+
+### Checkpoint
+
+- **Commit:** (pending — see git log after commit)
+- **Recommended next task:** P2 — real syllabus/material workflows (audit
+  existing workflows first; do not rebuild working functionality).
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 **Goal:** the academic hierarchy (Subject → Chapter → Topic → Material →
