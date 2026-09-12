@@ -99,9 +99,41 @@ has no pagination).
 ### Checkpoint
 
 - **Commit:** `feat(web): questions list scope filter + active-filter chips`
-- **SHA:** (pushed to `main`).
+- **SHA:** `ed175b4` (pushed to `main`).
 - **Recommended next task:** P2 — real syllabus/material workflows (audit
   existing workflows first; do not rebuild working functionality).
+
+### Completed — P2 Syllabus & Material Workflow Fixes (2026-09-12)
+
+Audit-first pass over the real syllabus/material workflows. No rebuild needed:
+the API create paths are correct; three holes and one seed defect were found
+and fixed.
+
+**What changed:**
+
+1. **Seed scope-chain fix** (`seed-demo.ts`): `upsertMaterial` /
+   `ensureContentItem` / `upsertQuestion` wrote leaf-only scopes, violating
+   migration-0020 chain CHECKs and aborting fresh-DB seeding. Now resolves the
+   full subject/chapter/topic chain from the topic at insert time. Verified on
+   a fresh scratch DB: 0 broken chains, 4 materials, 19 questions, 4
+   content_items all chain-compliant.
+2. **Syllabus fallback material picker** (`syllabus.service.ts`): omitted
+   `materialId` only filtered ACTIVE+READY — a READY-but-textless material
+   queued a worker job that failed late. Now also requires non-empty
+   `textContent` up front.
+3. **Worker defense-in-depth** (`worker/ai/service.py`): `_generate_syllabus`
+   now rejects a material whose `subject_id` doesn't match the job payload's
+   subject before calling the provider.
+
+**Deferred:** the confirmed-syllabus dead end (CONFIRMED → always-409 on
+generate/PATCH) is a deliberate design boundary; product decision needed before
+changing it. The worker fallback guard and text-check guard could not be live-
+smoked (no textless READY material exists in demo data); covered by
+typecheck/lint/mypy.
+
+- `pnpm typecheck` 10/10 + `pnpm lint` 9/9 + `ruff` + `mypy` PASS.
+- Commit: `fix(seed): write full scope chain in demo inserts` (`fcd9adc`),
+  plus uncommitted syllabus/workers fix pending checkpoint.
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 

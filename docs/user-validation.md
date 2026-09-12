@@ -95,6 +95,36 @@ autonomously"); P1.5 items below.
     title; content detail shows the same breadcrumb under the status badges;
     names resolve via `/api/v1/academic/{subjects|chapters|topics}/<id>`.
 
+### P2 — Syllabus & material workflow fixes (2026-09-12)
+
+- **Fresh-DB seed completes; all scoped rows chain-compliant** — `[x]` 2026-09-12
+  (verified on a scratch DB: migrate + seed PASS on empty DB; 0 broken
+  subject/chapter/topic chains across materials 4, questions 19,
+  content_items 4)
+  - Setup: empty PostgreSQL DB; run `pnpm db:migrate` then `pnpm db:seed`.
+  - Expected: seed prints the summary (no `materials_scope_chain` /
+    `content_items_scope_chain` / `questions_scope_chain` violation);
+    `SELECT count(*) FROM materials WHERE topic_id IS NOT NULL AND
+    (chapter_id IS NULL OR subject_id IS NULL)` → 0.
+
+- **Syllabus fallback rejects textless materials up front** — `[ ]` not run
+  (guard path; no textless READY material exists in demo data to smoke it)
+  - Setup: dev stack, teacher login; a MATERIAL with `processingStatus=READY`
+    but empty `textContent` (create via API then `UPDATE materials SET
+    text_content='' WHERE id=...`).
+  - Endpoint: `POST /api/v1/syllabus/proposals`
+  - Payload: `{"subjectId":"<subject>","sourceType":"MATERIAL"}` (no
+    `materialId` → fallback picker)
+  - Expected: `400 Material has no extracted text` immediately — the job is
+    never enqueued (no late worker failure).
+
+- **Worker refuses a foreign-subject material** — `[ ]` not run (guard path)
+  - Setup: dev stack; enqueue an `AI_GENERATE_SYLLABUS` job whose
+    `materials` list contains a material belonging to a different subject
+    than `subjectId`.
+  - Expected: job fails with `Source material does not belong to the target
+    subject` before any provider call; no proposal row is written.
+
 ---
 
 ## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)

@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
 import { chapters, materials, subjects, syllabusProposals, topics } from '@catlium/database';
 import { SyllabusStructureSchema, type SyllabusStructure } from '@catlium/contracts';
@@ -241,6 +241,7 @@ export class SyllabusService {
           eq(materials.subjectId, subjectId),
           eq(materials.status, 'ACTIVE'),
           eq(materials.processingStatus, 'READY'),
+          sql`coalesce(trim(${materials.textContent}), '') <> ''`,
         ),
       )
       .orderBy(desc(materials.createdAt))

@@ -45,6 +45,34 @@ Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
       difficulty/search — no server round-trip needed, consistent with the page)
 - [x] Q3 Validation: `pnpm --filter @catlium/web typecheck` + `next build` PASS
 
+### Goal: P2 Real Syllabus & Material Workflows (audit-first)
+
+- [x] P2.1 Audit the material and syllabus workflows (two parallel explore
+      agents): create paths validate scope via `resolveScopeChain`
+      (subject-required + chain consistency), no legacy bypass found; seed,
+      syllabus fallback, and worker holes identified below
+- [x] P2.2 Seed scope-chain fix: `upsertMaterial` / `ensureContentItem` /
+      `upsertQuestion` wrote leaf-only scopes (topic without subject/chapter),
+      aborting fresh-DB seeding on the migration-0020 CHECKs. Now resolve the
+      full chain from the topic at insert time. Verified on a fresh scratch DB:
+      migrations + seed PASS, 0 broken chains (materials 4, questions 19,
+      content_items 4)
+- [x] P2.3 Syllabus fallback material picker: omitted `materialId` only
+      filtered ACTIVE+READY — a READY-but-textless material queued a job that
+      failed late in the worker. Now also requires non-empty `textContent`
+      up front (immediate 400)
+- [x] P2.4 Worker defense-in-depth: `_generate_syllabus` now rejects a
+      material whose subject doesn't match the job payload's subject before
+      calling the provider
+- [ ] P2.5 Confirm the confirmed-syllabus dead end: a CONFIRMED syllabus can
+      never be amended/reopened through the product (generate → 409,
+      PATCH → 409, worker upsert raises). Deliberate design boundary — product
+      decision needed (deferred; do not rebuild syllabus module semantics)
+- [ ] P2.6 Validation: live smoke of fallback (textless material → immediate
+      400) and worker scope guard against the demo stack (deferred — no
+      textless READY material exists in demo data; guard paths covered by
+      typecheck/lint/mypy)
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`

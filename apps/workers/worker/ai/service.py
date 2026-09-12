@@ -821,6 +821,12 @@ def _generate_syllabus(
     if subject is None:
         raise GenerationError("Subject not found")
 
+    # Defense-in-depth: the API enforces this up front, but never trust a queued
+    # job to be authority. A foreign-subject material must not feed the syllabus.
+    for material in materials:
+        if material.get("subject_id") != subject_id:
+            raise GenerationError("Source material does not belong to the target subject")
+
     provider = create_provider()
     outputs: list[dict[str, Any]] = []
     for index, chunk in enumerate(chunks):
