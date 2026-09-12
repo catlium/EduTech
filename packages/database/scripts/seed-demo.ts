@@ -520,6 +520,20 @@ async function upsertTopic(
   return row;
 }
 
+// The scope-chain CHECKs (migration 0020) require subject_id always, plus
+// chapter_id whenever topic_id is set. Resolve the full chain from a topic so
+// seed inserts never write a leaf-only scope.
+async function scopeChainFromTopic(
+  db: ReturnType<typeof createDatabase>,
+  topicId: string,
+): Promise<{ chapterId: string; subjectId: string }> {
+  const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
+  if (!topic) throw new Error(`failed to resolve scope chain: topic ${topicId} not found`);
+  const [chapter] = await db.select().from(chapters).where(eq(chapters.id, topic.chapterId)).limit(1);
+  if (!chapter) throw new Error(`failed to resolve scope chain: chapter ${topic.chapterId} not found`);
+  return { chapterId: chapter.id, subjectId: chapter.subjectId };
+}
+
 async function upsertMaterial(
   db: ReturnType<typeof createDatabase>,
   args: {
@@ -537,12 +551,14 @@ async function upsertMaterial(
     .where(and(eq(materials.instituteId, args.instituteId), eq(materials.title, args.title)))
     .limit(1);
   if (existing.length > 0) return existing[0]!;
+  const chain = args.topicId ? await scopeChainFromTopic(db, args.topicId) : undefined;
   const [row] = await db
     .insert(materials)
     .values({
       instituteId: args.instituteId,
       title: args.title,
-      subjectId: args.subjectId,
+      subjectId: chain?.subjectId ?? args.subjectId,
+      chapterId: chain?.chapterId,
       topicId: args.topicId,
       materialType: 'TEXT',
       sourceType: 'TEXT',
@@ -591,10 +607,13 @@ async function upsertQuestion(
     )
     .limit(1);
   if (existing.length > 0) return existing[0]!;
+  const chain = await scopeChainFromTopic(db, args.topicId);
   const [row] = await db
     .insert(questions)
     .values({
       instituteId: args.instituteId,
+      subjectId: chain.subjectId,
+      chapterId: chain.chapterId,
       topicId: args.topicId,
       stem: args.q.stem,
       questionType: args.q.type,
@@ -791,10 +810,13 @@ async function ensureContentItem(
     )
     .limit(1);
   if (existing.length > 0) return existing[0]!;
+  const chain = await scopeChainFromTopic(db, args.topicId);
   const [row] = await db
     .insert(contentItems)
     .values({
       instituteId: args.instituteId,
+      subjectId: chain.subjectId,
+      chapterId: chain.chapterId,
       topicId: args.topicId,
       type: args.type,
       title: args.title,
