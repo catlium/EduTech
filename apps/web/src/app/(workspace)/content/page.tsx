@@ -301,7 +301,7 @@ export default function ContentListPage() {
               actions={
                 isTeacher && (
                   <div className="flex items-center gap-1">
-                    {c.status === "DRAFT" && (
+                    {(c.status === "DRAFT" || c.status === "ARCHIVED") && (
                       <Button
                         size="sm"
                         variant="ghost"

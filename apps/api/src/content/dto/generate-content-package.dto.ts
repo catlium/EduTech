@@ -1,11 +1,12 @@
 import { ArrayNotEmpty, ArrayUnique, IsIn, IsOptional, IsUUID } from 'class-validator';
 
-type ContentPackageType = 'NOTE' | 'SUMMARY' | 'FLASHCARD_SET' | 'IMPORTANT_CONCEPTS';
+type ContentPackageType = 'NOTE' | 'SUMMARY' | 'FLASHCARD_SET' | 'IMPORTANT_CONCEPTS' | 'CORNELL_NOTE';
 const CONTENT_PACKAGE_TYPES: ContentPackageType[] = [
   'NOTE',
   'SUMMARY',
   'FLASHCARD_SET',
   'IMPORTANT_CONCEPTS',
+  'CORNELL_NOTE',
 ];
 
 export class GenerateContentPackageDto {

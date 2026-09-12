@@ -214,47 +214,96 @@ def insert_ai_content(
     change_reason: str,
     created_by: str,
 ) -> str:
-    """Persist a generated content item + its first version (version 1).
+    """Persist a generated content item, auto-activated and versioned.
 
     Mirrors the API's `ContentService.createContent` creation path for
-    AI-generated content: a specific content type, status DRAFT, source
-    AI_GENERATED, with provenance in `ai_context` / `source_reference`. The
-    worker writes directly to PostgreSQL (same decision as material processing);
-    the corresponding Pydantic mirror in `worker.ai.schemas` is the validation
-    gate.
+    AI-generated content: a specific content type, source AI_GENERATED, with
+    provenance in `ai_context` / `source_reference`. Derived resources
+    auto-ACTIVATE after successful generation (no approval boundary, per the
+    product rules).
+
+    Regeneration is an in-place version bump: if an item already exists for the
+    same institute/type/`source_reference` provenance, its current_version is
+    incremented and a `REGENERATION` version appended (see
+    docs/architecture/content.md) — never a duplicate item. The Pydantic mirror
+    in `worker.ai.schemas` remains the validation gate.
     """
     with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO content_items"
-            " (institute_id, subject_id, chapter_id, topic_id, type, title, status, source,"
-            "  current_version, created_by, updated_by)"
-            " VALUES (%s, %s, %s, %s, %s, %s, 'DRAFT', 'AI_GENERATED', 1, %s, %s)"
-            " RETURNING id",
+            "SELECT ci.id, ci.current_version"
+            " FROM content_items ci"
+            " JOIN content_versions cv"
+            "   ON cv.content_id = ci.id AND cv.version = ci.current_version"
+            " WHERE ci.institute_id = %s AND ci.type = %s AND ci.source = 'AI_GENERATED'"
+            "   AND ci.status <> 'ARCHIVED'"
+            "   AND cv.source_reference->>'type' = %s"
+            "   AND cv.source_reference->>'id' = %s"
+            " LIMIT 1",
             (
                 institute_id,
-                subject_id,
-                chapter_id,
-                topic_id,
                 content_type,
-                title,
-                created_by,
-                created_by,
+                source_reference.get("type"),
+                source_reference.get("id"),
             ),
         )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError("content_items insert returned no row")
-        content_id = str(row[0])
+        existing = cur.fetchone()
+
+        if existing is None:
+            cur.execute(
+                "INSERT INTO content_items"
+                " (institute_id, subject_id, chapter_id, topic_id, type, title, status, source,"
+                "  current_version, created_by, updated_by)"
+                " VALUES (%s, %s, %s, %s, %s, %s, 'ACTIVE', 'AI_GENERATED', 1, %s, %s)"
+                " RETURNING id",
+                (
+                    institute_id,
+                    subject_id,
+                    chapter_id,
+                    topic_id,
+                    content_type,
+                    title,
+                    created_by,
+                    created_by,
+                ),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("content_items insert returned no row")
+            content_id = str(row[0])
+            version = 1
+            change_type = "CREATION"
+        else:
+            content_id = str(existing[0])
+            version = int(existing[1]) + 1
+            change_type = "REGENERATION"
+            cur.execute(
+                "UPDATE content_items"
+                " SET subject_id = %s, chapter_id = %s, topic_id = %s, title = %s,"
+                "     current_version = %s, updated_by = %s, updated_at = now()"
+                " WHERE id = %s",
+                (
+                    subject_id,
+                    chapter_id,
+                    topic_id,
+                    title,
+                    version,
+                    created_by,
+                    content_id,
+                ),
+            )
+
         cur.execute(
             "INSERT INTO content_versions"
             " (content_id, version, payload, ai_context, source_reference, change_type,"
             "  change_reason, created_by)"
-            " VALUES (%s, 1, %s, %s, %s, 'CREATION', %s, %s)",
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 content_id,
+                version,
                 Jsonb(payload),
                 Jsonb(ai_context),
                 Jsonb(source_reference),
+                change_type,
                 change_reason,
                 created_by,
             ),

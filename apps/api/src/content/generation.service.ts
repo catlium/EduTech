@@ -15,6 +15,15 @@ import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
 
 const CONTENT_PACKAGE_OPERATION = 'AI_GENERATE_CONTENT_PACKAGE' as const;
+
+// API content-type names (DTO/contract) → worker package keys (lowercase).
+const PACKAGE_TYPE_MAP: Record<string, string> = {
+  NOTE: 'note',
+  SUMMARY: 'summary',
+  FLASHCARD_SET: 'flashcards',
+  IMPORTANT_CONCEPTS: 'concepts',
+  CORNELL_NOTE: 'cornell',
+};
 const AI_CONTENT_TYPES = [
   'NOTE',
   'SUMMARY',
@@ -99,7 +108,9 @@ export class GenerationService {
       requestedBy: userId,
     };
     if (includeTypes && includeTypes.length > 0) {
-      payload.params = { types: includeTypes };
+      payload.params = {
+        types: includeTypes.map((t) => PACKAGE_TYPE_MAP[t]).filter((t): t is string => Boolean(t)),
+      };
     }
 
     let job: Job;

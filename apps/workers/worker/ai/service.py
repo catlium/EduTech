@@ -701,7 +701,13 @@ def _generate_content_package(
     response carries all requested types.
     """
     params = payload.get("params") or {}
-    raw_types = params.get("types") or ["note", "summary", "flashcards", "concepts"]
+    raw_types = params.get("types") or [
+        "note",
+        "summary",
+        "flashcards",
+        "concepts",
+        "cornell",
+    ]
     valid_keys: set[ContentTypeName] = set(CONTENT_PACKAGE_TYPES.keys())
     types: list[ContentTypeName] = [t for t in raw_types if t in valid_keys]
     if not types:

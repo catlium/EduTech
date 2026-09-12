@@ -157,7 +157,7 @@ export default function ContentDetailPage() {
                 <Button size="sm" variant="outline" onClick={() => setEditDraft(payload)}>
                     <Pencil className="mr-1 size-3.5" /> Edit
                 </Button>
-                {content.status === 'DRAFT' && (
+                {(content.status === 'DRAFT' || content.status === 'ARCHIVED') && (
                   <Button size="sm" onClick={() => setConfirmAction('activate')}>
                     <CheckCircle2 className="mr-1 size-3.5" /> Activate
                   </Button>
