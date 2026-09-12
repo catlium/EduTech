@@ -8,7 +8,7 @@ important product capabilities using real API/database data.
 
 Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
 
-### Completed — P1 Resource Discovery (filter bars + search)
+### Completed — P1 Resource Discovery (filter bars + search + scope display)
 
 - **Backend search `q` param:** added to GET /content (title `ILIKE`) and GET
   /materials (title+description `ILIKE`, nullable `or()` asserted) list
@@ -26,16 +26,20 @@ Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
   names via `GET /academic/subjects|chapters|topics/:id` and renders
   `Subject → Chapter → Topic`). Added to material detail page (under the title)
   and content detail page (under the status badges).
+- **Docs:** Phase 27 planning doc, task tracker, project-status, and
+  user-validation all updated.
 
-### In progress
+### Validation
 
-- B7 Docs finalization + commit + push.
+- `pnpm typecheck` — 10/10 tasks PASS.
+- `pnpm lint` — 9/9 tasks PASS.
+- `pnpm --filter @catlium/web build` — all routes compile PASS.
 
-### Pending
+### Checkpoint
 
-- Questions page scope filter (C5 in planning) — client-side filter only, no
-  server-side scope filter yet.
-- `docs/user-validation.md` entries for P1 filter-bar workflows.
+- **Commit:** `feat(discovery): content + materials filter bars with scope cascade, search, URL sync; detail-page scope breadcrumbs`
+- **SHA:** `7e21893` (pushed to `main`).
+- **Recommended next task:** run the P1 user-validation items (`docs/user-validation.md`) against the demo stack, or proceed to **P2 — real syllabus/material workflows** per the Phase 27 work order.
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
