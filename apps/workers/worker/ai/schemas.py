@@ -180,6 +180,18 @@ class Concept(BaseModel):
     description: str = Field(min_length=1, max_length=5000)
 
 
+class CornellSection(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    cue: str = Field(min_length=1, max_length=5000)
+    notes: str = Field(min_length=1, max_length=20000)
+
+
+class CornellNotePayload(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+    sections: list[CornellSection] = Field(min_length=1)
+    summary: str | None = Field(default=None, max_length=20000)
+
+
 class ImportantConceptsPayload(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     concepts: list[Concept] = Field(min_length=1)
@@ -306,6 +318,7 @@ class ContentPackage(BaseModel):
     summary: SummaryPayload | None = None
     flashcards: FlashcardSetPayload | None = None
     concepts: ImportantConceptsPayload | None = None
+    cornell: CornellNotePayload | None = None
 
 
 # ── AI syllabus generation ─────────────────────────────────

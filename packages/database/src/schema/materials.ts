@@ -45,9 +45,13 @@ export const materials = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    // Subject is required. Topic implies chapter, chapter implies subject.
     check(
-      'materials_exactly_one_scope',
-      sql`((${table.subjectId} IS NOT NULL)::int + (${table.chapterId} IS NOT NULL)::int + (${table.topicId} IS NOT NULL)::int) = 1`,
+      'materials_scope_chain',
+      sql`(
+        ${table.subjectId} IS NOT NULL
+        AND (${table.topicId} IS NULL OR ${table.chapterId} IS NOT NULL)
+      )`,
     ),
     check(
       'materials_source_consistency',

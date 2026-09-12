@@ -45,7 +45,7 @@ VALID_QUESTION_TYPES = {"MCQ", "TRUE_FALSE", "FILL_IN_BLANK"}
 VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
 
 CONTENT_PACKAGE_OPERATION = "AI_GENERATE_CONTENT_PACKAGE"
-ContentTypeName = Literal["note", "summary", "flashcards", "concepts"]
+ContentTypeName = Literal["note", "summary", "flashcards", "concepts", "cornell"]
 
 SYLLABUS_OPERATION = "AI_GENERATE_SYLLABUS"
 BLUEPRINT_OPERATION = "AI_GENERATE_BLUEPRINT"
@@ -139,6 +139,27 @@ def _aggregate_concepts(results: list[dict[str, Any]], _limit: int | None = None
     return {"title": title, "concepts": concepts}
 
 
+def _aggregate_cornell(results: list[dict[str, Any]], _limit: int | None = None) -> dict[str, Any]:
+    title = next((r.get("title") for r in results if r.get("title")), None)
+    sections: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for r in results:
+        for section in r.get("sections") or []:
+            if not isinstance(section, dict):
+                continue
+            key = (str(section.get("cue") or "").strip(), str(section.get("notes") or "").strip())
+            if key in seen:
+                continue
+            seen.add(key)
+            sections.append(section)
+    summaries = [
+        r["summary"].strip()
+        for r in results
+        if (r.get("summary") or "").strip()
+    ]
+    return {"title": title, "sections": sections, "summary": "\n\n".join(summaries) or None}
+
+
 # Canonical content type for each package key, with its payload model and the
 # deterministic per-type aggregator (shared with the single-type operations).
 CONTENT_PACKAGE_TYPES: dict[
@@ -148,6 +169,7 @@ CONTENT_PACKAGE_TYPES: dict[
     "summary": ("SUMMARY", schemas.SummaryPayload, _aggregate_summary),
     "flashcards": ("FLASHCARD_SET", schemas.FlashcardSetPayload, _aggregate_flashcards),
     "concepts": ("IMPORTANT_CONCEPTS", schemas.ImportantConceptsPayload, _aggregate_concepts),
+    "cornell": ("CORNELL_NOTE", schemas.CornellNotePayload, _aggregate_cornell),
 }
 
 
@@ -492,7 +514,7 @@ def _generate_questions(
     aggregated = operation.model.model_validate(
         operation.aggregate(outputs, count_int)
     ).model_dump()
-    scope = _resolve_scope(source, materials)
+    scope = _resolve_scope(institute_id, source, materials)
     provenance = _build_question_provenance(job_id, source, materials, context_meta)
     question_ids = db.insert_generated_questions(
         institute_id,
@@ -610,7 +632,7 @@ def _generate_bank_questions(
     if not selected:
         raise GenerationError("AI generated no valid questions for the requested buckets")
 
-    scope = _resolve_scope(source, materials)
+    scope = _resolve_scope(institute_id, source, materials)
     provenance = _build_question_provenance(job_id, source, materials, context_meta)
     question_ids = db.insert_generated_questions(
         institute_id,
@@ -706,7 +728,7 @@ def _generate_content_package(
             if isinstance(raw_payload, dict):
                 per_type_chunks[t].append(raw_payload)
 
-    scope = _resolve_scope(source, materials)
+    scope = _resolve_scope(institute_id, source, materials)
     ai_context: dict[str, Any] = {
         "operation": CONTENT_PACKAGE_OPERATION,
         "jobId": job_id,
@@ -1108,12 +1130,10 @@ def _validate_output(operation: Operation, raw: str) -> dict[str, Any]:
 
 
 def _resolve_scope(
-    source: dict[str, str], materials: list[dict[str, Any]]
+    institute_id: str, source: dict[str, str], materials: list[dict[str, Any]]
 ) -> dict[str, str | None]:
-    if source["type"] == "TOPIC":
-        return {"subjectId": None, "chapterId": None, "topicId": source["id"]}
-    if source["type"] == "CHAPTER":
-        return {"subjectId": None, "chapterId": source["id"], "topicId": None}
+    if source["type"] in ("TOPIC", "CHAPTER"):
+        return db.get_scope_chain(source["type"], source["id"], institute_id)
     if source["type"] == "SUBJECT":
         return {"subjectId": source["id"], "chapterId": None, "topicId": None}
     # MATERIAL scope taken from the material's own academic hierarchy.
@@ -1134,7 +1154,7 @@ def _persist(
     context_meta: dict[str, Any],
     output: dict[str, Any],
 ) -> str:
-    scope = _resolve_scope(source, materials)
+    scope = _resolve_scope(institute_id, source, materials)
 
     title = output.get("title") or operation.default_title
     if len(title) > 255:

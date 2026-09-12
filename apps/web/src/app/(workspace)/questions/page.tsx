@@ -20,9 +20,11 @@ import {
   Sparkles,
   Trash2,
   X,
+  Download,
 } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
+import { downloadFile } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { useTenant, canManage } from "@/lib/tenant";
 import { QuestionBankPanel } from "@/components/questions/question-bank-panel";
@@ -458,6 +460,15 @@ export default function QuestionsListPage() {
       .catch(() => {});
   }, [institute]);
 
+  async function exportQuestions(format: "pdf" | "docx") {
+    try {
+      await downloadFile(`/export/questions?format=${format}`, `question-bank.${format}`);
+      toast.success(`Question bank exported as ${format.toUpperCase()}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Export failed");
+    }
+  }
+
   const load = useCallback(() => {
     if (!institute) return;
     setLoading(true);
@@ -854,6 +865,12 @@ export default function QuestionsListPage() {
             <>
               <Button size="sm" variant="outline" onClick={() => setGenerateOpen(true)}>
                 <Sparkles className="mr-1 size-3.5" /> Ask AI
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => exportQuestions("pdf")}>
+                <Download className="mr-1 size-3.5" /> PDF
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => exportQuestions("docx")}>
+                <Download className="mr-1 size-3.5" /> DOCX
               </Button>
               <Button size="sm" onClick={() => setCreateOpen(true)}>
                 <Plus className="mr-1 size-3.5" /> Add Question

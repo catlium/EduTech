@@ -15,7 +15,13 @@ import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
 
 const CONTENT_PACKAGE_OPERATION = 'AI_GENERATE_CONTENT_PACKAGE' as const;
-const AI_CONTENT_TYPES = ['NOTE', 'SUMMARY', 'FLASHCARD_SET', 'IMPORTANT_CONCEPTS'] as const;
+const AI_CONTENT_TYPES = [
+  'NOTE',
+  'SUMMARY',
+  'FLASHCARD_SET',
+  'IMPORTANT_CONCEPTS',
+  'CORNELL_NOTE',
+] as const;
 
 @Injectable()
 export class GenerationService {

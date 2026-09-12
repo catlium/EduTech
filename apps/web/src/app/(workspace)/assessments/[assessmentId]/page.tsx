@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ClipboardList, ListOrdered, Plus, Trash2, Pencil, Sparkles } from "lucide-react";
+import { ArrowLeft, ClipboardList, ListOrdered, Plus, Trash2, Pencil, Sparkles, Download } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, downloadFile } from "@/lib/api";
 import { formatDate, formatDuration } from "@/lib/utils";
 import { useTenant, canManage } from "@/lib/tenant";
 import { PageHeader } from "@/components/app/page-header";
@@ -358,6 +358,20 @@ export default function AssessmentDetailPage() {
   }
 
   const editable = assessment.status === "DRAFT" || assessment.status === "PUBLISHED";
+  const assessmentId = assessment.id;
+  const assessmentTitle = assessment.title;
+
+  async function exportAssessment(format: "pdf" | "docx") {
+    try {
+      await downloadFile(
+        `/export/assessment/${assessmentId}?format=${format}`,
+        `${assessmentTitle.replace(/[^a-z0-9]+/gi, "-")}.${format}`,
+      );
+      toast.success(`Assessment exported as ${format.toUpperCase()}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Export failed");
+    }
+  }
 
   return (
     <div>
@@ -408,6 +422,22 @@ export default function AssessmentDetailPage() {
                 <Link href={`/assessments/${assessment.id}/results`}>
                   <ClipboardList className="mr-1 size-3.5" /> Results
                 </Link>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void exportAssessment("pdf")}
+                disabled={working}
+              >
+                <Download className="mr-1 size-3.5" /> PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void exportAssessment("docx")}
+                disabled={working}
+              >
+                <Download className="mr-1 size-3.5" /> DOCX
               </Button>
             </div>
           )

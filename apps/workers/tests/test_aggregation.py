@@ -2,11 +2,13 @@
 
 from worker.ai.service import (
     _aggregate_concepts,
+    _aggregate_cornell,
     _aggregate_flashcards,
     _aggregate_note,
     _aggregate_questions,
     _aggregate_summary,
     _aggregate_syllabus,
+    _resolve_scope,
 )
 
 
@@ -69,6 +71,56 @@ def test_concept_aggregation_dedupes_by_name() -> None:
     ]
     out = _aggregate_concepts(results)
     assert [c["name"] for c in out["concepts"]] == ["alpha", "beta"]
+
+
+def test_cornell_aggregation_dedupes_sections_and_merges_summary() -> None:
+    results = [
+        {
+            "title": "Cornell",
+            "sections": [{"id": "s1", "cue": "Q1", "notes": "A1"}, {"cue": "Q2", "notes": "A2"}],
+            "summary": "First.",
+        },
+        {
+            "sections": [{"id": "s3", "cue": "Q1", "notes": "A1"}, {"cue": "Q3", "notes": "A3"}],
+            "summary": "Second.",
+        },
+    ]
+    out = _aggregate_cornell(results)
+    assert [s["cue"] for s in out["sections"]] == ["Q1", "Q2", "Q3"]
+    assert out["summary"] == "First.\n\nSecond."
+    assert out["title"] == "Cornell"
+
+
+def test_scope_resolution_material_uses_material_chain(monkeypatch) -> None:
+    materials = [{"subject_id": "subj", "chapter_id": "chap", "topic_id": "top"}]
+    out = _resolve_scope("inst", {"type": "MATERIAL", "id": "mat"}, materials)
+    assert out == {"subjectId": "subj", "chapterId": "chap", "topicId": "top"}
+
+
+def test_scope_resolution_subject_passes_id_through() -> None:
+    out = _resolve_scope("inst", {"type": "SUBJECT", "id": "subj"}, [])
+    assert out == {"subjectId": "subj", "chapterId": None, "topicId": None}
+
+
+def test_scope_resolution_leaf_resolves_chain_via_db(monkeypatch) -> None:
+    import worker.ai.service as service
+
+    def fake_get_scope_chain(source_type: str, source_id: str, institute_id: str):
+        assert institute_id == "inst"
+        if source_type == "TOPIC":
+            return {
+                "subjectId": "subj",
+                "chapterId": "chap",
+                "topicId": source_id,
+            }
+        assert source_type == "CHAPTER"
+        return {"subjectId": "subj", "chapterId": source_id, "topicId": None}
+
+    monkeypatch.setattr(service.db, "get_scope_chain", fake_get_scope_chain)
+    out = _resolve_scope("inst", {"type": "TOPIC", "id": "top"}, [])
+    assert out == {"subjectId": "subj", "chapterId": "chap", "topicId": "top"}
+    out = _resolve_scope("inst", {"type": "CHAPTER", "id": "chap"}, [])
+    assert out == {"subjectId": "subj", "chapterId": "chap", "topicId": None}
 
 
 def test_question_aggregation_dedupes_and_caps_at_limit() -> None:

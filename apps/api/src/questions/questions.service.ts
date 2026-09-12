@@ -1,12 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 import { eq, and, desc, ilike, inArray, type SQL } from 'drizzle-orm';
-import { questions, subjects, chapters, topics } from '@catlium/database';
+import { questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { FormatPayloadSchemas, QuestionPayloadSchemas, type QuestionTypeDefinition } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { QuestionTypesService } from './question-types.service.js';
 
-type ScopeKind = 'subject' | 'chapter' | 'topic';
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 type QuestionSource = 'MANUAL' | 'AI_GENERATED';
 type QuestionApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -50,9 +50,10 @@ export class QuestionsService {
     const type = await this.typesService.findByCode(instituteId, input.questionType);
     this.validatePayload(type, input.payload);
 
-    const scope = this.resolveScope(input);
-
-    await this.assertScopeInInstitute(instituteId, scope.kind, scope.id);
+    const chain = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: false },
+      input,
+    );
 
     const approvalStatus = input.source === 'MANUAL' ? 'APPROVED' : 'PENDING';
 
@@ -60,9 +61,9 @@ export class QuestionsService {
       .insert(questions)
       .values({
         instituteId,
-        subjectId: scope.kind === 'subject' ? scope.id : null,
-        chapterId: scope.kind === 'chapter' ? scope.id : null,
-        topicId: scope.kind === 'topic' ? scope.id : null,
+        subjectId: chain.subjectId,
+        chapterId: chain.chapterId,
+        topicId: chain.topicId,
         stem: input.stem,
         questionType: input.questionType,
         answerFormat: type.answerFormat,
@@ -265,58 +266,5 @@ export class QuestionsService {
     }
   }
 
-  private resolveScope(input: CreateQuestionInput): { kind: ScopeKind; id: string } {
-    const provided = [
-      input.subjectId !== undefined ? { kind: 'subject' as const, id: input.subjectId } : null,
-      input.chapterId !== undefined ? { kind: 'chapter' as const, id: input.chapterId } : null,
-      input.topicId !== undefined ? { kind: 'topic' as const, id: input.topicId } : null,
-    ].filter((x): x is { kind: ScopeKind; id: string } => x !== null);
 
-    if (provided.length !== 1) {
-      throw new BadRequestException(
-        'Exactly one of subjectId, chapterId, topicId must be provided',
-      );
-    }
-
-    return provided[0];
-  }
-
-  private async assertScopeInInstitute(
-    instituteId: string,
-    kind: ScopeKind,
-    id: string,
-  ): Promise<void> {
-    if (kind === 'subject') {
-      const [row] = await this.db
-        .select({ id: subjects.id })
-        .from(subjects)
-        .where(and(eq(subjects.id, id), eq(subjects.instituteId, instituteId)))
-        .limit(1);
-
-      if (!row) throw new NotFoundException('Subject not found');
-      return;
-    }
-
-    if (kind === 'chapter') {
-      const [row] = await this.db
-        .select({ id: chapters.id })
-        .from(chapters)
-        .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-        .where(and(eq(chapters.id, id), eq(subjects.instituteId, instituteId)))
-        .limit(1);
-
-      if (!row) throw new NotFoundException('Chapter not found');
-      return;
-    }
-
-    const [row] = await this.db
-      .select({ id: topics.id })
-      .from(topics)
-      .innerJoin(chapters, eq(topics.chapterId, chapters.id))
-      .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-      .where(and(eq(topics.id, id), eq(subjects.instituteId, instituteId)))
-      .limit(1);
-
-    if (!row) throw new NotFoundException('Topic not found');
-  }
 }

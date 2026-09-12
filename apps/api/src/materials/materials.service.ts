@@ -10,16 +10,16 @@ import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 
-import { materials, subjects, chapters, topics } from '@catlium/database';
+import { materials } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface.js';
 import type { StorageProvider } from './storage/storage-provider.interface.js';
 import { ALLOWED_FILE_TYPES } from './materials.constants.js';
 
-type ScopeKind = 'subject' | 'chapter' | 'topic';
 type MaterialStatus = 'ACTIVE' | 'ARCHIVED';
 
 interface CreateTextMaterialInput {
@@ -60,16 +60,18 @@ export class MaterialsService {
   // ── Create ────────────────────────────────
 
   async createTextMaterial(instituteId: string, createdBy: string, input: CreateTextMaterialInput) {
-    const scope = this.resolveScope(input);
-    await this.assertScopeInInstitute(instituteId, scope.kind, scope.id);
+    const chain = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: true },
+      input,
+    );
 
     const [material] = await this.db
       .insert(materials)
       .values({
         instituteId,
-        subjectId: scope.kind === 'subject' ? scope.id : null,
-        chapterId: scope.kind === 'chapter' ? scope.id : null,
-        topicId: scope.kind === 'topic' ? scope.id : null,
+        subjectId: chain.subjectId,
+        chapterId: chain.chapterId,
+        topicId: chain.topicId,
         title: input.title,
         description: input.description,
         materialType: 'TEXT',
@@ -91,8 +93,10 @@ export class MaterialsService {
     input: CreateFileMaterialInput,
     file: Express.Multer.File,
   ) {
-    const scope = this.resolveScope(input);
-    await this.assertScopeInInstitute(instituteId, scope.kind, scope.id);
+    const chain = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: true },
+      input,
+    );
 
     const validated = this.validateFile(file);
     const materialId = randomUUID();
@@ -107,9 +111,9 @@ export class MaterialsService {
         .values({
           id: materialId,
           instituteId,
-          subjectId: scope.kind === 'subject' ? scope.id : null,
-          chapterId: scope.kind === 'chapter' ? scope.id : null,
-          topicId: scope.kind === 'topic' ? scope.id : null,
+          subjectId: chain.subjectId,
+          chapterId: chain.chapterId,
+          topicId: chain.topicId,
           title: input.title,
           description: input.description,
           materialType: validated.materialType,
@@ -156,7 +160,14 @@ export class MaterialsService {
   }
 
   async getMaterial(instituteId: string, materialId: string) {
-    return this.assertMaterialExists(instituteId, materialId);
+    const material = await this.assertMaterialExists(instituteId, materialId);
+    const job = await this.jobsService.latestMaterialJob(instituteId, materialId);
+    return {
+      ...material,
+      processError: job?.error?.message ?? null,
+      processStartedAt: job?.startedAt ?? null,
+      processCompletedAt: job?.completedAt ?? null,
+    };
   }
 
   // ── Update ────────────────────────────────
@@ -207,24 +218,29 @@ export class MaterialsService {
   // ── Processing ────────────────────────────
 
   async processMaterial(instituteId: string, materialId: string) {
-    return this.enqueueProcessing(instituteId, materialId, 'UPLOADED', 'process');
+    return this.enqueueProcessing(instituteId, materialId, 'process');
   }
 
   async retryMaterial(instituteId: string, materialId: string) {
-    return this.enqueueProcessing(instituteId, materialId, 'FAILED', 'retry');
+    return this.enqueueProcessing(instituteId, materialId, 'retry');
   }
 
   /**
    * Single enqueue path for both initial processing and retries. One job row
    * equals one processing attempt, so a retry always creates a NEW job — a
    * FAILED job is never mutated back to queued/processing/completed.
+   *
+   * Retry accepts FAILED (normal) and QUEUED (recovery: the material sat
+   * queued because its message died with the worker; only allowed when no
+   * job row is still queued/processing — otherwise the pending consumer is
+   * already handling it and a duplicate would double-process).
    */
   private async enqueueProcessing(
     instituteId: string,
     materialId: string,
-    from: 'UPLOADED' | 'FAILED',
     action: 'process' | 'retry',
   ) {
+    let was: string | null = null;
     await this.db.transaction(async (tx) => {
       const [locked] = await tx
         .select()
@@ -237,6 +253,8 @@ export class MaterialsService {
         throw new NotFoundException('Material not found');
       }
 
+      was = locked.processingStatus;
+
       const verb = action === 'retry' ? 'retried' : 'processed';
 
       if (locked.status === 'ARCHIVED') {
@@ -247,14 +265,32 @@ export class MaterialsService {
         throw new ConflictException('Text materials are already READY and need no processing');
       }
 
-      if (locked.processingStatus === 'QUEUED' || locked.processingStatus === 'PROCESSING') {
+      if (locked.processingStatus === 'PROCESSING') {
         throw new ConflictException('Material is already being processed');
       }
 
-      if (locked.processingStatus !== from) {
-        if (action === 'retry') {
-          throw new ConflictException('Only failed uploaded materials can be retried');
+      if (locked.processingStatus === 'QUEUED' && action !== 'retry') {
+        throw new ConflictException('Material is already queued for processing');
+      }
+
+      if (action === 'retry') {
+        if (locked.processingStatus === 'FAILED' || locked.processingStatus === 'QUEUED') {
+          if (locked.processingStatus === 'QUEUED') {
+            // Only safe when the previous message is genuinely gone.
+            const live = await this.jobsService.latestMaterialJob(instituteId, materialId);
+            if (live && ['queued', 'processing'].includes(live.status)) {
+              throw new ConflictException('Material is already queued for processing');
+            }
+          }
+        } else {
+          if (locked.processingStatus === 'READY') {
+            throw new ConflictException('Material is already READY and needs no processing');
+          }
+          throw new ConflictException(
+            `Only failed or interrupted materials can be retried (current: ${locked.processingStatus})`,
+          );
         }
+      } else if (locked.processingStatus !== 'UPLOADED') {
         throw new ConflictException(
           `Material cannot be processed from state ${locked.processingStatus}`,
         );
@@ -282,16 +318,18 @@ export class MaterialsService {
         }
       }
 
-      await this.db
-        .update(materials)
-        .set({ processingStatus: from, updatedAt: new Date() })
-        .where(
-          and(
-            eq(materials.id, materialId),
-            eq(materials.instituteId, instituteId),
-            eq(materials.processingStatus, 'QUEUED'),
-          ),
-        );
+      if (was !== null) {
+        await this.db
+          .update(materials)
+          .set({ processingStatus: was, updatedAt: new Date() })
+          .where(
+            and(
+              eq(materials.id, materialId),
+              eq(materials.instituteId, instituteId),
+              eq(materials.processingStatus, 'QUEUED'),
+            ),
+          );
+      }
 
       throw error;
     }
@@ -325,64 +363,6 @@ export class MaterialsService {
     const index = name.lastIndexOf('.');
     if (index === -1 || index === name.length - 1) return null;
     return name.slice(index + 1).toLowerCase();
-  }
-
-  private resolveScope(input: { subjectId?: string; chapterId?: string; topicId?: string }): {
-    kind: ScopeKind;
-    id: string;
-  } {
-    const provided = [
-      input.subjectId !== undefined ? { kind: 'subject' as const, id: input.subjectId } : null,
-      input.chapterId !== undefined ? { kind: 'chapter' as const, id: input.chapterId } : null,
-      input.topicId !== undefined ? { kind: 'topic' as const, id: input.topicId } : null,
-    ].filter((x): x is { kind: ScopeKind; id: string } => x !== null);
-
-    if (provided.length !== 1) {
-      throw new BadRequestException(
-        'Exactly one of subjectId, chapterId, topicId must be provided',
-      );
-    }
-
-    return provided[0];
-  }
-
-  private async assertScopeInInstitute(
-    instituteId: string,
-    kind: ScopeKind,
-    id: string,
-  ): Promise<void> {
-    if (kind === 'subject') {
-      const [row] = await this.db
-        .select({ id: subjects.id })
-        .from(subjects)
-        .where(and(eq(subjects.id, id), eq(subjects.instituteId, instituteId)))
-        .limit(1);
-
-      if (!row) throw new NotFoundException('Subject not found');
-      return;
-    }
-
-    if (kind === 'chapter') {
-      const [row] = await this.db
-        .select({ id: chapters.id })
-        .from(chapters)
-        .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-        .where(and(eq(chapters.id, id), eq(subjects.instituteId, instituteId)))
-        .limit(1);
-
-      if (!row) throw new NotFoundException('Chapter not found');
-      return;
-    }
-
-    const [row] = await this.db
-      .select({ id: topics.id })
-      .from(topics)
-      .innerJoin(chapters, eq(topics.chapterId, chapters.id))
-      .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-      .where(and(eq(topics.id, id), eq(subjects.instituteId, instituteId)))
-      .limit(1);
-
-    if (!row) throw new NotFoundException('Topic not found');
   }
 
   private async assertMaterialExists(instituteId: string, materialId: string) {

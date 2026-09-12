@@ -222,6 +222,19 @@ export default function MaterialDetailPage() {
             <StatusBadge status={material.processingStatus} />
             {isProcessing && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
           </div>
+          {material.processingStatus === "FAILED" && material.processError && (
+            <p className="text-sm text-destructive">Error: {material.processError}</p>
+          )}
+          {material.processStartedAt && (
+            <p className="text-muted-foreground">
+              Started: {formatDateTime(material.processStartedAt)}
+            </p>
+          )}
+          {material.processCompletedAt && (
+            <p className="text-muted-foreground">
+              Completed: {formatDateTime(material.processCompletedAt)}
+            </p>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">Status:</span>
             <StatusBadge status={material.status} />
@@ -240,7 +253,7 @@ export default function MaterialDetailPage() {
                 <Play className="mr-1 size-3.5" /> Process
               </Button>
             )}
-            {material.processingStatus === "FAILED" && (
+            {(material.processingStatus === "FAILED" || material.processingStatus === "QUEUED") && (
               <Button size="sm" variant="outline" onClick={retryMaterial}>
                 <RefreshCw className="mr-1 size-3.5" /> Retry
               </Button>

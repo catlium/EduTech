@@ -568,7 +568,10 @@ export default function MaterialsListPage() {
             if (m.status === "ACTIVE" && m.sourceType === "UPLOAD" && m.processingStatus === "UPLOADED") {
               menuItems.push({ label: "Process", icon: <Play className="size-4" />, onClick: () => processMaterial(m.id) });
             }
-            if (m.status === "ACTIVE" && m.processingStatus === "FAILED") {
+            if (
+              m.status === "ACTIVE" &&
+              (m.processingStatus === "FAILED" || m.processingStatus === "QUEUED")
+            ) {
               menuItems.push({ label: "Retry", icon: <RefreshCw className="size-4" />, onClick: () => retryMaterial(m.id) });
             }
             if (m.status === "ACTIVE") {

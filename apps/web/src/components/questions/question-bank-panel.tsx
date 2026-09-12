@@ -481,6 +481,11 @@ export function QuestionBankPanel({
 
   const aggregateDeficit = deficits.reduce((sum, d) => sum + d.status.totalDeficit, 0);
   const aggregateExisting = deficits.reduce((sum, d) => sum + d.status.totalExisting, 0);
+  const aggregatePending = deficits.reduce(
+    (sum, d) =>
+      sum + d.status.buckets.reduce((s, b) => s + (b.pending ?? 0), 0),
+    0,
+  );
 
   return (
     <div className="space-y-3">
@@ -852,6 +857,11 @@ export function QuestionBankPanel({
                 <Layers className="size-4" />
                 {aggregateExisting} existing · {aggregateDeficit} missing across{" "}
                 {deficits.length} scope{deficits.length !== 1 ? "s" : ""}
+                {aggregatePending > 0 && (
+                  <span className="font-normal text-amber-600">
+                    · {aggregatePending} pending approval
+                  </span>
+                )}
               </div>
               {deficits.map((d) => (
                 <div key={d.scopeLabel} className="rounded border bg-background p-2">
@@ -871,6 +881,9 @@ export function QuestionBankPanel({
                       </span>
                       <span className="text-muted-foreground">
                         have {b.existing} / want {b.requested}
+                        {(b.pending ?? 0) > 0 && (
+                          <span className="text-amber-600"> · {b.pending} pending</span>
+                        )}
                       </span>
                       <span
                         className={cn(

@@ -38,9 +38,15 @@ export const contentItems = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    // Content may be subject-only, subject+chapter, or full chain; a topic may
+    // never appear without its chapter, nor a chapter without its subject.
     check(
-      'content_items_exactly_one_scope',
-      sql`((${table.subjectId} IS NOT NULL)::int + (${table.chapterId} IS NOT NULL)::int + (${table.topicId} IS NOT NULL)::int) = 1`,
+      'content_items_scope_chain',
+      sql`(
+        (${table.topicId} IS NOT NULL AND ${table.chapterId} IS NOT NULL AND ${table.subjectId} IS NOT NULL)
+        OR (${table.topicId} IS NULL AND ${table.chapterId} IS NOT NULL AND ${table.subjectId} IS NOT NULL)
+        OR (${table.topicId} IS NULL AND ${table.chapterId} IS NULL)
+      )`,
     ),
   ],
 );

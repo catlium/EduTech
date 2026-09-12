@@ -1,5 +1,45 @@
 # Task Tracker
 
+## Phase 24 — Academic Scope Backbone (2026-09-12)
+
+Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`
+
+- [x] A1 DB migration: drop `exactly_one_scope` CHECKs on materials/content_items/
+      questions; add chain-consistency CHECKs; backfill existing rows leaf→chain
+- [x] A2 API material scope: subject required + chapter/topic optional at create;
+      descendant-aware `listMaterials` filters (subject/chapter/topic); response
+      exposes names + textContent preview
+- [x] A3 API content scope: create/update accepts full chain + validates;
+      descendant-aware `listContent` filters (subject/chapter/topic/type/search);
+      response carries academic names
+- [x] A4 API questions scope: descendant-aware list filters + name resolution
+- [x] B1 Worker: add `cornell` to content package (aggregator + scheme + prompt)
+- [ ] C1 Web content page: filter bar (scope cascade + type + debounced search) +
+      chips + clear-all + URL params
+- [ ] C2 Web materials page: text search + descendant scope filter + chips + URL
+      sync (extend existing cascade)
+- [ ] C3 Web material detail: academic scope + extracted-text preview + child
+      content list links
+- [ ] C4 Web content detail: academic breadcrumb + scope display
+- [ ] C5 Web questions page: scope filtering consistent with resources pattern
+- [ ] C6 Web subject/chapter/topic pages: surface materials + content + question
+      counts (extend existing chapter-tree/topic pages)
+- [ ] C1 Web content page: filter bar (scope cascade + type + debounced search) +
+      chips + clear-all + URL params
+- [ ] C2 Web materials page: text search + descendant scope filter + chips + URL
+      sync (extend existing cascade)
+- [ ] C3 Web material detail: academic scope + extracted-text preview + child
+      content list links
+- [ ] C4 Web content detail: academic breadcrumb + scope display
+- [ ] C5 Web questions page: scope filtering consistent with resources pattern
+- [ ] C6 Web subject/chapter/topic pages: surface materials + content + question
+      counts (extend existing chapter-tree/topic pages)
+- [ ] D1 P19 live targeted happy path (full chain → process → package incl
+      cornell → inherit scope → filters → topic page)
+- [ ] D2 Validation: typecheck/lint/build API+web, worker ruff/mypy/pytest,
+      export tests
+- [ ] D3 Docs: update project-status.md, user-validation.md, commit + push
+
 ## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)
 
 - [x] P0 contracts: `GenerationSourceTypeEnum` (MATERIAL/TOPIC/CHAPTER/SUBJECT),

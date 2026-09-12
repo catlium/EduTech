@@ -1,4 +1,4 @@
-"""Content package generation: one JSON with note/summary/flashcards/concepts.
+"""Content package generation: one JSON with note/summary/flashcards/concepts/cornell.
 
 A single provider call per chunk returns all requested study resources. The
 output schema has optional top-level keys for each resource type so the caller
@@ -45,11 +45,14 @@ _SYSTEM_PROMPT = (
     '  "flashcards": {"title": string (optional), "description": string (optional), '
     '"cards": [{"id": string, "front": string, "back": string}]},\n'
     '  "concepts": {"title": string (optional), "concepts": [{"name": string, '
-    '"description": string}]}\n'
+    '"description": string}]},\n'
+    '  "cornell": {"title": string (optional), '
+    '"sections": [{"id": string, "cue": string, "notes": string}], '
+    '"summary": string (optional)}\n'
     "}\n"
     "Only include the keys for the requested resources. Each non-null resource "
-    "must contain at least one block/item/card/concept. Every block/card/concept "
-    "needs a unique id.\n"
+    "must contain at least one block/item/card/concept/section. Every block/card/"
+    "concept/section needs a unique id.\n"
     "Guidance:\n"
     "- In the note, use structured visual blocks ONLY when they genuinely improve "
     "understanding (process -> flowchart, comparison -> table, data -> chart, "

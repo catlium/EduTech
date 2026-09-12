@@ -94,6 +94,26 @@ export function jobDone(job: { status: string }): boolean {
   return job.status === "completed" || job.status === "failed";
 }
 
+/** Download a file endpoint (export) as a blob and trigger a browser download. */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  const instituteId = getActiveInstituteId();
+  if (instituteId) headers["x-institute-id"] = instituteId;
+  const response = await fetch(`${API_URL}${path}`, { headers, credentials: "include" });
+  if (!response.ok) {
+    throw new ApiError(response.status, `Download failed with status ${response.status}`);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function waitForJob<T extends { job: { status: string } }>(
   fetchJob: () => Promise<T>,
   { timeoutMs = 5 * 60 * 1000, intervalMs = 3000 }: {

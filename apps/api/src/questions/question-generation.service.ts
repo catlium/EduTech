@@ -38,6 +38,7 @@ export interface BucketStatus {
   difficulty: QuestionDifficulty;
   requested: number;
   existing: number;
+  pending: number;
   deficit: number;
 }
 
@@ -495,6 +496,13 @@ export class QuestionGenerationService {
       scope,
       input.buckets,
     );
+    // Count pending (generated, awaiting approval) so the UI can warn about
+    // outstanding work instead of re-generating duplicates.
+    const pendingCounts = await this.countPendingQuestions(
+      instituteId,
+      scope,
+      input.buckets,
+    );
 
     const bucketStatuses: BucketStatus[] = input.buckets.map((b) => {
       const key = `${b.questionType}|${b.difficulty}`;
@@ -504,7 +512,8 @@ export class QuestionGenerationService {
         difficulty: b.difficulty,
         requested: b.count,
         existing,
-        deficit: Math.max(0, b.count - existing),
+        pending: pendingCounts.get(key) ?? 0,
+        deficit: Math.max(0, b.count - existing - (pendingCounts.get(key) ?? 0)),
       };
     });
 
@@ -654,6 +663,42 @@ export class QuestionGenerationService {
     const conditions: SQL[] = [
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'APPROVED'),
+      eq(questions.status, 'ACTIVE'),
+    ];
+
+    if (scope.kind === 'subject') conditions.push(eq(questions.subjectId, scope.id));
+    else if (scope.kind === 'chapter') conditions.push(eq(questions.chapterId, scope.id));
+    else conditions.push(eq(questions.topicId, scope.id));
+
+    const types = [...new Set(buckets.map((b) => b.questionType))];
+    const diffs = [...new Set(buckets.map((b) => b.difficulty))];
+
+    const rows = await this.db
+      .select({
+        questionType: questions.questionType,
+        difficulty: questions.difficulty,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(questions)
+      .where(and(...conditions, sql`${questions.questionType} IN (${sql.join(types.map((t) => sql`${t}`), sql`,`)})`, sql`${questions.difficulty} IN (${sql.join(diffs.map((d) => sql`${d}`), sql`,`)})`))
+      .groupBy(questions.questionType, questions.difficulty);
+
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      map.set(`${row.questionType}|${row.difficulty}`, row.count);
+    }
+    return map;
+  }
+
+  /** Same grouping as countApprovedQuestions but for PENDING questions. */
+  private async countPendingQuestions(
+    instituteId: string,
+    scope: { kind: 'subject' | 'chapter' | 'topic'; id: string },
+    buckets: BankBucket[],
+  ): Promise<Map<string, number>> {
+    const conditions: SQL[] = [
+      eq(questions.instituteId, instituteId),
+      eq(questions.approvalStatus, 'PENDING'),
       eq(questions.status, 'ACTIVE'),
     ];
 

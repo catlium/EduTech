@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Archive, CheckCircle2, ChevronLeft, ChevronRight, Pencil, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Archive, CheckCircle2, ChevronLeft, ChevronRight, Pencil, ExternalLink, Download } from 'lucide-react';
 
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, downloadFile } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import type {
@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function ContentDetailPage() {
   const { contentId } = useParams<{ contentId: string }>();
@@ -79,6 +80,18 @@ export default function ContentDetailPage() {
     }
   }
 
+  async function exportContent(format: 'pdf' | 'docx', title: string) {
+    try {
+      await downloadFile(
+        `/export/content/${contentId}?format=${format}`,
+        `${title.replace(/[^a-z0-9]+/gi, '-')}.${format}`,
+      );
+      toast.success(`Exported as ${format.toUpperCase()}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Export failed');
+    }
+  }
+
   const [editDraft, setEditDraft] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -126,13 +139,23 @@ export default function ContentDetailPage() {
         <PageHeader
           title={content.title}
           actions={
-            isTeacher && (
-              <div className="flex gap-2">
-                {isTeacher && (
-                  <Button size="sm" variant="outline" onClick={() => setEditDraft(payload)}>
-                    <Pencil className="mr-1 size-3.5" /> Edit
+            <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" disabled={content.status !== 'ACTIVE'}>
+                    <Download className="mr-1 size-3.5" /> Export
                   </Button>
-                )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => exportContent('pdf', content.title)}>PDF</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportContent('docx', content.title)}>DOCX</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {isTeacher && (
+                <>
+                <Button size="sm" variant="outline" onClick={() => setEditDraft(payload)}>
+                    <Pencil className="mr-1 size-3.5" /> Edit
+                </Button>
                 {content.status === 'DRAFT' && (
                   <Button size="sm" onClick={() => setConfirmAction('activate')}>
                     <CheckCircle2 className="mr-1 size-3.5" /> Activate
@@ -143,8 +166,9 @@ export default function ContentDetailPage() {
                     <Archive className="mr-1 size-3.5" /> Archive
                   </Button>
                 )}
-              </div>
-            )
+                </>
+            )}
+            </div>
           }
         />
         <div className="flex items-center gap-2 text-sm">

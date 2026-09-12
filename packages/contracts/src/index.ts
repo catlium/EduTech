@@ -595,6 +595,9 @@ export const MaterialResponseSchema = z.object({
   updatedBy: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  processError: z.string().nullable().optional(),
+  processStartedAt: z.string().datetime().nullable().optional(),
+  processCompletedAt: z.string().datetime().nullable().optional(),
 });
 export type MaterialResponse = z.infer<typeof MaterialResponseSchema>;
 
@@ -648,6 +651,7 @@ export const ContentPackageTypeEnum = z.enum([
   'SUMMARY',
   'FLASHCARD_SET',
   'IMPORTANT_CONCEPTS',
+  'CORNELL_NOTE',
 ]);
 export type ContentPackageType = z.infer<typeof ContentPackageTypeEnum>;
 
@@ -1072,6 +1076,7 @@ export const GenerateMoreBucketStatusSchema = z.object({
   difficulty: QuestionDifficultyEnum,
   requested: z.number(),
   existing: z.number(),
+  pending: z.number().optional().default(0),
   deficit: z.number(),
 });
 export type GenerateMoreBucketStatus = z.infer<typeof GenerateMoreBucketStatusSchema>;

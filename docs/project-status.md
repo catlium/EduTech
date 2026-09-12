@@ -1,5 +1,60 @@
 # Project Status
 
+## Phase 24 — Academic Scope Backbone (2026-09-12)
+
+**Goal:** the academic hierarchy (Subject → Chapter → Topic → Material →
+Content → Questions) becomes the backbone. Materials and generated learning
+content inherit a full academic chain; every page gains consistent
+descendant-aware filters, search, and provenance breadcrumbs; Cornell notes
+join the generated content package.
+
+### Analysis complete (see `.planning/PHASE-ACADEMIC-SCOPE.md`)
+
+- Schema already has `subject_id`/`chapter_id`/`topic_id` FK columns on
+  materials/content_items/questions, but `exactly_one_scope` CHECK constraints
+  force exactly one — full chains are impossible today.
+- Academic CRUD, cascade scope selects (materials + questions pages), worker
+  scope inheritance, and content provenance are already built — reused.
+- Gaps: chain constraints + backfill, Cornell generation, content/search
+  filters on Learning Content, material detail scope/text/children, content
+  detail breadcrumbs, questions scope filtering, topic/chapter page
+  aggregation.
+
+### Completed (foundation — DB + API + worker + contracts)
+
+- **DB migration `0020_dazzling_namora`** (applied + registered live): dropped the
+  old `materials_exactly_one_scope`/`content_items_exactly_one_scope`/
+  `questions_exactly_one_scope` CHECKs and added chain-consistency CHECKs
+  (`materials_scope_chain`, `content_items_scope_chain`, `questions_scope_chain`);
+  backfilled every existing row leaf→full-chain. Post-backfill: materials 29 all
+  with subject (7 chapter, 7 topic); content_items 56 all with subject (37
+  chapter, 37 topic); questions 42 all with subject (40 chapter, 40 topic).
+  Drizzle migrate is idempotent against it (hash matches; next run skips).
+- **API scope resolution** — shared `resolveScopeChain` helper
+  (`apps/api/src/common/utils/scope-resolver.ts`): resolves the full
+  subject→chapter→topic chain from any descendant + validates consistent scope.
+  Applied in `materials.service` (subject required at create, descendant-aware
+  list filters, exposes names + textContent preview), `content.service`
+  (create/update accepts full chain, descendant-aware `listContent` filters
+  subject/chapter/topic/type/search, carries academic names), `questions.service`
+  (descendant-aware list filters + name resolution).
+- **Worker Cornell** — `cornell` added to the content package: worker
+  `db.get_scope_chain` (full chain, scoped), `_resolve_scope` now resolves full
+  chains from DB (subjectId/chapterId/topicId) instead of leaf-only,
+  `_aggregate_cornell` + `CornellNotePayload`, `ContentPackage` in
+  `worker/ai/schemas.py` gained `cornell`; `schemas_p3.py` → `schemas_pn.py`? no —
+  `worker/ai/schemas.py` added cornell payload; contracts `ContentPackageTypeEnum`
+  includes `CORNELL_NOTE`.
+- **Contracts** — `CORNELL_NOTE` added to content package type enum + schemas.
+- **Validation** — worker pytest 20 passed; API+web+contracts typecheck clean,
+  eslint clean, build green; migration + backfill verified in Postgres.
+- **Stable live stack** — API, web, workers rebuilt and healthy; migration
+  applied. Full detail below in "Work State".
+
+### In progress
+
+- TODO state tracked in `docs/tasks.md` Phase 24 (C1-C6 web, D1-D3).
+
 ## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)
 
 **Goal:** one AI pass yields all study resources for a source; the `questions`

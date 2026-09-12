@@ -35,6 +35,55 @@ def get_subject(subject_id: str, institute_id: str) -> dict[str, Any] | None:
         ).fetchone()
 
 
+def get_scope_chain(
+    source_type: str, source_id: str, institute_id: str
+) -> dict[str, str | None]:
+    """Resolve a source's full academic chain (topic/chapter/subject).
+
+    The scope_chain DB checks require topic -> chapter + subject and
+    chapter -> subject, so a leaf reference is resolved up to its complete
+    chain before any insert.
+    """
+    if source_type == "TOPIC":
+        with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+            row = conn.execute(
+                "SELECT s.id AS subject_id, c.id AS chapter_id, t.id AS topic_id"
+                " FROM topics t"
+                " JOIN chapters c ON t.chapter_id = c.id"
+                " JOIN subjects s ON c.subject_id = s.id"
+                " WHERE t.id = %s AND s.institute_id = %s",
+                (source_id, institute_id),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError(f"topic {source_id} not found in institute {institute_id}")
+        return {
+            "subjectId": row["subject_id"],
+            "chapterId": row["chapter_id"],
+            "topicId": row["topic_id"],
+        }
+    if source_type == "CHAPTER":
+        with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+            row = conn.execute(
+                "SELECT s.id AS subject_id, c.id AS chapter_id"
+                " FROM chapters c"
+                " JOIN subjects s ON c.subject_id = s.id"
+                " WHERE c.id = %s AND s.institute_id = %s",
+                (source_id, institute_id),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError(f"chapter {source_id} not found in institute {institute_id}")
+        return {
+            "subjectId": row["subject_id"],
+            "chapterId": row["chapter_id"],
+            "topicId": None,
+        }
+    return {
+        "subjectId": source_id if source_type == "SUBJECT" else None,
+        "chapterId": None,
+        "topicId": None,
+    }
+
+
 def get_paper_pattern(pattern_id: str, institute_id: str) -> dict[str, Any] | None:
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
         return conn.execute(

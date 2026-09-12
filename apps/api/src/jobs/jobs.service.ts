@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql, desc } from 'drizzle-orm';
 import { jobs } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
@@ -97,6 +97,23 @@ export class JobsService {
     }
 
     return this.toJob(job);
+  }
+
+  /** Most recent MATERIAL_PROCESS job for a material, or null when none exists. */
+  async latestMaterialJob(instituteId: string, materialId: string): Promise<Job | null> {
+    const [row] = await this.db
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.instituteId, instituteId),
+          eq(jobs.type, 'MATERIAL_PROCESS'),
+          sql`${jobs.payload}->>'materialId' = ${materialId}`,
+        ),
+      )
+      .orderBy(desc(jobs.createdAt))
+      .limit(1);
+    return row ? this.toJob(row) : null;
   }
 
   async updateJobStatus(
