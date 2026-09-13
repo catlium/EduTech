@@ -1,5 +1,87 @@
 # Project Status
 
+## Phase 30 — Syllabus-First (`syllabi` + top-level `/syllabus`, 2026-09-13)
+
+**Goal:** make the uploaded/pasted syllabus the authoritative source of the
+academic hierarchy. A subject never generates a syllabus; a teacher pastes the
+text or uploads the official document (same OCR pipeline as materials), the AI
+worker deep-analyzes it into Syllabus Context + chapter structure, and
+confirming reconciles it into the real Subject→Chapter→Topic tree (rename-safe,
+ambiguous → reported, absent → archived). Runs on **real OmniRoute AI** — no
+mock provider anywhere in the flow.
+
+Full detail: `docs/tasks.md` (Phase 30 block), `docs/api/syllabus.md`.
+
+**Status: COMPLETE** — worker 29 pytest PASS + ruff/mypy clean; API + web +
+contracts + database typecheck clean; migration `0024_syllabi_first_class`
+applied to `catlium_dev` (old `syllabus_proposals` dropped, 2 rows backfilled
+as IMPORTED); `scripts/e2e/syllabus_e2e.sh` **PASS=53 FAIL=0** against the
+rebuilt stack with real AI. Pending: commit + push.
+
+### Completed
+
+- **S1 Schema + migration** — `syllabi` table (versioned per subject,
+  sourceType UPLOAD/TEXT/IMPORTED + consistency CHECK, independent
+  processing/analysis/lifecycle state machines, context/structure JSONB, jobs
+  FKs set-null on delete). `0024_syllabi_first_class.sql` backfills legacy
+  proposals as IMPORTED and drops the old table; active-generation dedup index
+  updated `AI_GENERATE_SYLLABUS` → `AI_ANALYZE_SYLLABUS`.
+- **S2 Contracts + API** — new contract set (processing/analysis/lifecycle
+  enums, SyllabusContext/Structure, response/version/confirm-report schemas;
+  removed `SyllabusStatusEnum`/`GenerateSyllabus*`). API module at
+  `@Controller('syllabus')`: text/upload create, list (latest per subject),
+  get, versions, PATCH (no `text` editing), process/retry/analyze/confirm/
+  archive, DELETE. JobsService `latestSyllabusJob` + AI_ANALYZE_SYLLABUS queue.
+- **S2.3 Confirm = reconciliation** — exact normalized-name reuse, single
+  ≥60% token-overlap reuse as rename, multiple candidates → create + uncertain
+  report, absent → archive (never delete); created rows `active`; academic
+  `listChapters`/`listTopics` filter `active`.
+- **S3 Worker** — DB layer on `syllabi` (state transitions guarded `<>`
+  CONFIRMED, `get_syllabus_context`/`get_syllabus_structure` for starter
+  material); `process_syllabus` via the generic jobs queue (worker-material);
+  `_analyze_syllabus` document-bound deep analysis folding context +
+  structure, honest FAILED on every terminal path.
+- **S4 Web** — `/syllabus` list (latest per subject + missing-subject cards)
+  with Text/Upload dialogs mirroring the materials pattern; `/syllabus/:id`
+  detail with state-aware actions (Process/Retry/Analyze/Confirm/Edit/Archive/
+  Delete), auto-polling, context + structure render, versions history,
+  reconciliation report dialog; sidebar "Syllabi" nav + subject-page button;
+  old per-subject syllabus page removed.
+- **S5 Validation** — worker pytest 29 PASS, ruff/mypy clean; API typecheck +
+  lint clean; web + contracts + database typecheck clean; migration applied
+  live (backfill verified); `syllabus_e2e.sh` rewritten (53 asserts) →
+  **PASS=53 FAIL=0**; full stack rebuilt (api, worker-ai, worker-material, web)
+  and restarted.
+
+### Validation
+
+- Worker: `pytest` 29 passed; `ruff check worker tests` + `mypy worker` clean.
+- API: typecheck clean, `lint` clean (incl. `tx: any` → `DbTx` alias).
+- Web: `next typecheck` clean (web has no lint script).
+- Live E2E: `scripts/e2e/syllabus_e2e.sh` — **PASS=53 FAIL=0** (SYL-01..11:
+  text create → list/get/versions → analyze → PATCH → 409/400 guard matrix →
+  confirm reconcilation report + active chapters in DB → terminal guards →
+  upload .txt → process (text extracted) → analyze → student 403 + read 200 →
+  cross-tenant 403 → no-cookie 401), against the deployed stack with real
+  OmniRoute AI (no mock provider).
+
+### Known Issues / Deferred
+
+- `/syllabus` E2E leftovers live in `catlium_dev` (test subjects
+  "Computer Science <rand>" / "Physics <rand>" with CONFIRMED syllabi) —
+  harmless dev data.
+- Deleted-syllabus file storage is not GC'd; orphaned files fall back to the
+  materials cleanup path (see `docs/api/syllabus.md` DELETE note).
+- Carried from Phase 29: OmniRoute Gemini fallback model names 404 on the
+  configured key (worker exports the passed-on failure as honest FAILED);
+  worker-ai RabbitMQ connection-reset crash observed, out of scope.
+
+### Checkpoints
+
+| Commit | Scope |
+| --- | --- |
+| (pending) | Databases/contracts/worker/API/web/scripts/docs for Phase 30 |
+
 ## Phase 29 — Syllabus, Academic Scope, Resource Quality & Auth (2026-09-13)
 
 **Goal:** teach-only scope for AI syllabus generation (P1–P6), enriched formula

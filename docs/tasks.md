@@ -1,8 +1,92 @@
 # Task Tracker
 
+## Phase 30 — Syllabus-First: `syllabi` table + top-level /syllabus (2026-09-13)
+
+The syllabus became a first-class, authoritative source (replacing the
+syllabus-proposal model): a subject NEVER generates a syllabus. A teacher
+pastes the text or uploads the official document; the processing pipeline
+extracts text (same OCR path as materials); the AI worker deep-analyzes it
+into Syllabus Context + chapter structure; confirming reconciles it into the
+real Subject→Chapter→Topic hierarchy. Runs on REAL AI (OmniRoute) — no mock
+provider anywhere in the flow.
+
+### Goal: S1 Schema + migration
+
+- [x] S1.1 `syllabi` table (versioned per subject, source UPLOAD/TEXT/IMPORTED,
+      processingState UPLOADED→QUEUED→PROCESSING→READY/FAILED, analysisState
+      PENDING→PROCESSING→READY/FAILED, lifecycle PROPOSED→CONFIRMED,
+      context/structure JSONB, source-consistency CHECK, jobs FKs set-null)
+- [x] S1.2 Migration `0024_syllabi_first_class.sql`: create table + backfill 2
+      legacy `syllabus_proposals` rows as IMPORTED + drop the old table +
+      jobs dedup index `AI_GENERATE_SYLLABUS` → `AI_ANALYZE_SYLLABUS`
+      (registered in `_journal.json` idx 24; applied to `catlium_dev`)
+
+### Goal: S2 Contracts + API
+
+- [x] S2.1 Contracts: processing/analysis/lifecycle enums, SyllabusContext,
+      Create/Update requests, SyllabusResponse (full row), SyllabusVersion,
+      SyllabusConfirmReport; removed `SyllabusStatusEnum`/`GenerateSyllabus*`
+- [x] S2.2 API top-level `@Controller('syllabus')`: POST text/upload, GET list
+      (latest per subject, optional subjectId), GET :id, GET :id/versions,
+      PATCH :id, POST :id/process|retry|analyze|confirm|archive, DELETE :id;
+      JobsService `latestSyllabusJob` + AI_ANALYZE_SYLLABUS queue routing
+- [x] S2.3 Confirm = reconciliation: exact normalized-name reuse, single
+      >60% token-overlap reuse as rename, ambiguous → create-new + uncertain
+      report, absent → archive (never delete). Chapters/topics created
+      `status='active'`; academic `listChapters`/`listTopics` now filter
+      `active` so archived-out items hide
+
+### Goal: S3 Worker (AI + processing)
+
+- [x] S3.1 DB layer on `syllabi`: get_syllabus, processing/analysis state
+      transitions (guarded `<> CONFIRMED`), get_syllabus_context /
+      get_syllabus_structure (latest CONFIRMED row)
+- [x] S3.2 `process_syllabus` (OCR text extraction, mirrors process_material)
+      + consumer dispatch for PROCESS_SYLLABUS in the generic jobs queue
+- [x] S3.3 `_analyze_syllabus` (deep-analysis prompt: context + structure,
+      document-bound), `_aggregate_syllabus_analysis` (fold), cancellation
+      → honest FAILED on every terminal path; starter-material prompt now
+      honors the confirmed syllabus context
+
+### Goal: S4 Web
+
+- [x] S4.1 `/syllabus` list (latest per subject + missing-subject cards) with
+      Text / Upload dialogs mirroring the materials pattern (subject selector,
+      file accept list, 20 MB cap)
+- [x] S4.2 `/syllabus/[syllabusId]` detail: state-aware actions
+      (Process/Retry/Analyze/Confirm/Edit/Archive/Delete), auto-poll while
+      jobs run, error banners, context + structure render, versions history,
+      reconciliation report dialog
+- [x] S4.3 Sidebar "Syllabi" nav + subject-page button → `/syllabus`; removed
+      the old `subjects/[subjectId]/syllabus` page
+
+### Goal: S5 Validation
+
+- [x] S5.1 Worker pytest 29 PASS, ruff + mypy clean; API + web + contracts +
+      database typecheck clean; API lint clean
+- [x] S5.2 Migration applied live; `syllabus_proposals` dropped, backfilled
+      rows present
+- [x] S5.3 `scripts/e2e/syllabus_e2e.sh` rewritten (53 asserts, SYL-01..11) —
+      **PASS=53 FAIL=0** against the rebuilt stack with REAL OmniRoute AI:
+      text create → list/get/versions → analyze (READY context+structure) →
+      PATCH → guards (409/400) → confirm (report + active chapters in DB) →
+      terminal guards → upload txt → process (text extracted) → analyze →
+      security + tenant isolation
+- [x] S5.4 Container rebuild: api + worker-ai + worker-material + web images
+      rebuilt and restarted; `GET /api/v1/health` 200
+
+### Goal: S6 Docs/Checkpoint
+
+- [x] S6.1 docs/tasks.md + project-status + user-validation updated
+- [~] S6.2 Commit + push + final report
+
 ## Phase 29 — Syllabus, Academic Scope, Resource Quality & Auth (2026-09-13)
 
 Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
+
+> Superseded by Phase 30 for the syllabus model (see Phase 30 block). Phase 29
+> P4/P7/P8/P10/P12/P13 portions (scope, starter material, Cornell, formula,
+> export, auth refresh, material hub, seed) remain valid delivered work.
 
 ### Goal: P1 Planning & Baseline
 
@@ -11,17 +95,22 @@ Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
 
 ### Goal: P2/P3 Syllabus decoupled + honest states
 
-- [x] P2.1 Schema: syllabus_proposals `generation_job_id`, `generation_error`,
-      nullable `structure`; migration
-- [x] P2.2 API: `generate` subject-based (source SUBJECT, material optional
-      enrichment); PROCESSING row creation; enqueue-failure → FAILED
-- [x] P2.3 API: PATCH/confirm guarded to PENDING_REVIEW; toSyllabus exposes
-      new fields; contracts updated (status enum, nullable structure)
-- [x] P2.4 Worker: `_generate_syllabus` subject-context (optional validated
+- [~] P2.1 Schema: syllabus_proposals `generation_job_id`, `generation_error`,
+      nullable `structure`; migration — **replaced by Phase 30 `syllabi`**
+- [~] P2.2 API: `generate` subject-based (source SUBJECT, material optional
+      enrichment); PROCESSING row creation; enqueue-failure → FAILED —
+      **replaced by Phase 30**
+- [~] P2.3 API: PATCH/confirm guarded to PENDING_REVIEW; toSyllabus exposes
+      new fields; contracts updated (status enum, nullable structure) —
+      **replaced by Phase 30**
+- [~] P2.4 Worker: `_generate_syllabus` subject-context (optional validated
       enrichment material); upsert writes PENDING_REVIEW + clears error;
-      failure path writes FAILED
-- [x] P2.5 Web: syllabus page subject-based generate, FAILED/PROCESSING states,
-      resume polling from `generationJobId`
+      failure path writes FAILED — **replaced by Phase 30**
+- [~] P2.5 Web: syllabus page subject-based generate, FAILED/PROCESSING states,
+      resume polling from `generationJobId` — **replaced by Phase 30**
+- [x] P10.1 CSRF cookie lifetime raised to refresh-session; fix any guard
+      interferences
+- [x] P10.2 Web client single-flight 401 → refresh → retry; logout on failure
 
 ### Goal: P4/P5/P6 Scope + Starter Material + Cornell
 

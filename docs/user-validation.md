@@ -15,6 +15,90 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Phase 30 — Syllabus-First: `syllabi` + top-level `/syllabus` (2026-09-13)
+
+Status: `[x]` All items PASS via `scripts/e2e/syllabus_e2e.sh` against the live
+stack with real OmniRoute AI (**PASS=53 FAIL=0**). No mock AI anywhere in the
+flow. `WORKER_AI_API_KEY` intentionally empty; OmniRoute runs keyless locally.
+
+Setup: dev stack rebuilt and restarted (api + worker-ai + worker-material + web
+images rebuilt, `docker compose up -d`), demo seed applied, login as
+`teacher@catlium.dev` / `Password123!`, institute header
+`x-institute-id: 99999999-9999-9999-9999-999999999999`, CSRF header
+`x-csrf-token` on non-GET. Baseline subject: `a8ff413d-f504-4596-8e79-edc0556b5fac`
+(Physics Minor — CONFIRMED via prior migration backfill, no existing active
+chapters); test subjects created per-run (Computer Science, Physics) and
+cleaned up automatically.
+
+### SYL-01 — Create from text (fast-path)
+
+- **Endpoint:** `POST /api/v1/syllabus/text`
+  `{"subjectId":"a8ff413d-...", "title":"Unit 1 — Error Detection & Correction", "text":"Unit 1: Topics: Parity, CRC, Hamming Code", "program":"B.Sc. CS"}`
+- **Expected:** `201`; `processingStatus: "READY"`, `analysisStatus: "PENDING"`, `status: "PROPOSED"`, `sourceType: "TEXT"`, `textContent` matches input, `version: 1`. Verified.
+
+### SYL-02 — List (latest per subject)
+
+- **Endpoint:** `GET /api/v1/syllabus`
+- **Expected:** `200`; array with at most one row per subject (`subjectName` populated), the Physics Minor row listed with version=1, `isCurrent: true`. Verified.
+
+### SYL-03 — Get + Versions
+
+- **Endpoint:** `GET /api/v1/syllabus/:id`
+- **Expected:** `200`; full row with `subjectName`, `isCurrent: true`. Verified.
+- **Endpoint:** `GET /api/v1/syllabus/:id/versions`
+- **Expected:** `200`; array with 1 version, all statuses populated. Verified.
+
+### SYL-04 — Analyze (AI deep analysis → READY)
+
+- **Endpoint:** `POST /api/v1/syllabus/:id/analyze`
+- **Expected:** `202`; `jobId` returned. Poll until `analysisStatus: "READY"` and `structure.chapters.length > 0` plus `context` is non-null. Verified (OmniRoute returns 4–5 chapters, analysis takes ~6s).
+
+### SYL-05 — PATCH
+
+- **Endpoint:** `PATCH /api/v1/syllabus/:id` `{"title":"Renamed — Error Detection", "context":{"objectives":["Parity check"],"notes":["CRC covers one bit"]}}`
+- **Expected:** `200`; title + context updated. `textContent` unchanged. Verified. `text` field in body ignored (DTO does not accept text edits).
+
+### SYL-06 — Re-analyze READY = 409
+
+- **Endpoint:** `POST /api/v1/syllabus/:id/analyze` (same row)
+- **Expected:** `409` "Analysis already completed — create a new version to analyze again". Verified.
+
+### SYL-07 — Empty structure = 400
+
+- **Endpoint:** `POST /api/v1/syllabus/:id` `{"structure": {"chapters": []}}` (or PATCH with empty chapters)
+- **Expected:** `400` validation error; structure with `[]` chapters is rejected. Verified.
+
+### SYL-08 — Confirm + reconciliation report
+
+- **Endpoint:** `POST /api/v1/syllabus/:id/confirm`
+- **Expected:** `201`; `status: "CONFIRMED"`, `confirmedAt` non-null; `report` contains `createdChapters`/`reusedChapters`/`createdTopics`/`reusedTopics` arrays plus `uncertain`. Verified: `createdChapters` = 4 UUIDs, `uncertain = []`.
+- **DB verification:** `SELECT * FROM chapters WHERE subject_id='a8ff413d-...' AND status='active'` returns 4 rows with titles from the analyzed structure. Verified.
+
+### SYL-09 — Terminal guard (409 on CONFIRMED)
+
+- **Endpoint:** `POST /api/v1/syllabus/:id/process`, `POST /api/v1/syllabus/:id/analyze`, `POST /api/v1/syllabus/:id/confirm`, `DELETE /api/v1/syllabus/:id`
+- **Expected:** all return `409` "Syllabus is already confirmed". Verified.
+
+### SYL-10 — Upload .txt → process → text extracted
+
+- **Endpoint:** `POST /api/v1/syllabus/upload` (multipart: file, subjectId, title)
+- **Expected:** `201`; `sourceType: "UPLOAD"`, `processingStatus: "UPLOADED"`, `textContent: null`. Verified.
+- **Endpoint:** `POST /api/v1/syllabus/:id/process`
+- **Expected:** `202`. Poll until `processingStatus: "READY"`, `textContent` is non-empty. Verified.
+- **Endpoint:** `POST /api/v1/syllabus/:id/process` (already READY)
+- **Expected:** `409`. Verified.
+- **Endpoint:** `POST /api/v1/syllabus/:id/analyze` (upload, READY)
+- **Expected:** `202`. Poll until `analysisStatus: "READY"`. Verified.
+
+### SYL-11 — Security (403/401)
+
+- **No cookie:** `POST /api/v1/syllabus/text` → `401`. Verified.
+- **Student role:** `POST /api/v1/syllabus/text` → `403`. Verified.
+- **Student read:** `GET /api/v1/syllabus/:id` → `200` (read allowed). Verified.
+- **Cross-tenant:** `GET /api/v1/syllabus/:id` with wrong institute header → `403`. Verified.
+
+---
+
 ## Phase 28 — Source Coverage, Resource Integrity & Controlled Generation (2026-09-13)
 
 Status: `[x]` API + worker + web validation PASS against the rebuilt docker

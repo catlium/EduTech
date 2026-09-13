@@ -23,8 +23,10 @@ generic/manual job creation; material processing uses the dedicated endpoint
 
 `type` is restricted to the job types a worker actually consumes:
 `MATERIAL_PROCESS`, `AI_GENERATE_NOTE`, `AI_GENERATE_SUMMARY`,
-`AI_GENERATE_FLASHCARDS`, `AI_GENERATE_CONCEPTS`, `AI_GENERATE_QUESTIONS`,
-`AI_GENERATE_SYLLABUS`. Any other type is rejected with `400` (Phase 17
+`AI_GENERATE_FLASHCARDS`, `AI_GENERATE_CONCEPTS`, `AI_GENERATE_CONTENT_PACKAGE`,
+`AI_GENERATE_QUESTIONS`, `AI_GENERATE_BLUEPRINT`,
+`AI_GENERATE_STARTER_MATERIAL`, `AI_ANALYZE_SYLLABUS`. Any other type is
+rejected with `400` (Phase 17
 allowlist) — an unknown type would otherwise be acknowledged and skipped by
 the worker, leaving the row stuck `queued`.
 
