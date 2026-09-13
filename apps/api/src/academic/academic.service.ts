@@ -101,7 +101,7 @@ export class AcademicService {
     return this.db
       .select()
       .from(chapters)
-      .where(eq(chapters.subjectId, subjectId))
+      .where(and(eq(chapters.subjectId, subjectId), eq(chapters.status, 'active')))
       .orderBy(asc(chapters.sortOrder), asc(chapters.name));
   }
 
@@ -161,7 +161,7 @@ export class AcademicService {
     return this.db
       .select()
       .from(topics)
-      .where(eq(topics.chapterId, chapterId))
+      .where(and(eq(topics.chapterId, chapterId), eq(topics.status, 'active')))
       .orderBy(asc(topics.sortOrder), asc(topics.name));
   }
 

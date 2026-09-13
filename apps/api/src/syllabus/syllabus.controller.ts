@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -8,11 +9,21 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 import { SyllabusService } from './syllabus.service.js';
-import { GenerateSyllabusDto, UpdateSyllabusDto } from './dto/syllabus.dto.js';
+import {
+  CreateTextSyllabusDto,
+  UpdateSyllabusDto,
+  UploadSyllabusDto,
+} from './dto/syllabus.dto.js';
+import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from '../materials/materials.constants.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -24,88 +35,168 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 
 const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
 
-@Controller('academic/subjects/:subjectId/syllabus')
+@Controller('syllabus')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
 export class SyllabusController {
   constructor(private readonly syllabusService: SyllabusService) {}
 
-  @Post('generate')
-  @HttpCode(HttpStatus.ACCEPTED)
+  @Post('text')
+  @HttpCode(HttpStatus.CREATED)
   @RequiredRoles(...WRITE_ROLES)
-  async generate(
+  async createText(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
-    @Param('subjectId', ParseUUIDPipe) subjectId: string,
-    @Body() dto: GenerateSyllabusDto,
+    @Body() dto: CreateTextSyllabusDto,
   ) {
-    const generation = await this.syllabusService.generate(
+    const syllabus = await this.syllabusService.createTextSyllabus(
       tenant.instituteId,
       user.userId,
-      subjectId,
-      dto.materialId,
+      dto,
     );
-    return { generation };
+    return { syllabus };
   }
 
-  @Get('jobs/:jobId')
+  @Post('upload')
+  @HttpCode(HttpStatus.CREATED)
   @RequiredRoles(...WRITE_ROLES)
-  async getGeneration(
-    @Tenant() tenant: TenantContext,
-    @Param('jobId', ParseUUIDPipe) jobId: string,
-  ) {
-    const job = await this.syllabusService.getGenerationJob(tenant.instituteId, jobId);
-    return {
-      generation: {
-        jobId: job.id,
-        operation: job.type,
-        status: job.status,
-        result: job.result,
-        error: job.error,
-        createdAt: job.createdAt,
-        completedAt: job.completedAt,
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_SIZE },
+      fileFilter: (_req, file, cb) => {
+        if (!ALLOWED_FILE_TYPES.has(file.mimetype)) {
+          cb(new BadRequestException(`Unsupported file type: ${file.mimetype}`), false);
+          return;
+        }
+        cb(null, true);
       },
-    };
+    }),
+  )
+  async upload(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UploadSyllabusDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('A file is required');
+    }
+
+    const syllabus = await this.syllabusService.createFileSyllabus(
+      tenant.instituteId,
+      user.userId,
+      dto,
+      file,
+    );
+    return { syllabus };
   }
 
   @Get()
-  async get(
+  async list(
     @Tenant() tenant: TenantContext,
-    @Param('subjectId', ParseUUIDPipe) subjectId: string,
+    @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
   ) {
-    const proposal = await this.syllabusService.getProposal(tenant.instituteId, subjectId);
-    return { proposal };
+    const syllabi = await this.syllabusService.listSyllabi(tenant.instituteId, subjectId);
+    return { syllabi };
   }
 
-  @Patch()
+  @Get(':id')
+  async get(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const syllabus = await this.syllabusService.getSyllabus(tenant.instituteId, id);
+    return { syllabus };
+  }
+
+  @Get(':id/versions')
+  async versions(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const versions = await this.syllabusService.getVersions(tenant.instituteId, id);
+    return { versions };
+  }
+
+  @Patch(':id')
   @RequiredRoles(...WRITE_ROLES)
   async update(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
-    @Param('subjectId', ParseUUIDPipe) subjectId: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateSyllabusDto,
   ) {
-    const proposal = await this.syllabusService.updateProposal(
+    const syllabus = await this.syllabusService.updateSyllabus(
       tenant.instituteId,
       user.userId,
-      subjectId,
-      dto.structure,
+      id,
+      dto,
     );
-    return { proposal };
+    return { syllabus };
   }
 
-  @Post('confirm')
+  @Post(':id/process')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async process(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.syllabusService.processSyllabus(tenant.instituteId, id);
+  }
+
+  @Post(':id/retry')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async retry(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.syllabusService.retryProcessing(tenant.instituteId, id);
+  }
+
+  @Post(':id/analyze')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async analyze(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.syllabusService.analyzeSyllabus(tenant.instituteId, user.userId, id);
+  }
+
+  @Post(':id/confirm')
   @HttpCode(HttpStatus.CREATED)
   @RequiredRoles(...WRITE_ROLES)
   async confirm(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
-    @Param('subjectId', ParseUUIDPipe) subjectId: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const proposal = await this.syllabusService.confirmProposal(
+    return this.syllabusService.confirmSyllabus(tenant.instituteId, user.userId, id);
+  }
+
+  @Post(':id/archive')
+  @RequiredRoles(...WRITE_ROLES)
+  async archive(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const syllabus = await this.syllabusService.archiveSyllabus(
       tenant.instituteId,
       user.userId,
-      subjectId,
+      id,
     );
-    return { proposal };
+    return { syllabus };
+  }
+
+  @Delete(':id')
+  @RequiredRoles(...WRITE_ROLES)
+  async remove(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.syllabusService.deleteSyllabus(tenant.instituteId, id);
   }
 }

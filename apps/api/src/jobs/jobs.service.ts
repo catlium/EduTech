@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { jobs } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
@@ -29,9 +29,9 @@ const JOB_QUEUE_BY_TYPE: Record<string, string> = {
   AI_GENERATE_CONCEPTS: 'ai_generation',
   AI_GENERATE_CONTENT_PACKAGE: 'ai_generation',
   AI_GENERATE_QUESTIONS: 'ai_generation',
-  AI_GENERATE_SYLLABUS: 'ai_generation',
   AI_GENERATE_BLUEPRINT: 'ai_generation',
   AI_GENERATE_STARTER_MATERIAL: 'ai_generation',
+  AI_ANALYZE_SYLLABUS: 'ai_generation',
 };
 
 // Types the generic `POST /jobs` endpoint accepts. Anything else is rejected
@@ -110,6 +110,23 @@ export class JobsService {
           eq(jobs.instituteId, instituteId),
           eq(jobs.type, 'MATERIAL_PROCESS'),
           sql`${jobs.payload}->>'materialId' = ${materialId}`,
+        ),
+      )
+      .orderBy(desc(jobs.createdAt))
+      .limit(1);
+    return row ? this.toJob(row) : null;
+  }
+
+  /** Most recent job (processing or analysis) for a syllabus, or null. */
+  async latestSyllabusJob(instituteId: string, syllabusId: string): Promise<Job | null> {
+    const [row] = await this.db
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.instituteId, instituteId),
+          inArray(jobs.type, ['PROCESS_SYLLABUS', 'AI_ANALYZE_SYLLABUS']),
+          sql`${jobs.payload}->>'syllabusId' = ${syllabusId}`,
         ),
       )
       .orderBy(desc(jobs.createdAt))
