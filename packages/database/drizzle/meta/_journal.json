@@ -169,6 +169,13 @@
       "when": 1789287617011,
       "tag": "0023_condemned_quasimodo",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789360000000,
+      "tag": "0024_syllabi_first_class",
+      "breakpoints": true
     }
   ]
 }

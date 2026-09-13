@@ -10,7 +10,7 @@ export { questions } from './questions.js';
 export { questionTypes } from './question-types.js';
 export { assessments, assessmentQuestions } from './examinations.js';
 export { paperPatterns } from './paper-patterns.js';
-export { syllabusProposals } from './syllabus.js';
+export { syllabi } from './syllabus.js';
 export { attempts, attemptQuestions, attemptResponses } from './attempts.js';
 export {
   practiceSessions,

@@ -1265,22 +1265,36 @@ export type AssessmentQuestion = z.infer<typeof AssessmentQuestionSchema>;
 
 // ── Syllabus Contracts ─────────────────────
 //
-// A syllabus proposal is the AI-generated (or teacher-edited) academic
-// structure for a subject: ordered chapters, each with optional topics.
+// The syllabus is the authoritative, first-class source of a subject's
+// prescribed curriculum. A subject NEVER generates a syllabus: a teacher
+// uploads/provides the syllabus document first, text is extracted
+// (processingStatus), a deep-analysis job extracts the Syllabus Context and the
+// academic structure proposal, and the teacher confirms it to create the real
+// Subject → Chapter → Topic hierarchy. Rows are versioned per subject.
 //
-// States: `PROCESSING` while the generation job runs, `PENDING_REVIEW` once a
-// draft exists (editable/confirmable), `FAILED` when generation failed (error
-// persisted — never a stuck "drafting" ghost), `CONFIRMED` = terminal; confirm
-// transactionally creates the real chapters/topics via the academic module.
-// AI (workers) only ever writes proposals — never chapters/topics directly.
+// Processing states:   UPLOADED → QUEUED → PROCESSING → READY, or → FAILED
+// Analysis states:     PENDING   → PROCESSING → READY,    or → FAILED
+// Lifecycle status:    PROPOSED → CONFIRMED (terminal per row)
 
-export const SyllabusStatusEnum = z.enum([
+export const SyllabusProcessingStatusEnum = z.enum([
+  'UPLOADED',
+  'QUEUED',
   'PROCESSING',
-  'PENDING_REVIEW',
-  'CONFIRMED',
+  'READY',
   'FAILED',
 ]);
-export type SyllabusStatus = z.infer<typeof SyllabusStatusEnum>;
+export type SyllabusProcessingStatus = z.infer<typeof SyllabusProcessingStatusEnum>;
+
+export const SyllabusAnalysisStatusEnum = z.enum([
+  'PENDING',
+  'PROCESSING',
+  'READY',
+  'FAILED',
+]);
+export type SyllabusAnalysisStatus = z.infer<typeof SyllabusAnalysisStatusEnum>;
+
+export const SyllabusLifecycleStatusEnum = z.enum(['PROPOSED', 'CONFIRMED', 'ARCHIVED']);
+export type SyllabusLifecycleStatus = z.infer<typeof SyllabusLifecycleStatusEnum>;
 
 export const SyllabusTopicSchema = z.object({
   name: z.string().min(1).max(255),
@@ -1300,45 +1314,108 @@ export const SyllabusStructureSchema = z.object({
 });
 export type SyllabusStructure = z.infer<typeof SyllabusStructureSchema>;
 
-export const GenerateSyllabusRequestSchema = z.object({
-  // Optional enrichment material. A subject can generate a syllabus with no
-  // material at all — this only adds source context when supplied.
-  materialId: z.string().uuid().optional(),
+// Extracted Syllabus Context. Only captures what the uploaded syllabus actually
+// states — never invented. Most fields are optional.
+export const SyllabusContextSchema = z.object({
+  program: z.string().max(255).nullable().optional(),
+  course: z.string().max(255).nullable().optional(),
+  academicYear: z.string().max(50).nullable().optional(),
+  objectives: z.array(z.string().max(1000)).max(50).default([]),
+  learningOutcomes: z.array(z.string().max(1000)).max(50).default([]),
+  scope: z.string().max(4000).nullable().optional(),
+  units: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(255),
+        description: z.string().max(2000).nullable().optional(),
+      }),
+    )
+    .max(100)
+    .default([]),
+  practicalRequirements: z.array(z.string().max(1000)).max(50).default([]),
+  notes: z.array(z.string().max(1000)).max(50).default([]),
 });
-export type GenerateSyllabusRequest = z.infer<typeof GenerateSyllabusRequestSchema>;
+export type SyllabusContext = z.infer<typeof SyllabusContextSchema>;
 
-export const GenerateSyllabusResponseSchema = z.object({
-  jobId: z.string().uuid(),
-  operation: z.literal('AI_GENERATE_SYLLABUS'),
-  sourceType: z.literal('SUBJECT'),
-  sourceId: z.string().uuid(),
+export const CreateSyllabusRequestSchema = z.object({
   subjectId: z.string().uuid(),
-  status: z.literal('QUEUED'),
+  title: z.string().min(1).max(255),
+  program: z.string().max(255).nullish(),
+  academicYear: z.string().max(20).nullish(),
+  // TEXT fast-path: the syllabus text is provided directly and needs no OCR.
+  text: z.string().min(1).max(200000).optional(),
 });
-export type GenerateSyllabusResponse = z.infer<typeof GenerateSyllabusResponseSchema>;
+export type CreateSyllabusRequest = z.infer<typeof CreateSyllabusRequestSchema>;
 
 export const UpdateSyllabusRequestSchema = z.object({
-  structure: SyllabusStructureSchema,
+  title: z.string().min(1).max(255).optional(),
+  program: z.string().max(255).nullish(),
+  academicYear: z.string().max(20).nullish(),
+  context: SyllabusContextSchema.optional(),
+  structure: SyllabusStructureSchema.optional(),
 });
 export type UpdateSyllabusRequest = z.infer<typeof UpdateSyllabusRequestSchema>;
+
+export const SyllabusJobResponseSchema = z.object({
+  jobId: z.string().uuid(),
+  operation: z.string(),
+  status: z.literal('QUEUED'),
+});
+export type SyllabusJobResponse = z.infer<typeof SyllabusJobResponseSchema>;
 
 export const SyllabusResponseSchema = z.object({
   id: z.string().uuid(),
   instituteId: z.string().uuid(),
   subjectId: z.string().uuid(),
-  status: SyllabusStatusEnum,
-  // NULL while PROCESSING/FAILED; set once a draft exists.
+  subjectName: z.string().optional(),
+  version: z.number(),
+  title: z.string(),
+  program: z.string().nullable().optional(),
+  academicYear: z.string().nullable().optional(),
+  sourceType: z.enum(['UPLOAD', 'TEXT', 'IMPORTED']),
+  fileName: z.string().nullable().optional(),
+  mimeType: z.string().nullable().optional(),
+  fileSize: z.number().nullable().optional(),
+  textContent: z.string().nullable().optional(),
+  processingStatus: SyllabusProcessingStatusEnum,
+  processingJobId: z.string().uuid().nullable().optional(),
+  processingError: z.string().nullable().optional(),
+  analysisStatus: SyllabusAnalysisStatusEnum,
+  analysisJobId: z.string().uuid().nullable().optional(),
+  analysisError: z.string().nullable().optional(),
+  context: SyllabusContextSchema.nullable(),
   structure: SyllabusStructureSchema.nullable(),
-  sourceMaterialId: z.string().uuid().nullable(),
-  generationJobId: z.string().uuid().nullable(),
-  generationError: z.string().nullable().optional(),
+  status: SyllabusLifecycleStatusEnum,
+  confirmedAt: z.string().datetime().nullable(),
   createdBy: z.string().uuid(),
   updatedBy: z.string().uuid().nullable(),
-  confirmedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
 export type SyllabusResponse = z.infer<typeof SyllabusResponseSchema>;
+
+export const SyllabusVersionSchema = z.object({
+  id: z.string().uuid(),
+  version: z.number(),
+  title: z.string(),
+  status: SyllabusLifecycleStatusEnum,
+  processingStatus: SyllabusProcessingStatusEnum,
+  analysisStatus: SyllabusAnalysisStatusEnum,
+  isCurrent: z.boolean(),
+  createdAt: z.string().datetime(),
+});
+export type SyllabusVersion = z.infer<typeof SyllabusVersionSchema>;
+
+export const SyllabusConfirmReportSchema = z.object({
+  createdChapters: z.array(z.string().uuid()),
+  reusedChapters: z.array(z.string().uuid()),
+  createdTopics: z.array(z.string().uuid()),
+  reusedTopics: z.array(z.string().uuid()),
+  removedChapters: z.array(z.string().uuid()),
+  removedTopics: z.array(z.string().uuid()),
+  uncertain: z.array(z.string()),
+});
+export type SyllabusConfirmReport = z.infer<typeof SyllabusConfirmReportSchema>;
 
 // ── Student Attempt Contracts ────────────────
 //
