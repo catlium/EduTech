@@ -150,6 +150,55 @@ P4.12 landed; P4.5–P4.11 deferred (see markers).**
       0-question PUBLISHED assessment is a dead end — addQuestions is
       DRAFT-only). Publish button now disabled when `questions.length === 0`
 
+### Goal: P5 Rich Educational Content
+
+- [x] P5.1 Audit (parallel explore agents): content stored as JSONB block
+      payloads (11 types); web renderer was a hand-rolled switch with NO
+      markdown/math/chart lib. Concrete gaps found below.
+- [x] P5.2 Chart fidelity: line charts render as an SVG polyline with point
+      values; pie charts render as proportional SVG arcs with a legend. Both
+      were falling through to a bare key-value list (charts are a primary AI
+      output). Native SVG, zero new deps.
+- [x] P5.3 paragraph blocks preserve embedded newlines (whitespace-pre-wrap)
+- [x] P5.4 Unknown/legacy block types degrade to a styled paragraph in the
+      renderer instead of being silently dropped by the exhaustive switch
+- [x] P5.5 Worker NOTE prompt: explicit plain-text math contract (`^`
+      superscripts, no LaTeX/markdown/HTML), since formula blocks + prose are
+      displayed verbatim (no LaTeX renderer in the app)
+- [x] P5.6 Docs: `docs/api/content.md` now documents the full 11-type
+      NOTE block union
+- [-] P5.7 Deferred: markdown/LaTeX rendering of inline strings
+      (react-markdown/katex — dependency decision), image/code blocks in the
+      union, rich-block inline editing (table cells/formulas)
+
+### Goal: P6 PDF/DOCX Export Fidelity
+
+- [x] P6.1 Audit (parallel explore agents): single NestJS export surface
+      (pdfkit + docx libs, 3 endpoints). Gaps: questions/assessments exported
+      stem/type/difficulty only (NO answer options, NO marks, NO key);
+      assessment instructions dropped (shape mismatch); CORNELL_NOTE exported
+      as raw JSON dump; pdfkit WinAnsi glyph gaps (√ − → = .notdef boxes);
+      UI never sent scope filters to question export.
+- [x] P6.2 Questions export now includes MCQ choices (with correct marked),
+      FIB accepted answers, TF correct answer, NUMERICAL model answer, and
+      explanations. Assessment export includes MCQ choices + per-question
+      `marks` (from assessmentQuestions) — exam paper option sets present;
+      answers withheld (paper for students)
+- [x] P6.3 Assessment instructions: handle both `{text}` object and array
+      shapes, render as bullets
+- [x] P6.4 CORNELL_NOTE exports cue/notes sections as Q&A pairs + summary
+      paragraph (was `JSON.stringify(payload)` dump)
+- [x] P6.5 PDF glyph sanitize (√ − → ← ≥ ≤ ✓ ✗ … → ASCII) — no more .notdef
+      boxes in stems/edges/formulas
+- [x] P6.6 DOCX bullets/steps render as real bullet/numbered paragraphs
+      (were one literal `• `-joined paragraph)
+- [x] P6.7 UI: question-bank export now forwards the active
+      subject/chapter/topic filters (was always whole-institute export)
+- [-] P6.8 Deferred: Devanagari font asset shipping (`nest-cli` assets config —
+      deploy-only crash risk, no Devanagari in demo data), page
+      numbers/headers, real Word list numbering config, question paper with
+      answer key toggle (`?answers=` product decision)
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`

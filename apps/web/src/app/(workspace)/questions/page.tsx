@@ -464,7 +464,11 @@ export default function QuestionsListPage() {
 
   async function exportQuestions(format: "pdf" | "docx") {
     try {
-      await downloadFile(`/export/questions?format=${format}`, `question-bank.${format}`);
+      const params = new URLSearchParams({ format });
+      if (listCascade.subjectId) params.set("subjectId", listCascade.subjectId);
+      if (listCascade.chapterId) params.set("chapterId", listCascade.chapterId);
+      if (listCascade.topicId) params.set("topicId", listCascade.topicId);
+      await downloadFile(`/export/questions?${params.toString()}`, `question-bank.${format}`);
       toast.success(`Question bank exported as ${format.toUpperCase()}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Export failed");

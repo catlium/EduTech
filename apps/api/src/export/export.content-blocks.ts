@@ -4,7 +4,17 @@ export type DocBlock =
   | { kind: 'bullets'; items: string[] }
   | { kind: 'steps'; title?: string; items: string[] }
   | { kind: 'flashcard'; front: string; back: string }
-  | { kind: 'question'; stem: string; type: string; difficulty: string }
+  | {
+      kind: 'question';
+      stem: string;
+      type: string;
+      difficulty: string;
+      marks?: number;
+      choices?: { id: string; text: string; correct: boolean }[];
+      answerNote?: string;
+      explanation?: string;
+      showAnswer: boolean;
+    }
   | { kind: 'table'; headers?: string[]; rows: string[][] }
   | { kind: 'formula'; content: string }
   | { kind: 'example'; title?: string; content: string }
@@ -25,6 +35,54 @@ function str(x: unknown): string | undefined {
 
 function strArr(x: unknown): string[] {
   return Array.isArray(x) ? x.filter((i): i is string => typeof i === 'string') : [];
+}
+
+export function questionDocBlock(args: {
+  stem: string;
+  type: string;
+  difficulty: string | null;
+  marks?: number | null;
+  payload?: Record<string, unknown> | null;
+  explanation?: string | null;
+  includeAnswers: boolean;
+}): DocBlock {
+  const payload = args.payload ?? {};
+  const correctId = payload['correctChoiceId'];
+  const choices = (Array.isArray(payload['choices']) ? payload['choices'] : [])
+    .map((c) => ({
+      id: String((c as { id?: unknown })?.['id'] ?? ''),
+      text: String((c as { text?: unknown })?.['text'] ?? ''),
+      correct: (c as { id?: unknown })?.['id'] === correctId,
+    }))
+    .filter((c) => c.id && c.text);
+  const fmt = (typeof payload['answerFormat'] === 'string' ? payload['answerFormat'] : args.type).toUpperCase();
+  let answerNote: string | undefined;
+  if (args.includeAnswers) {
+    if (fmt === 'FILL_IN_BLANK' && Array.isArray(payload['acceptableAnswers'])) {
+      const acc = payload['acceptableAnswers'].map(String).filter((v) => v.length > 0);
+      if (acc.length > 0) answerNote = acc.join(' / ');
+    } else if (fmt === 'TRUE_FALSE') {
+      if (payload['correctAnswer'] === true) answerNote = 'True';
+      else if (payload['correctAnswer'] === false) answerNote = 'False';
+    } else if (fmt === 'NUMERICAL') {
+      const model = Number(payload['modelAnswer']);
+      if (Number.isFinite(model)) answerNote = `≈ ${model}`;
+    } else if (fmt === 'MATCHING' && payload['matches'] && typeof payload['matches'] === 'object') {
+      const pairs = Object.entries(payload['matches'] as Record<string, unknown>);
+      if (pairs.length > 0) answerNote = pairs.map(([l, r]) => `${l} → ${r}`).join(', ');
+    }
+  }
+  return {
+    kind: 'question',
+    stem: args.stem,
+    type: args.type,
+    difficulty: (args.difficulty ?? '').toUpperCase(),
+    marks: args.marks ?? undefined,
+    choices,
+    answerNote,
+    explanation: args.explanation ?? undefined,
+    showAnswer: args.includeAnswers,
+  };
 }
 
 const rec = (x: unknown) => (x ?? {}) as Record<string, unknown>;
@@ -114,6 +172,21 @@ export function contentBlocks(type: string, payload: Record<string, unknown>): D
             blocks.push({ kind: 'paragraph', text: `${c['name']}${desc}` });
           }
         }
+      }
+      return blocks;
+    }
+    case 'CORNELL_NOTE': {
+      if (Array.isArray(payload['sections'])) {
+        for (const s of payload['sections']) {
+          const cue = str(s?.['cue']);
+          const notes = str(s?.['notes']);
+          if (cue !== undefined && notes !== undefined) {
+            blocks.push({ kind: 'flashcard', front: cue, back: notes });
+          }
+        }
+      }
+      if (typeof payload['summary'] === 'string' && payload['summary'].length > 0) {
+        blocks.push({ kind: 'paragraph', text: `Summary: ${payload['summary']}` });
       }
       return blocks;
     }

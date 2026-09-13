@@ -3,7 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { contentItems, contentVersions, questions, assessments, assessmentQuestions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
-import { contentBlocks } from './export.content-blocks.js';
+import { contentBlocks, questionDocBlock } from './export.content-blocks.js';
 import type { DocBlock, DocumentModel } from './export.content-blocks.js';
 
 export type { DocBlock, DocumentModel };
@@ -54,19 +54,27 @@ export class ExportService {
     if (scope.topicId) conditions.push(eq(questions.topicId, scope.topicId));
 
     const rows = await this.db
-      .select({ stem: questions.stem, questionType: questions.questionType, difficulty: questions.difficulty })
+      .select({
+        stem: questions.stem,
+        questionType: questions.questionType,
+        difficulty: questions.difficulty,
+        payload: questions.payload,
+        explanation: questions.explanation,
+      })
       .from(questions)
       .where(and(...conditions))
       .orderBy(questions.createdAt);
 
     return {
       title: 'Question Bank Export',
-      blocks: rows.map(
-        (r): DocBlock => ({
-          kind: 'question',
+      blocks: rows.map((r) =>
+        questionDocBlock({
           stem: r.stem,
           type: r.questionType,
           difficulty: r.difficulty,
+          payload: (r.payload ?? {}) as Record<string, unknown>,
+          explanation: r.explanation,
+          includeAnswers: true,
         }),
       ),
     };
@@ -85,6 +93,9 @@ export class ExportService {
         stem: questions.stem,
         questionType: questions.questionType,
         difficulty: questions.difficulty,
+        payload: questions.payload,
+        explanation: questions.explanation,
+        marks: assessmentQuestions.marks,
         sortOrder: assessmentQuestions.sortOrder,
       })
       .from(assessmentQuestions)
@@ -98,17 +109,26 @@ export class ExportService {
         text: `Duration: ${assessment.durationMinutes ?? '—'} minutes  ·  Max marks: ${assessment.maxMarks ?? '—'}`,
       },
     ];
-    const instructions = assessment.instructions as string[] | null;
-    if (Array.isArray(instructions) && instructions.length > 0) {
-      blocks.push({ kind: 'bullets', items: instructions });
+    const rawInstructions = assessment.instructions as string[] | { text: string } | null;
+    const instructionLines =
+      Array.isArray(rawInstructions)
+        ? rawInstructions.filter((i): i is string => typeof i === 'string')
+        : rawInstructions && typeof rawInstructions['text'] === 'string'
+          ? [rawInstructions['text']]
+          : [];
+    if (instructionLines.length > 0) {
+      blocks.push({ kind: 'bullets', items: instructionLines });
     }
     blocks.push(
-      ...links.map(
-        (l): DocBlock => ({
-          kind: 'question',
+      ...links.map((l): DocBlock =>
+        questionDocBlock({
           stem: l.stem,
           type: l.questionType,
           difficulty: l.difficulty,
+          marks: l.marks,
+          payload: (l.payload ?? {}) as Record<string, unknown>,
+          explanation: l.explanation,
+          includeAnswers: false,
         }),
       ),
     );

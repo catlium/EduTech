@@ -22,12 +22,28 @@ export function sendDoc(
 const FONT_DEVANAGARI = 'NotoSansDevanagari';
 const DEVANAGARI_RANGE = /[\u0900-\u097F]/;
 
+// Helvetica is WinAnsi-only; map non-encodable math glyphs to ASCII so they
+// don't come out as .notdef boxes in the PDF.
+function sanitizePdfText(s: string): string {
+  return s
+    .replace(/√/g, 'sqrt')
+    .replace(/[−–]/g, '-')
+    .replace(/→/g, '->')
+    .replace(/←/g, '<-')
+    .replace(/≥/g, '>=')
+    .replace(/≤/g, '<=')
+    .replace(/✓/g, '[Y]')
+    .replace(/✗/g, '[N]')
+    .replace(/…/g, '...');
+}
+
 function fontFor(text: string): string {
   return DEVANAGARI_RANGE.test(text) ? FONT_DEVANAGARI : 'Helvetica';
 }
 
 function pdfText(doc: PDFKit.PDFDocument, s: string, size = 11, opts?: Record<string, unknown>): void {
-  doc.font(fontFor(s)).fontSize(size).text(s, opts);
+  const t = sanitizePdfText(s);
+  doc.font(fontFor(t)).fontSize(size).text(t, opts);
 }
 
 // ── PDF ──────────────────────────────────────────────────────────────
@@ -74,10 +90,17 @@ function renderPdfBlock(doc: PDFKit.PDFDocument, block: DocBlock): void {
       pdfText(doc, `Back:  ${block.back}`, 10);
       doc.moveDown(0.5);
       break;
-    case 'question':
-      pdfText(doc, `Q: ${block.stem} (${block.type}, ${block.difficulty})`, 11);
+    case 'question': {
+      const tag = `Q: ${block.stem} (${block.type}${block.difficulty ? `, ${block.difficulty}` : ''}${block.marks != null ? ` — ${block.marks} mark${block.marks === 1 ? '' : 's'}` : ''})`;
+      pdfText(doc, tag, 11);
+      block.choices?.forEach((c, i) => {
+        pdfText(doc, `  ${String.fromCharCode(65 + i)}. ${c.text}${block.showAnswer && c.correct ? ' ✓' : ''}`, 10);
+      });
+      if (block.answerNote) pdfText(doc, `Answer: ${block.answerNote}`, 10);
+      if (block.explanation) pdfText(doc, `Explanation: ${block.explanation}`, 9);
       doc.moveDown(0.5);
       break;
+    }
     case 'table': {
       pdfText(doc, (block.headers ?? []).join(' | '), 11);
       for (const row of block.rows) {
@@ -157,18 +180,27 @@ function docxBlock(block: DocBlock): (Paragraph | Table)[] {
       out.push(new Paragraph({ text: block.text }));
       break;
     case 'bullets':
-      out.push(new Paragraph({ text: block.items.map((i) => `• ${i}`).join('\n') }));
+      out.push(...block.items.map((item) => new Paragraph({ text: item, bullet: { level: 0 } })));
       break;
     case 'steps':
       if (block.title) out.push(new Paragraph({ children: [new TextRun({ text: block.title, bold: true })] }));
-      out.push(new Paragraph({ text: block.items.map((i, n) => `${n + 1}. ${i}`).join('\n') }));
+      out.push(...block.items.map((item, n) => new Paragraph({ text: `${n + 1}. ${item}` })));
       break;
     case 'flashcard':
       out.push(new Paragraph({ text: `Front: ${block.front}\nBack: ${block.back}`, spacing: { after: 120 } }));
       break;
-    case 'question':
-      out.push(new Paragraph({ text: `Q: ${block.stem} (${block.type}, ${block.difficulty})` }));
+    case 'question': {
+      out.push(new Paragraph({ children: [
+        new TextRun({ text: `Q: ${block.stem}`, bold: true }),
+        new TextRun({ text: ` (${block.type}${block.difficulty ? `, ${block.difficulty}` : ''}${block.marks != null ? ` — ${block.marks} mark${block.marks === 1 ? '' : 's'}` : ''})` }),
+      ] }));
+      block.choices?.forEach((c, i) => {
+        out.push(new Paragraph({ text: `  ${String.fromCharCode(65 + i)}. ${c.text}${block.showAnswer && c.correct ? ' ✓' : ''}` }));
+      });
+      if (block.answerNote) out.push(new Paragraph({ children: [new TextRun({ text: `Answer: ${block.answerNote}`, italics: true })] }));
+      if (block.explanation) out.push(new Paragraph({ text: `Explanation: ${block.explanation}` }));
       break;
+    }
     case 'table': {
       const rows: TableRow[] = [];
       if (block.headers) {
