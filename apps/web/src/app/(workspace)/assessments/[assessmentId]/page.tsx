@@ -392,7 +392,7 @@ export default function AssessmentDetailPage() {
               )}
               {assessment.status === "DRAFT" && (
                 <>
-                  <Button size="sm" onClick={() => setConfirmAction("publish")} disabled={working}>
+                  <Button size="sm" onClick={() => setConfirmAction("publish")} disabled={working || questions.length === 0}>
                     Publish
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setConfirmAction("delete")} disabled={working}>

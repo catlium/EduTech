@@ -177,14 +177,11 @@ editing via PATCH.
 
 ### In progress — P4 Question Bank / Type / Paper-Pattern Correctness (2026-09-12)
 
-Audit-first pass completed: question types are data-driven (11 predefined
-codes, 6 answer formats, custom types allowed); MCQ/TF/FIB creation is solid;
-worker formats payloads per LLM-emitted type. Twelve concrete defects found;
-four high-severity items landed in `048ed11` (`fix(questions): edit-dialog data
-loss, blueprint type round-trip, bank stats`). Session paused mid-P4 at user
-request; remaining tracked in `docs/tasks.md`.
+**Phase state: COMPLETE.** Issues 1–3 landed in `048ed11`; the remaining two
+fixed in this checkpoint:
 
-**What landed (`048ed11`):**
+**What landed (`048ed11` — edit-dialog crash/data-loss, blueprint round-trip,
+bank stats):**
 
 1. **Question edit dialog crash + data loss fixed** — unsafe cast of
    TEXT/MATCHING/NUMERICAL payloads to `acceptableAnswers.map(...)` crashed;
@@ -201,11 +198,30 @@ request; remaining tracked in `docs/tasks.md`.
    `countApprovedQuestions` = ACTIVE + APPROVED. Stats now filter
    `status = ACTIVE`.
 
-**Paused:** MCQ choice-id UUID guard relaxation (sites identified at
-`attempts.grade.ts:36`, `attempts.service.ts:81`; not yet edited). Resume at
-task P4.4 in `docs/tasks.md`. Deferred items: matching UI, pattern type
-existence guard, blueprint-to-assessment quotas, worker drift check, publish-
-dialog 0-question guard.
+**What landed (this checkpoint, `fix(attempts): grade MCQ choice ids by
+equality, not UUID`):**
+
+4. **P4.4 MCQ choice-id UUID guard removed (root cause)** — grading
+   (`attempts.grade.ts` `gradeAnswer`) and answer validation
+   (`attempts.service.ts` `validateAnswer`) both demanded `isUuid(choiceId)`,
+   so any MCQ whose choice ids are not UUIDs (create accepts 1..64 char
+   strings) 400'd on every answer and graded every submission as incorrect.
+   The seed masks this by remapping ids to UUIDs at insert. Fixed where all
+   callers route through: plain non-empty-string equality — choice ids only
+   need to match within the question's own payload. Practice grades through
+   the same `gradeAnswer`, so its path was fixed by the same edit. Dead
+   `isUuid` helpers removed from both files.
+5. **P4.12 Publish-dialog 0-question guard** — dialog invited publishing an
+   empty assessment (API 400s; 0-question PUBLISHED is also a dead end since
+   addQuestions is DRAFT-only). Publish button now disabled when no questions.
+
+**Deferred (tracked in `docs/tasks.md`, markers `[-]`):** P4.5 MATCHING
+attempt/practice UI, P4.7 pattern question-type existence guard (input-only
+corner), P4.8 blueprint-to-assessment quotas, P4.9 worker type/format drift
+check, P4.10 legacy `answerFormat ?? questionType` fallback, P4.11 post-publish
+integrity re-check, and P2.5 confirmed-syllabus amend/reopen (user decision).
+
+**Roadmap now above (Phase 27) is DONE** — next: P5 Rich educational content.
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 

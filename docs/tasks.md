@@ -106,8 +106,8 @@ Audit complete (2026-09-12, explore agents): question types are data-driven
 (`question_types` rows, 6 answer formats, 11 predefined codes); MCQ/TF/FIB
 manual-create is solid; worker formats payloads per LLM-emitted type. Twelve
 defects found; four of the highest-severity landed in one commit; the rest are
-tracked below as deferred product decisions. **In progress — session stopped
-mid-P4 at user request; resume at P4.4.**
+tracked below as deferred product decisions. **P4 complete — P4.1–4 plus
+P4.12 landed; P4.5–P4.11 deferred (see markers).**
 
 - [x] P4.1 Question edit dialog: was CRASHING on TEXT/MATCHING/NUMERICAL
       payloads (unconditional `acceptableAnswers.map`) and silently
@@ -122,19 +122,22 @@ mid-P4 at user request; resume at P4.4.**
 - [x] P4.3 Bank stats inflation: `getBankStats` counted all rows incl.
       ARCHIVED/REJECTED, while deficit math counts ACTIVE+APPROVED. Stats
       now filter `status=ACTIVE`
-- [~] P4.4 MCQ choice-id UUID requirement: create accepts any string id
-      (1..64), grading/answer-validation demand `isUuid` → non-UUID MCQs
-      400 on every answer (seed hides this by remapping to UUID). SITES
-      IDENTIFIED: `attempts.grade.ts:36`, `attempts.service.ts:81`;
-      practice path untraced. **NOT YET EDITED** — resume here: relax the
-      shared checks to non-empty string (ids only need to match within the
-      question's own payload)
+- [x] P4.4 MCQ choice-id UUID requirement: create accepts any string id
+      (1..64), grading/answer-validation demanded `isUuid` → non-UUID MCQs
+      400 on every answer (seed hides this by remapping to UUID). Fixed at
+      root: `attempts.grade.ts` `gradeAnswer` and `attempts.service.ts`
+      `validateAnswer` now compare by plain non-empty string equality —
+      ids only need to match within the question's own payload. Practice
+      routes through the SAME `gradeAnswer`, fixed by the one shared edit.
+      Dead `isUuid` helpers removed. Verified: `grade-mcq.test.ts` (2 pass
+      UUID + legacy), typecheck 10/10, lint 9/9, web build
 - [-] P4.5 MATCHING-format questions unanswerable in exam attempt + practice
       (no renderer; wrong submit shape; validateAnswer requires matches
       map) — needs a matching UI component; product decision deferred
 - [x] P4.6 ~~Section totalMarks persisted~~ — DONE as part of P4.2
 - [-] P4.7 No question-type existence check on pattern structures (freeform
-      questionType string) — guard deferred
+      questionType string) — guard deferred (input-only corner; demo uses
+      only valid types; revisit if freeform types ship)
 - [-] P4.8 Blueprint composition not carried into assessments (question
       set + marks fully manual) — product decision deferred
 - [-] P4.9 Worker stores LLM-emitted type/format pairs without cross-check
@@ -143,8 +146,9 @@ mid-P4 at user request; resume at P4.4.**
       code==format (pre-answer_format custom rows) — deferred
 - [-] P4.11 Post-publish question integrity not re-checked at attempt start
       (archived-after-publish still served) — snapshot design, deferred
-- [-] P4.12 Publish dialog allows 0 questions but API 400s — tiny web guard,
-      deferred
+- [x] P4.12 Publish dialog allowed 0 questions while the API 400s (and a
+      0-question PUBLISHED assessment is a dead end — addQuestions is
+      DRAFT-only). Publish button now disabled when `questions.length === 0`
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 

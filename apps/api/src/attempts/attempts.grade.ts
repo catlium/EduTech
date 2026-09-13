@@ -3,10 +3,6 @@ interface GradedAnswer {
   correctAnswer: Record<string, unknown>;
 }
 
-function isUuid(v: unknown): boolean {
-  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
-}
-
 function normalizeBlank(value: unknown): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
@@ -33,7 +29,10 @@ export function gradeAnswer(
   if (fmt === 'MCQ') {
     const correctChoiceId = (payload as { correctChoiceId?: string })['correctChoiceId'];
     const choiceId = a['choiceId'];
-    return { isCorrect: isUuid(choiceId) && choiceId === correctChoiceId, correctAnswer: { choiceId: correctChoiceId } };
+    return {
+      isCorrect: typeof choiceId === 'string' && choiceId.length > 0 && choiceId === correctChoiceId,
+      correctAnswer: { choiceId: correctChoiceId },
+    };
   }
   if (fmt === 'TRUE_FALSE') {
     const correctValue = (payload as { correctAnswer?: boolean })['correctAnswer'];

@@ -29,10 +29,6 @@ type AttemptRow = typeof attempts.$inferSelect;
 // db or a transaction handle — both expose the same query builders.
 type Queryable = Pick<Database, 'select' | 'update' | 'insert'>;
 
-function isUuid(v: unknown): boolean {
-  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
-}
-
 @Injectable()
 export class AttemptsService {
   constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
@@ -78,7 +74,7 @@ export class AttemptsService {
     const a = answer as Record<string, unknown>;
     if (fmt === 'MCQ') {
       const choiceId = a['choiceId'];
-      if (!isUuid(choiceId)) {
+      if (typeof choiceId !== 'string' || choiceId.length === 0) {
         throw new BadRequestException('MCQ answer must include a choiceId');
       }
       const choices = ((payload as { choices?: Array<{ id?: string }> })['choices'] ?? []) as Array<{

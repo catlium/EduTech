@@ -189,6 +189,24 @@ autonomously"); P1.5 items below.
   - Expected: `total` = only ACTIVE questions; `usable` = ACTIVE+APPROVED;
     the same numbers drive the generation deficit banner.
 
+- **MCQ with non-UUID choice ids now answers + grades correctly** — `[x]`
+  2026-09-13 code-level (`grade-mcq.test.ts` 2/2 pass: string equality grading,
+  incl. legacy no-answerFormat path; typecheck/lint/build pass); browser
+  pending (web image predates change)
+  - Setup: dev stack; a MCQ question whose choices carry non-UUID ids (e.g.
+    "A"/"B"), e.g. created via the bank panel or a raw POST to the questions
+    endpoint.
+  - Endpoint: `POST /api/v1/attempts` (exam) and the practice submit endpoint;
+    payload per question: `{"choiceId":"A"}`.
+  - Expected: answer accepted (no 400 "must include a choiceId"); selecting the
+    correct choice grades `isCorrect: true`.
+
+- **Publish button disabled for 0-question assessment** — `[x]` 2026-09-13
+  code-level; browser pending (web image predates change)
+  - Setup: dev stack; a DRAFT assessment with no questions.
+  - Expected: the Publish action button is disabled (tooltip/state change), so
+    the API 400 dead end is unreachable from the UI.
+
 ---
 
 ## Phase 23 — Reusable AI Content & Question Bank (2026-09-11)
