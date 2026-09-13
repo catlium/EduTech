@@ -185,8 +185,17 @@ export class MaterialsService {
     instituteId: string,
     userId: string,
     materialId: string,
-    input: { title?: string; description?: string },
+    input: {
+      title?: string;
+      description?: string;
+      text?: string;
+      subjectId?: string;
+      chapterId?: string;
+      topicId?: string;
+    },
   ) {
+    const current = await this.assertMaterialExists(instituteId, materialId);
+
     const updates: Record<string, unknown> = {
       updatedBy: userId,
       updatedAt: new Date(),
@@ -194,6 +203,47 @@ export class MaterialsService {
 
     if (input.title !== undefined) updates['title'] = input.title;
     if (input.description !== undefined) updates['description'] = input.description;
+
+    // Replacing source text is only meaningful for TEXT materials (UPLOAD
+    // materials get a new file, which the product does not support as an
+    // in-place source update yet). This is a content change → revision bump.
+    let contentChanged = false;
+    if (input.text !== undefined) {
+      if (current.sourceType !== 'TEXT') {
+        throw new BadRequestException(
+          'Source text can only be replaced on TEXT materials; upload a new file instead',
+        );
+      }
+      if (input.text !== current.textContent) {
+        updates['textContent'] = input.text;
+        contentChanged = true;
+      }
+    }
+
+    // Scope is part of the instructional context; changing it bumps the
+    // revision so resources generated under the previous scope go stale.
+    const scopeProvided =
+      input.subjectId !== undefined || input.chapterId !== undefined || input.topicId !== undefined;
+    if (scopeProvided) {
+      const chain = await resolveScopeChain(
+        { db: this.db, instituteId, requireSubject: true },
+        { subjectId: input.subjectId, chapterId: input.chapterId, topicId: input.topicId },
+      );
+      if (
+        chain.subjectId !== current.subjectId ||
+        chain.chapterId !== current.chapterId ||
+        chain.topicId !== current.topicId
+      ) {
+        updates['subjectId'] = chain.subjectId;
+        updates['chapterId'] = chain.chapterId;
+        updates['topicId'] = chain.topicId;
+        contentChanged = true;
+      }
+    }
+
+    if (contentChanged) {
+      updates['revision'] = current.revision + 1;
+    }
 
     const [updated] = await this.db
       .update(materials)
