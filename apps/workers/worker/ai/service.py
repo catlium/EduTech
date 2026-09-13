@@ -30,6 +30,7 @@ from pydantic import BaseModel, ValidationError
 from worker import db
 from worker.ai import generation, schemas
 from worker.ai.chunking import chunk_text
+from worker.ai.generation.coverage import COVERAGE_CONTRACT
 from worker.ai.provider import create_provider
 from worker.config import settings
 
@@ -56,6 +57,10 @@ MAX_BANK_TOTAL = 200
 
 class GenerationError(Exception):
     """Carries a safe, user-facing error message for the failed job."""
+
+
+class GenerationCancelledError(Exception):
+    """Raised when a job was cancelled; never recorded as a job failure."""
 
 
 def _ordered_unique(items: list[str]) -> list[str]:
@@ -152,11 +157,7 @@ def _aggregate_cornell(results: list[dict[str, Any]], _limit: int | None = None)
                 continue
             seen.add(key)
             sections.append(section)
-    summaries = [
-        r["summary"].strip()
-        for r in results
-        if (r.get("summary") or "").strip()
-    ]
+    summaries = [r["summary"].strip() for r in results if (r.get("summary") or "").strip()]
     return {"title": title, "sections": sections, "summary": "\n\n".join(summaries) or None}
 
 
@@ -379,11 +380,22 @@ def _aggregate(operation: Operation, outputs: list[dict[str, Any]]) -> dict[str,
 
 
 def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
+    # Cancellation is checked before any work: a queued job cancelled by the
+    # teacher must never start, and a job already marked `cancelling` settles to
+    # `cancelled` without producing a derived resource.
+    initial_status = db.get_job_status(job_id)
+    if initial_status in ("cancelled", "cancelling"):
+        if initial_status == "cancelling":
+            db.mark_job_cancelled(job_id)
+        logger.info("Skipping cancelled job: job=%s", job_id)
+        return
+
     db.update_job_status(job_id, "processing")
     try:
         operation, source = _validate_payload(payload)
         materials = _resolve_materials(institute_id, source)
         chunks, context_meta = _build_context_chunks(materials)
+        _check_cancelled(job_id)
 
         if operation.operation == QA_OPERATION:
             _generate_questions(
@@ -411,12 +423,15 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
 
         provider = create_provider()
         outputs: list[dict[str, Any]] = []
+        label = _source_label(source, materials, institute_id)
         for index, chunk in enumerate(chunks):
-            label = _part_label(_source_label(source, materials), chunks, index)
-            raw = provider.complete(operation.build_messages(chunk, label))
+            _check_cancelled(job_id)
+            part = _part_label(label, chunks, index)
+            raw = provider.complete(operation.build_messages(chunk, part))
             outputs.append(_validate_output(operation, raw))
 
         output = outputs[0] if len(outputs) == 1 else _aggregate(operation, outputs)
+        _check_cancelled(job_id)
         content_id = _persist(
             institute_id, job_id, operation, source, materials, context_meta, output
         )
@@ -438,6 +453,8 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
             content_id,
             context_meta["chunkCount"],
         )
+    except GenerationCancelledError:
+        logger.info("Generation cancelled: job=%s", job_id)
     except Exception as exc:
         _fail(job_id, exc)
 
@@ -497,7 +514,8 @@ def _generate_questions(
     provider = create_provider()
     outputs: list[dict[str, Any]] = []
     for index, chunk in enumerate(chunks):
-        label = _part_label(_source_label(source, materials), chunks, index)
+        _check_cancelled(job_id)
+        label = _part_label(_source_label(source, materials, institute_id), chunks, index)
         raw = provider.complete(
             operation.build_messages(
                 chunk,
@@ -516,6 +534,7 @@ def _generate_questions(
     ).model_dump()
     scope = _resolve_scope(institute_id, source, materials)
     provenance = _build_question_provenance(job_id, source, materials, context_meta)
+    _check_cancelled(job_id)
     question_ids = db.insert_generated_questions(
         institute_id,
         questions=aggregated["questions"],
@@ -592,7 +611,8 @@ def _generate_bank_questions(
     provider = create_provider()
     outputs: list[dict[str, Any]] = []
     for index, chunk in enumerate(chunks):
-        label = _part_label(_source_label(source, materials), chunks, index)
+        _check_cancelled(job_id)
+        label = _part_label(_source_label(source, materials, institute_id), chunks, index)
         raw = provider.complete(
             generation.questions.build_bank_messages(
                 chunk,
@@ -634,6 +654,7 @@ def _generate_bank_questions(
 
     scope = _resolve_scope(institute_id, source, materials)
     provenance = _build_question_provenance(job_id, source, materials, context_meta)
+    _check_cancelled(job_id)
     question_ids = db.insert_generated_questions(
         institute_id,
         questions=selected,
@@ -717,7 +738,8 @@ def _generate_content_package(
     per_type_chunks: dict[ContentTypeName, list[dict[str, Any]]] = {t: [] for t in types}
 
     for index, chunk in enumerate(chunks):
-        label = _part_label(_source_label(source, materials), chunks, index)
+        _check_cancelled(job_id)
+        label = _part_label(_source_label(source, materials, institute_id), chunks, index)
         raw = provider.complete(operation.build_messages(chunk, label, types=types))
         try:
             parsed = operation.parse(raw)
@@ -748,11 +770,7 @@ def _generate_content_package(
         "sourceChars": context_meta["totalChars"],
         "chunkCount": context_meta["chunkCount"],
     }
-    source_reference: dict[str, Any] = {
-        "type": source["type"],
-        "id": source["id"],
-        "materialIds": [str(m["id"]) for m in materials],
-    }
+    source_reference = _source_reference(source, materials)
 
     content_ids: dict[str, str] = {}
     for t in types:
@@ -765,6 +783,7 @@ def _generate_content_package(
         title = validated.get("title") or f"AI-generated {t.replace('_', ' ').lower()}"
         if len(title) > 255:
             title = title[:255]
+        _check_cancelled(job_id)
         content_id = db.insert_ai_content(
             institute_id,
             content_type=content_type_name,
@@ -836,13 +855,15 @@ def _generate_syllabus(
     provider = create_provider()
     outputs: list[dict[str, Any]] = []
     for index, chunk in enumerate(chunks):
-        label = _part_label(_source_label(source, materials), chunks, index)
+        _check_cancelled(job_id)
+        label = _part_label(_source_label(source, materials, institute_id), chunks, index)
         raw = provider.complete(operation.build_messages(chunk, label))
         outputs.append(_validate_output(operation, raw))
 
     assert operation.aggregate is not None
     aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
 
+    _check_cancelled(job_id)
     proposal_id = db.upsert_syllabus_proposal(
         institute_id,
         subject_id=subject_id,
@@ -900,13 +921,18 @@ def _generate_blueprint(
     provider = create_provider()
     outputs: list[dict[str, Any]] = []
     for index, chunk in enumerate(chunks):
-        label = _part_label(_source_label(source, materials), chunks, index)
+        _check_cancelled(job_id)
+        # Blueprint analysis is not coverage-bound: it analyses a paper pattern.
+        label = _part_label(
+            _source_label(source, materials, institute_id), chunks, index, coverage=False
+        )
         raw = provider.complete(operation.build_messages(chunk, label))
         outputs.append(_validate_output(operation, raw))
 
     assert operation.aggregate is not None
     aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
 
+    _check_cancelled(job_id)
     db.save_blueprint_analysis(
         pattern_id=pattern_id,
         structure=aggregated,
@@ -980,10 +1006,11 @@ def _compute_blueprint_satisfaction(
     }
 
 
-def _part_label(base: str, chunks: list[str], index: int) -> str:
-    if len(chunks) <= 1:
-        return base
-    return f"{base} (part {index + 1} of {len(chunks)})"
+def _part_label(base: str, chunks: list[str], index: int, *, coverage: bool = True) -> str:
+    label = base if len(chunks) <= 1 else f"{base} (part {index + 1} of {len(chunks)})"
+    if coverage:
+        label = f"{label}\n\n{COVERAGE_CONTRACT}"
+    return label
 
 
 def _fail(job_id: str, exc: Exception) -> None:
@@ -1113,17 +1140,60 @@ def _build_context_chunks(materials: list[dict[str, Any]]) -> tuple[list[str], d
     return chunks, meta
 
 
-def _source_label(source: dict[str, str], materials: list[dict[str, Any]]) -> str:
+def _source_label(
+    source: dict[str, str], materials: list[dict[str, Any]], institute_id: str
+) -> str:
+    """Describe the generation source, including the academic boundary.
+
+    The academic scope (subject → chapter → topic) is passed to the model as
+    context so it stays inside the syllabus boundary — never as a licence to
+    expand generation beyond the material.
+    """
     if source["type"] == "MATERIAL":
         title = materials[0].get("title") or "material"
-        return f"material: {title}"
-    if source["type"] == "TOPIC":
-        return f"topic ({source['id']})"
-    if source["type"] == "CHAPTER":
-        return f"chapter ({source['id']})"
-    if source["type"] == "SUBJECT":
-        return f"subject ({source['id']})"
-    return source["type"]
+        material = materials[0]
+        names = db.get_scope_names(
+            institute_id,
+            subject_id=material.get("subject_id"),
+            chapter_id=material.get("chapter_id"),
+            topic_id=material.get("topic_id"),
+        )
+        base = f"material: {title}"
+    else:
+        base = f"{source['type'].lower()} ({source['id']})"
+        chain: dict[str, str | None] = {}
+        if source["type"] == "TOPIC":
+            chain = db.get_scope_chain("TOPIC", source["id"], institute_id)
+        elif source["type"] == "CHAPTER":
+            chain = db.get_scope_chain("CHAPTER", source["id"], institute_id)
+        names = db.get_scope_names(
+            institute_id,
+            subject_id=chain.get("subjectId")
+            or (source["id"] if source["type"] == "SUBJECT" else None),
+            chapter_id=chain.get("chapterId"),
+            topic_id=chain.get("topicId"),
+        )
+
+    scope = " → ".join(
+        name for name in (names.get("subject"), names.get("chapter"), names.get("topic")) if name
+    )
+    return f"{base} (academic scope: {scope})" if scope else base
+
+
+def _check_cancelled(job_id: str) -> None:
+    """Honour teacher cancellation between steps.
+
+    A ``cancelling`` job settles to ``cancelled`` without persisting a derived
+    resource; an already-``cancelled`` job is left untouched. The worker never
+    claims an in-flight provider request can be physically terminated — it
+    checks at chunk boundaries and before persistence.
+    """
+    status = db.get_job_status(job_id)
+    if status == "cancelling":
+        db.mark_job_cancelled(job_id)
+        raise GenerationCancelledError()
+    if status == "cancelled":
+        raise GenerationCancelledError()
 
 
 def _validate_output(operation: Operation, raw: str) -> dict[str, Any]:
@@ -1157,6 +1227,25 @@ def _resolve_scope(
     }
 
 
+def _source_reference(source: dict[str, str], materials: list[dict[str, Any]]) -> dict[str, Any]:
+    """Provenance with the source revision(s) captured at generation time.
+
+    ``revision`` is the single material's revision for MATERIAL sources;
+    ``revisions`` maps every contributing material id to its revision for any
+    source type. Material Detail compares these against the material's current
+    revision to decide staleness deterministically.
+    """
+    reference: dict[str, Any] = {
+        "type": source["type"],
+        "id": source["id"],
+        "materialIds": [str(m["id"]) for m in materials],
+        "revisions": {str(m["id"]): m.get("revision") for m in materials},
+    }
+    if source["type"] == "MATERIAL" and len(materials) == 1:
+        reference["revision"] = materials[0].get("revision")
+    return reference
+
+
 def _persist(
     institute_id: str,
     job_id: str,
@@ -1172,11 +1261,7 @@ def _persist(
     if len(title) > 255:
         title = title[:255]
 
-    source_reference = {
-        "type": source["type"],
-        "id": source["id"],
-        "materialIds": [str(m["id"]) for m in materials],
-    }
+    source_reference = _source_reference(source, materials)
 
     ai_context = {
         "operation": operation.operation,

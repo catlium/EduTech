@@ -35,6 +35,11 @@ SYSTEM_PROMPT = (
     'The "blocks" array must contain at least one block, and every block needs a '
     'unique "id".\n'
     "Guidance:\n"
+    "- Be a good teacher, not a textbook: open with the core idea, build "
+    "understanding in a sensible order, lead with concrete examples over bare "
+    "definitions, and make every block traceable to the source. Clarity and "
+    "focus beat coverage count — a shorter note that explains well is better "
+    "than a long one that lists terms.\n"
     "- Use structured visual blocks ONLY when they genuinely improve understanding: "
     "process -> flowchart diagram, comparison -> table, numerical/data concept -> "
     "chart, relationships -> concept_map, historical progression -> timeline, "

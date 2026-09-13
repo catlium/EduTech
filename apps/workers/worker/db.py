@@ -35,9 +35,7 @@ def get_subject(subject_id: str, institute_id: str) -> dict[str, Any] | None:
         ).fetchone()
 
 
-def get_scope_chain(
-    source_type: str, source_id: str, institute_id: str
-) -> dict[str, str | None]:
+def get_scope_chain(source_type: str, source_id: str, institute_id: str) -> dict[str, str | None]:
     """Resolve a source's full academic chain (topic/chapter/subject).
 
     The scope_chain DB checks require topic -> chapter + subject and
@@ -129,6 +127,58 @@ def update_material_ready(material_id: str, text_content: str) -> None:
             " WHERE id = %s",
             (text_content, _now(), material_id),
         )
+
+
+def get_job_status(job_id: str) -> str | None:
+    """Current job status, or None when the row is gone.
+
+    Read by the AI worker to honour cancellation: the API sets ``cancelling``
+    while a job is running and ``cancelled`` for a queued job.
+    """
+    with psycopg.connect(settings.database_url) as conn:
+        row = conn.execute("SELECT status FROM jobs WHERE id = %s", (job_id,)).fetchone()
+    return str(row[0]) if row is not None else None
+
+
+def mark_job_cancelled(job_id: str) -> None:
+    """Terminal cancellation transition owned by the worker (or the API)."""
+    now = _now()
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE jobs SET status = 'cancelled', completed_at = %s, updated_at = %s"
+            " WHERE id = %s",
+            (now, now, job_id),
+        )
+
+
+def get_scope_names(
+    institute_id: str,
+    *,
+    subject_id: str | None = None,
+    chapter_id: str | None = None,
+    topic_id: str | None = None,
+) -> dict[str, str | None]:
+    """Resolve academic-scope display names for prompt context (best-effort).
+
+    Returns ``{"subject": ..., "chapter": ..., "topic": ...}`` with None for
+    any id not supplied or not found. Used to give generators the academic
+    boundary, never to expand generation beyond the source.
+    """
+    names: dict[str, str | None] = {"subject": None, "chapter": None, "topic": None}
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        if subject_id:
+            row = conn.execute(
+                "SELECT name FROM subjects WHERE id = %s AND institute_id = %s",
+                (subject_id, institute_id),
+            ).fetchone()
+            names["subject"] = row["name"] if row else None
+        if chapter_id:
+            row = conn.execute("SELECT name FROM chapters WHERE id = %s", (chapter_id,)).fetchone()
+            names["chapter"] = row["name"] if row else None
+        if topic_id:
+            row = conn.execute("SELECT name FROM topics WHERE id = %s", (topic_id,)).fetchone()
+            names["topic"] = row["name"] if row else None
+    return names
 
 
 def update_job_status(
