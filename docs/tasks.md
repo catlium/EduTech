@@ -60,10 +60,10 @@ Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
 
 ### Goal: P15/P16/P17 Validation & Checkpoints
 
-- [ ] P15.1 Unit/live validation incl. Phase 27/28 regression
-- [ ] P16.1 Docs: planning, tasks, project-status, architecture, API docs,
-      user-validation
-- [ ] P17.1 Coherent commits + push + final report
+- [x] P15.1 Unit/live validation incl. Phase 27/28 regression
+- [x] P16.1 Docs: planning, tasks, project-status, architecture, API docs
+      (user-validation intentionally skipped this phase — directive)
+- [~] P17.1 Coherent commits + push + final report
 
 ## Phase 28 — Source Coverage, Resource Integrity & Controlled Generation (2026-09-13)
 

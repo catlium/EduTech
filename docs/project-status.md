@@ -1,5 +1,87 @@
 # Project Status
 
+## Phase 29 — Syllabus, Academic Scope, Resource Quality & Auth (2026-09-13)
+
+**Goal:** teach-only scope for AI syllabus generation (P1–P6), enriched formula
+blocks (P7), export visual redesign with headers/footers/page numbers (P8/P9),
+web auth-refresh resilience (P10), material provenance UI (P11), coverage-bound
+prompts docs (P12), and an NEP-2020 demo curriculum replacing the generic
+Mathematics/Physics demo data with deterministic cleanup (P13).
+
+Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
+
+**Status: COMPLETE** — P1–P6 committed as `1a06472`; P7–P13 committed as
+`4e85f72`. Remaining: live starter-material E2E deferred (AI provider flaky,
+see Known Issues), final push.
+
+### Completed
+
+- **P1–P3 "Teach only the given topic"** — AI syllabus generation is scope-bound
+  to exactly the subject; no adjacent-domain enrichment.
+- **P4–P6 Starter material generation** — canonical syllabus-topic starter
+  material with `GENERATED` sourceType, revision bump on in-place regeneration,
+  insert/regenerate rev bump fixed (UUID→`str()` provenance casts in
+  `worker/db.py`), SQL smoke validated rev 1→2 against Postgres.
+- **P7 Formula block enrichment** — contract/worker schema + note/package
+  prompts + web renderer (title, monospaced content, variables table,
+  explanation, example, italic note).
+- **P8/P9 Export redesign** — enriched formula fields mapped into `DocBlock`
+  (malformed variables dropped); PDF = A4 + margin 56 + per-page title header +
+  "Page x of y" footer (`bufferPages`/`pageAdded`/`bufferedPageRange`), DOCX =
+  per-section header/footer with `SimpleField('PAGE'/'NUMPAGES')` page numbers
+  (docx-v9 `PageNumber` typing workaround) + title + leading page break;
+  Devanagari font + `sanitizePdfText` preserved.
+- **P10 Auth refresh** — CSRF cookie lifetime raised to the refresh-session
+  30 days; web client single-flight `refreshSession()` with 401→refresh→retry
+  (exempting `/auth/refresh`), final-401 `catlium:unauthorized` dispatch;
+  `downloadFile` same pattern.
+- **P11** starter-material provenance badge (via `sourceType === 'GENERATED'`,
+  no contract change needed); **P12** coverage rule documented in
+  `docs/api/ai.md`.
+- **P13 NEP-2020 demo seed** — demo curriculum replaced with 4 B.Sc. CS
+  subjects (AI, Cyber & Information Security, IKS in Computational System,
+  Software Testing & QA) incl. chapters/topics, syllabus + reading materials,
+  approved questions, approved paper pattern, and an active assessment per
+  subject; deterministic demo-tier cleanup removes phased-out
+  Mathematics/Physics (and their attempts/practice sessions/assessments/
+  patterns/content) scoped to the demo institute.
+
+### Validation
+
+- Unit: API typecheck 10/10, lint 9/9, export tests 6 pass; worker ruff check +
+  format + mypy clean, pytest 29 passed; contracts/database typecheck clean.
+- Live: `auth_e2e.sh` PASS=14 FAIL=0 (refresh rotation, logout revocation,
+  memberships, guards — P10 surface); seed regression: 4 NEP-2020 subjects
+  present + `mathematics`/`physics` absent via live API.
+
+### Known Issues / Deferred
+
+- **Live starter-material E2E deferred** per directive — real provider flaky:
+  worker `httpx` 60s timeout collides with OmniRoute's 60s hedge
+  (`hedge-cancelled`/`client_disconnect`); direct requests succeed in ~26–42s.
+  `WORKER_AI_TIMEOUT_SECONDS` knob exists (`worker/config.py ai_timeout_seconds`,
+  currently set to 300 on the worker-ai container). **User action needed:**
+  OmniRoute Gemini fallback model names 404 on the configured key — update to
+  `gemini-3.5-flash-lite` / `gemini-3.6-flash`.
+- Pre-existing: worker-ai crashes on RabbitMQ connection reset
+  (`BlockingConnection.close... called on closed connection`) — observed,
+  unfixed, out of scope.
+- Demo institute contains stray manual-test subjects (e.g. `mathematics-minor`,
+  `botany`, `test`) left from prior sessions — untouched by the phased-out
+  cleanup, harmless.
+- `docs/user-validation.md` intentionally not updated this phase (directive).
+
+### Checkpoints
+
+| Commit | Scope |
+| --- | --- |
+| `1a06472` | P1–P6 starter material generation, canonical scope, docs |
+| `4e85f72` | P7–P13 formula + export + auth refresh + NEP-2020 seed |
+
+**Exact recommended next task:** fix OmniRoute Gemini model names, restore the
+AI provider, then run `scripts/e2e/demo_e2e.sh` for the deferred live
+starter-material validation; then `git push`.
+
 ## Phase 28 — Source Coverage, Resource Integrity & Controlled Generation (2026-09-13)
 
 **Goal:** make material-derived learning resources coverage-bound (source-first,
