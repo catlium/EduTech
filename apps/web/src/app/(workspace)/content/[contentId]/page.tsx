@@ -143,9 +143,11 @@ export default function ContentDetailPage() {
             <div className="flex gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" disabled={content.status !== 'ACTIVE'}>
-                    <Download className="mr-1 size-3.5" /> Export
-                  </Button>
+                  <span title={content.status !== 'ACTIVE' ? 'Export is available once this content is activated' : undefined}>
+                <Button size="sm" variant="outline" disabled={content.status !== 'ACTIVE'}>
+                  <Download className="mr-1 size-3.5" /> Export
+                </Button>
+              </span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => exportContent('pdf', content.title)}>PDF</DropdownMenuItem>

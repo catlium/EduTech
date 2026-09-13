@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronRight, ChevronDown, Plus, FileText, Circle } from 'lucide-react';
 
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import { StatusBadge } from './status-badge';
 import type { ChapterResponse, TopicResponse } from '@catlium/contracts';
 
@@ -99,8 +100,8 @@ function ChapterItem({
       );
       setTopics((prev) => [...prev, topic]);
       setNewTopicName('');
-    } catch {
-      /* toast handled by caller or leave silent */
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to add topic');
     } finally {
       setAdding(false);
     }

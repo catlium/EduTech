@@ -36,7 +36,7 @@ import type {
   AssessmentListItem,
 } from "@catlium/contracts";
 
-const PROCESSING_STATUSES = new Set(["UPLOADED", "QUEUED", "PROCESSING", "FAILED"]);
+const PROCESSING_STATUSES = new Set(["UPLOADED", "QUEUED", "PROCESSING"]);
 
 export default function DashboardPage() {
   const { institute } = useTenant();

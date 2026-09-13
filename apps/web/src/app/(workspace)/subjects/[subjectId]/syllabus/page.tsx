@@ -677,7 +677,7 @@ export default function SyllabusPage() {
         <Button size="sm" variant="outline" disabled={saving || !dirty} onClick={() => void onSave()}>
           {saving ? "Saving..." : "Save draft"}
         </Button>
-        <Button size="sm" disabled={confirming || saving} onClick={() => setShowConfirmDialog(true)}>
+        <Button size="sm" disabled={confirming || saving || dirty} onClick={() => setShowConfirmDialog(true)}>
           Confirm &amp; Create
         </Button>
       </div>

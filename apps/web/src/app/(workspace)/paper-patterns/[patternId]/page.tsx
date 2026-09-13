@@ -606,7 +606,13 @@ export default function PatternBuilderPage() {
               </Badge>
             )}
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="relative space-y-4">
+            {readOnly && (
+              <div
+                className="absolute inset-0 z-10 cursor-not-allowed bg-background/40"
+                aria-hidden="true"
+              />
+            )}
             {sections.length === 0 && !pattern.structure && !structureLoaded && (
               <EmptyState
                 title="No blueprint yet"

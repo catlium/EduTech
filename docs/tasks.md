@@ -199,6 +199,30 @@ P4.12 landed; P4.5–P4.11 deferred (see markers).**
       numbers/headers, real Word list numbering config, question paper with
       answer key toggle (`?answers=` product decision)
 
+### Goal: P7 Product Polish
+
+Audit (explore agent, 2026-09-13): 8 user-facing defects ranked by impact;
+all fixed below.
+
+- [x] P7.1 Syllabus data-loss trap: "Confirm & Create" stayed enabled with
+      unsaved edits — the API commits the STORED structure while the dialog
+      shows local counts. Now disabled while `dirty` (save draft first)
+- [x] P7.2 Approved paper pattern: read-only banner, but the whole blueprint
+      editor stayed interactive with no save path (edits silently discarded).
+      Now locked behind a click-blocking overlay
+- [x] P7.3 Generate/Regenerate buttons on non-ACTIVE materials always failed
+      (API "Material is not active"). `ready` now also requires
+      `material.status === "ACTIVE"`
+- [x] P7.4 Toast pointed at a nonexistent "/jobs" page — reworded
+- [x] P7.5 Content Export button disabled with no explanation on DRAFT items —
+      tooltip added
+- [x] P7.6 REJECTED questions offered "Activate" (would fabricate an
+      ACTIVE+REJECTED state; API only offers APPROVED/REJECTED). Now offers
+      "Approve" (the review action) instead
+- [x] P7.7 Dashboard counted FAILED materials as "Processing activity" —
+      removed FAILED from the set
+- [x] P7.8 addTopic failure was fully silent — toast.error added
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`

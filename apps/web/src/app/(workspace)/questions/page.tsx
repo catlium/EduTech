@@ -848,7 +848,9 @@ export default function QuestionsListPage() {
     } else if (q.approvalStatus === "APPROVED") {
       actions.push({ label: "Archive", icon: <Archive className="size-4" />, onClick: () => onArchive(q) });
     } else {
-      actions.push({ label: "Activate", icon: <CheckCircle2 className="size-4" />, onClick: () => onActivate(q) });
+      // REJECTED and not archived: re-[approve] via the review action rather
+      // than an Activate that would fabricate an active+rejected state.
+      actions.push({ label: "Approve", icon: <Check className="size-4" />, onClick: () => onApprove(q) });
     }
     actions.push({
       label: "Delete",

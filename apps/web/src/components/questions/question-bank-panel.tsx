@@ -464,7 +464,7 @@ export function QuestionBankPanel({
         toast.info("Nothing generated — the bank covers the requested buckets");
       } else {
         toast.success(
-          `Generation started for ${queued.map((r) => r.label).join(", ")} — check the Jobs page`,
+          `Generation started for ${queued.map((r) => r.label).join(", ")} — it completes in the background`,
         );
       }
       setDialogOpen(false);

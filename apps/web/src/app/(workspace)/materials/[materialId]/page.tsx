@@ -563,7 +563,7 @@ function GeneratedResources({
   onGenerate: (operation: string) => void;
   onGenerateAll: () => void;
 }) {
-  const ready = material.processingStatus === "READY";
+  const ready = material.processingStatus === "READY" && material.status === "ACTIVE";
   const generating = job.status === "running" || packageJob.status === "running";
   const router = useRouter();
 
