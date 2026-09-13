@@ -11,27 +11,27 @@ Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
 
 ### Goal: P2/P3 Syllabus decoupled + honest states
 
-- [ ] P2.1 Schema: syllabus_proposals `generation_job_id`, `generation_error`,
+- [x] P2.1 Schema: syllabus_proposals `generation_job_id`, `generation_error`,
       nullable `structure`; migration
-- [ ] P2.2 API: `generate` subject-based (source SUBJECT, material optional
+- [x] P2.2 API: `generate` subject-based (source SUBJECT, material optional
       enrichment); PROCESSING row creation; enqueue-failure → FAILED
-- [ ] P2.3 API: PATCH/confirm guarded to PENDING_REVIEW; toSyllabus exposes
+- [x] P2.3 API: PATCH/confirm guarded to PENDING_REVIEW; toSyllabus exposes
       new fields; contracts updated (status enum, nullable structure)
-- [ ] P2.4 Worker: `_generate_syllabus` subject-context (optional validated
+- [x] P2.4 Worker: `_generate_syllabus` subject-context (optional validated
       enrichment material); upsert writes PENDING_REVIEW + clears error;
       failure path writes FAILED
-- [ ] P2.5 Web: syllabus page subject-based generate, FAILED/PROCESSING states,
+- [x] P2.5 Web: syllabus page subject-based generate, FAILED/PROCESSING states,
       resume polling from `generationJobId`
 
 ### Goal: P4/P5/P6 Scope + Starter Material + Cornell
 
-- [ ] P4.1 Worker canonical scope resolver (`_resolve_scope` shared, never
+- [x] P4.1 Worker canonical scope resolver (`_resolve_scope` shared, never
       null subject for derived resources); API uses shared scope-chain util
-- [ ] P4.2 `AI_GENERATE_STARTER_MATERIAL` worker op + prompt + db writer
+- [x] P4.2 `AI_GENERATE_STARTER_MATERIAL` worker op + prompt + db writer
       (`GENERATED` material, metadata provenance) + job route/dedup
-- [ ] P4.3 API endpoint for starter material generation + contracts + web
+- [x] P4.3 API endpoint for starter material generation + contracts + web
       action (topic empty state)
-- [ ] P6.1 Cornell independent generate (package op ['cornell']) + web action
+- [x] P6.1 Cornell independent generate (package op ['cornell']) + web action
 
 ### Goal: P7/P8/P9 Formula + Export
 

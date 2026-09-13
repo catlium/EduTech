@@ -497,3 +497,139 @@ def fail_syllabus_proposal(generation_job_id: str, message: str) -> None:
             " updated_at = %s WHERE generation_job_id = %s AND status <> 'CONFIRMED'",
             (message, _now(), generation_job_id),
         )
+
+
+def get_scope_context(
+    institute_id: str,
+    *,
+    subject_id: str | None = None,
+    chapter_id: str | None = None,
+    topic_id: str | None = None,
+) -> dict[str, dict[str, str | None] | None]:
+    """Academic-scope context (names + descriptions) for a generation prompt.
+
+    Used by the topic-centric starter-material generator to bound what the
+    model writes; never an authority to broaden generation (the prompt states
+    the boundary). Missing rows yield ``None`` entries, never exceptions.
+    """
+    out: dict[str, dict[str, str | None] | None] = {
+        "subject": None,
+        "chapter": None,
+        "topic": None,
+    }
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        if subject_id:
+            row = conn.execute(
+                "SELECT name, description FROM subjects WHERE id = %s AND institute_id = %s",
+                (subject_id, institute_id),
+            ).fetchone()
+            if row is not None:
+                out["subject"] = {"name": row["name"], "description": row["description"]}
+        if chapter_id:
+            row = conn.execute(
+                "SELECT name, description FROM chapters WHERE id = %s",
+                (chapter_id,),
+            ).fetchone()
+            if row is not None:
+                out["chapter"] = {"name": row["name"], "description": row["description"]}
+        if topic_id:
+            row = conn.execute(
+                "SELECT name, description FROM topics WHERE id = %s",
+                (topic_id,),
+            ).fetchone()
+            if row is not None:
+                out["topic"] = {"name": row["name"], "description": row["description"]}
+    return out
+
+
+def get_syllabus_structure(subject_id: str) -> dict[str, Any] | None:
+    """The latest PENDING_REVIEW/CONFIRMED syllabus structure for a subject.
+
+    Gives the starter-material prompt the real syllabus boundary (chapter and
+    topic names) so the manuscript targets the topic without inventing a
+    wider curriculum.
+    """
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        row = conn.execute(
+            "SELECT structure FROM syllabus_proposals WHERE subject_id = %s"
+            " AND status IN ('PENDING_REVIEW', 'CONFIRMED')"
+            " ORDER BY updated_at DESC LIMIT 1",
+            (subject_id,),
+        ).fetchone()
+    return row.get("structure") if row is not None else None
+
+
+def upsert_starter_material(
+    institute_id: str,
+    *,
+    topic_id: str,
+    chapter_id: str,
+    subject_id: str,
+    title: str,
+    text: str,
+    generation_job_id: str,
+    created_by: str,
+    provenance_extra: dict[str, Any] | None = None,
+) -> tuple[str, int]:
+    """Insert or update a topic's GENERATED starter material (ACTIVE TEXT).
+
+    A starter is created once per topic (``source_type = 'GENERATED'`` with
+    metadata ``origin = 'syllabus-topic'``), then updated in place on
+    regeneration with a ``revision`` bump so derived resources become stale
+    (correct semantics). Provenance (origin, topic/chapter/subject ids, job,
+    model, generatedAt) is stored in ``metadata``.
+    """
+    provenance: dict[str, Any] = {
+        "origin": "syllabus-topic",
+        "topicId": str(topic_id),
+        "chapterId": str(chapter_id),
+        "subjectId": str(subject_id),
+        "jobId": generation_job_id,
+        **(provenance_extra or {}),
+    }
+    with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, revision FROM materials"
+            " WHERE institute_id = %s AND topic_id = %s AND source_type = 'GENERATED'"
+            "   AND status <> 'ARCHIVED'"
+            "   AND metadata->>'origin' = 'syllabus-topic'"
+            " ORDER BY created_at DESC LIMIT 1",
+            (institute_id, topic_id),
+        )
+        existing = cur.fetchone()
+        now = _now()
+        if existing is None:
+            cur.execute(
+                "INSERT INTO materials"
+                " (institute_id, subject_id, chapter_id, topic_id, title, material_type,"
+                "  source_type, text_content, processing_status, status, revision, metadata,"
+                "  created_by, updated_by, updated_at)"
+                " VALUES (%s, %s, %s, %s, %s, 'TEXT', 'GENERATED', %s, 'READY', 'ACTIVE', 1,"
+                "  %s, %s, %s, %s)"
+                " RETURNING id, revision",
+                (
+                    institute_id,
+                    subject_id,
+                    chapter_id,
+                    topic_id,
+                    title,
+                    text,
+                    Jsonb(provenance),
+                    created_by,
+                    created_by,
+                    now,
+                ),
+            )
+            row = cur.fetchone()
+        else:
+            cur.execute(
+                "UPDATE materials SET title = %s, text_content = %s, status = 'ACTIVE',"
+                " processing_status = 'READY', revision = revision + 1, metadata = %s,"
+                " updated_by = %s, updated_at = %s"
+                " WHERE id = %s RETURNING id, revision",
+                (title, text, Jsonb(provenance), created_by, now, existing[0]),
+            )
+            row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("starter material upsert returned no row")
+    return str(row[0]), int(row[1])

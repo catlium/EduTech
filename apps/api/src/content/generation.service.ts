@@ -37,6 +37,7 @@ import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
 
 const CONTENT_PACKAGE_OPERATION = 'AI_GENERATE_CONTENT_PACKAGE' as const;
+const STARTER_MATERIAL_OPERATION = 'AI_GENERATE_STARTER_MATERIAL' as const;
 
 // API content-type names (DTO/contract) → worker package keys (lowercase).
 const PACKAGE_TYPE_MAP: Record<string, string> = {
@@ -120,6 +121,47 @@ export class GenerationService {
       operation,
       sourceType,
       sourceId,
+      status: 'QUEUED',
+    };
+  }
+
+  async requestStarterMaterialGeneration(
+    instituteId: string,
+    userId: string,
+    topicId: string,
+  ): Promise<GenerateContentResponse> {
+    await this.assertTopicInInstitute(instituteId, topicId);
+
+    const payload = {
+      operation: STARTER_MATERIAL_OPERATION,
+      source: { type: 'TOPIC' as const, id: topicId },
+      requestedBy: userId,
+    };
+
+    let job: Job;
+    try {
+      job = await this.jobs.insertJob(instituteId, STARTER_MATERIAL_OPERATION, payload);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('A generation is already in progress for this source');
+      }
+      throw error;
+    }
+
+    try {
+      await this.jobs.publishJob(job);
+    } catch {
+      await this.jobs.updateJobStatus(job.id, 'failed', undefined, {
+        message: 'Failed to enqueue generation job',
+      });
+      throw new InternalServerErrorException('Failed to enqueue generation job');
+    }
+
+    return {
+      jobId: job.id,
+      operation: STARTER_MATERIAL_OPERATION,
+      sourceType: 'TOPIC',
+      sourceId: topicId,
       status: 'QUEUED',
     };
   }

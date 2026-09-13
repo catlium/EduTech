@@ -90,12 +90,14 @@ const JOB_STATUS_CHIP: Record<string, { label: string; tone: "ok" | "err" | "war
   cancelled: { label: "Cancelled", tone: "muted" },
 };
 
-// CORNELL_NOTE is generated only via the package operation (no single op).
+// CORNELL_NOTE has no single operation: it is generated via the package
+// operation restricted to ["cornell"], routed through /content/generate-batch.
 const TYPE_TO_OPERATION: Record<string, string | undefined> = {
   NOTE: "AI_GENERATE_NOTE",
   SUMMARY: "AI_GENERATE_SUMMARY",
   FLASHCARD_SET: "AI_GENERATE_FLASHCARDS",
   IMPORTANT_CONCEPTS: "AI_GENERATE_CONCEPTS",
+  CORNELL_NOTE: "CORNELL_NOTE",
 };
 
 function formatBytes(bytes: number): string {
@@ -196,21 +198,40 @@ export default function MaterialDetailPage() {
   async function startGenerate(operation: string) {
     setJob({ status: "running", jobId: "", operation });
     try {
-      const resp = await api<{ generation: { jobId: string; operation: string } }>(
-        "/content/generate",
-        {
+      let jobId = "";
+      if (operation === "CORNELL_NOTE") {
+        // Cornell is a one-type package run (no single operation exists).
+        const { batch } = await api<{ batch: GenerateBatchJobIds }>("/content/generate-batch", {
           method: "POST",
-          body: { operation, sourceType: "MATERIAL", sourceId: materialId },
-        },
-      );
-      const jobId = resp.generation.jobId;
+          body: { sourceType: "MATERIAL", sourceId: materialId, types: ["CORNELL_NOTE"] },
+        });
+        if (batch.jobIds.length === 0) {
+          setJob({ status: "error", message: "A Cornell note is already being generated" });
+          toast.info("Generated resources are already being generated");
+          return;
+        }
+        jobId = batch.jobIds[0]!;
+      } else {
+        const resp = await api<{ generation: { jobId: string; operation: string } }>(
+          "/content/generate",
+          {
+            method: "POST",
+            body: { operation, sourceType: "MATERIAL", sourceId: materialId },
+          },
+        );
+        jobId = resp.generation.jobId;
+      }
       setJob({ status: "running", jobId, operation });
       const done = await waitForJob(() =>
-        api<{ job: { status: string; result?: { contentId?: string } } }>(`/jobs/${jobId}`),
+        api<{ job: { status: string; result?: { contentId?: string; contentIds?: Record<string, string> } } }>(
+          `/jobs/${jobId}`,
+        ),
       );
-      const contentId = done.job.result?.contentId ?? "";
+      const contentId =
+        done.job.result?.contentId ?? done.job.result?.contentIds?.["CORNELL_NOTE"] ?? "";
       setJob({ status: "done", contentId, operation });
       toast.success(`${operationLabel(operation)} created`);
+      refresh();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Generation failed";
       setJob({ status: "error", message: msg });
@@ -1188,6 +1209,8 @@ function operationLabel(op: string): string {
       return "Flashcards";
     case "AI_GENERATE_CONCEPTS":
       return "Concepts";
+    case "CORNELL_NOTE":
+      return "Cornell Notes";
     default:
       return op;
   }

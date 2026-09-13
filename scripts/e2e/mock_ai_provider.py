@@ -9,7 +9,8 @@ the canned output via WORKER_AI_MODEL:
 
   - ``syllabus-mock``  -> syllabus proposal JSON (contract preserved for
                           ``syllabus_e2e.sh``)
-- ``note-mock``      -> AI_GENERATE_NOTE NotePayload
+   - ``starter-mock``   -> AI_GENERATE_STARTER_MATERIAL {title, text}
+   - ``note-mock``      -> AI_GENERATE_NOTE NotePayload
    - ``summary-mock``   -> AI_GENERATE_SUMMARY SummaryPayload
    - ``questions-mock`` -> AI_GENERATE_QUESTIONS GeneratedQuestions (3 identical
                           MCQs, EASY)
@@ -72,6 +73,13 @@ SUMMARY = {
         "A rational number is expressible as p/q with q != 0.",
         "Decimals that terminate or repeat are rational.",
     ],
+}
+
+STARTER_MATERIAL = {
+    "title": "Truth Tables — quick primer",
+    "text": "A truth table lists every combination of input values and the resulting "
+    "output. It is the building block for understanding logic gates. Each row of a "
+    "truth table shows one possible input assignment and the output of the expression.",
 }
 
 MOCK_QUESTIONS = [
@@ -233,6 +241,8 @@ BANK_QUESTIONS = {
 def _pick(model: str, messages: list | None = None) -> dict:
     if "syllabus" in model:
         return SYLLABUS
+    if "starter" in model:
+        return STARTER_MATERIAL
     if "note" in model:
         return NOTE
     if "question" in model:

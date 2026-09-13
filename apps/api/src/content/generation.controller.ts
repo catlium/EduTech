@@ -4,6 +4,7 @@ import { GenerationService } from './generation.service.js';
 import { GenerateContentDto } from './dto/generate-content.dto.js';
 import { GenerateContentPackageDto } from './dto/generate-content-package.dto.js';
 import { GenerateBatchDto } from './dto/generate-batch.dto.js';
+import { GenerateStarterMaterialDto } from './dto/generate-starter-material.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -34,6 +35,22 @@ export class GenerationController {
       user.userId,
       dto.sourceType,
       dto.sourceId,
+    );
+    return { generation };
+  }
+
+  @Post('starter-material')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async generateStarterMaterial(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: GenerateStarterMaterialDto,
+  ) {
+    const generation = await this.generationService.requestStarterMaterialGeneration(
+      tenant.instituteId,
+      user.userId,
+      dto.topicId,
     );
     return { generation };
   }

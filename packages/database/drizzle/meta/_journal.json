@@ -162,6 +162,13 @@
       "when": 1789286792341,
       "tag": "0022_natural_ezekiel",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789287617011,
+      "tag": "0023_condemned_quasimodo",
+      "breakpoints": true
     }
   ]
 }

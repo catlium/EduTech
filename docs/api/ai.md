@@ -70,6 +70,65 @@ Response:
 }
 ```
 
+## Starter material generation
+
+```
+POST /content/starter-material
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `202 Accepted`.
+
+Body:
+
+```json
+{
+  "topicId": "uuid"
+}
+```
+
+Runs the `AI_GENERATE_STARTER_MATERIAL` operation: the worker resolves the
+canonical academic scope (`topic → chapter → subject`) plus the subject's
+syllabus skeleton, and drafts a single page that teaches the topic, stored as
+a `GENERATED` `TEXT` material (`source_type=GENERATED`, `processing_status=READY`,
+`status=ACTIVE`).
+
+Validation:
+
+- `404` if the topic is not in the institute.
+- `409` if a generation job is already active for this topic, or if the topic
+  already has a starter material (regenerate in place via the same endpoint).
+
+Response:
+
+```json
+{
+  "generation": {
+    "jobId": "uuid",
+    "operation": "AI_GENERATE_STARTER_MATERIAL",
+    "sourceType": "TOPIC",
+    "sourceId": "uuid",
+    "status": "QUEUED"
+  }
+}
+```
+
+On success the job `result` records:
+
+```json
+{
+  "materialId": "uuid",
+  "materialType": "TEXT",
+  "sourceType": "GENERATED",
+  "topicId": "uuid",
+  "chapterId": "uuid",
+  "subjectId": "uuid",
+  "revision": 1,
+  "provider": "openai-compatible",
+  "sourceId": "uuid",
+  "model": "configured-model"
+}
+```
+
 ## Tracking generation
 
 ```

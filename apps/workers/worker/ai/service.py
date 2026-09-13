@@ -31,6 +31,8 @@ from worker import db
 from worker.ai import generation, schemas
 from worker.ai.chunking import chunk_text
 from worker.ai.generation.coverage import COVERAGE_CONTRACT
+from worker.ai.generation.starter import build_messages as build_starter_messages
+from worker.ai.generation.starter import parse_starter_json
 from worker.ai.provider import create_provider
 from worker.config import settings
 
@@ -50,6 +52,7 @@ ContentTypeName = Literal["note", "summary", "flashcards", "concepts", "cornell"
 
 SYLLABUS_OPERATION = "AI_GENERATE_SYLLABUS"
 BLUEPRINT_OPERATION = "AI_GENERATE_BLUEPRINT"
+STARTER_MATERIAL_OPERATION = "AI_GENERATE_STARTER_MATERIAL"
 
 MAX_QUESTION_COUNT = 50
 MAX_BANK_TOTAL = 200
@@ -370,6 +373,15 @@ OPERATIONS: dict[str, Operation] = {
         default_title="AI-generated paper pattern",
         aggregate=_aggregate_blueprint,
     ),
+    STARTER_MATERIAL_OPERATION: Operation(
+        operation=STARTER_MATERIAL_OPERATION,
+        content_type="MATERIAL",
+        build_messages=build_starter_messages,
+        parse=parse_starter_json,
+        model=schemas.StarterMaterialPayload,
+        default_title="AI-generated starter material",
+        aggregate=None,  # handled by _generate_starter_material
+    ),
 }
 
 
@@ -396,8 +408,12 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
 
         # Syllabus is subject-based, never material-derived: it may run with
         # zero materials (optional enrichment material is resolved inside).
+        # Starter material is topic-based and never material-derived either.
         if operation.operation == SYLLABUS_OPERATION:
             _generate_syllabus(job_id, institute_id, operation, source, payload)
+            return
+        if operation.operation == STARTER_MATERIAL_OPERATION:
+            _generate_starter_material(job_id, institute_id, operation, source)
             return
 
         materials = _resolve_materials(institute_id, source)
@@ -955,6 +971,103 @@ def _split_context(context: str) -> list[str]:
     return chunk_text(context, chunk_size, settings.ai_chunk_overlap_chars)
 
 
+def _generate_starter_material(
+    job_id: str,
+    institute_id: str,
+    operation: Operation,
+    source: dict[str, str],
+) -> None:
+    """Generate a topic's first material when none exists ('teach this topic').
+
+    Topic sources only. The worker resolves the canonical academic scope and
+    builds a coverage-bound context from the scope names/descriptions plus the
+    subject's syllabus skeleton; the model returns a short manuscript, which is
+    written as a GENERATED TEXT material (source_type='GENERATED') with
+    provenance metadata. Regeneration updates the material in place and bumps
+    its revision (derived resources become stale). Never a textbook expansion:
+    the prompt is bounded to the topic (P12).
+    """
+    if source["type"] != "TOPIC":
+        raise GenerationError("Starter material generation requires a topic source")
+
+    chain = db.get_scope_chain("TOPIC", source["id"], institute_id)
+    topic_id = chain["topicId"]
+    chapter_id = chain["chapterId"]
+    subject_id = chain["subjectId"]
+    if topic_id is None or chapter_id is None or subject_id is None:
+        raise GenerationError("Topic context not found")
+    scope = db.get_scope_context(
+        institute_id,
+        subject_id=subject_id,
+        chapter_id=chapter_id,
+        topic_id=topic_id,
+    )
+    syllabus_structure = db.get_syllabus_structure(subject_id)
+
+    lines: list[str] = []
+    for depth, key in (("Subject", "subject"), ("Chapter", "chapter"), ("Topic", "topic")):
+        entry = scope.get(key)
+        if not entry:
+            continue
+        name = entry.get("name") or ""
+        description = entry.get("description")
+        lines.append(
+            f"{depth}: {name}" + (f"\n  description: {description}" if description else "")
+        )
+    if syllabus_structure and isinstance(syllabus_structure, dict):
+        chapters = syllabus_structure.get("chapters") or []
+        if chapters:
+            skeleton = "; ".join(
+                c["name"]
+                for c in chapters
+                if isinstance(c, dict) and isinstance(c.get("name"), str)
+            )
+            lines.append(f"Syllabus skeleton for the subject: {skeleton}")
+    context = "\n\n".join(lines)
+    if not context or not (scope.get("topic") or {}).get("name"):
+        raise GenerationError("Topic context not found")
+
+    provider = create_provider()
+    raw = provider.complete(
+        operation.build_messages(context, _source_label(source, [], institute_id))
+    )
+    validated = operation.model.model_validate(operation.parse(raw)).model_dump()
+    provenance = {
+        "model": settings.ai_model,
+        "generatedAt": datetime.now(UTC).isoformat(),
+    }
+
+    _check_cancelled(job_id)
+    material_id, revision = db.upsert_starter_material(
+        institute_id,
+        topic_id=topic_id,
+        chapter_id=chapter_id,
+        subject_id=subject_id,
+        title=validated["title"],
+        text=validated["text"],
+        generation_job_id=job_id,
+        created_by=source["requestedBy"],
+        provenance_extra=provenance,
+    )
+    db.update_job_status(
+        job_id,
+        "completed",
+        result={
+            "materialId": material_id,
+            "materialType": "TEXT",
+            "sourceType": "GENERATED",
+            "revision": revision,
+            "topicId": topic_id,
+            "chapterId": chapter_id,
+            "subjectId": subject_id,
+            "provider": source["type"],
+            "sourceId": source["id"],
+            "model": settings.ai_model,
+        },
+    )
+    logger.info("AI starter material generated: job=%s material=%s", job_id, material_id)
+
+
 def _generate_blueprint(
     job_id: str,
     institute_id: str,
@@ -1283,10 +1396,22 @@ def _resolve_scope(
         return db.get_scope_chain(source["type"], source["id"], institute_id)
     if source["type"] == "SUBJECT":
         return {"subjectId": source["id"], "chapterId": None, "topicId": None}
-    # MATERIAL scope taken from the material's own academic hierarchy.
+    # MATERIAL scope taken from the material's own academic hierarchy with a
+    # defensive null-subject fallback through the topic/chapter chain so legacy
+    # rows (pre-check era) never surface a null subject to derived resources.
     material = materials[0]
+    subject_id = material.get("subject_id")
+    if subject_id is None:
+        fallback_source = (
+            ("TOPIC", material.get("topic_id"))
+            if material.get("topic_id")
+            else ("CHAPTER", material.get("chapter_id"))
+        )
+        if fallback_source[1] is not None:
+            chain = db.get_scope_chain(fallback_source[0], fallback_source[1], institute_id)
+            subject_id = chain.get("subjectId")
     return {
-        "subjectId": material.get("subject_id"),
+        "subjectId": subject_id,
         "chapterId": material.get("chapter_id"),
         "topicId": material.get("topic_id"),
     }

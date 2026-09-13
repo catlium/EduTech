@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FileText, ExternalLink } from "lucide-react";
+import { ArrowLeft, FileText, ExternalLink, Loader2, Sparkles } from "lucide-react";
 
-import { api } from "@/lib/api";
+import { api, ApiError, waitForJob } from "@/lib/api";
+import { useTenant, canManage } from "@/lib/tenant";
 import { AppBreadcrumbs } from "@/components/app/app-breadcrumbs";
 import { StatusBadge } from "@/components/app/status-badge";
 import { SectionHeader } from "@/components/app/section-header";
@@ -27,12 +28,16 @@ export default function TopicPage() {
     topicId: string;
   }>();
   const router = useRouter();
+  const { institute } = useTenant();
+  const isTeacher = canManage(institute);
   const [subject, setSubject] = useState<SubjectResponse | null>(null);
   const [chapter, setChapter] = useState<ChapterResponse | null>(null);
   const [topic, setTopic] = useState<TopicResponse | null>(null);
   const [materials, setMaterials] = useState<MaterialResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [starter, setStarter] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [starterError, setStarterError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,6 +91,25 @@ export default function TopicPage() {
     void load();
     return () => ctrl.abort();
   }, [load]);
+
+  async function startStarter() {
+    setStarter("running");
+    setStarterError(null);
+    try {
+      const { generation } = await api<{ generation: { jobId: string } }>(
+        "/content/starter-material",
+        { method: "POST", body: { topicId } },
+      );
+      const done = await waitForJob(() =>
+        api<{ job: { status: string } }>(`/jobs/${generation.jobId}`),
+      );
+      setStarter("done");
+      void load();
+    } catch (err) {
+      setStarter("error");
+      setStarterError(err instanceof ApiError ? err.message : "Generation failed");
+    }
+  }
 
   if (loading) {
     return <SkeletonCards count={2} />;
@@ -145,13 +169,37 @@ export default function TopicPage() {
           <EmptyState
             icon={<FileText className="size-8" />}
             title="No materials yet"
-            description="Upload or create materials for this topic from the Materials page."
+            description={
+              starter === "running"
+                ? "Generating a starter material for this topic…"
+                : starter === "error"
+                  ? starterError ?? "Generation failed."
+                  : "Upload or create materials for this topic, or let AI draft a starter material from the syllabus scope."
+            }
           >
-            <Button size="sm" asChild>
-              <Link href={`/materials?topic=${topicId}`}>
-                Go to Materials
-              </Link>
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              {isTeacher && (
+                <Button
+                  size="sm"
+                  disabled={starter === "running"}
+                  onClick={() => void startStarter()}
+                >
+                  {starter === "running" ? (
+                    <Loader2 className="mr-1 size-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-1 size-3.5" />
+                  )}
+                  {starter === "running"
+                    ? "Generating…"
+                    : starter === "done"
+                      ? "Generate another"
+                      : "Generate starter material"}
+                </Button>
+              )}
+              <Button size="sm" variant="outline" asChild>
+                <Link href={`/materials?topic=${topicId}`}>Go to Materials</Link>
+              </Button>
+            </div>
           </EmptyState>
         ) : (
           <div className="space-y-2">

@@ -197,6 +197,17 @@ class ImportantConceptsPayload(BaseModel):
     concepts: list[Concept] = Field(min_length=1)
 
 
+class StarterMaterialPayload(BaseModel):
+    """A topic-level starter manuscript (AI_GENERATE_STARTER_MATERIAL).
+
+    Written as a GENERATED TEXT material with provenance in its metadata. The
+    prompt is coverage/boundary-constrained to the topic + syllabus scope.
+    """
+
+    title: str = Field(min_length=1, max_length=255)
+    text: str = Field(min_length=1, max_length=20000)
+
+
 # ── AI question generation ─────────────────────────────────
 
 

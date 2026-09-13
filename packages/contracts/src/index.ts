@@ -628,6 +628,7 @@ export const GenerationOperationEnum = z.enum([
   'AI_GENERATE_SUMMARY',
   'AI_GENERATE_FLASHCARDS',
   'AI_GENERATE_CONCEPTS',
+  'AI_GENERATE_STARTER_MATERIAL',
 ]);
 export type GenerationOperation = z.infer<typeof GenerationOperationEnum>;
 
