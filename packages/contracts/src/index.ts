@@ -1255,12 +1255,20 @@ export type AssessmentQuestion = z.infer<typeof AssessmentQuestionSchema>;
 // ── Syllabus Contracts ─────────────────────
 //
 // A syllabus proposal is the AI-generated (or teacher-edited) academic
-// structure for a subject: ordered chapters, each with optional topics. It
-// stays `PENDING_REVIEW` until a teacher/admin confirms it; confirmation
+// structure for a subject: ordered chapters, each with optional topics.
+//
+// States: `PROCESSING` while the generation job runs, `PENDING_REVIEW` once a
+// draft exists (editable/confirmable), `FAILED` when generation failed (error
+// persisted — never a stuck "drafting" ghost), `CONFIRMED` = terminal; confirm
 // transactionally creates the real chapters/topics via the academic module.
 // AI (workers) only ever writes proposals — never chapters/topics directly.
 
-export const SyllabusStatusEnum = z.enum(['PENDING_REVIEW', 'CONFIRMED']);
+export const SyllabusStatusEnum = z.enum([
+  'PROCESSING',
+  'PENDING_REVIEW',
+  'CONFIRMED',
+  'FAILED',
+]);
 export type SyllabusStatus = z.infer<typeof SyllabusStatusEnum>;
 
 export const SyllabusTopicSchema = z.object({
@@ -1282,6 +1290,8 @@ export const SyllabusStructureSchema = z.object({
 export type SyllabusStructure = z.infer<typeof SyllabusStructureSchema>;
 
 export const GenerateSyllabusRequestSchema = z.object({
+  // Optional enrichment material. A subject can generate a syllabus with no
+  // material at all — this only adds source context when supplied.
   materialId: z.string().uuid().optional(),
 });
 export type GenerateSyllabusRequest = z.infer<typeof GenerateSyllabusRequestSchema>;
@@ -1289,7 +1299,7 @@ export type GenerateSyllabusRequest = z.infer<typeof GenerateSyllabusRequestSche
 export const GenerateSyllabusResponseSchema = z.object({
   jobId: z.string().uuid(),
   operation: z.literal('AI_GENERATE_SYLLABUS'),
-  sourceType: z.literal('MATERIAL'),
+  sourceType: z.literal('SUBJECT'),
   sourceId: z.string().uuid(),
   subjectId: z.string().uuid(),
   status: z.literal('QUEUED'),
@@ -1306,8 +1316,11 @@ export const SyllabusResponseSchema = z.object({
   instituteId: z.string().uuid(),
   subjectId: z.string().uuid(),
   status: SyllabusStatusEnum,
-  structure: SyllabusStructureSchema,
+  // NULL while PROCESSING/FAILED; set once a draft exists.
+  structure: SyllabusStructureSchema.nullable(),
   sourceMaterialId: z.string().uuid().nullable(),
+  generationJobId: z.string().uuid().nullable(),
+  generationError: z.string().nullable().optional(),
   createdBy: z.string().uuid(),
   updatedBy: z.string().uuid().nullable(),
   confirmedAt: z.string().datetime().nullable(),

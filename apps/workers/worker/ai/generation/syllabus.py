@@ -1,4 +1,4 @@
-"""AI_GENERATE_SYLLABUS generation: academic structure from subject material.
+"""AI_GENERATE_SYLLABUS generation: academic structure from subject context.
 
 The model is asked to produce a JSON object ``{"chapters": [...]}`` where each
 chapter has a name, optional description and 0+ topics. The result is a
@@ -6,6 +6,11 @@ chapter has a name, optional description and 0+ topics. The result is a
 The API's confirm flow creates the real chapters/topics transactionally after a
 teacher/admin approves. Structure is enforced by the Pydantic mirrors in
 :mod:`worker.ai.schemas` (``SyllabusPayload``).
+
+Generation is subject-based, not material-derived: ``build_messages`` receives
+the subject's academic context (name + description) and, optionally, a
+teacher-supplied enrichment material. A subject with no materials at all can
+still get a syllabus.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ from worker.ai.generation.parse import parse_json_object
 # NOTE: kept as a plain (non-f) string so the JSON braces are literal.
 _SYSTEM_TEMPLATE = (
     "You are an academic curriculum designer for an education platform. Given "
-    "the subject material, produce an ordered academic structure: chapters, "
+    "the subject context, produce an ordered academic structure: chapters, "
     "each a cohesive unit of the subject, and within each chapter the essential "
     "topics that unit covers. Respond with ONLY a JSON object and nothing else "
     "(no markdown code fences) matching exactly this schema:\n"
@@ -37,8 +42,8 @@ _SYSTEM_TEMPLATE = (
 
 def build_messages(context: str, source_label: str) -> list[dict[str, str]]:
     user_prompt = (
-        f"Source material ({source_label}):\n\n{context}\n\n"
-        "Derive the syllabus structure from the source material above. "
+        f"Subject context ({source_label}):\n\n{context}\n\n"
+        "Derive the syllabus structure from the subject context above. "
         "Return only JSON."
     )
     return [

@@ -20,7 +20,6 @@ import { api, ApiError } from "@/lib/api";
 import { useTenant, canManage } from "@/lib/tenant";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
 import { ErrorState } from "@/components/app/error-state";
 import { StatusBadge } from "@/components/app/status-badge";
 import { SkeletonCards } from "@/components/app/loading";
@@ -117,7 +116,7 @@ export default function SyllabusPage() {
   const [proposal, setProposal] = useState<SyllabusResponse | null>(null);
   const [materials, setMaterials] = useState<MaterialResponse[]>([]);
 
-  const [source, setSource] = useState("auto");
+  const [source, setSource] = useState("subject");
   const [jobId, setJobId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState(0);
@@ -159,10 +158,17 @@ export default function SyllabusPage() {
         setProposal(prop);
         if (prop.status === "CONFIRMED") {
           setStage("confirmed");
-        } else {
-          setProposalChapters(deepClone(prop.structure.chapters));
+        } else if (prop.status === "PENDING_REVIEW") {
+          setProposalChapters(deepClone(prop.structure!.chapters));
           setDirty(false);
           setStage("review");
+        } else if (prop.status === "PROCESSING") {
+          setJobId(prop.generationJobId);
+          setStage("processing");
+        } else if (prop.status === "FAILED") {
+          setJobId(null);
+          setJobError(prop.generationError ?? "Syllabus generation failed. Please try again.");
+          setStage("processing");
         }
       } catch {
         setProposal(null);
@@ -185,7 +191,13 @@ export default function SyllabusPage() {
     try {
       const { generation } = await api<{ generation: Generation }>(
         `/academic/subjects/${subjectId}/syllabus/generate`,
-        { method: "POST", body: { materialId: source === "auto" ? undefined : source } },
+        {
+          method: "POST",
+          body:
+            source === "subject"
+              ? {}
+              : { materialId: source },
+        },
       );
       toast.success("AI syllabus generation started");
       setJobId(generation.jobId);
@@ -223,6 +235,7 @@ export default function SyllabusPage() {
           }
           const prop = await fetchProposal();
           if (cancelled) return;
+          if (prop.status !== "PENDING_REVIEW" || !prop.structure) return;
           setProposal(prop);
           setProposalChapters(deepClone(prop.structure.chapters));
           setDirty(false);
@@ -270,7 +283,7 @@ export default function SyllabusPage() {
         { method: "PATCH", body: { structure: { chapters: proposalChapters } } },
       );
       setProposal(updated);
-      setProposalChapters(deepClone(updated.structure.chapters));
+      setProposalChapters(deepClone(updated.structure?.chapters ?? proposalChapters));
       setDirty(false);
       toast.success("Syllabus saved");
     } catch (error) {
@@ -406,7 +419,9 @@ export default function SyllabusPage() {
             <Info className="size-4" />
             <AlertTitle>You already have a syllabus draft</AlertTitle>
             <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <span>Review your existing draft or regenerate it from material.</span>
+              <span>
+                Review the existing draft or regenerate it from the subject context.
+              </span>
               <span className="flex shrink-0 gap-2">
                 <Button size="sm" variant="outline" onClick={() => setStage("review")}>
                   Review it
@@ -419,54 +434,45 @@ export default function SyllabusPage() {
           </Alert>
         )}
 
-        {eligibleMaterials.length === 0 ? (
-          <EmptyState
-            icon={<FileText className="size-8" />}
-            title="No syllabus material"
-            description="Add a text material for this subject first, then the AI can draft a syllabus from it."
-          >
-            <Button size="sm" variant="outline" onClick={() => router.push("/materials")}>
-              Go to Materials
-            </Button>
-          </EmptyState>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Generate AI syllabus</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                The AI reads a subject material and drafts an ordered chapter and topic
-                structure you can review and edit before confirming.
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Generate AI syllabus</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              The AI drafts an ordered chapter and topic structure for {subject?.name} from
+              the subject context, which you review and edit before confirming. You can
+              optionally include a material for extra source context.
+            </p>
+            <div className="grid gap-2">
+              <Label htmlFor="syllabus-source">Source</Label>
+              <Select value={source} onValueChange={setSource}>
+                <SelectTrigger id="syllabus-source" className="w-full">
+                  <SelectValue placeholder="Choose a source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="subject">
+                    Subject context (recommended)
+                  </SelectItem>
+                  {eligibleMaterials.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      Material: {m.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {eligibleMaterials.length} eligible material
+                {eligibleMaterials.length !== 1 ? "s" : ""} available for optional context.
               </p>
-              <div className="grid gap-2">
-                <Label htmlFor="syllabus-source">Source material</Label>
-                <Select value={source} onValueChange={setSource}>
-                  <SelectTrigger id="syllabus-source" className="w-full">
-                    <SelectValue placeholder="Choose a source" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto — latest ready material</SelectItem>
-                    {eligibleMaterials.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {eligibleMaterials.length} eligible material
-                  {eligibleMaterials.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <div className="flex justify-end">
-                <Button disabled={!isTeacher || generating} onClick={() => void onGenerate()}>
-                  <Sparkles className="mr-1 size-3.5" /> Generate syllabus
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+            <div className="flex justify-end">
+              <Button disabled={!isTeacher || generating} onClick={() => void onGenerate()}>
+                <Sparkles className="mr-1 size-3.5" /> Generate syllabus
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -526,9 +532,9 @@ export default function SyllabusPage() {
   /* ── Confirmed ─────────────────────────────────────────────────────────── */
 
   if (stage === "confirmed") {
-    const chapters = proposal?.structure.chapters.length ?? 0;
+    const chapters = proposal?.structure?.chapters.length ?? 0;
     const topics =
-      proposal?.structure.chapters.reduce((n, c) => n + c.topics.length, 0) ?? 0;
+      proposal?.structure?.chapters.reduce((n, c) => n + c.topics.length, 0) ?? 0;
     return (
       <div className="mx-auto max-w-3xl space-y-6">
         <div>

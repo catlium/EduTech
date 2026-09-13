@@ -1,7 +1,7 @@
 """Source-provenance and coverage-contract helpers."""
 
-from worker.ai.service import _part_label, _source_reference
 from worker.ai.generation.coverage import COVERAGE_CONTRACT
+from worker.ai.service import _part_label, _source_reference
 
 
 def test_source_reference_single_material_carries_revision() -> None:

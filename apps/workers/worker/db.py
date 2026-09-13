@@ -422,7 +422,8 @@ def upsert_syllabus_proposal(
     *,
     subject_id: str,
     structure: dict[str, Any],
-    source_material_id: str,
+    source_material_id: str | None,
+    generation_job_id: str,
     created_by: str,
 ) -> str:
     """Insert or refresh the AI-generated proposal for a subject (PENDING_REVIEW).
@@ -431,7 +432,8 @@ def upsert_syllabus_proposal(
     proposal is never silently overwritten — regeneration first requires the
     API to open the subject (no endpoint does that today, so confirming is a
     terminal state for a subject's syllabus; the API also blocks generate on a
-    CONFIRMED proposal).
+    CONFIRMED proposal). Success clears any previous generation error and
+    records the generation job that produced the draft.
     """
     with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
         cur.execute(
@@ -444,14 +446,15 @@ def upsert_syllabus_proposal(
             cur.execute(
                 "INSERT INTO syllabus_proposals"
                 " (institute_id, subject_id, status, structure, source_material_id,"
-                "  created_by, updated_by, updated_at)"
-                " VALUES (%s, %s, 'PENDING_REVIEW', %s, %s, %s, %s, %s)"
+                "  generation_job_id, generation_error, created_by, updated_by, updated_at)"
+                " VALUES (%s, %s, 'PENDING_REVIEW', %s, %s, %s, NULL, %s, %s, %s)"
                 " RETURNING id",
                 (
                     institute_id,
                     subject_id,
                     Jsonb(structure),
                     source_material_id,
+                    generation_job_id,
                     created_by,
                     created_by,
                     now,
@@ -463,11 +466,34 @@ def upsert_syllabus_proposal(
                 raise RuntimeError("syllabus already confirmed")
             cur.execute(
                 "UPDATE syllabus_proposals SET structure = %s, source_material_id = %s,"
-                " status = 'PENDING_REVIEW', updated_by = %s, confirmed_at = NULL,"
-                " updated_at = %s WHERE id = %s RETURNING id",
-                (Jsonb(structure), source_material_id, created_by, now, existing[0]),
+                " status = 'PENDING_REVIEW', generation_job_id = %s, generation_error = NULL,"
+                " updated_by = %s, confirmed_at = NULL, updated_at = %s"
+                " WHERE id = %s RETURNING id",
+                (
+                    Jsonb(structure),
+                    source_material_id,
+                    generation_job_id,
+                    created_by,
+                    now,
+                    existing[0],
+                ),
             )
             row = cur.fetchone()
     if row is None:
         raise RuntimeError("syllabus_proposals upsert returned no row")
     return str(row[0])
+
+
+def fail_syllabus_proposal(generation_job_id: str, message: str) -> None:
+    """Persist an honest FAILED terminal state for the syllabus proposal.
+
+    Called on the generation failure path so a failed draft is never left
+    stuck as a silent PROCESSING/"drafting" ghost. A CONFIRMED proposal is
+    never touched (guarded by the status filter).
+    """
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE syllabus_proposals SET status = 'FAILED', generation_error = %s,"
+            " updated_at = %s WHERE generation_job_id = %s AND status <> 'CONFIRMED'",
+            (message, _now(), generation_job_id),
+        )

@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
 import { chapters, materials, subjects, syllabusProposals, topics } from '@catlium/database';
 import { SyllabusStructureSchema, type SyllabusStructure } from '@catlium/contracts';
@@ -14,7 +14,7 @@ import { JobsService, type Job } from '../jobs/jobs.service.js';
 
 const OPERATION = 'AI_GENERATE_SYLLABUS';
 
-type ProposalStatus = 'PENDING_REVIEW' | 'CONFIRMED';
+type ProposalStatus = 'PROCESSING' | 'PENDING_REVIEW' | 'CONFIRMED' | 'FAILED';
 
 @Injectable()
 export class SyllabusService {
@@ -45,27 +45,46 @@ export class SyllabusService {
       throw new ConflictException('Syllabus for this subject is already confirmed');
     }
 
-    const material = await this.resolveMaterial(instituteId, subjectId, materialId);
-    if (!material) {
-      throw new BadRequestException(
-        'No processed syllabus material found for this subject — upload and process one first',
-      );
-    }
+    // Syllabus generation is subject-based; a Material is only optional
+    // enrichment. When supplied it is still subject-validated (never bypassed).
+    const material = materialId
+      ? await this.resolveMaterial(instituteId, subjectId, materialId)
+      : null;
 
     const payload = {
       operation: OPERATION,
-      source: { type: 'MATERIAL', id: material.id },
+      source: { type: 'SUBJECT', id: subjectId },
       subjectId,
       requestedBy: userId,
+      params: material ? { materialId: material.id } : {},
     };
 
-    const job = await this.jobs.createJob(instituteId, OPERATION, payload);
+    let job: Job;
+    try {
+      job = await this.jobs.insertJob(instituteId, OPERATION, payload);
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException(
+          'Syllabus generation is already in progress for this subject',
+        );
+      }
+      throw error;
+    }
+
+    await this.setProposalGenerating(instituteId, subjectId, userId, job.id);
+
+    try {
+      await this.jobs.publishJob(job);
+    } catch (error) {
+      await this.failProposalOnEnqueue(job.id);
+      throw error;
+    }
 
     return {
       jobId: job.id,
       operation: OPERATION,
-      sourceType: 'MATERIAL' as const,
-      sourceId: material.id,
+      sourceType: 'SUBJECT' as const,
+      sourceId: subjectId,
       subjectId,
       status: 'QUEUED' as const,
     };
@@ -91,7 +110,7 @@ export class SyllabusService {
     structure: unknown,
   ) {
     const row = await this.getProposalRow(instituteId, subjectId);
-    this.assertPendingReview(row.status);
+    this.assertEditable(row.status);
     const parsed = this.parseStructure(structure);
 
     const [updated] = await this.db
@@ -105,7 +124,7 @@ export class SyllabusService {
 
   async confirmProposal(instituteId: string, userId: string, subjectId: string) {
     const row = await this.getProposalRow(instituteId, subjectId);
-    this.assertPendingReview(row.status);
+    this.assertEditable(row.status);
 
     await this.db.transaction(async (tx) => {
       const [locked] = await tx
@@ -115,7 +134,7 @@ export class SyllabusService {
         .for('update')
         .limit(1);
       if (!locked) throw new NotFoundException('Syllabus proposal not found');
-      this.assertPendingReview(locked.status);
+      this.assertEditable(locked.status);
 
       const structure = this.parseStructure(locked.structure);
 
@@ -214,39 +233,27 @@ export class SyllabusService {
     return row;
   }
 
+  /**
+   * Optional syllabus enrichment material. Only reached when a `materialId`
+   * was supplied by the teacher; the subject-boundary check is never bypassed.
+   * No auto-fallback to "the latest material" — a syllabus is generatable from
+   * subject context alone.
+   */
   private async resolveMaterial(
     instituteId: string,
     subjectId: string,
-    materialId?: string,
+    materialId: string,
   ) {
-    if (materialId) {
-      const [material] = await this.db
-        .select()
-        .from(materials)
-        .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
-        .limit(1);
-      if (!material || material.subjectId !== subjectId) {
-        throw new BadRequestException('Material not found for this subject');
-      }
-      this.assertReady(material);
-      return material;
-    }
-
-    const [latest] = await this.db
+    const [material] = await this.db
       .select()
       .from(materials)
-      .where(
-        and(
-          eq(materials.instituteId, instituteId),
-          eq(materials.subjectId, subjectId),
-          eq(materials.status, 'ACTIVE'),
-          eq(materials.processingStatus, 'READY'),
-          sql`coalesce(trim(${materials.textContent}), '') <> ''`,
-        ),
-      )
-      .orderBy(desc(materials.createdAt))
+      .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
       .limit(1);
-    return latest ?? null;
+    if (!material || material.subjectId !== subjectId) {
+      throw new BadRequestException('Material not found for this subject');
+    }
+    this.assertReady(material);
+    return material;
   }
 
   private assertReady(material: typeof materials.$inferSelect): void {
@@ -258,10 +265,85 @@ export class SyllabusService {
     }
   }
 
-  private assertPendingReview(status: string): void {
-    if (status !== 'PENDING_REVIEW') {
+  private assertEditable(status: string): void {
+    if (status === 'CONFIRMED') {
       throw new ConflictException('Syllabus is already confirmed');
     }
+    if (status === 'PROCESSING') {
+      throw new ConflictException('Syllabus is still generating — wait for it to complete');
+    }
+    if (status === 'FAILED') {
+      throw new ConflictException('Syllabus generation failed — regenerate it first');
+    }
+  }
+
+  /** Mark the proposal PROCESSING so a generation is never a silent ghost. */
+  private async setProposalGenerating(
+    instituteId: string,
+    subjectId: string,
+    userId: string,
+    jobId: string,
+  ): Promise<void> {
+    const [existing] = await this.db
+      .select({ id: syllabusProposals.id, status: syllabusProposals.status })
+      .from(syllabusProposals)
+      .where(and(eq(syllabusProposals.subjectId, subjectId), eq(syllabusProposals.instituteId, instituteId)))
+      .limit(1);
+
+    if (existing) {
+      // Regeneration is blocked up front, but never trust that single check:
+      // if a CONFIRMED row slipped through, retire the orphaned job and fail.
+      if (existing.status === 'CONFIRMED') {
+        await this.jobs.updateJobStatus(jobId, 'failed', undefined, {
+          message: 'Syllabus for this subject is already confirmed',
+        });
+        throw new ConflictException('Syllabus for this subject is already confirmed');
+      }
+      await this.db
+        .update(syllabusProposals)
+        .set({
+          status: 'PROCESSING',
+          generationJobId: jobId,
+          generationError: null,
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(syllabusProposals.id, existing.id));
+      return;
+    }
+
+    await this.db.insert(syllabusProposals).values({
+      instituteId,
+      subjectId,
+      status: 'PROCESSING',
+      generationJobId: jobId,
+      createdBy: userId,
+      updatedBy: userId,
+    });
+  }
+
+  /** Publish failure: the draft will never arrive — say so honestly. */
+  private async failProposalOnEnqueue(jobId: string): Promise<void> {
+    await this.db
+      .update(syllabusProposals)
+      .set({
+        status: 'FAILED',
+        generationError: 'Failed to enqueue the generation job',
+        updatedAt: new Date(),
+      })
+      .where(and(eq(syllabusProposals.generationJobId, jobId), eq(syllabusProposals.status, 'PROCESSING')));
+    await this.jobs.updateJobStatus(jobId, 'failed', undefined, {
+      message: 'Failed to enqueue the generation job',
+    });
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === '23505'
+    );
   }
 
   private slugify(name: string): string {
@@ -290,8 +372,10 @@ export class SyllabusService {
       instituteId: row.instituteId,
       subjectId: row.subjectId,
       status: row.status as ProposalStatus,
-      structure: row.structure as SyllabusStructure,
+      structure: row.structure as SyllabusStructure | null,
       sourceMaterialId: row.sourceMaterialId,
+      generationJobId: row.generationJobId,
+      generationError: row.generationError ?? null,
       createdBy: row.createdBy,
       updatedBy: row.updatedBy,
       confirmedAt: row.confirmedAt?.toISOString() ?? null,

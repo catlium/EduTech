@@ -1,5 +1,70 @@
 # Task Tracker
 
+## Phase 29 — Syllabus, Academic Scope, Resource Quality & Auth (2026-09-13)
+
+Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
+
+### Goal: P1 Planning & Baseline
+
+- [x] P1.1 Planning doc written; session-startup state captured
+- [x] P1.2 Task tracker updated
+
+### Goal: P2/P3 Syllabus decoupled + honest states
+
+- [ ] P2.1 Schema: syllabus_proposals `generation_job_id`, `generation_error`,
+      nullable `structure`; migration
+- [ ] P2.2 API: `generate` subject-based (source SUBJECT, material optional
+      enrichment); PROCESSING row creation; enqueue-failure → FAILED
+- [ ] P2.3 API: PATCH/confirm guarded to PENDING_REVIEW; toSyllabus exposes
+      new fields; contracts updated (status enum, nullable structure)
+- [ ] P2.4 Worker: `_generate_syllabus` subject-context (optional validated
+      enrichment material); upsert writes PENDING_REVIEW + clears error;
+      failure path writes FAILED
+- [ ] P2.5 Web: syllabus page subject-based generate, FAILED/PROCESSING states,
+      resume polling from `generationJobId`
+
+### Goal: P4/P5/P6 Scope + Starter Material + Cornell
+
+- [ ] P4.1 Worker canonical scope resolver (`_resolve_scope` shared, never
+      null subject for derived resources); API uses shared scope-chain util
+- [ ] P4.2 `AI_GENERATE_STARTER_MATERIAL` worker op + prompt + db writer
+      (`GENERATED` material, metadata provenance) + job route/dedup
+- [ ] P4.3 API endpoint for starter material generation + contracts + web
+      action (topic empty state)
+- [ ] P6.1 Cornell independent generate (package op ['cornell']) + web action
+
+### Goal: P7/P8/P9 Formula + Export
+
+- [ ] P7.1 Formula block enrichment (contracts Zod + worker Pydantic + prompts +
+      web renderer)
+- [ ] P8.1 Export DocBlock formula kind + PDF/DOCX renderers
+- [ ] P9.1 Export visual redesign (A4, headers/footers, page numbers, styling)
+      + tests
+
+### Goal: P10 Auth refresh
+
+- [ ] P10.1 CSRF cookie lifetime raised to refresh-session; fix any guard
+      interferences
+- [ ] P10.2 Web client single-flight 401 → refresh → retry; logout on failure
+
+### Goal: P11/P12 Material hub + coverage
+
+- [ ] P11.1 Material detail: independent Cornell action, starter-material
+      provenance/state badge
+- [ ] P12.1 Starter-material + syllabus prompts stay coverage-bound; docs note
+
+### Goal: P13 Data cleanup & seed
+
+- [ ] P13.1 Seed: NEP-2020 B.Sc. CS curriculum (4 intended subjects) replaces
+      demo Mathematics/Physics; deterministic demo-tier cleanup
+
+### Goal: P15/P16/P17 Validation & Checkpoints
+
+- [ ] P15.1 Unit/live validation incl. Phase 27/28 regression
+- [ ] P16.1 Docs: planning, tasks, project-status, architecture, API docs,
+      user-validation
+- [ ] P17.1 Coherent commits + push + final report
+
 ## Phase 28 — Source Coverage, Resource Integrity & Controlled Generation (2026-09-13)
 
 Full detail: `docs/planning/PHASE-28-SOURCE-COVERAGE-RESOURCES.md`

@@ -393,18 +393,19 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
     db.update_job_status(job_id, "processing")
     try:
         operation, source = _validate_payload(payload)
+
+        # Syllabus is subject-based, never material-derived: it may run with
+        # zero materials (optional enrichment material is resolved inside).
+        if operation.operation == SYLLABUS_OPERATION:
+            _generate_syllabus(job_id, institute_id, operation, source, payload)
+            return
+
         materials = _resolve_materials(institute_id, source)
         chunks, context_meta = _build_context_chunks(materials)
         _check_cancelled(job_id)
 
         if operation.operation == QA_OPERATION:
             _generate_questions(
-                job_id, institute_id, operation, source, materials, chunks, payload, context_meta
-            )
-            return
-
-        if operation.operation == SYLLABUS_OPERATION:
-            _generate_syllabus(
                 job_id, institute_id, operation, source, materials, chunks, payload, context_meta
             )
             return
@@ -826,18 +827,23 @@ def _generate_syllabus(
     institute_id: str,
     operation: Operation,
     source: dict[str, str],
-    materials: list[dict[str, Any]],
-    chunks: list[str],
     payload: dict[str, Any],
-    context_meta: dict[str, Any],
 ) -> None:
     """Generate a syllabus proposal for a subject and persist it PENDING_REVIEW.
 
+    Generation is subject-based, not material-derived: the AI drafts chapters
+    and topics from the subject's academic context (name + description). An
+    optional enrichment material (still ACTIVE/READY and belonging to the
+    subject) may be supplied by the teacher for extra context, but is never
+    required - a subject with zero materials can still get a syllabus.
+
     The AI only ever writes a *proposal* to ``syllabus_proposals`` (never
     chapters/topics). A teacher/admin confirms it through the API, which
-    transactionally creates the real academic hierarchy. Regeneration refreshes
-    the proposal but never silently overwrites a CONFIRMED one.
+    transactionally creates the real academic hierarchy. On failure the
+    proposal is marked FAILED with a safe error message so a generation is
+    never left stuck in a silent PROCESSING/"drafting" state.
     """
+    _check_cancelled(job_id)
     subject_id = payload.get("subjectId")
     if not isinstance(subject_id, str) or not _is_uuid(subject_id):
         raise GenerationError("Invalid job payload")
@@ -846,48 +852,107 @@ def _generate_syllabus(
     if subject is None:
         raise GenerationError("Subject not found")
 
-    # Defense-in-depth: the API enforces this up front, but never trust a queued
-    # job to be authority. A foreign-subject material must not feed the syllabus.
-    for material in materials:
-        if material.get("subject_id") != subject_id:
-            raise GenerationError("Source material does not belong to the target subject")
-
-    provider = create_provider()
-    outputs: list[dict[str, Any]] = []
-    for index, chunk in enumerate(chunks):
+    try:
+        material = _resolve_syllabus_material(institute_id, subject_id, payload)
         _check_cancelled(job_id)
-        label = _part_label(_source_label(source, materials, institute_id), chunks, index)
-        raw = provider.complete(operation.build_messages(chunk, label))
-        outputs.append(_validate_output(operation, raw))
 
-    assert operation.aggregate is not None
-    aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
+        context_parts = [f"Subject: {subject['name']}"]
+        if subject.get("description"):
+            context_parts.append(str(subject["description"]))
+        if material is not None:
+            context_parts.append(
+                "Supplementary source material provided by the teacher:\n"
+                + (material.get("text_content") or "")
+            )
+        context = "\n\n".join(part.strip() for part in context_parts if part.strip())
+        if not context:
+            raise GenerationError("No context available for syllabus generation")
 
-    _check_cancelled(job_id)
-    proposal_id = db.upsert_syllabus_proposal(
-        institute_id,
-        subject_id=subject_id,
-        structure=aggregated,
-        source_material_id=source["id"],
-        created_by=source["requestedBy"],
-    )
-    chapters = aggregated.get("chapters") or []
-    topic_count = sum(len(chapter.get("topics") or []) for chapter in chapters)
-    db.update_job_status(
-        job_id,
-        "completed",
-        result={
-            "proposalId": proposal_id,
-            "status": "PENDING_REVIEW",
-            "chapterCount": len(chapters),
-            "topicCount": topic_count,
-            "sourceType": source["type"],
-            "sourceId": source["id"],
-            "materialIds": [str(m["id"]) for m in materials],
-            "chunks": context_meta["chunkCount"],
-        },
-    )
-    logger.info("AI syllabus generated: job=%s proposal=%s", job_id, proposal_id)
+        chunks = _split_context(context)
+        provider = create_provider()
+        outputs: list[dict[str, Any]] = []
+        materials = [material] if material is not None else []
+        for index, chunk in enumerate(chunks):
+            _check_cancelled(job_id)
+            label = _part_label(_source_label(source, materials, institute_id), chunks, index)
+            raw = provider.complete(operation.build_messages(chunk, label))
+            outputs.append(_validate_output(operation, raw))
+
+        assert operation.aggregate is not None
+        aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
+
+        _check_cancelled(job_id)
+        proposal_id = db.upsert_syllabus_proposal(
+            institute_id,
+            subject_id=subject_id,
+            structure=aggregated,
+            source_material_id=str(material["id"]) if material is not None else None,
+            generation_job_id=job_id,
+            created_by=source["requestedBy"],
+        )
+        chapters = aggregated.get("chapters") or []
+        topic_count = sum(len(chapter.get("topics") or []) for chapter in chapters)
+        db.update_job_status(
+            job_id,
+            "completed",
+            result={
+                "proposalId": proposal_id,
+                "status": "PENDING_REVIEW",
+                "chapterCount": len(chapters),
+                "topicCount": topic_count,
+                "sourceType": source["type"],
+                "sourceId": source["id"],
+                "materialIds": [str(m["id"]) for m in materials],
+                "chunks": len(chunks),
+            },
+        )
+        logger.info("AI syllabus generated: job=%s proposal=%s", job_id, proposal_id)
+    except GenerationCancelledError:
+        raise
+    except Exception as exc:
+        message = str(exc) if isinstance(exc, GenerationError) else "Unexpected generation failure"
+        db.fail_syllabus_proposal(job_id, message)
+        raise
+
+
+def _resolve_syllabus_material(
+    institute_id: str, subject_id: str, payload: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Optional syllabus-context material, keeping the subject-boundary check.
+
+    The API enforces the material -> subject match up front, but a queued job
+    must not trust its payload: re-verify here and refuse a foreign-subject
+    material (Phase 28 rule preserved). Absent material is fine - syllabus
+    generation is subject-based, so `None` falls through to subject context.
+    """
+    params = payload.get("params")
+    if not isinstance(params, dict):
+        return None
+    material_id = params.get("materialId")
+    if material_id is None or not isinstance(material_id, str):
+        return None
+    if not _is_uuid(material_id):
+        raise GenerationError("Invalid material in job payload")
+    material = db.get_material(material_id, institute_id)
+    if material is None:
+        raise GenerationError("Source material not found")
+    if material.get("status") != "ACTIVE":
+        raise GenerationError("Source material is not active")
+    if material.get("processing_status") != "READY":
+        raise GenerationError("Source material is not ready")
+    if not (material.get("text_content") or "").strip():
+        raise GenerationError("Source material has no extracted text")
+    if material.get("subject_id") != subject_id:
+        raise GenerationError("Source material does not belong to the target subject")
+    return material
+
+
+def _split_context(context: str) -> list[str]:
+    """Deterministically bound the subject/syllabus context fed to the model."""
+    chunk_size = settings.ai_chunk_size_chars
+    if len(context) <= chunk_size:
+        return [context]
+    return chunk_text(context, chunk_size, settings.ai_chunk_overlap_chars)
 
 
 def _generate_blueprint(
