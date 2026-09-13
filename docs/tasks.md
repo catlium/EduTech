@@ -78,7 +78,8 @@ provider anywhere in the flow.
 ### Goal: S6 Docs/Checkpoint
 
 - [x] S6.1 docs/tasks.md + project-status + user-validation updated
-- [~] S6.2 Commit + push + final report
+- [x] S6.2 Commit + push + final report (`7c5c73b` `4c4bf4a` `d173c60` `5ecceb2`
+      `48470b9` `51690c7` → origin/main)
 
 ## Phase 29 — Syllabus, Academic Scope, Resource Quality & Auth (2026-09-13)
 
