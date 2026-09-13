@@ -7,7 +7,7 @@ from worker.ai.service import (
     _aggregate_note,
     _aggregate_questions,
     _aggregate_summary,
-    _aggregate_syllabus,
+    _aggregate_syllabus_analysis,
     _resolve_scope,
 )
 
@@ -137,17 +137,26 @@ def test_question_aggregation_dedupes_and_caps_at_limit() -> None:
 def test_syllabus_aggregation_merges_chapters_and_dedupes_topics() -> None:
     results = [
         {
-            "chapters": [
-                {"name": "Ch1", "description": "d", "topics": [{"name": "T1"}, {"name": "T2"}]},
-            ]
+            "context": {"program": "CS", "objectives": ["o1"]},
+            "structure": {
+                "chapters": [
+                    {"name": "Ch1", "description": "d", "topics": [{"name": "T1"}, {"name": "T2"}]},
+                ]
+            },
         },
         {
-            "chapters": [
-                {"name": "Ch1", "description": "d", "topics": [{"name": "T2"}, {"name": "T3"}]},
-                {"name": "Ch2", "description": "e", "topics": []},
-            ]
+            "context": {"program": "CS", "objectives": ["o2"], "learningOutcomes": ["lo1"]},
+            "structure": {
+                "chapters": [
+                    {"name": "Ch1", "description": "d", "topics": [{"name": "T2"}, {"name": "T3"}]},
+                    {"name": "Ch2", "description": "e", "topics": []},
+                ]
+            },
         },
     ]
-    out = _aggregate_syllabus(results)
-    assert [c["name"] for c in out["chapters"]] == ["Ch1", "Ch2"]
-    assert [t["name"] for t in out["chapters"][0]["topics"]] == ["T1", "T2", "T3"]
+    out = _aggregate_syllabus_analysis(results)
+    assert [c["name"] for c in out["structure"]["chapters"]] == ["Ch1", "Ch2"]
+    assert [t["name"] for t in out["structure"]["chapters"][0]["topics"]] == ["T1", "T2", "T3"]
+    assert out["context"]["program"] == "CS"
+    assert out["context"]["objectives"] == ["o1", "o2"]
+    assert out["context"]["learningOutcomes"] == ["lo1"]

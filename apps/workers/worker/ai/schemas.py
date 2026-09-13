@@ -342,7 +342,7 @@ class ContentPackage(BaseModel):
     cornell: CornellNotePayload | None = None
 
 
-# ── AI syllabus generation ─────────────────────────────────
+# ── AI syllabus analysis ─────────────────────────────────
 
 
 class SyllabusTopic(BaseModel):
@@ -356,8 +356,37 @@ class SyllabusChapter(BaseModel):
     topics: list[SyllabusTopic] = Field(default_factory=list, max_length=200)
 
 
-class SyllabusPayload(BaseModel):
+class SyllabusStructure(BaseModel):
     chapters: list[SyllabusChapter] = Field(min_length=1, max_length=100)
+
+
+class SyllabusUnit(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class SyllabusContext(BaseModel):
+    """Extracted Syllabus Context — only what the uploaded document states.
+
+    Mirrors `SyllabusContextSchema` in packages/contracts. Never invented:
+    missing fields stay null/empty and the analysis persists whatever was
+    genuinely found.
+    """
+
+    program: str | None = Field(default=None, max_length=255)
+    course: str | None = Field(default=None, max_length=255)
+    academicYear: str | None = Field(default=None, max_length=50)  # noqa: N815
+    objectives: list[str] = Field(default_factory=list, max_length=50)
+    learningOutcomes: list[str] = Field(default_factory=list, max_length=50)  # noqa: N815
+    scope: str | None = Field(default=None, max_length=4000)
+    units: list[SyllabusUnit] = Field(default_factory=list, max_length=100)
+    practicalRequirements: list[str] = Field(default_factory=list, max_length=50)  # noqa: N815
+    notes: list[str] = Field(default_factory=list, max_length=50)
+
+
+class SyllabusAnalysisPayload(BaseModel):
+    context: SyllabusContext
+    structure: SyllabusStructure
 
 
 # ── AI blueprint (paper pattern) generation ─────────────────────────────────

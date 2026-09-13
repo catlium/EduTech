@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC", "CHAPTER", "SUBJECT"}
+VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC", "CHAPTER", "SUBJECT", "SYLLABUS"}
 
 QA_OPERATION = "AI_GENERATE_QUESTIONS"
 VALID_QUESTION_TYPES = {"MCQ", "TRUE_FALSE", "FILL_IN_BLANK"}
@@ -50,7 +50,7 @@ VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
 CONTENT_PACKAGE_OPERATION = "AI_GENERATE_CONTENT_PACKAGE"
 ContentTypeName = Literal["note", "summary", "flashcards", "concepts", "cornell"]
 
-SYLLABUS_OPERATION = "AI_GENERATE_SYLLABUS"
+SYLLABUS_ANALYSIS_OPERATION = "AI_ANALYZE_SYLLABUS"
 BLUEPRINT_OPERATION = "AI_GENERATE_BLUEPRINT"
 STARTER_MATERIAL_OPERATION = "AI_GENERATE_STARTER_MATERIAL"
 
@@ -194,33 +194,83 @@ def _aggregate_questions(results: list[dict[str, Any]], limit: int | None = None
     return {"questions": questions}
 
 
-def _aggregate_syllabus(results: list[dict[str, Any]], _limit: int | None = None) -> dict[str, Any]:
+def _aggregate_syllabus_analysis(
+    results: list[dict[str, Any]], _limit: int | None = None
+) -> dict[str, Any]:
+    """Fold per-chunk deep-analysis outputs into one deterministic result.
+
+    Context: first non-empty declaration wins per scalar field; lists are
+    concatenated and deduplicated (capped by the canonical schema). Structure:
+    chapters/topics are merged by exact normalized name like the old syllabus
+    fold — the teacher confirms the proposal, so cross-chunk merge is a
+    readable draft, never a silent hierarchy change.
+    """
+    context: dict[str, Any] = {}
+    first_declared = ["program", "course", "academicYear", "scope"]
+    list_fields = ["objectives", "learningOutcomes", "practicalRequirements", "notes"]
+    for result in results:
+        raw_ctx = result.get("context")
+        ctx: dict[str, Any] = raw_ctx if isinstance(raw_ctx, dict) else {}
+        for key in first_declared:
+            raw_value = ctx.get(key)
+            if not context.get(key) and raw_value:
+                context[key] = raw_value
+        for key in list_fields:
+            items: list[str] = context.get(key) or []
+            raw_items = ctx.get(key) if isinstance(ctx.get(key), list) else []
+            if raw_items:
+                for item in raw_items:
+                    if isinstance(item, str) and item.strip() and item.strip() not in items:
+                        items.append(item.strip())
+            context[key] = items
+        units: list[dict[str, Any]] = context.get("units") or []
+        unit_titles = {u.get("title") for u in units}
+        raw_units = ctx.get("units") if isinstance(ctx.get("units"), list) else []
+        if raw_units:
+            for unit in raw_units:
+                if (
+                    isinstance(unit, dict)
+                    and isinstance(unit.get("title"), str)
+                    and unit["title"] not in unit_titles
+                ):
+                    unit_titles.add(unit["title"])
+                    units.append(unit)
+        context["units"] = units
+
     chapters: dict[str, dict[str, Any]] = {}
     for result in results:
-        for chapter in result.get("chapters") or []:
-            if not isinstance(chapter, dict):
-                continue
-            name = str(chapter.get("name") or "").strip()
-            if not name:
-                continue
-            existing = chapters.get(name)
-            if existing is None:
-                chapters[name] = {
-                    "name": name,
-                    "description": chapter.get("description"),
-                    "topics": list(chapter.get("topics") or []),
-                }
-                continue
-            topics = existing["topics"]
-            for topic in chapter.get("topics") or []:
-                if not isinstance(topic, dict):
+        raw_structure = result.get("structure")
+        structure: dict[str, Any] = raw_structure if isinstance(raw_structure, dict) else {}
+        raw_chapters = structure.get("chapters")
+        if isinstance(raw_chapters, list):
+            for chapter in raw_chapters:
+                if not isinstance(chapter, dict):
                     continue
-                topic_name = str(topic.get("name") or "").strip()
-                if not topic_name:
+                name = str(chapter.get("name") or "").strip()
+                if not name:
                     continue
-                if not any(str(t.get("name") or "").strip() == topic_name for t in topics):
-                    topics.append(topic)
-    return {"chapters": list(chapters.values())[:100]}
+                existing = chapters.get(name)
+                if existing is None:
+                    chapters[name] = {
+                        "name": name,
+                        "description": chapter.get("description"),
+                        "topics": list(chapter.get("topics") or []),
+                    }
+                    continue
+                topics = existing["topics"]
+                for topic in chapter.get("topics") or []:
+                    if not isinstance(topic, dict):
+                        continue
+                    topic_name = str(topic.get("name") or "").strip()
+                    if not topic_name:
+                        continue
+                    if not any(str(t.get("name") or "").strip() == topic_name for t in topics):
+                        topics.append(topic)
+
+    return {
+        "context": context,
+        "structure": {"chapters": list(chapters.values())[:100]},
+    }
 
 
 def _aggregate_blueprint(
@@ -355,14 +405,14 @@ OPERATIONS: dict[str, Operation] = {
         default_title="AI-generated questions",
         aggregate=_aggregate_questions,
     ),
-    SYLLABUS_OPERATION: Operation(
-        operation=SYLLABUS_OPERATION,
-        content_type="SYLLABUS_PROPOSAL",
+    SYLLABUS_ANALYSIS_OPERATION: Operation(
+        operation=SYLLABUS_ANALYSIS_OPERATION,
+        content_type="SYLLABUS",
         build_messages=generation.syllabus.build_messages,
-        parse=generation.syllabus.parse_syllabus_json,
-        model=schemas.SyllabusPayload,
-        default_title="AI-generated syllabus",
-        aggregate=_aggregate_syllabus,
+        parse=generation.syllabus.parse_analysis_json,
+        model=schemas.SyllabusAnalysisPayload,
+        default_title="AI-analyzed syllabus",
+        aggregate=_aggregate_syllabus_analysis,
     ),
     BLUEPRINT_OPERATION: Operation(
         operation=BLUEPRINT_OPERATION,
@@ -406,11 +456,10 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
     try:
         operation, source = _validate_payload(payload)
 
-        # Syllabus is subject-based, never material-derived: it may run with
-        # zero materials (optional enrichment material is resolved inside).
+        # Syllabus deep analysis is document-based, never material-derived.
         # Starter material is topic-based and never material-derived either.
-        if operation.operation == SYLLABUS_OPERATION:
-            _generate_syllabus(job_id, institute_id, operation, source, payload)
+        if operation.operation == SYLLABUS_ANALYSIS_OPERATION:
+            _analyze_syllabus(job_id, institute_id, operation, payload)
             return
         if operation.operation == STARTER_MATERIAL_OPERATION:
             _generate_starter_material(job_id, institute_id, operation, source)
@@ -838,129 +887,92 @@ def _generate_content_package(
     )
 
 
-def _generate_syllabus(
+def _analyze_syllabus(
     job_id: str,
     institute_id: str,
     operation: Operation,
-    source: dict[str, str],
     payload: dict[str, Any],
 ) -> None:
-    """Generate a syllabus proposal for a subject and persist it PENDING_REVIEW.
+    """Deep-analyze a processed (READY) syllabus document into context + structure.
 
-    Generation is subject-based, not material-derived: the AI drafts chapters
-    and topics from the subject's academic context (name + description). An
-    optional enrichment material (still ACTIVE/READY and belonging to the
-    subject) may be supplied by the teacher for extra context, but is never
-    required - a subject with zero materials can still get a syllabus.
-
-    The AI only ever writes a *proposal* to ``syllabus_proposals`` (never
-    chapters/topics). A teacher/admin confirms it through the API, which
-    transactionally creates the real academic hierarchy. On failure the
-    proposal is marked FAILED with a safe error message so a generation is
-    never left stuck in a silent PROCESSING/"drafting" state.
+    The syllabus is the authoritative source and is never derived from the
+    subject: the worker reads the uploaded/extracted plaintext and asks the
+    model to extract the Syllabus Context and the academic structure proposal
+    faithfully. The result is a *proposal* (context + structure) — never
+    written straight into the academic hierarchy. A teacher confirms it through
+    the API (reconciliation-aware) to create/update the real chapters/topics.
+    On failure the analysis is marked FAILED with a safe error message so a
+    job is never left stuck in a silent PROCESSING/"processing" state.
     """
     _check_cancelled(job_id)
-    subject_id = payload.get("subjectId")
-    if not isinstance(subject_id, str) or not _is_uuid(subject_id):
+    syllabus_id = payload.get("syllabusId")
+    if not isinstance(syllabus_id, str) or not _is_uuid(syllabus_id):
         raise GenerationError("Invalid job payload")
 
-    subject = db.get_subject(subject_id, institute_id)
-    if subject is None:
-        raise GenerationError("Subject not found")
-
     try:
-        material = _resolve_syllabus_material(institute_id, subject_id, payload)
-        _check_cancelled(job_id)
+        syllabus = db.get_syllabus(syllabus_id, institute_id)
+        if syllabus is None:
+            raise GenerationError("Syllabus not found")
+        if syllabus.get("processing_status") != "READY":
+            raise GenerationError("Syllabus text is not ready for analysis")
+        text = (syllabus.get("text_content") or "").strip()
+        if not text:
+            raise GenerationError("Syllabus has no extracted text to analyze")
 
-        context_parts = [f"Subject: {subject['name']}"]
-        if subject.get("description"):
-            context_parts.append(str(subject["description"]))
-        if material is not None:
-            context_parts.append(
-                "Supplementary source material provided by the teacher:\n"
-                + (material.get("text_content") or "")
-            )
-        context = "\n\n".join(part.strip() for part in context_parts if part.strip())
-        if not context:
-            raise GenerationError("No context available for syllabus generation")
+        db.update_syllabus_analysis_processing(syllabus_id, job_id)
 
-        chunks = _split_context(context)
+        chunks = _split_context(text)
         provider = create_provider()
         outputs: list[dict[str, Any]] = []
-        materials = [material] if material is not None else []
+        label = f"syllabus version {syllabus.get('version')}"
         for index, chunk in enumerate(chunks):
             _check_cancelled(job_id)
-            label = _part_label(_source_label(source, materials, institute_id), chunks, index)
-            raw = provider.complete(operation.build_messages(chunk, label))
+            part = _part_label(label, chunks, index)
+            raw = provider.complete(operation.build_messages(chunk, part))
             outputs.append(_validate_output(operation, raw))
 
         assert operation.aggregate is not None
-        aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
+        aggregated = operation.model.model_validate(
+            operation.aggregate(outputs)
+        ).model_dump()
 
         _check_cancelled(job_id)
-        proposal_id = db.upsert_syllabus_proposal(
-            institute_id,
-            subject_id=subject_id,
-            structure=aggregated,
-            source_material_id=str(material["id"]) if material is not None else None,
-            generation_job_id=job_id,
-            created_by=source["requestedBy"],
+        context = aggregated.get("context") or {}
+        structure = aggregated.get("structure") or {}
+        db.complete_syllabus_analysis(
+            syllabus_id,
+            context=context,
+            structure=structure,
         )
-        chapters = aggregated.get("chapters") or []
-        topic_count = sum(len(chapter.get("topics") or []) for chapter in chapters)
+        chapters = structure.get("chapters") or []
         db.update_job_status(
             job_id,
             "completed",
             result={
-                "proposalId": proposal_id,
-                "status": "PENDING_REVIEW",
+                "syllabusId": syllabus_id,
+                "analysisStatus": "READY",
                 "chapterCount": len(chapters),
-                "topicCount": topic_count,
-                "sourceType": source["type"],
-                "sourceId": source["id"],
-                "materialIds": [str(m["id"]) for m in materials],
+                "topicCount": sum(len(c.get("topics") or []) for c in chapters),
+                "sourceType": "SYLLABUS",
+                "sourceId": syllabus_id,
                 "chunks": len(chunks),
             },
         )
-        logger.info("AI syllabus generated: job=%s proposal=%s", job_id, proposal_id)
+        logger.info(
+            "AI syllabus analyzed: job=%s syllabus=%s chapters=%s",
+            job_id,
+            syllabus_id,
+            len(chapters),
+        )
     except GenerationCancelledError:
+        # A cancelled analysis leaves an honest terminal FAILED state (never a
+        # stuck PROCESSING ghost); the teacher can re-analyze (fresh job).
+        db.fail_syllabus_analysis(syllabus_id, "Analysis cancelled")
         raise
     except Exception as exc:
         message = str(exc) if isinstance(exc, GenerationError) else "Unexpected generation failure"
-        db.fail_syllabus_proposal(job_id, message)
+        db.fail_syllabus_analysis(syllabus_id, message)
         raise
-
-
-def _resolve_syllabus_material(
-    institute_id: str, subject_id: str, payload: dict[str, Any]
-) -> dict[str, Any] | None:
-    """Optional syllabus-context material, keeping the subject-boundary check.
-
-    The API enforces the material -> subject match up front, but a queued job
-    must not trust its payload: re-verify here and refuse a foreign-subject
-    material (Phase 28 rule preserved). Absent material is fine - syllabus
-    generation is subject-based, so `None` falls through to subject context.
-    """
-    params = payload.get("params")
-    if not isinstance(params, dict):
-        return None
-    material_id = params.get("materialId")
-    if material_id is None or not isinstance(material_id, str):
-        return None
-    if not _is_uuid(material_id):
-        raise GenerationError("Invalid material in job payload")
-    material = db.get_material(material_id, institute_id)
-    if material is None:
-        raise GenerationError("Source material not found")
-    if material.get("status") != "ACTIVE":
-        raise GenerationError("Source material is not active")
-    if material.get("processing_status") != "READY":
-        raise GenerationError("Source material is not ready")
-    if not (material.get("text_content") or "").strip():
-        raise GenerationError("Source material has no extracted text")
-    if material.get("subject_id") != subject_id:
-        raise GenerationError("Source material does not belong to the target subject")
-    return material
 
 
 def _split_context(context: str) -> list[str]:
@@ -1003,6 +1015,7 @@ def _generate_starter_material(
         topic_id=topic_id,
     )
     syllabus_structure = db.get_syllabus_structure(subject_id)
+    syllabus_context = db.get_syllabus_context(subject_id)
 
     lines: list[str] = []
     for depth, key in (("Subject", "subject"), ("Chapter", "chapter"), ("Topic", "topic")):
@@ -1023,6 +1036,13 @@ def _generate_starter_material(
                 if isinstance(c, dict) and isinstance(c.get("name"), str)
             )
             lines.append(f"Syllabus skeleton for the subject: {skeleton}")
+    if syllabus_context and isinstance(syllabus_context, dict):
+        objectives = syllabus_context.get("objectives") or []
+        outcomes = syllabus_context.get("learningOutcomes") or []
+        if objectives:
+            lines.append(f"Syllabus objectives: {'; '.join(objectives)}")
+        if outcomes:
+            lines.append(f"Syllabus learning outcomes: {'; '.join(outcomes)}")
     context = "\n\n".join(lines)
     if not context or not (scope.get("topic") or {}).get("name"):
         raise GenerationError("Topic context not found")

@@ -1,7 +1,7 @@
-"""Material processing orchestration.
+"""Material + syllabus processing orchestration.
 
-The worker is the orchestrator: it resolves the material, drives job and
-material state transitions, sends the stored file to the OCR service, and
+The worker is the orchestrator: it resolves the document, drives job and
+document state transitions, sends the stored file to the OCR service, and
 persists the extracted normalized plaintext. It contains no extraction logic
 and no study/examination business logic.
 """
@@ -38,6 +38,26 @@ def process_material(job_id: str, institute_id: str, material_id: str) -> None:
         db.update_material_status(material_id, "FAILED")
         db.update_job_status(job_id, "failed", error={"message": _safe_message(exc)})
         logger.exception("Material %s processing failed", material_id)
+
+
+def process_syllabus(job_id: str, institute_id: str, syllabus_id: str) -> None:
+    """OCR an uploaded syllabus document into plaintext (PROCESSING -> READY)."""
+    syllabus = db.get_syllabus(syllabus_id, institute_id)
+    if syllabus is None:
+        db.update_job_status(job_id, "failed", error={"message": "Syllabus not found"})
+        return
+
+    db.update_job_status(job_id, "processing")
+    db.update_syllabus_processing(syllabus_id, job_id)
+
+    try:
+        text, pages = _run_extraction(syllabus)
+        db.update_syllabus_ready(syllabus_id, text)
+        db.update_job_status(job_id, "completed", result={"textLength": len(text), "pages": pages})
+    except Exception as exc:
+        db.update_syllabus_failed(syllabus_id, _safe_message(exc))
+        db.update_job_status(job_id, "failed", error={"message": _safe_message(exc)})
+        logger.exception("Syllabus %s processing failed", syllabus_id)
 
 
 def _run_extraction(material: dict[str, Any]) -> tuple[str, int]:

@@ -58,6 +58,7 @@ def _harness(monkeypatch) -> dict[str, dict[str, object]]:
         },
     )
     monkeypatch.setattr(db, "get_syllabus_structure", lambda _subject_id: None)
+    monkeypatch.setattr(db, "get_syllabus_context", lambda _subject_id: None)
     monkeypatch.setattr(
         db,
         "get_scope_names",

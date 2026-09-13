@@ -21,11 +21,12 @@ from pika.spec import Basic, BasicProperties
 
 from worker import db
 from worker.config import settings
-from worker.processing import process_material
+from worker.processing import process_material, process_syllabus
 
 logger = logging.getLogger(__name__)
 
 MATERIAL_PROCESS = "MATERIAL_PROCESS"
+PROCESS_SYLLABUS = "PROCESS_SYLLABUS"
 
 
 def _is_uuid(value: object) -> bool:
@@ -63,15 +64,29 @@ def on_message(
     raw_payload = message.get("payload")
     payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
 
-    if job_type != MATERIAL_PROCESS:
-        logger.info("Skipping unsupported job type: %s", job_type)
-        channel.basic_ack(delivery_tag=delivery_tag)
+    if job_type == MATERIAL_PROCESS:
+        _handle_material(channel, delivery_tag, job_id, institute_id, payload)
         return
 
+    if job_type == PROCESS_SYLLABUS:
+        _handle_syllabus(channel, delivery_tag, job_id, institute_id, payload)
+        return
+
+    logger.info("Skipping unsupported job type: %s", job_type)
+    channel.basic_ack(delivery_tag=delivery_tag)
+
+
+def _handle_material(
+    channel: BlockingChannel,
+    delivery_tag: int,
+    job_id: object,
+    institute_id: object,
+    payload: dict[str, Any],
+) -> None:
     material_id = payload.get("materialId")
 
     if not (_is_uuid(job_id) and _is_uuid(institute_id) and _is_uuid(material_id)):
-        logger.warning("Invalid MATERIAL_PROCESS payload: %s", message)
+        logger.warning("Invalid MATERIAL_PROCESS payload")
         if _is_uuid(job_id):
             db.update_job_status(str(job_id), "failed", error={"message": "Invalid job payload"})
         channel.basic_ack(delivery_tag=delivery_tag)
@@ -81,6 +96,34 @@ def on_message(
         process_material(str(job_id), str(institute_id), str(material_id))
     except Exception:
         logger.exception("Unexpected error processing MATERIAL_PROCESS job %s", job_id)
+        if _is_uuid(job_id):
+            db.update_job_status(
+                str(job_id), "failed", error={"message": "Unexpected processing failure"}
+            )
+    finally:
+        channel.basic_ack(delivery_tag=delivery_tag)
+
+
+def _handle_syllabus(
+    channel: BlockingChannel,
+    delivery_tag: int,
+    job_id: object,
+    institute_id: object,
+    payload: dict[str, Any],
+) -> None:
+    syllabus_id = payload.get("syllabusId")
+
+    if not (_is_uuid(job_id) and _is_uuid(institute_id) and _is_uuid(syllabus_id)):
+        logger.warning("Invalid PROCESS_SYLLABUS payload")
+        if _is_uuid(job_id):
+            db.update_job_status(str(job_id), "failed", error={"message": "Invalid job payload"})
+        channel.basic_ack(delivery_tag=delivery_tag)
+        return
+
+    try:
+        process_syllabus(str(job_id), str(institute_id), str(syllabus_id))
+    except Exception:
+        logger.exception("Unexpected error processing PROCESS_SYLLABUS job %s", job_id)
         if _is_uuid(job_id):
             db.update_job_status(
                 str(job_id), "failed", error={"message": "Unexpected processing failure"}

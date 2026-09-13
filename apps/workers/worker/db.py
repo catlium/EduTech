@@ -27,14 +27,6 @@ def get_material(material_id: str, institute_id: str) -> dict[str, Any] | None:
         ).fetchone()
 
 
-def get_subject(subject_id: str, institute_id: str) -> dict[str, Any] | None:
-    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-        return conn.execute(
-            "SELECT * FROM subjects WHERE id = %s AND institute_id = %s",
-            (subject_id, institute_id),
-        ).fetchone()
-
-
 def get_scope_chain(source_type: str, source_id: str, institute_id: str) -> dict[str, str | None]:
     """Resolve a source's full academic chain (topic/chapter/subject).
 
@@ -417,86 +409,111 @@ def insert_generated_questions(
     return ids
 
 
-def upsert_syllabus_proposal(
-    institute_id: str,
-    *,
-    subject_id: str,
-    structure: dict[str, Any],
-    source_material_id: str | None,
-    generation_job_id: str,
-    created_by: str,
-) -> str:
-    """Insert or refresh the AI-generated proposal for a subject (PENDING_REVIEW).
+def get_syllabus(syllabus_id: str, institute_id: str) -> dict[str, Any] | None:
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT * FROM syllabi WHERE id = %s AND institute_id = %s",
+            (syllabus_id, institute_id),
+        ).fetchone()
 
-    The worker is the only writer of proposal structure/status. A CONFIRMED
-    proposal is never silently overwritten — regeneration first requires the
-    API to open the subject (no endpoint does that today, so confirming is a
-    terminal state for a subject's syllabus; the API also blocks generate on a
-    CONFIRMED proposal). Success clears any previous generation error and
-    records the generation job that produced the draft.
-    """
-    with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT id, status FROM syllabus_proposals WHERE subject_id = %s AND institute_id = %s",
-            (subject_id, institute_id),
+
+def update_syllabus_processing(syllabus_id: str, job_id: str) -> None:
+    """Mark an uploaded syllabus document as being OCR-processed."""
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE syllabi SET processing_status = 'PROCESSING', processing_job_id = %s,"
+            " updated_at = %s WHERE id = %s",
+            (job_id, _now(), syllabus_id),
         )
-        existing = cur.fetchone()
-        now = _now()
-        if existing is None:
-            cur.execute(
-                "INSERT INTO syllabus_proposals"
-                " (institute_id, subject_id, status, structure, source_material_id,"
-                "  generation_job_id, generation_error, created_by, updated_by, updated_at)"
-                " VALUES (%s, %s, 'PENDING_REVIEW', %s, %s, %s, NULL, %s, %s, %s)"
-                " RETURNING id",
-                (
-                    institute_id,
-                    subject_id,
-                    Jsonb(structure),
-                    source_material_id,
-                    generation_job_id,
-                    created_by,
-                    created_by,
-                    now,
-                ),
-            )
-            row = cur.fetchone()
-        else:
-            if existing[1] == "CONFIRMED":
-                raise RuntimeError("syllabus already confirmed")
-            cur.execute(
-                "UPDATE syllabus_proposals SET structure = %s, source_material_id = %s,"
-                " status = 'PENDING_REVIEW', generation_job_id = %s, generation_error = NULL,"
-                " updated_by = %s, confirmed_at = NULL, updated_at = %s"
-                " WHERE id = %s RETURNING id",
-                (
-                    Jsonb(structure),
-                    source_material_id,
-                    generation_job_id,
-                    created_by,
-                    now,
-                    existing[0],
-                ),
-            )
-            row = cur.fetchone()
-    if row is None:
-        raise RuntimeError("syllabus_proposals upsert returned no row")
-    return str(row[0])
 
 
-def fail_syllabus_proposal(generation_job_id: str, message: str) -> None:
-    """Persist an honest FAILED terminal state for the syllabus proposal.
+def update_syllabus_ready(syllabus_id: str, text_content: str) -> None:
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE syllabi SET processing_status = 'READY', text_content = %s,"
+            " processing_error = NULL, updated_at = %s WHERE id = %s",
+            (text_content, _now(), syllabus_id),
+        )
 
-    Called on the generation failure path so a failed draft is never left
-    stuck as a silent PROCESSING/"drafting" ghost. A CONFIRMED proposal is
-    never touched (guarded by the status filter).
+
+def update_syllabus_failed(syllabus_id: str, message: str) -> None:
+    """Persist an honest FAILED processing state — never a stuck ghost."""
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE syllabi SET processing_status = 'FAILED', processing_error = %s,"
+            " updated_at = %s WHERE id = %s",
+            (message, _now(), syllabus_id),
+        )
+
+
+def update_syllabus_analysis_processing(syllabus_id: str, job_id: str) -> None:
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE syllabi SET analysis_status = 'PROCESSING', analysis_job_id = %s,"
+            " analysis_error = NULL, updated_at = %s WHERE id = %s",
+            (job_id, _now(), syllabus_id),
+        )
+
+
+def complete_syllabus_analysis(
+    syllabus_id: str,
+    *,
+    context: dict[str, Any],
+    structure: dict[str, Any],
+) -> None:
+    """Persist the analyzed Syllabus Context + structure proposal (READY).
+
+    The worker is the only writer of analysis output. A CONFIRMED syllabus is
+    never silently overwritten (guarded by the status filter).
     """
     with psycopg.connect(settings.database_url) as conn:
         conn.execute(
-            "UPDATE syllabus_proposals SET status = 'FAILED', generation_error = %s,"
-            " updated_at = %s WHERE generation_job_id = %s AND status <> 'CONFIRMED'",
-            (message, _now(), generation_job_id),
+            "UPDATE syllabi SET analysis_status = 'READY', analysis_error = NULL,"
+            " context = %s, structure = %s, updated_at = %s"
+            " WHERE id = %s AND status <> 'CONFIRMED'",
+            (Jsonb(context), Jsonb(structure), _now(), syllabus_id),
         )
+
+
+def fail_syllabus_analysis(syllabus_id: str, message: str) -> None:
+    """Persist an honest FAILED analysis state (teacher can retry analyze)."""
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE syllabi SET analysis_status = 'FAILED', analysis_error = %s,"
+            " updated_at = %s WHERE id = %s AND status <> 'CONFIRMED'",
+            (message, _now(), syllabus_id),
+        )
+
+
+def get_syllabus_context(subject_id: str) -> dict[str, Any] | None:
+    """Syllabus Context of the latest CONFIRMED syllabus for a subject.
+
+    Gives the starter-material prompt the real instructional boundary
+    (objectives/outcomes/scope) without inventing a wider curriculum.
+    """
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        row = conn.execute(
+            "SELECT context FROM syllabi WHERE subject_id = %s AND status = 'CONFIRMED'"
+            " ORDER BY version DESC LIMIT 1",
+            (subject_id,),
+        ).fetchone()
+    return row.get("context") if row is not None else None
+
+
+def get_syllabus_structure(subject_id: str) -> dict[str, Any] | None:
+    """The latest CONFIRMED syllabus structure for a subject.
+
+    Gives the starter-material prompt the real syllabus boundary (chapter and
+    topic names) so the manuscript targets the topic without inventing a
+    wider curriculum.
+    """
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        row = conn.execute(
+            "SELECT structure FROM syllabi WHERE subject_id = %s AND status = 'CONFIRMED'"
+            " ORDER BY version DESC LIMIT 1",
+            (subject_id,),
+        ).fetchone()
+    return row.get("structure") if row is not None else None
 
 
 def get_scope_context(
@@ -540,23 +557,6 @@ def get_scope_context(
             if row is not None:
                 out["topic"] = {"name": row["name"], "description": row["description"]}
     return out
-
-
-def get_syllabus_structure(subject_id: str) -> dict[str, Any] | None:
-    """The latest PENDING_REVIEW/CONFIRMED syllabus structure for a subject.
-
-    Gives the starter-material prompt the real syllabus boundary (chapter and
-    topic names) so the manuscript targets the topic without inventing a
-    wider curriculum.
-    """
-    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-        row = conn.execute(
-            "SELECT structure FROM syllabus_proposals WHERE subject_id = %s"
-            " AND status IN ('PENDING_REVIEW', 'CONFIRMED')"
-            " ORDER BY updated_at DESC LIMIT 1",
-            (subject_id,),
-        ).fetchone()
-    return row.get("structure") if row is not None else None
 
 
 def upsert_starter_material(
