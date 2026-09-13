@@ -1,5 +1,133 @@
 # Project Status
 
+## Phase 28 — Source Coverage, Resource Integrity & Controlled Generation (2026-09-13)
+
+**Goal:** make material-derived learning resources coverage-bound (source-first,
+not full-domain), add explicit controlled generation via batches, honest
+cancellation, revision/provenance-based staleness, and turn Material Detail
+into a source verification hub.
+
+Full detail: `docs/planning/PHASE-28-SOURCE-COVERAGE-RESOURCES.md`
+
+**Product rules honored:** derived resources still auto-publish ACTIVE after
+generation+validation+persistence; examinations keep their explicit
+review/publish/snapshot boundaries (untouched); syllabus amendment/reopen stays
+DEFERRED (confirmed-syllabus 409 preserved); no MongoDB/second job system/
+frontend→AI calls; AI still through OmniRoute only; single public API boundary.
+
+### Completed — P0 Current-State Audit
+
+Read-only audit traced Material → Processing → Extracted Content → Generation
+Request → Job → RabbitMQ → Worker → AI → Persistence → Derived Resource across
+schema (`content.ts`, `materials.ts`, `jobs.ts`), API (`generation.service.ts`,
+`content.service.ts`, `jobs.service.ts`), worker (`service.py`, `db.py`), and
+web Material Detail. Findings sheet in the Phase 28 planning doc.
+
+**Already as expected (moved to the final report):** P1 hub (what existed was
+already far enough to extend, not rebuild); P7 auto-publish; P8 exam boundary;
+P15 syllabus deferral.
+
+### Completed — P9/P10 Source Version & Staleness
+
+- **`materials.revision`** int NOT NULL DEFAULT 1 (migration `0021_amazing_siren`,
+  applied to dev DB). Bumped ONLY on content-affecting changes: TEXT source
+  replacement and academic-scope change. Title/description edits do NOT bump —
+  this kills the old timestamp-heuristic stale noise.
+- **Materials PATCH** (`UpdateMaterialDto` + `materials.service.ts`) now accepts
+  `subjectId`/`chapterId`/`topicId` (scope chain re-resolved) and `text` (TEXT
+  materials only) and bumps `revision` when the resolved scope or text
+  actually changed. `MaterialResponseSchema.revision` added.
+- **Worker provenance:** `content_versions.source_reference` now records
+  `revision` (single MATERIAL source) and `revisions` (per-material map, any
+  source) at generation time.
+- **Staleness is now deterministic:** `GET /content/generation-status` compares
+  the material's current revision to the recorded source revision per version;
+  the old `updatedAt > generatedAt` heuristic is only a fallback for legacy rows.
+
+### Completed — P12/P13/P14 Coverage-Bound Generation
+
+- Worker resolves the material's academic scope names (subject → chapter →
+  topic) into the generation source label.
+- A single shared **coverage contract** (`worker/ai/generation/coverage.py`)
+  is appended to every coverage-bound prompt (note, package, summary,
+  flashcards, concepts, questions, syllabus) via `_part_label`: generate ONLY
+  from what the source actually covers; topic labels are headings, not licence
+  to expand; thin source → shorter faithful resource. Blueprint analysis opts
+  out (`coverage=False` — it analyses a paper pattern, not teaching coverage).
+- NOTE prompt quality contract ("be a good teacher, not a textbook") added.
+- Question prompts got the same coverage contract with no constraint changes.
+
+### Completed — P6 Honest Cancellation
+
+- **API `POST /jobs/:id/cancel`:** queued → `cancelled`; processing →
+  `cancelling`; completed/failed/cancelled → no-op. Completed resources are
+  never deleted.
+- **Worker:** checks job state at start, between chunks, and immediately before
+  every persistence point; `cancelling` settles to `cancelled` (a dedicated
+  `GenerationCancelledError` path — never recorded as a failure), a queued job
+  cancelled before consumption is skipped without starting, and nothing is
+  persisted after cancellation.
+- **Web `waitForJob`/`jobDone`** treat `cancelled` as terminal (409 "Job
+  cancelled" — distinct from failure).
+
+### Completed — P5 Generation Batch
+
+- **`POST /content/generate-batch`** — one job per selected type sharing a
+  `batchId` in the payload; `CORNELL_NOTE` reuses the content-package operation
+  restricted to `["cornell"]`. No new job system, no new tables — batches are
+  the existing jobs with a shared batchId.
+- **`GET /content/generation-batches/:batchId`** (per-job status/mapping,
+  total/completed/failed/cancelled/active counts) and
+  **`POST .../cancel`** (cancels every non-terminal job). Active-generation
+  conflicts surface as `alreadyActive`.
+- Contracts added to `@catlium/contracts` (batch request/response, per-job).
+
+### Completed — P2 Material → Generated Resources
+
+- `GET /content/generation-status` now returns `materialRevision`, a
+  **per-version `resources` array** (contentId, type, title, status, version,
+  changeType, generatedAt, sourceRevision, stale) and a **question summary**
+  (total/pending/approved via `questions.provenance.materialIds` containment).
+- Material Detail resources card renders revisions per type with
+  ACTIVE/STALE badges, source-revision, and Open.
+
+### Completed — P3/P4/P1 Controlled Generation UX + Hub
+
+- **"Generate learning resources" dialog**: per-type checkboxes (defaults to
+  not-generated types), Generate Selected + Generate All.
+- **Batch progress panel** with per-type status chips
+  (Queued/Generating/Completed/Failed/Cancelled) and **Cancel remaining**.
+- **Edit dialog**: academic scope cascade (on-demand subjects/chapters/topics)
+  + TEXT source editing, with a stale-warning banner that previews the revision
+  bump.
+- Header shows **Revision N**; generation-status changes mark existing
+  resources stale immediately.
+
+### Validation
+
+- `pnpm typecheck` 10/10 PASS; `pnpm lint` 9/9 PASS;
+  `pnpm --filter @catlium/web build` PASS; worker
+  `ruff` / `mypy` PASS; pytest 24 PASS (incl. new `test_source_service.py`).
+- Live smoke against the rebuilt docker stack (teacher@catlium.dev):
+  batch create → per-type completion + one provider-timeout FAILED surfaced;
+  cancel queued→`cancelled` (worker logs "Skipping cancelled job") AND
+  processing→`cancelling`→`cancelled` ("Generation cancelled") with NO new
+  resource persisted; PATCH text → revision 1→2 → SUMMARY/CORNELL stale=True;
+  PATCH title only → revision unchanged; PATCH scope → revision 3; regenerate →
+  v2 REGENERATION with `sourceRevision=3`, stale cleared; legacy NOTE (no
+  source revision) fell back to timestamp staleness correctly.
+- graphify graph updated (AST rebuild, no API cost).
+
+### Checkpoint
+
+- **Commits:** `feat(materials): add revision-based source versioning + PATCH scope/text` and follow-on implementation commits (see git log).
+- **Pushed to** `main`.
+- **Known issues:** none functionally; upstream OmniRoute timeouts can fail an
+  individual job (surfaced honestly as FAILED with safe message — retry-able).
+- **Recommended next task:** record the full Phase 28 validation matrix in
+  `docs/user-validation.md` as automated/curl scenarios, then **Phase 27 → P5
+  Rich educational content** (next product roadmap item).
+
 ## Phase 27 — Product Validation & Enhancement (2026-09-12)
 
 **Goal:** make the already-built platform work as a coherent, real educational

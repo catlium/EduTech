@@ -70,6 +70,24 @@ Response: `{ "job": Job }`
 
 This is the endpoint the frontend polls to track material processing.
 
+## Cancel a job
+
+```
+POST /jobs/:jobId/cancel
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Honest cancellation (Phase 28):
+
+- queued → `cancelled` (never starts; the worker logs "Skipping cancelled job")
+- processing → `cancelling` (the worker settles it to `cancelled` at the next
+  chunk/persist boundary — it can never become `failed`, and nothing is
+  persisted after cancellation)
+- completed / failed / cancelled → no-op, current state returned
+
+Completed derived resources are **never** deleted by cancellation.
+
+Response: `{ "job": Job }` with the resulting status.
+
 ## Job history on retry
 
 Retrying a failed material (`POST /materials/:id/retry`) creates a **new** job

@@ -15,6 +15,87 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Phase 28 — Source Coverage, Resource Integrity & Controlled Generation (2026-09-13)
+
+Status: `[x]` API + worker + web validation PASS against the rebuilt docker
+stack (`teacher@catlium.dev`). Browser-only visual items deferred per the
+standing user decision to work autonomously; their API/data behavior is
+verified below.
+
+Setup for all items: dev stack rebuilt (`--build api web worker-ai`), demo
+seed applied, login as `teacher@catlium.dev` / `Password123!`, institute
+header `x-institute-id: 99999999-9999-9999-9999-999999999999`, CSRF header
+`x-csrf-token` on non-GET. Sample material for P28 runs:
+`5f688726-1bea-4538-8553-4a97a9099853` (TEXT, subject Mathematics Minor).
+
+### P28-01 — Material revision in the detail response
+
+- **Endpoint:** `PATCH /api/v1/materials/<id>`
+  `{"text":"Module 1: Basics of integers. Natural numbers and induction. Divisibility and primes.","description":"updated by smoke test"}`
+- **Expected:** 200; `revision` 1→2, description updated. Verified: revision=2.
+- **Endpoint:** `PATCH /api/v1/materials/<id>` `{"title":"Basics of Mathematics – IV (renamed)"}`
+- **Expected:** revision stays 2 (title is NOT content-affecting), title updated.
+  Verified: revision=2.
+
+### P28-02 — Scope edit bumps the revision
+
+- **Endpoint:** `PATCH /api/v1/materials/<id>`
+  `{"subjectId":"a8ff413d-f504-4596-8e79-edc0556b5fac","chapterId":"f250943b-ee65-4383-a95a-deccfc1cf4b6"}`
+- **Expected:** 200; `revision` 2→3, subject updated to Physics. Verified: revision=3.
+
+### P28-03 — Deterministic staleness on the generation-status hub
+
+- **Endpoint:** `GET /api/v1/content/generation-status?materialId=<id>`
+- **Expected (after P28-01/02):** `materialRevision: 3`;
+  `resources` rows all `stale: true` (CORNELL_NOTE/SUMMARY recorded
+  `sourceRevision: 1`; legacy NOTE `sourceRevision: null` falls back to the
+  timestamp heuristic). Verified live.
+
+### P28-04 — Regeneration produces a new version referencing the new revision
+
+- **Endpoint:** `POST /api/v1/content/generate`
+  `{"operation":"AI_GENERATE_SUMMARY","sourceType":"MATERIAL","sourceId":"<id>"}` then poll `GET /jobs/:id`.
+- **Expected:** job → completed; a SUMMARY v2 `REGENERATION` row with
+  `sourceRevision: 3`, `stale: false`; v1 remains listed stale. Verified live.
+
+### P28-05 — Generation batch create + progress
+
+- **Endpoint:** `POST /api/v1/content/generate-batch`
+  `{"sourceType":"MATERIAL","sourceId":"<id>","types":["SUMMARY","FLASHCARD_SET","CORNELL_NOTE"]}`
+- **Expected:** 202 `{ batch: { batchId, jobIds: [3 ids], alreadyActive: [] } }`.
+  Polling `GET /api/v1/content/generation-batches/<batchId>` moves
+  processing→completed; a provider-side timeout surfaced as one job `failed`
+  with a safe message — `total 3 completed 2 failed 1 active 0` after settling.
+  Verified live. Batch `completed` counts only literal completed (not failed).
+
+### P28-06 — Cancellation is honest and never destroys completed work
+
+- **Endpoint:** `POST /api/v1/content/generation-batches/<batchId>/cancel` (a
+  new NOTE+SUMMARY batch, cancelled ~1s in) and `POST /api/v1/jobs/<id>/cancel`
+- **Expected:** queued job → `cancelled`; already-running job → `cancelling →
+  cancelled` via worker; worker logs "Skipping cancelled job" / "Generation
+  cancelled"; NO new resource version persisted (NOTE stays v1); completed
+  jobs/contents untouched. Verified live.
+
+### P28-07 — Coverage-bound generation (soft, prompt-level)
+
+- **Expected:** every resource/package/summary/flashcards/concepts/questions
+  prompt now carries the shared coverage contract and the material's academic
+  scope names; generated output must stay inside the source's content. Verified
+  at the code/prompt level; AI-output fidelity is model-dependent and covered
+  by the standing qualitative spot-check practice.
+
+### P28-08 — Web Material Detail (browser; API/data verified above)
+
+- Material Detail shows Revision N, the Generate-learning-resources dialog
+  (per-type checkboxes + Generate Selected / All), batch progress chips +
+  Cancel remaining, per-type revision rows with ACTIVE/STALE badges and
+  source-revision, the question summary, and edit scope/text with the
+  stale-warning banner. `[~]` web image rebuilt with the new page; visual
+  QA deferred per standing autonomy decision.
+
+---
+
 ## Phase 27 — Product Validation & Enhancement (2026-09-12)
 
 Status: `[x]` P1 code-complete + automated validation PASS (typecheck 10/10,

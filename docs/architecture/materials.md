@@ -366,3 +366,31 @@ The existing `content_versions` columns remain compatible:
 Material → content linkage is therefore a stable UUID reference from
 `content_versions.source_reference.materialId`. The content domain is **not**
 redesigned.
+
+## Revision-based source provenance (Phase 28, implemented)
+
+- `materials.revision` (int, default 1) is the source version. It bumps ONLY on
+  content-affecting edits: TEXT source replacement or academic-scope change.
+  Title/description edits never bump (they are not content for generation
+  purposes, and the old timestamp heuristic made those look stale).
+- At generation time the worker records the material's current revision in
+  `source_reference` — as `{ "materialId", "revision": n }` for a single
+  MATERIAL source, or `{ "revisions": { "<materialId>": n, ... } }` for
+  multi-material sources.
+- Staleness is now deterministic: `material.revision > source_reference.revision`
+  ⇒ stale. `source_reference.revision` is absent on legacy rows, which fall back
+  to the timestamp heuristic (`material.updatedAt > generatedAt`).
+- Derived resources stay coverage-bound: the worker resolves the material's
+  academic scope names (subject → chapter → topic) and appends a shared
+  coverage contract (`worker/ai/generation/coverage.py`) to coverage-bound
+  prompts so generation cannot roam outside the source material. Blueprint
+  analysis opts out (it analyses a paper pattern, not teaching coverage).
+
+## Batch generation (Phase 28, implemented)
+
+Batches reuse the existing jobs system — no second job queue. `generate-batch`
+writes one job row per requested type sharing a `batchId` in the job payload;
+the batch endpoints group by it. Cancellation is honest: queued → `cancelled`;
+processing → `cancelling` (worker settles to `cancelled` at chunk/persist
+boundaries and persists nothing afterwards); completed resources are never
+deleted. The worker never reports a cancelled job as `failed`.

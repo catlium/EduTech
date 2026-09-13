@@ -195,24 +195,103 @@ independent, editable content item).
 GET /content/generation-status?materialId=<uuid>
 ```
 
-Returns, for each content type, the latest AI-generated version for that
-material and whether it is stale (the material was edited after generation):
+Returns the source material's `materialRevision`, the per-version generated
+resources for that material (with recorded `sourceRevision` and deterministic
+`stale`), and a question summary. Wired to the Material Detail page as the
+source-verification hub.
 
 ```json
 {
   "materialId": "uuid",
-  "contents": {
-    "NOTE": {
-      "status": "generated" | "stale" | "not_generated",
-      "version": 1,
-      "updatedAt": "iso8601"
-    },
-    "SUMMARY": { "status": "not_generated" },
-    "FLASHCARD_SET": { "status": "not_generated" },
-    "IMPORTANT_CONCEPTS": { "status": "not_generated" }
+  "materialRevision": 3,
+  "resources": [
+    {
+      "contentId": "uuid",
+      "type": "SUMMARY",
+      "title": "...",
+      "status": "GENERATED",
+      "version": 2,
+      "changeType": "REGENERATION",
+      "generatedAt": "iso8601",
+      "sourceRevision": 3,
+      "stale": false
+    }
+  ],
+  "contentSummary": {
+    "NOTE": { "state": "generated" | "stale" | "not_generated", "contentId": "uuid|null", "version": 1, "generatedAt": "iso8601|null" },
+    "SUMMARY": { "state": "not_generated", "contentId": null, "version": null, "generatedAt": null },
+    "FLASHCARD_SET": { "state": "not_generated", "contentId": null, "version": null, "generatedAt": null },
+    "IMPORTANT_CONCEPTS": { "state": "not_generated", "contentId": null, "version": null, "generatedAt": null }
+  },
+  "questions": { "total": 19, "pending": 3, "approved": 16 }
+}
+```
+
+Staleness rules (Phase 28): a resource is `stale` when the material's current
+`revision` exceeds the `sourceRevision` recorded in the source-reference at
+generation time. `sourceRevision` is `null` for legacy resources — those fall
+back to the old timestamp heuristic (`material.updatedAt > generatedAt`).
+`questions` counts are computed from `questions.provenance->'materialIds'`.
+
+## Generate content batch (one job per type, shared batchId)
+
+```
+POST /content/generate-batch
+GET  /content/generation-batches/:batchId
+POST /content/generation-batches/:batchId/cancel
+```
+
+`generate-batch` creates one job per selected type (`types` defaults to all of
+NOTE/SUMMARY/FLASHCARD_SET/IMPORTANT_CONCEPTS/CORNELL_NOTE) with a shared
+`batchId` in the payload — no new job system, no new tables. `CORNELL_NOTE` is
+routed through the content-package operation restricted to `["cornell"]`.
+A type that already has a non-terminal (active) generation job for the same
+source is reported in `alreadyActive` and not re-queued.
+
+```json
+// POST /content/generate-batch
+{
+  "sourceType": "MATERIAL",
+  "sourceId": "uuid",
+  "types": ["CORNELL_NOTE", "SUMMARY", "FLASHCARD_SET"]
+}
+
+// 202 Accepted
+{
+  "batch": {
+    "batchId": "uuid",
+    "sourceType": "MATERIAL",
+    "sourceId": "uuid",
+    "jobIds": ["uuid", "uuid", "uuid"],
+    "alreadyActive": []
   }
 }
 ```
+
+`GET /content/generation-batches/:batchId` returns counts and per-job status:
+
+```json
+{
+  "batch": {
+    "batchId": "uuid",
+    "sourceType": "MATERIAL",
+    "sourceId": "uuid",
+    "total": 3,
+    "completed": 2,
+    "failed": 1,
+    "cancelled": 0,
+    "active": 0,
+    "jobs": [
+      { "jobId": "uuid", "type": "SUMMARY", "status": "completed", "error": null, "createdAt": "iso8601" }
+    ]
+  }
+}
+```
+
+`completed` counts only literal `completed` (failed/cancelled are reported
+separately); a batch is finished when `active === 0`. `POST
+.../cancel` cancels every non-terminal job (see the cancel semantics in
+`docs/api/jobs.md`).
 
 ## Question bank generation
 

@@ -142,6 +142,13 @@ lifecycle/versioning semantics without copy drift.
 | `created_by`       | uuid ref to user                                                      |
 | `created_at`       | timestamp                                                             |
 
+> **Source provenance (Phase 28):** for AI-generated content originating from
+> a material, `source_reference` now carries the source **revision** captured
+> at generation time — `{ "materialId", "revision": n }` for a single source or
+> `{ "revisions": { "<materialId>": n } }` for multiple. Combined with
+> `materials.revision`, this gives deterministic staleness checking (see
+> `docs/architecture/materials.md`).
+
 Unique constraint: `(content_id, version)` — duplicate version numbers for the
 same content item are impossible.
 

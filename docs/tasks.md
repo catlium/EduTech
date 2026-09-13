@@ -1,5 +1,94 @@
 # Task Tracker
 
+## Phase 28 — Source Coverage, Resource Integrity & Controlled Generation (2026-09-13)
+
+Full detail: `docs/planning/PHASE-28-SOURCE-COVERAGE-RESOURCES.md`
+
+### Goal: P0 Current-State Audit
+
+- [x] P0.1 Read-Only audit: traced Material → Processing → Extracted Content →
+      Generation Request → Job → RabbitMQ → Worker → AI → Persistence →
+      Derived Resource (schema, API, worker, web). Findings in the Phase 28
+      planning doc.
+- [x] P0.2 Recorded already-as-expected items (P1 hub, P7 auto-publish, P8
+      exams, P15 syllabus deferral) for the final report.
+
+### Goal: P9/P10 Source Version & Staleness (backend)
+
+- [x] P9.1 Migration: `materials.revision` int NOT NULL DEFAULT 1
+- [x] P9.2 Materials PATCH: accept scope ids + `text` (TEXT materials); bump
+      `revision` on content-affecting changes (text/scope); title/description
+      do NOT bump (stale-noise fix)
+- [x] P9.3 Worker: write `source_reference.revision`/`revisions`; staleness
+      computed by revision comparison in `generation-status` (timestamp
+      fallback for legacy rows)
+- [x] P9.4 Contracts: `MaterialResponseSchema.revision`; material update DTO
+
+### Goal: P12/P13/P14 Coverage-Bound Generation
+
+- [x] P12.1 Worker: academic scope names (subject/chapter/topic) resolved into
+      the generation source label
+- [x] P12.2 Shared coverage contract added to note/package/summary/flashcards/
+      concepts conversations prompt (stay inside taught coverage; topic names
+      never override material; supplement sparingly)
+- [x] P12.3 Question prompts: coverage-bound + constraints preserved
+- [x] P14.1 NOTE prompt quality: detailed-but-bounded teaching quality contract
+
+### Goal: P6 Cancellation
+
+- [x] P6.1 API `POST /jobs/:id/cancel`: queued → cancelled; processing →
+      cancelling; terminal → no-op
+- [x] P6.2 Worker: job-status check at start / between chunks / before persist;
+      cancelling → cancelled (no derived resource persisted); completed never
+      deleted
+- [x] P6.3 Web `waitForJob` treats cancelled/cancelling as terminal
+
+### Goal: P5 Generation Batch
+
+- [x] P5.1 API `POST /content/generate-batch` (source + selected types → one
+      job per type sharing `batchId`; cornell via package op ["cornell"])
+- [x] P5.2 API `GET /content/generation-batches/:batchId` + `POST .../cancel`
+      (per-type status via existing jobs)
+- [x] P5.3 Contracts: batch request/response schemas
+
+### Goal: P2 Material → Generated Resources
+
+- [x] P2.1 `generation-status` extended: per-version resource rows
+      (contentId/type/title/status/version/changeType/generatedAt/stale/
+      sourceRevision) + current `materialRevision` + question summary
+- [x] P2.2 Web resources card: revisions per type with ACTIVE/STALE badges +
+      source-version + Open
+
+### Goal: P3/P4 Controlled Generation UX
+
+- [x] P3.1 Web "Generate Learning Resources" dialog: per-type checkboxes,
+      Generate Selected, Generate All (explicit teacher action only — no
+      auto-generation on ACTIVE)
+- [x] P4.1 Web batch progress panel (queued/generating/completed/failed/
+      cancelled chips, Cancel Remaining)
+
+### Goal: P1 Extend Material Detail Hub
+
+- [x] P1.1 Edit dialog: academic scope cascade + TEXT source editing with a
+      stale-warning banner
+- [x] P1.2 Header/source card: current material revision display
+
+### Goal: P16/P17 Validation
+
+- [x] P16.1 Validation scenarios A–K executed and recorded
+- [x] P17.1 Regression: typecheck (10/10), lint (9/9), web build, ruff/mypy,
+      migration applied, no Phase 27 regressions
+- [x] P16.2 Live smoke: batch create/progress/cancel, rev bump → stale,
+      coverage-bound output, exam publish boundary untouched
+
+### Goal: P18 Documentation & Checkpoints
+
+- [x] P18.1 docs updated (planning, tasks, project-status, content/material
+      API+architecture, user-validation)
+- [x] P18.2 graphify update
+- [x] P18.3 Final checkpoint commit + push
+- [x] P18.4 Final detailed report
+
 ## Phase 27 — Product Validation & Enhancement (2026-09-12)
 
 Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`

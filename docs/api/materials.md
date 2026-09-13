@@ -169,15 +169,29 @@ PATCH /materials/:materialId
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. Updates `title` and/or `description`.
-Academic scope, type, source, and processing state cannot be changed.
+Since Phase 28 it can also replace the source `text` (TEXT materials only) and
+the academic scope (`subjectId`/`chapterId`/`topicId`). `revision` bumps ONLY
+on content-affecting changes (text replacement or scope change) — metadata
+edits (title/description) do not, so they never create stale-noise on derived
+resources.
 
 Body:
 
 ```json
-{ "title": "updated title", "description": "updated description" }
+{
+  "title": "updated title",
+  "description": "updated description",
+  "text": "replacement source text (TEXT materials only)",
+  "subjectId": "uuid",
+  "chapterId": "uuid",
+  "topicId": "uuid"
+}
 ```
 
-Response: `{ "material": Material }`
+`text` on a non-TEXT material → `400`. Scope ids are re-resolved as a full
+subject→chapter→topic chain (each provided id must resolve in the institute).
+
+Response: `{ "material": Material }` (now includes `revision`).
 
 ## Archive material
 
