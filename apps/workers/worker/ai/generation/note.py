@@ -43,6 +43,12 @@ SYSTEM_PROMPT = (
     "Do NOT force visuals into every resource.\n"
     "- Add useful examples (concept -> explanation -> example -> takeaway) where "
     "they aid understanding; never add filler examples.\n"
+    '- Write all prose and math in PLAIN TEXT. "formula" content must be '
+    "readable without a renderer, e.g. `E = mc^2`, `x^2 + y^2 = z^2`, "
+    "`F = G*m1*m2 / r^2`, `v = d/t` — use `^` for superscripts and `*` for "
+    "multiplication, never LaTeX like \\frac or \\sqrt. Do NOT emit markdown "
+    "emphasis (**..**, _.._), backticks, or HTML in any string field or table "
+    "cell; the app displays these fields verbatim.\n"
     '- "furtherLearning" is OPTIONAL and must only list real, authoritative '
     "resources (e.g. well-known documentation, textbooks, university pages). "
     "NEVER fabricate URLs, titles, or authors. If you cannot confidently provide "

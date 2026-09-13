@@ -38,12 +38,117 @@ export function FurtherLearning({ resources }: { resources: FurtherLearningResou
 
 export function ChartBlockView({ block }: { block: NoteChartBlock }) {
   const max = Math.max(...block.data.map((d) => d.value), 1);
-  return (
-    <figure className="rounded-lg border p-3">
-      {block.caption && (
-        <figcaption className="mb-2 text-sm font-medium">{block.caption}</figcaption>
-      )}
-      {block.chartType === "bar" ? (
+  const palette = [
+    "#2563eb",
+    "#059669",
+    "#d97706",
+    "#dc2626",
+    "#7c3aed",
+    "#0891b2",
+    "#db2777",
+    "#65a30d",
+  ];
+  if (block.chartType === "line") {
+    const w = 340;
+    const h = 150;
+    const pad = 10;
+    const n = block.data.length;
+    const pts = block.data.map((d, i) => ({
+      x: n === 1 ? w / 2 : pad + (i / (n - 1)) * (w - 2 * pad),
+      y: pad + (1 - d.value / max) * (h - 2 * pad),
+    }));
+    return (
+      <figure className="rounded-lg border p-3">
+        {block.caption && (
+          <figcaption className="mb-2 text-sm font-medium">{block.caption}</figcaption>
+        )}
+        <svg viewBox={`0 0 ${w} ${h + 18}`} className="w-full" role="img" aria-label={block.caption ?? "line chart"}>
+          <polyline
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
+            className="text-primary"
+          />
+          {pts.map((p, i) => (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r="3" className="fill-primary" />
+              <text x={p.x} y={p.y - 7} textAnchor="middle" fontSize="9" className="fill-muted-foreground">
+                {block.data[i].value}
+              </text>
+            </g>
+          ))}
+          {block.data.map((d, i) => (
+            <text
+              key={`${d.label}-${i}`}
+              x={pts[i].x}
+              y={h + 14}
+              textAnchor="middle"
+              fontSize="9"
+              className="fill-muted-foreground"
+            >
+              {d.label.length > 14 ? d.label.slice(0, 13) + "…" : d.label}
+            </text>
+          ))}
+        </svg>
+      </figure>
+    );
+  }
+  if (block.chartType === "pie") {
+    const total = block.data.reduce((s, d) => s + d.value, 0);
+    if (total <= 0) {
+      return (
+        <figure className="rounded-lg border p-3">
+          {block.caption && (
+            <figcaption className="mb-2 text-sm font-medium">{block.caption}</figcaption>
+          )}
+          <p className="text-sm text-muted-foreground">No data to display.</p>
+        </figure>
+      );
+    }
+    const arc = (a0: number, a1: number) => {
+      const large = a1 - a0 > Math.PI ? 1 : 0;
+      const x0 = 70 + 60 * Math.cos(a0);
+      const y0 = 70 + 60 * Math.sin(a0);
+      const x1 = 70 + 60 * Math.cos(a1);
+      const y1 = 70 + 60 * Math.sin(a1);
+      return `M70,70 L${x0.toFixed(1)},${y0.toFixed(1)} A60,60 0 ${large} 1 ${x1.toFixed(1)},${y1.toFixed(1)} Z`;
+    };
+    let angle = -Math.PI / 2;
+    return (
+      <figure className="rounded-lg border p-3">
+        {block.caption && (
+          <figcaption className="mb-2 text-sm font-medium">{block.caption}</figcaption>
+        )}
+        <div className="flex flex-wrap items-center gap-4">
+          <svg viewBox="0 0 140 140" className="h-40 w-40 shrink-0" role="img" aria-label={block.caption ?? "pie chart"}>
+            {block.data.map((d, i) => {
+              const sweep = (d.value / total) * Math.PI * 2;
+              const path = arc(angle, angle + sweep);
+              angle += sweep;
+              return <path key={i} d={path} fill={palette[i % palette.length]} stroke="white" strokeWidth="1" />;
+            })}
+          </svg>
+          <ul className="min-w-0 flex-1 space-y-1 text-xs">
+            {block.data.map((d, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span className="size-2.5 shrink-0 rounded-sm" style={{ background: palette[i % palette.length] }} />
+                <span className="truncate">{d.label}</span>
+                <span className="ml-auto tabular-nums text-muted-foreground">{d.value}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </figure>
+    );
+  }
+  if (block.chartType === "bar") {
+    return (
+      <figure className="rounded-lg border p-3">
+        {block.caption && (
+          <figcaption className="mb-2 text-sm font-medium">{block.caption}</figcaption>
+        )}
         <div className="space-y-1.5">
           {block.data.map((d) => (
             <div key={d.label} className="flex items-center gap-2 text-xs">
@@ -58,16 +163,22 @@ export function ChartBlockView({ block }: { block: NoteChartBlock }) {
             </div>
           ))}
         </div>
-      ) : (
-        <ul className="divide-y text-sm">
-          {block.data.map((d) => (
-            <li key={d.label} className="flex items-center justify-between py-1">
-              <span>{d.label}</span>
-              <span className="tabular-nums text-muted-foreground">{d.value}</span>
-            </li>
-          ))}
-        </ul>
+      </figure>
+    );
+  }
+  return (
+    <figure className="rounded-lg border p-3">
+      {block.caption && (
+        <figcaption className="mb-2 text-sm font-medium">{block.caption}</figcaption>
       )}
+      <ul className="divide-y text-sm">
+        {block.data.map((d) => (
+          <li key={d.label} className="flex items-center justify-between py-1">
+            <span>{d.label}</span>
+            <span className="tabular-nums text-muted-foreground">{d.value}</span>
+          </li>
+        ))}
+      </ul>
     </figure>
   );
 }
@@ -110,7 +221,7 @@ export function DiagramBlockView({ block }: { block: NoteDiagramBlock }) {
 export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
   return (
     <div className="max-w-none space-y-4">
-      {blocks.map((block) => {
+      {blocks.map((block, i) => {
         switch (block.type) {
           case "heading":
             return (
@@ -120,7 +231,7 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
             );
           case "paragraph":
             return (
-              <p key={block.id} className="text-sm leading-relaxed">
+              <p key={block.id} className="whitespace-pre-wrap text-sm leading-relaxed">
                 {block.content}
               </p>
             );
@@ -235,6 +346,18 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
             return <DiagramBlockView key={block.id} block={block} />;
           case "chart":
             return <ChartBlockView key={block.id} block={block} />;
+          default: {
+            // Unknown/legacy block: degrade to a styled paragraph, never hide content.
+            const raw = block as unknown as { id?: string; content?: string };
+            return (
+              <p
+                key={raw.id ?? `unknown-${i}`}
+                className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground"
+              >
+                {raw.content ?? JSON.stringify(block)}
+              </p>
+            );
+          }
         }
       })}
     </div>

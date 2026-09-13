@@ -92,8 +92,25 @@ one type is rejected for another. The Zod schemas in `@catlium/contracts`
 }
 ```
 
-`blocks` requires at least one block. Block `type` is one of `heading`,
-`paragraph`, `list` and is extensible for future block types.
+`blocks` requires at least one block (`id` unique per block). Every `type` in
+the NOTE block union (see `packages/contracts/src/index.ts` `NoteBlock`):
+
+| Block | shape |
+| --- | --- |
+| `heading` | `content` |
+| `paragraph` | `content` (rendered with `white-space: pre-wrap`) |
+| `list` | `items[]` |
+| `steps` | `title?`, `items[]` |
+| `table` | `caption?`, `headers[]?`, `rows[][]` |
+| `formula` | `content` (plain-text math — uses `^` for superscripts; no LaTeX) |
+| `example` | `title?`, `content` |
+| `callout` | `variant` (`note`/`tip`/`warning`/`important`), `content` |
+| `timeline` | `caption?`, `events[]` (`period`, `title`, `description?`) |
+| `diagram` | `kind` (`flowchart`/`concept_map`), `caption?`, `nodes[]` (`id`,`label`), `edges[]` (`from`,`to`,`label?`) |
+| `chart` | `chartType` (`bar`/`line`/`pie`), `caption?`, `data[]` (`label`,`value`) |
+
+Unknown block types degrade to a styled paragraph in the web renderer (they
+are never silently dropped).
 
 #### FLASHCARD_SET
 
