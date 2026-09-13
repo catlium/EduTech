@@ -17,6 +17,8 @@ import {
   FileText,
   FileUp,
   BookOpen,
+  Square,
+  Undo2,
 } from "lucide-react";
 
 import { api, ApiError, waitForJob } from "@/lib/api";
@@ -27,10 +29,17 @@ import type {
   MaterialProcessingStatus,
   ContentGenerationStatus,
   ContentGenerationStatusResponse,
+  GenerationBatchResponse,
+  GenerateBatchJobIds,
 } from "@catlium/contracts";
 import { PageHeader } from "@/components/app/page-header";
 import { StatusBadge } from "@/components/app/status-badge";
-import { ScopeBreadcrumb } from "@/components/app/scope-cascade";
+import {
+  ScopeBreadcrumb,
+  ScopeCascade,
+  type ScopeCascade as ScopeCascadeState,
+  emptyCascade,
+} from "@/components/app/scope-cascade";
 import { ErrorState } from "@/components/app/error-state";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -60,12 +69,25 @@ const PROCESSING_STEPS: { status: MaterialProcessingStatus; label: string }[] = 
   { status: "READY", label: "Ready" },
 ];
 
-const CONTENT_TYPE_LABEL: Record<string, string> = {
-  NOTE: "Notes",
-  SUMMARY: "Summary",
-  FLASHCARD_SET: "Flashcards",
-  IMPORTANT_CONCEPTS: "Concepts",
-  CORNELL_NOTE: "Cornell Notes",
+const RESOURCE_TYPES: { type: string; label: string }[] = [
+  { type: "NOTE", label: "Notes" },
+  { type: "SUMMARY", label: "Summary" },
+  { type: "FLASHCARD_SET", label: "Flashcards" },
+  { type: "IMPORTANT_CONCEPTS", label: "Concepts" },
+  { type: "CORNELL_NOTE", label: "Cornell Notes" },
+];
+
+const CONTENT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  RESOURCE_TYPES.map((t) => [t.type, t.label]),
+);
+
+const JOB_STATUS_CHIP: Record<string, { label: string; tone: "ok" | "err" | "warn" | "muted" }> = {
+  queued: { label: "Queued", tone: "muted" },
+  processing: { label: "Generating", tone: "warn" },
+  cancelling: { label: "Cancelling…", tone: "warn" },
+  completed: { label: "Completed", tone: "ok" },
+  failed: { label: "Failed", tone: "err" },
+  cancelled: { label: "Cancelled", tone: "muted" },
 };
 
 // CORNELL_NOTE is generated only via the package operation (no single op).
@@ -96,7 +118,11 @@ export default function MaterialDetailPage() {
   const [packageJob, setPackageJob] = useState<JobState>({ status: "idle" });
   const [confirmAction, setConfirmAction] = useState<"archive" | "activate" | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [genStatus, setGenStatus] = useState<ContentGenerationStatus[] | null>(null);
+  const [genStatus, setGenStatus] = useState<ContentGenerationStatusResponse | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [batchStatus, setBatchStatus] = useState<GenerationBatchResponse | null>(null);
+  const [batchStarting, setBatchStarting] = useState(false);
 
   const refresh = useCallback(() => {
     if (!institute) return;
@@ -112,20 +138,43 @@ export default function MaterialDetailPage() {
     return () => ctrl.abort();
   }, [institute, materialId]);
 
+  const loadGenStatus = useCallback(() => {
+    if (!institute) return;
+    const ctrl = new AbortController();
+    api<{ generationStatus: ContentGenerationStatusResponse }>(
+      `/content/generation-status?materialId=${materialId}`,
+      { signal: ctrl.signal },
+    )
+      .then(({ generationStatus }) => setGenStatus(generationStatus))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [institute, materialId]);
+
   useEffect(() => {
     return refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!institute) return;
+    return loadGenStatus();
+  }, [loadGenStatus, job.status, packageJob.status, batchStatus?.active]);
+
+  useEffect(() => {
+    if (!institute || !batchId) return;
     const ctrl = new AbortController();
-    api<ContentGenerationStatusResponse>(`/content/generation-status?materialId=${materialId}`, {
-      signal: ctrl.signal,
-    })
-      .then((resp) => setGenStatus(resp.items))
-      .catch(() => {});
-    return () => ctrl.abort();
-  }, [institute, materialId, packageJob.status, job.status]);
+    const tick = () => {
+      api<{ batch: GenerationBatchResponse }>(`/content/generation-batches/${batchId}`, {
+        signal: ctrl.signal,
+      })
+        .then(({ batch }) => setBatchStatus(batch))
+        .catch(() => {});
+    };
+    const id = setInterval(tick, 2500);
+    tick();
+    return () => {
+      clearInterval(id);
+      ctrl.abort();
+    };
+  }, [institute, batchId]);
 
   const isProcessing =
     material?.processingStatus === "QUEUED" || material?.processingStatus === "PROCESSING";
@@ -169,22 +218,41 @@ export default function MaterialDetailPage() {
     }
   }
 
-  async function startGeneratePackage() {
-    setPackageJob({ status: "running", jobId: "", operation: "AI_GENERATE_CONTENT_PACKAGE" });
+  async function startBatch(types: string[]) {
+    setBatchStarting(true);
     try {
-      const resp = await api<{ generation: { jobId: string } }>("/content/generate-package", {
+      const { batch } = await api<{ batch: GenerateBatchJobIds }>("/content/generate-batch", {
         method: "POST",
-        body: { sourceType: "MATERIAL", sourceId: materialId },
+        body: { sourceType: "MATERIAL", sourceId: materialId, types },
       });
-      const jobId = resp.generation.jobId;
-      setPackageJob({ status: "running", jobId, operation: "AI_GENERATE_CONTENT_PACKAGE" });
-      await waitForJob(() => api<{ job: { status: string } }>(`/jobs/${jobId}`));
-      setPackageJob({ status: "done", contentId: "", operation: "AI_GENERATE_CONTENT_PACKAGE" });
-      toast.success("Content package created");
+      setGenerateOpen(false);
+      if (batch.jobIds.length === 0) {
+        toast.info("Those resources are already being generated");
+        return;
+      }
+      toast.success(
+        `Started ${batch.jobIds.length} generation job${batch.jobIds.length > 1 ? "s" : ""}`,
+      );
+      setBatchId(batch.batchId);
+      setBatchStatus(null);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Package generation failed";
-      setPackageJob({ status: "error", message: msg });
-      toast.error(msg);
+      toast.error(err instanceof ApiError ? err.message : "Failed to start generation");
+    } finally {
+      setBatchStarting(false);
+    }
+  }
+
+  async function cancelBatch() {
+    if (!batchId) return;
+    try {
+      const { batch } = await api<{ batch: GenerationBatchResponse }>(
+        `/content/generation-batches/${batchId}/cancel`,
+        { method: "POST" },
+      );
+      setBatchStatus(batch);
+      toast.success("Remaining jobs cancelled");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to cancel jobs");
     }
   }
 
@@ -297,6 +365,9 @@ export default function MaterialDetailPage() {
             <FileText className="size-3.5" /> {material.sourceType}
           </span>
           <StatusBadge status={typeLabel} />
+          <span className="flex items-center gap-1.5">
+            <BookOpen className="size-3.5" /> Revision {material.revision}
+          </span>
           {material.sourceType === "UPLOAD" && material.fileName && (
             <span className="flex items-center gap-1.5">
               <FileUp className="size-3.5" />
@@ -361,11 +432,22 @@ export default function MaterialDetailPage() {
             genStatus={genStatus}
             job={job}
             packageJob={packageJob}
+            batchStatus={batchStatus}
+            batchStarting={batchStarting}
             onGenerate={startGenerate}
-            onGenerateAll={startGeneratePackage}
+            onOpenGenerateDialog={() => setGenerateOpen(true)}
+            onCancelBatch={cancelBatch}
           />
         </CardContent>
       </Card>
+
+      <GenerateResourcesDialog
+        open={generateOpen}
+        onOpenChange={setGenerateOpen}
+        genStatus={genStatus}
+        onGenerate={startBatch}
+        starting={batchStarting}
+      />
 
       <EditMaterialDialog
         open={editOpen}
@@ -374,6 +456,7 @@ export default function MaterialDetailPage() {
         onSaved={() => {
           setEditOpen(false);
           refresh();
+          loadGenStatus();
         }}
       />
 
@@ -419,7 +502,8 @@ function ProcessingLifecycle({
     FAILED: "Processing failed. See the error below; retry after resolving the issue.",
   };
 
-  const progress = failed || currentStep < 0 ? 100 : (currentStep / (PROCESSING_STEPS.length - 1)) * 100;
+  const progress =
+    failed || currentStep < 0 ? 100 : (currentStep / (PROCESSING_STEPS.length - 1)) * 100;
 
   return (
     <div className="space-y-3">
@@ -436,7 +520,9 @@ function ProcessingLifecycle({
                 <span
                   key={step.status}
                   className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                    reached ? "border-primary/40 bg-primary/10 text-primary" : "text-muted-foreground"
+                    reached
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "text-muted-foreground"
                   }`}
                 >
                   {step.label}
@@ -553,18 +639,24 @@ function GeneratedResources({
   genStatus,
   job,
   packageJob,
+  batchStatus,
+  batchStarting,
   onGenerate,
-  onGenerateAll,
+  onOpenGenerateDialog,
+  onCancelBatch,
 }: {
   material: MaterialResponse;
-  genStatus: ContentGenerationStatus[] | null;
+  genStatus: ContentGenerationStatusResponse | null;
   job: JobState;
   packageJob: JobState;
+  batchStatus: GenerationBatchResponse | null;
+  batchStarting: boolean;
   onGenerate: (operation: string) => void;
-  onGenerateAll: () => void;
+  onOpenGenerateDialog: () => void;
+  onCancelBatch: () => void;
 }) {
   const ready = material.processingStatus === "READY" && material.status === "ACTIVE";
-  const generating = job.status === "running" || packageJob.status === "running";
+  const generating = job.status === "running" || packageJob.status === "running" || batchStarting;
   const router = useRouter();
 
   if (!ready) {
@@ -578,22 +670,32 @@ function GeneratedResources({
     );
   }
 
+  const staleCount = (genStatus?.resources ?? []).filter((r) => r.stale).length;
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Content generated from this material. Derived resources activate automatically —
-          no approval needed.
+          Content generated from this {genStatus ? `material · revision ${genStatus.materialRevision}`
+            : "material."} Derived resources activate automatically — no approval needed.
         </p>
-        <Button size="sm" disabled={generating} onClick={onGenerateAll}>
-          {packageJob.status === "running" ? (
-            <Loader2 className="mr-1 size-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="mr-1 size-3.5" />
-          )}
-          Generate all
+        <Button size="sm" disabled={generating} onClick={onOpenGenerateDialog}>
+          <Sparkles className="mr-1 size-3.5" />
+          Generate learning resources
         </Button>
       </div>
+
+      <BatchProgressPanel batchStatus={batchStatus} onCancel={onCancelBatch} />
+
+      {staleCount > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            {staleCount} generated resource{staleCount > 1 ? "s have" : " has"} not been
+            regenerated after the latest material change — regenerate for accuracy.
+          </span>
+        </div>
+      )}
 
       {packageJob.status === "running" && (
         <p className="text-sm text-muted-foreground animate-pulse">
@@ -620,75 +722,187 @@ function GeneratedResources({
 
       {genStatus === null ? (
         <p className="text-sm text-muted-foreground">Loading generated resources…</p>
-      ) : genStatus.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Nothing generated from this material yet — use the buttons above to create learning
-          content.
-        </p>
       ) : (
-        <ul className="divide-y">
-          {genStatus.map((item) => {
-            const label = CONTENT_TYPE_LABEL[item.type] ?? item.type;
-            const operation = TYPE_TO_OPERATION[item.type];
-            const busyThis = job.status === "running" && job.operation === operation;
-            const hasContent = Boolean(item.contentId);
-            return (
-              <li key={item.type} className="flex flex-wrap items-center gap-3 py-2.5">
-                <span className="flex size-8 items-center justify-center rounded-md bg-muted">
-                  <BookOpen className="size-4 text-muted-foreground" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{label}</p>
-                  <StateLine item={item} />
-                </div>
-                {hasContent && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => item.contentId && router.push(`/content/${item.contentId}`)}
-                  >
-                    <Eye className="mr-1 size-3.5" /> Open
-                  </Button>
-                )}
-                {!hasContent && item.state === "generating" && null}
-                {!hasContent && item.state !== "generating" && operation && (
-                  <Button size="sm" variant="outline" disabled={generating} onClick={() => onGenerate(operation!)}>
-                    {job.status === "running" && job.operation === operation ? (
-                      <Loader2 className="mr-1 size-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="mr-1 size-3.5" />
+        <>
+          {genStatus.questions.total > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {genStatus.questions.total} question
+              {genStatus.questions.total > 1 ? "s" : ""} generated from this material ·{" "}
+              <span className="text-amber-600">{genStatus.questions.pending} pending review</span> ·{" "}
+              <span className="text-emerald-600">{genStatus.questions.approved} approved</span>
+            </p>
+          )}
+          <ul className="divide-y">
+            {RESOURCE_TYPES.map(({ type, label }) => {
+              const item = genStatus.items.find((i) => i.type === type);
+              const operation = TYPE_TO_OPERATION[type];
+              const hasContent = Boolean(item?.contentId);
+              const rows = genStatus.resources.filter((r) => r.type === type);
+              const busyThis = job.status === "running" && job.operation === operation;
+              return (
+                <li key={type} className="py-2.5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex size-8 items-center justify-center rounded-md bg-muted">
+                      <BookOpen className="size-4 text-muted-foreground" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{label}</p>
+                      <StateLine item={item} />
+                    </div>
+                    {hasContent && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => item?.contentId && router.push(`/content/${item.contentId}`)}
+                      >
+                        <Eye className="mr-1 size-3.5" /> Open
+                      </Button>
                     )}
-                    Generate
-                  </Button>
-                )}
-                {!hasContent && !operation && !(item.state === "generating") && (
-                  <span className="text-xs text-muted-foreground">Created with Generate all</span>
-                )}
-                {hasContent && item.state === "stale" && operation && (
-                  <Button size="sm" variant="ghost" disabled={generating} onClick={() => onGenerate(operation!)}>
-                    {busyThis ? (
-                      <Loader2 className="mr-1 size-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="mr-1 size-3.5" />
+                    {!hasContent && item?.state !== "generating" && operation && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={generating}
+                        onClick={() => onGenerate(operation)}
+                      >
+                        {busyThis ? (
+                          <Loader2 className="mr-1 size-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-1 size-3.5" />
+                        )}
+                        Generate
+                      </Button>
                     )}
-                    Regenerate
-                  </Button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                    {!hasContent && !operation && (
+                      <span className="text-xs text-muted-foreground">
+                        Created with Generate all
+                      </span>
+                    )}
+                    {hasContent && item?.state === "stale" && operation && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={generating}
+                        onClick={() => onGenerate(operation)}
+                      >
+                        {busyThis ? (
+                          <Loader2 className="mr-1 size-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-1 size-3.5" />
+                        )}
+                        Regenerate
+                      </Button>
+                    )}
+                  </div>
+
+                  {rows.length > 1 && (
+                    <ul className="mt-2 space-y-1 border-l pl-6">
+                      {rows.map((row) => (
+                        <li key={`${row.contentId}-${row.version}`} className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-mono">v{row.version}</span>
+                          <ResourceBadge stale={row.stale} />
+                          <span>
+                            {row.changeType === "REGENERATION" ? "regenerated" : "generated"}
+                            {row.generatedAt ? ` ${formatDateTime(row.generatedAt)}` : ""}
+                          </span>
+                          <span>source revision {row.sourceRevision ?? "—"}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-auto px-1.5 py-0.5"
+                            onClick={() => router.push(`/content/${row.contentId}`)}
+                          >
+                            Open
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );
 }
 
-function StateLine({ item }: { item: ContentGenerationStatus }) {
+function BatchProgressPanel({
+  batchStatus,
+  onCancel,
+}: {
+  batchStatus: GenerationBatchResponse | null;
+  onCancel: () => void;
+}) {
+  if (!batchStatus) return null;
+  const active = batchStatus.jobs.filter((j) => j.status !== "completed" && j.status !== "failed" && j.status !== "cancelled");
+  const failedJob = batchStatus.jobs.find((j) => j.status === "failed");
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">Batch progress</p>
+        {active.length > 0 ? (
+          <Button size="sm" variant="outline" onClick={onCancel}>
+            <Square className="mr-1 size-3.5" /> Cancel remaining
+          </Button>
+        ) : null}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {batchStatus.jobs.map((j) => {
+          const chip = JOB_STATUS_CHIP[j.status] ?? { label: j.status, tone: "muted" };
+          const tone =
+            chip.tone === "ok"
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700"
+              : chip.tone === "err"
+                ? "border-destructive/40 bg-destructive/10 text-destructive"
+                : chip.tone === "warn"
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-700"
+                  : "border-border bg-muted text-muted-foreground";
+          return (
+            <span key={j.jobId} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${tone}`}>
+              {j.status === "processing" || j.status === "cancelling" ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : null}
+              {CONTENT_TYPE_LABEL[j.type] ?? j.type}: {chip.label}
+            </span>
+          );
+        })}
+      </div>
+      {failedJob?.error && (
+        <p className="mt-2 text-xs text-destructive">{failedJob.error}</p>
+      )}
+      {active.length === 0 && (
+        <p className="mt-2 text-xs text-emerald-600">
+          All jobs finished.
+          {batchStatus.failed > 0 || batchStatus.cancelled > 0
+            ? ` ${batchStatus.failed} failed, ${batchStatus.cancelled} cancelled.`
+            : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ResourceBadge({ stale }: { stale: boolean }) {
+  return stale ? (
+    <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700">
+      STALE
+    </span>
+  ) : (
+    <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700">
+      ACTIVE
+    </span>
+  );
+}
+
+function StateLine({ item }: { item: ContentGenerationStatus | undefined }) {
+  if (!item) return <p className="text-xs text-muted-foreground">Not generated yet</p>;
   if (item.state === "generated") {
     return (
       <p className="text-xs text-emerald-600">
-        Generated{item.generatedAt ? ` · ${formatDateTime(item.generatedAt)}` : ""} · v
-        {item.version}
+        Generated{item.generatedAt ? ` · ${formatDateTime(item.generatedAt)}` : ""} · v{item.version}
       </p>
     );
   }
@@ -712,6 +926,82 @@ function StateLine({ item }: { item: ContentGenerationStatus }) {
   return <p className="text-xs text-muted-foreground">Not generated yet</p>;
 }
 
+function GenerateResourcesDialog({
+  open,
+  onOpenChange,
+  genStatus,
+  onGenerate,
+  starting,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  genStatus: ContentGenerationStatusResponse | null;
+  onGenerate: (types: string[]) => void;
+  starting: boolean;
+}) {
+  const items = genStatus?.items ?? [];
+  const [selected, setSelected] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (open) {
+      const notGenerated = items.filter((i) => i.state === "not_generated").map((i) => i.type);
+      setSelected(notGenerated);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const toggle = (type: string) =>
+    setSelected((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Generate learning resources</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Choose what to generate from this material. Content is derived strictly from what the
+          material covers.
+        </p>
+        <div className="space-y-2">
+          {RESOURCE_TYPES.map(({ type, label }) => {
+            const item = items.find((i) => i.type === type);
+            const already = item && (item.state === "generated" || item.state === "stale");
+            return (
+              <label
+                key={type}
+                className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  className="size-4 accent-primary"
+                  checked={selected.includes(type)}
+                  onChange={() => toggle(type)}
+                />
+                <span className="flex-1 font-medium">{label}</span>
+                {already && item && (
+                  <span className={item.state === "stale" ? "text-xs text-amber-600" : "text-xs text-emerald-600"}>
+                    {item.state === "stale" ? "stale — regenerate" : `v${item.version}`}
+                  </span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+        <DialogFooter className="flex-wrap gap-2">
+          <Button variant="outline" onClick={() => onGenerate(RESOURCE_TYPES.map((t) => t.type))} disabled={starting}>
+            <Sparkles className="mr-1 size-3.5" /> Generate all
+          </Button>
+          <Button onClick={() => onGenerate(selected)} disabled={starting || selected.length === 0}>
+            {starting ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : null}
+            Generate {selected.length ? `${selected.length} selected` : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EditMaterialDialog({
   open,
   onOpenChange,
@@ -723,16 +1013,31 @@ function EditMaterialDialog({
   material: MaterialResponse;
   onSaved: () => void;
 }) {
-  const [title, setTitle] = useState(material.title);
-  const [description, setDescription] = useState(material.description ?? "");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [text, setText] = useState<string | null>(null);
+  const [cascade, setCascade] = useState<ScopeCascadeState>(emptyCascade());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setTitle(material.title);
       setDescription(material.description ?? "");
+      setText(material.sourceType === "TEXT" ? material.textContent ?? "" : null);
+      setCascade({
+        subjectId: material.subjectId ?? "",
+        chapterId: material.chapterId ?? "",
+        topicId: material.topicId ?? "",
+      });
     }
   }, [open, material]);
+
+  const scopeChanged =
+    cascade.subjectId !== (material.subjectId ?? "") ||
+    cascade.chapterId !== (material.chapterId ?? "") ||
+    cascade.topicId !== (material.topicId ?? "");
+  const textChanged = text !== null && text !== (material.textContent ?? "");
+  const sourceChanging = textChanged || scopeChanged;
 
   async function save() {
     if (!title.trim()) {
@@ -741,11 +1046,16 @@ function EditMaterialDialog({
     }
     setSaving(true);
     try {
-      await api(`/materials/${material.id}`, {
-        method: "PATCH",
-        body: { title: title.trim(), description: description.trim() || undefined },
-      });
-      toast.success("Material updated");
+      const body: Record<string, unknown> = { title: title.trim() };
+      if (description.trim()) body.description = description.trim();
+      if (textChanged) body.text = text;
+      if (scopeChanged) {
+        body.subjectId = cascade.subjectId || undefined;
+        body.chapterId = cascade.chapterId || undefined;
+        body.topicId = cascade.topicId || undefined;
+      }
+      await api(`/materials/${material.id}`, { method: "PATCH", body });
+      toast.success(sourceChanging ? "Material updated — generated resources marked stale" : "Material updated");
       onSaved();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to update material");
@@ -761,6 +1071,15 @@ function EditMaterialDialog({
           <DialogTitle>Edit material</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {sourceChanging && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>
+                Changing the source scope or text marks existing generated resources as stale.
+                Material revision {material.revision} will become {material.revision + 1}.
+              </span>
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="edit-title">Title</Label>
             <Input id="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -771,9 +1090,24 @@ function EditMaterialDialog({
               id="edit-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={4}
+              rows={3}
             />
           </div>
+          <div className="grid gap-2">
+            <Label>Academic scope</Label>
+            <ScopeEditor cascade={cascade} onChange={setCascade} />
+          </div>
+          {text !== null && (
+            <div className="grid gap-2">
+              <Label htmlFor="edit-text">Source text</Label>
+              <Textarea
+                id="edit-text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={8}
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -786,6 +1120,62 @@ function EditMaterialDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function ScopeEditor({
+  cascade,
+  onChange,
+}: {
+  cascade: ScopeCascadeState;
+  onChange: (cascade: ScopeCascadeState) => void;
+}) {
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+  const [chapters, setChapters] = useState<{ id: string; name: string; subjectId: string }[]>([]);
+  const [topics, setTopics] = useState<{ id: string; name: string; chapterId: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ subjects: { id: string; name: string }[] }>("/academic/subjects")
+      .then(({ subjects }) => !cancelled && setSubjects(subjects))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cascade.subjectId) {
+      setChapters([]);
+      return;
+    }
+    let cancelled = false;
+    api<{ chapters: { id: string; name: string; subjectId: string }[] }>(
+      `/academic/subjects/${cascade.subjectId}/chapters`,
+    )
+      .then(({ chapters }) => !cancelled && setChapters(chapters))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [cascade.subjectId]);
+
+  useEffect(() => {
+    if (!cascade.chapterId) {
+      setTopics([]);
+      return;
+    }
+    let cancelled = false;
+    api<{ topics: { id: string; name: string; chapterId: string }[] }>(
+      `/academic/chapters/${cascade.chapterId}/topics`,
+    )
+      .then(({ topics }) => !cancelled && setTopics(topics))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [cascade.chapterId]);
+
+  return <ScopeCascade cascade={cascade} subjects={subjects} chapters={chapters} topics={topics} onChange={onChange} />;
 }
 
 function operationLabel(op: string): string {

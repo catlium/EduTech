@@ -91,7 +91,9 @@ export async function api<T>(
 }
 
 export function jobDone(job: { status: string }): boolean {
-  return job.status === "completed" || job.status === "failed";
+  return (
+    job.status === "completed" || job.status === "failed" || job.status === "cancelled"
+  );
 }
 
 /** Download a file endpoint (export) as a blob and trigger a browser download. */
@@ -133,6 +135,9 @@ export async function waitForJob<T extends { job: { status: string } }>(
   if (last.job.status === "failed") {
     const error = (last as { job: { error?: { message?: string } } }).job.error;
     throw new ApiError(422, error?.message ?? "Job failed");
+  }
+  if (last.job.status === "cancelled") {
+    throw new ApiError(409, "Job cancelled");
   }
   return last;
 }
