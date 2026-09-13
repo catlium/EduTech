@@ -221,6 +221,56 @@ corner), P4.8 blueprint-to-assessment quotas, P4.9 worker type/format drift
 check, P4.10 legacy `answerFormat ?? questionType` fallback, P4.11 post-publish
 integrity re-check, and P2.5 confirmed-syllabus amend/reopen (user decision).
 
+### Completed — P5 → P9 (2026-09-13), **Phase 27 work order DONE**
+
+Phase 27's full work order (P0–P9) is now complete. Highlights:
+
+**P5 — Rich educational content** (`68e0a18`)
+- Line charts render as SVG polylines, pie charts as proportional SVG arcs +
+  legend (both previously fell through to a bare key–value list). Native SVG,
+  zero new dependencies.
+- Paragraph blocks preserve embedded newlines; unknown/legacy block types
+  degrade to a styled paragraph instead of vanishing.
+- Worker NOTE prompt: explicit plain-text math contract (`^` superscripts,
+  no LaTeX or markdown) so formula blocks render readably verbatim.
+- `docs/api/content.md` documents the full 11-type NOTE block union.
+- Unit checks: `note-blocks.test.tsx` 3/3 pass.
+
+**P6 — PDF/DOCX export fidelity** (`f70c5f5`)
+- Question-bank and assessment exports now include MCQ A–D options (correct
+  one ✓ on bank exports, withheld on student papers), FIB accepted answers,
+  TF correct value, NUMERICAL model answer, per-question marks (assessment),
+  and explanations.
+- Assessment instructions render from both `{text}` and `string[]` shapes.
+- CORNELL_NOTE exports cue→notes Q&A pairs + summary (was a raw JSON dump).
+- pdfkit glyph sanitize (√ − → ≥ ≤ ✓ → ASCII) stops WinAnsi `.notdef` boxes.
+- DOCX bullets/steps use real bullet/numbered paragraphs.
+- Question-bank export forwards the UI's active scope filters.
+- Unit checks: `export.test.ts` 3/3 pass.
+
+**P7 — Product polish** (`14c1057`)
+- Syllabus: Confirm & Create disabled while edits are dirty (was committing
+  stored structure while the dialog showed local counts — silent data loss).
+- Approved paper-pattern blueprint editor locked (was interactive with no save
+  path). Generate/Regenerate gated on ACTIVE materials. Dead "/jobs" toast
+  copy fixed. Export tooltip for DRAFT content. REJECTED questions now offer
+  Approve, not Activate (no more fabricated ACTIVE+REJECTED state). Dashboard
+  no longer counts FAILED materials as processing. Topic-add failures surface
+  a toast.
+
+**P8 — Targeted manual validation** (this checkpoint)
+- Rebuilt api+web images from current source inside Docker (whole-workspace
+  `pnpm build` PASS) and ran live smokes against the rebuilt stack: exports
+  verified (assessment options/marks/explanations, bank ✓/answers, content
+  DOCX no JSON dump, valid PDF), non-UUID MCQ probe created + deleted live.
+
+**Validation:** `pnpm typecheck` (10/10), `pnpm lint` (9/9), web `next build`,
+ruff/mypy (worker edits), unit checks 2+3+3 pass, plus the live P8 smokes.
+
+**Checkpoint:** Phase 27 complete — all work order items closed or explicitly
+deferred with reasons in `docs/tasks.md`. See the final detailed report in
+session notes.
+
 **Roadmap now above (Phase 27) is DONE** — next: P5 Rich educational content.
 
 ## Phase 24 — Academic Scope Backbone (2026-09-12)

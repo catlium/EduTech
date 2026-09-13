@@ -223,6 +223,28 @@ all fixed below.
       removed FAILED from the set
 - [x] P7.8 addTopic failure was fully silent — toast.error added
 
+### Goal: P8 Targeted Manual Validation
+
+- [x] P8.1 Rebuilt the api + web images from current source inside Docker
+      (`docker compose build api web` = whole-workspace `pnpm build` PASS on
+      the current tree; both images healthy on restart)
+- [x] P8.2 Live smoke against the rebuilt stack (2026-09-13):
+      login → content export PDF (valid file), content DOCX (real table,
+      no raw JSON), assessment DOCX (per-question marks + MCQ A–D options +
+      explanations), question-bank DOCX (correct choice ✓, FIB/TF answers) —
+      all 200 + content correct; non-UUID MCQ probe question created live
+      (choices A/B) then deleted
+- [ ] P8.3 Browser walkthrough of new web behavior (P5 charts/SVG, P7
+      disabled states): needs a human click-through on :3001 — web image
+      rebuilt, app healthy
+
+### Goal: P9 Documentation / Status / Commit / Push
+
+- [x] P9.1 Per-checkpoint tasks/status/user-validation updates throughout
+- [x] P9.2 graphify update after final code changes
+- [x] P9.3 Final checkpoint commit + push
+- [x] P9.4 Final detailed report to user
+
 ## Phase 24 — Academic Scope Backbone (2026-09-12)
 
 Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`

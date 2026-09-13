@@ -191,8 +191,9 @@ autonomously"); P1.5 items below.
 
 - **MCQ with non-UUID choice ids now answers + grades correctly** — `[x]`
   2026-09-13 code-level (`grade-mcq.test.ts` 2/2 pass: string equality grading,
-  incl. legacy no-answerFormat path; typecheck/lint/build pass); browser
-  pending (web image predates change)
+  incl. legacy no-answerFormat path; typecheck/lint/build pass); `[~]` live:
+  create path verified (non-UUID MCQ probe question created + deleted on the
+  demo stack); full answer/grade click-through pending
   - Setup: dev stack; a MCQ question whose choices carry non-UUID ids (e.g.
     "A"/"B"), e.g. created via the bank panel or a raw POST to the questions
     endpoint.
@@ -201,8 +202,26 @@ autonomously"); P1.5 items below.
   - Expected: answer accepted (no 400 "must include a choiceId"); selecting the
     correct choice grades `isCorrect: true`.
 
+- **Assessment export shows options, per-question marks, explanations** —
+  `[x]` 2026-09-13 live on rebuilt stack
+  - Endpoint: `GET /api/v1/export/assessment/:id?format=docx`
+  - Expected: each question renders `Q: <stem> (<TYPE>, <DIFFICULTY> — N marks)`
+    with its MCQ A–D options (no correct marks), FIB blank shown, explanation
+    line. Verified: Happy Path Assessment DOCX.
+
+- **Question-bank export marks correct answers** — `[x]` 2026-09-13 live
+  - Endpoint: `GET /api/v1/export/questions?format=docx`
+  - Expected: MCQ choices each on a line with `✓` on the correct one;
+    TRUE_FALSE/FILL_IN_BLANK carry an `Answer:` line; explanations present.
+    Verified: bank DOCX.
+
+- **Content export renders blocks, not a JSON dump** — `[x]` 2026-09-13 live
+  - Endpoint: `GET /api/v1/export/content/:id?format=pdf|docx`
+  - Expected: PDF is a valid file; DOCX contains rendered text/tables and no
+    `JSON.stringify`/escaped-JSON blob. Verified on a NOTE.
+
 - **Publish button disabled for 0-question assessment** — `[x]` 2026-09-13
-  code-level; browser pending (web image predates change)
+  code-level; browser pending (needs click-through)
   - Setup: dev stack; a DRAFT assessment with no questions.
   - Expected: the Publish action button is disabled (tooltip/state change), so
     the API 400 dead end is unreachable from the UI.
