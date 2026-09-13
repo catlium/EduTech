@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { existsSync } from 'node:fs';
 
-import { Document, Packer, Paragraph, HeadingLevel, TextRun, TableRow, TableCell, Table } from 'docx';
+import { Document, Packer, Paragraph, HeadingLevel, TextRun, TableRow, TableCell, Table, Header, Footer, AlignmentType, SimpleField, PageBreak } from 'docx';
 import PDFDocument from 'pdfkit';
 
 import type { DocumentModel, DocBlock } from './export.content-blocks.js';
@@ -49,7 +49,7 @@ function pdfText(doc: PDFKit.PDFDocument, s: string, size = 11, opts?: Record<st
 // ── PDF ──────────────────────────────────────────────────────────────
 
 async function sendPdf(res: Response, model: DocumentModel, filename: string): Promise<void> {
-  const doc = new PDFDocument({ margin: 40, bufferPages: true });
+  const doc = new PDFDocument({ size: 'A4', margin: 56, bufferPages: true });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
   doc.pipe(res);
@@ -58,6 +58,18 @@ async function sendPdf(res: Response, model: DocumentModel, filename: string): P
   if (existsSync(fontPath)) {
     doc.registerFont(FONT_DEVANAGARI, fontPath);
   }
+  const headerText = sanitizePdfText(model.title.replace(/\n/g, ' '));
+  doc.on('pageAdded', () => {
+    pdfText(doc, headerText, 8, { align: 'right' });
+    doc.moveDown();
+  });
+  doc.on('end', () => {
+    const range = doc.bufferedPageRange();
+    for (let i = 0; i < range.count; i += 1) {
+      doc.switchToPage(i);
+      pdfText(doc, `Page ${i + 1} of ${range.count}`, 8, { align: 'center' });
+    }
+  });
   pdfText(doc, model.title.replace(/\n/g, ' '), 20, { align: 'center' });
   doc.moveDown();
   for (const block of model.blocks) {
@@ -109,10 +121,16 @@ function renderPdfBlock(doc: PDFKit.PDFDocument, block: DocBlock): void {
       doc.moveDown(0.5);
       break;
     }
-    case 'formula':
-      pdfText(doc, `[${block.content}]`, 11);
+    case 'formula': {
+      if (block.title) pdfText(doc, block.title, 10.5);
+      pdfText(doc, `  ${block.content}`, 11);
+      block.variables?.forEach((v) => pdfText(doc, `  ${v.symbol} = ${v.meaning}`, 9));
+      if (block.explanation) pdfText(doc, `  ${block.explanation}`, 10);
+      if (block.example) pdfText(doc, `  Example: ${block.example}`, 10);
+      if (block.note) pdfText(doc, `  Note: ${block.note}`, 9);
       doc.moveDown(0.5);
       break;
+    }
     case 'example':
       pdfText(doc, `Example${block.title ? ` — ${block.title}` : ''}: ${block.content}`, 11);
       doc.moveDown(0.5);
@@ -157,8 +175,35 @@ async function sendDocx(res: Response, model: DocumentModel, filename: string): 
   const doc = new Document({
     sections: [
       {
+        properties: {},
+        headers: {
+          default: new Header({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.RIGHT,
+                children: [new TextRun({ text: model.title, size: 18, color: '666666' })],
+              }),
+            ],
+          }),
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({ text: 'Page ' }),
+                  new SimpleField('PAGE'),
+                  new TextRun({ text: ' of ' }),
+                  new SimpleField('NUMPAGES'),
+                ],
+              }),
+            ],
+          }),
+        },
         children: [
           new Paragraph({ text: model.title, heading: HeadingLevel.TITLE }),
+          new Paragraph({ children: [new PageBreak()] }),
           ...children,
         ],
       },
@@ -220,9 +265,15 @@ function docxBlock(block: DocBlock): (Paragraph | Table)[] {
       out.push(new Table({ rows }));
       break;
     }
-    case 'formula':
+    case 'formula': {
+      if (block.title) out.push(new Paragraph({ children: [new TextRun({ text: block.title, bold: true })] }));
       out.push(new Paragraph({ children: [new TextRun({ text: block.content, font: 'Courier New', size: 20 })] }));
+      block.variables?.forEach((v) => out.push(new Paragraph({ text: `${v.symbol} = ${v.meaning}` })));
+      if (block.explanation) out.push(new Paragraph({ text: block.explanation }));
+      if (block.example) out.push(new Paragraph({ text: `Example: ${block.example}` }));
+      if (block.note) out.push(new Paragraph({ children: [new TextRun({ text: `Note: ${block.note}`, italics: true })] }));
       break;
+    }
     case 'example':
       out.push(new Paragraph({ text: `Example${block.title ? ` — ${block.title}` : ''}: ${block.content}` }));
       break;

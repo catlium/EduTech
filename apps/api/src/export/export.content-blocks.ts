@@ -16,7 +16,15 @@ export type DocBlock =
       showAnswer: boolean;
     }
   | { kind: 'table'; headers?: string[]; rows: string[][] }
-  | { kind: 'formula'; content: string }
+  | {
+      kind: 'formula';
+      content: string;
+      title?: string;
+      explanation?: string;
+      variables?: { symbol: string; meaning: string }[];
+      example?: string;
+      note?: string;
+    }
   | { kind: 'example'; title?: string; content: string }
   | { kind: 'callout'; variant: string; content: string }
   | { kind: 'timeline'; caption?: string; events: { period: string; title: string; description?: string }[] }
@@ -120,7 +128,7 @@ export function contentBlocks(type: string, payload: Record<string, unknown>): D
           else if (btype === 'list') blocks.push({ kind: 'bullets', items: strArr(b?.['items']) });
           else if (btype === 'steps') blocks.push({ kind: 'steps', title: str(b?.['title']), items: strArr(b?.['items']) });
           else if (btype === 'table') blocks.push({ kind: 'table', headers: strArr(b?.['headers']) || undefined, rows: recArr(b?.['rows']).map((r) => strArr(r)) });
-          else if (btype === 'formula' && content) blocks.push({ kind: 'formula', content });
+          else if (btype === 'formula' && content) blocks.push({ kind: 'formula', content, title: str(b?.['title']), explanation: str(b?.['explanation']), variables: recArr(b?.['variables']).map((v) => ({ symbol: str(v['symbol']) ?? '', meaning: str(v['meaning']) ?? '' })).filter((v) => v.symbol), example: str(b?.['example']), note: str(b?.['note']) });
           else if (btype === 'example' && content) blocks.push({ kind: 'example', title: str(b?.['title']), content });
           else if (btype === 'callout' && content) blocks.push({ kind: 'callout', variant: str(b?.['variant']) ?? 'note', content });
           else if (btype === 'timeline') blocks.push({ kind: 'timeline', caption: str(b?.['caption']), events: recArr(b?.['events']).map((e) => ({ period: str(e['period']) ?? '', title: str(e['title']) ?? '', description: str(e['description']) })).filter((e) => e.title) });

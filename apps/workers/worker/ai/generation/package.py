@@ -24,7 +24,9 @@ _SYSTEM_PROMPT = (
     '    {"id": string, "type": "steps", "title": string (optional), "items": [string]},\n'
     '    {"id": string, "type": "table", "caption": string (optional), '
     '"headers": [string] (optional), "rows": [[string]]},\n'
-    '    {"id": string, "type": "formula", "content": string},\n'
+    '    {"id": string, "type": "formula", "content": string, "title": string (optional), '
+    '"explanation": string (optional), "variables": [{"symbol": string, "meaning": string}] '
+    '(optional), "example": string (optional), "note": string (optional)},\n'
     '    {"id": string, "type": "example", "title": string (optional), "content": string},\n'
     '    {"id": string, "type": "callout", "variant": "note"|"tip"|"warning"|"important", '
     '"content": string},\n'
@@ -60,6 +62,9 @@ _SYSTEM_PROMPT = (
     "When prose is clearer, use paragraph/list. Do NOT force visuals everywhere.\n"
     "- Include useful examples (concept -> explanation -> example -> takeaway) where they "
     "aid understanding; never filler examples.\n"
+    '- A "formula" block may add a short "title" (formula name), an "explanation" in plain '
+    'words, a "variables" list ({"symbol", "meaning"}), one concrete worked "example", and a '
+    '"note" for a common pitfall — fill these only when they genuinely aid understanding.\n'
     '- "furtherLearning" (in note/summary) is OPTIONAL and must list only real, '
     "authoritative resources with real URLs. NEVER fabricate URLs, titles, or authors. "
     "If you cannot confidently provide a real URL, omit the list rather than inventing links."

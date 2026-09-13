@@ -261,10 +261,20 @@ export const NoteTableBlockSchema = z.object({
   rows: z.array(z.array(z.string().min(1).max(2000)).max(12)).min(1).max(100),
 });
 
+export const NoteFormulaVariableSchema = z.object({
+  symbol: z.string().min(1).max(50),
+  meaning: z.string().min(1).max(300),
+});
+
 export const NoteFormulaBlockSchema = z.object({
   id: PayloadId,
   type: z.literal('formula'),
   content: z.string().min(1).max(2000),
+  title: z.string().max(255).optional(),
+  explanation: z.string().max(2000).optional(),
+  variables: z.array(NoteFormulaVariableSchema).max(20).optional(),
+  example: z.string().max(2000).optional(),
+  note: z.string().max(1000).optional(),
 });
 
 export const NoteExampleBlockSchema = z.object({
@@ -540,7 +550,7 @@ export type ArchiveContentRequest = z.infer<typeof ArchiveContentRequestSchema>;
 export const MaterialTypeEnum = z.enum(['DOCUMENT', 'PDF', 'IMAGE', 'TEXT']);
 export type MaterialType = z.infer<typeof MaterialTypeEnum>;
 
-export const MaterialSourceTypeEnum = z.enum(['UPLOAD', 'TEXT', 'IMPORTED']);
+export const MaterialSourceTypeEnum = z.enum(['UPLOAD', 'TEXT', 'IMPORTED', 'GENERATED']);
 export type MaterialSourceType = z.infer<typeof MaterialSourceTypeEnum>;
 
 export const MaterialProcessingStatusEnum = z.enum([

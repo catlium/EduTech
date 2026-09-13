@@ -287,9 +287,48 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
             return (
               <div
                 key={block.id}
-                className="overflow-x-auto rounded-lg border bg-muted/30 px-4 py-3 text-center font-mono text-sm"
+                className="overflow-x-auto rounded-lg border bg-muted/30 px-4 py-3"
               >
-                {block.content}
+                {block.title ? (
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                    {block.title}
+                  </p>
+                ) : null}
+                <p className="whitespace-pre-wrap text-center font-mono text-sm">{block.content}</p>
+                {block.variables && block.variables.length > 0 ? (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="px-2 py-1 text-left font-semibold">Symbol</th>
+                          <th className="px-2 py-1 text-left font-semibold">Meaning</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {block.variables.map((v, i) => (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="px-2 py-1 font-mono">{v.symbol}</td>
+                            <td className="px-2 py-1">{v.meaning}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+                {block.explanation ? (
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{block.explanation}</p>
+                ) : null}
+                {block.example ? (
+                  <div className="mt-3 rounded border-l-2 border-primary bg-muted/40 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Example
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{block.example}</p>
+                  </div>
+                ) : null}
+                {block.note ? (
+                  <p className="mt-2 text-xs italic text-muted-foreground">Note: {block.note}</p>
+                ) : null}
               </div>
             );
           case "example":

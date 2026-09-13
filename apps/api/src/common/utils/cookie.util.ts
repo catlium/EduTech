@@ -54,7 +54,9 @@ export function setCsrfCookie(response: Response, token: string, options: Cookie
     sameSite: options.sameSite,
     domain: options.domain,
     path: '/',
-    maxAge: options.accessExpiresMs,
+    // Outlives the 15-minute access cookie so the web client can rebuild an
+    // expired session (POST /auth/refresh) without tripping the CSRF guard.
+    maxAge: options.refreshExpiresMs,
   });
 }
 

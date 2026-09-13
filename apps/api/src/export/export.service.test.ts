@@ -23,6 +23,40 @@ test('NOTE payload maps blocks: heading, paragraph, list', () => {
   ]);
 });
 
+test('NOTE formula block maps enriched fields and drops malformed variables', () => {
+  const blocks = contentBlocks('NOTE', {
+    blocks: [
+      {
+        type: 'formula',
+        content: 'E = mc^2',
+        title: 'Mass–energy equivalence',
+        explanation: 'Energy equals mass times the speed of light squared.',
+        variables: [
+          { symbol: 'E', meaning: 'energy' },
+          { symbol: 'm', meaning: 'mass' },
+          'garbage',
+        ],
+        example: 'For 1 kg of mass, E is ~9e16 J.',
+        note: 'Applies only to isolated systems.',
+      },
+    ],
+  });
+  assert.deepEqual(blocks, [
+    {
+      kind: 'formula',
+      content: 'E = mc^2',
+      title: 'Mass–energy equivalence',
+      explanation: 'Energy equals mass times the speed of light squared.',
+      variables: [
+        { symbol: 'E', meaning: 'energy' },
+        { symbol: 'm', meaning: 'mass' },
+      ],
+      example: 'For 1 kg of mass, E is ~9e16 J.',
+      note: 'Applies only to isolated systems.',
+    },
+  ]);
+});
+
 test('SUMMARY payload maps summary + keyConcepts + importantPoints', () => {
   const blocks = contentBlocks('SUMMARY', {
     title: 'Sum',

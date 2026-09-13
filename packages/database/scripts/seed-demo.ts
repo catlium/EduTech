@@ -2,7 +2,7 @@ import { loadEnvFile } from 'node:process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as bcryptjs from 'bcryptjs';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 
 import { createDatabase } from '../src/index.js';
 import {
@@ -18,6 +18,8 @@ import {
   paperPatterns,
   assessments,
   assessmentQuestions,
+  attempts,
+  practiceSessions,
   contentItems,
   contentVersions,
 } from '../src/index.js';
@@ -139,348 +141,417 @@ type DemoSubject = {
   assessmentTitle: string;
 };
 
+// Demo tier maps to the NEP-2020 B.Sc. CS curriculum (4 subjects). The phased
+// out Mathematics/Physics demo curriculum is removed deterministically on every
+// seed run — cleanup is scoped to the demo institute by the old subject slugs,
+// so production tenants are never touched.
+const PHASED_OUT_DEMO_SLUGS = ['mathematics', 'physics'];
+
 const DEMO_SUBJECTS: DemoSubject[] = [
   {
-    name: 'Mathematics',
-    slug: 'mathematics',
+    name: 'Artificial Intelligence',
+    slug: 'ai',
     syllabusText:
-      '1. Number Systems: rational and irrational numbers, real number line.\n2. Algebra: linear equations, quadratic equations, polynomials.\n3. Geometry: triangles, circles and their properties.\n\nExamination scheme carries 13 marks over 45 minutes.',
-    contentTopicSlug: 'linear-equations',
+      '1. Basics of AI: intelligent agents, problem solving as search, knowledge representation.\n' +
+      '2. Machine Learning Fundamentals: supervised and unsupervised learning, neural networks.\n\n' +
+      'Examination scheme carries 13 marks over 45 minutes.',
+    contentTopicSlug: 'introduction-to-ai',
     chapters: [
       {
-        slug: 'algebra',
-        name: 'Algebra',
+        slug: 'basics-of-ai',
+        name: 'Basics of AI',
         topics: [
-          { slug: 'linear-equations', name: 'Linear Equations' },
-          { slug: 'quadratic-equations', name: 'Quadratic Equations' },
-          { slug: 'polynomials', name: 'Polynomials' },
+          { slug: 'introduction-to-ai', name: 'Introduction to AI' },
+          { slug: 'search-algorithms', name: 'Search Algorithms' },
+          { slug: 'knowledge-representation', name: 'Knowledge Representation' },
         ],
       },
       {
-        slug: 'geometry',
-        name: 'Geometry',
+        slug: 'ml-fundamentals',
+        name: 'Machine Learning Fundamentals',
         topics: [
-          { slug: 'triangles', name: 'Triangles' },
-          { slug: 'circles', name: 'Circles' },
-        ],
-      },
-      {
-        slug: 'number-systems',
-        name: 'Number Systems',
-        topics: [
-          { slug: 'rational-numbers', name: 'Rational Numbers' },
-          { slug: 'real-numbers', name: 'Real Numbers' },
+          { slug: 'supervised-learning', name: 'Supervised Learning' },
+          { slug: 'unsupervised-learning', name: 'Unsupervised Learning' },
+          { slug: 'neural-networks', name: 'Neural Networks' },
         ],
       },
     ],
     questions: [
       {
-        chapterSlug: 'algebra',
-        topicSlug: 'linear-equations',
-        stem: 'The solution of 2x + 3 = 7 is',
+        chapterSlug: 'basics-of-ai',
+        topicSlug: 'introduction-to-ai',
+        stem: 'A rational agent in AI most notably acts to',
         type: 'MCQ',
         difficulty: 'EASY',
-        explanation: 'Subtract 3 from both sides, then divide by 2: x = 2.',
+        explanation: 'A rational agent chooses actions expected to maximize performance.',
         payload: {
           choices: [
-            { id: 'ma1', text: 'x = 1' },
-            { id: 'ma2', text: 'x = 2' },
-            { id: 'ma3', text: 'x = 3' },
-            { id: 'ma4', text: 'x = 5' },
+            { id: 'ai1', text: 'maximize its expected performance measure' },
+            { id: 'ai2', text: 'mimic every human behavior exactly' },
+            { id: 'ai3', text: 'store every possible input sequence' },
+            { id: 'ai4', text: 'operate without any sensors' },
           ],
-          correctChoiceId: 'ma2',
+          correctChoiceId: 'ai1',
         },
       },
       {
-        chapterSlug: 'algebra',
-        topicSlug: 'linear-equations',
-        stem: 'If 3x − 5 = x + 3, then x equals',
+        chapterSlug: 'basics-of-ai',
+        topicSlug: 'search-algorithms',
+        stem: 'The uninformed search algorithm that always expands the shallowest node first is',
         type: 'MCQ',
         difficulty: 'MEDIUM',
-        explanation: 'Bring x terms to one side: 2x = 8, so x = 4.',
+        explanation: 'Breadth-first search expands the shallowest frontier node first.',
         payload: {
           choices: [
-            { id: 'mb1', text: 'x = 2' },
-            { id: 'mb2', text: 'x = 3' },
-            { id: 'mb3', text: 'x = 4' },
-            { id: 'mb4', text: 'x = 6' },
+            { id: 'ai5', text: 'breadth-first search' },
+            { id: 'ai6', text: 'depth-first search' },
+            { id: 'ai7', text: 'A* search' },
+            { id: 'ai8', text: 'hill climbing' },
           ],
-          correctChoiceId: 'mb3',
+          correctChoiceId: 'ai5',
         },
       },
       {
-        chapterSlug: 'algebra',
-        topicSlug: 'quadratic-equations',
-        stem: 'The roots of x² − 5x + 6 = 0 are',
+        chapterSlug: 'basics-of-ai',
+        topicSlug: 'knowledge-representation',
+        stem: 'A production rule in a knowledge base has the logical form',
+        type: 'FILL_IN_BLANK',
+        difficulty: 'MEDIUM',
+        explanation: 'Rules are typically written as "if condition then action/conclusion".',
+        payload: { acceptableAnswers: ['if...then', 'IF...THEN', 'if then'] },
+      },
+      {
+        chapterSlug: 'ml-fundamentals',
+        topicSlug: 'supervised-learning',
+        stem: 'Supervised learning requires training data that includes',
         type: 'MCQ',
         difficulty: 'MEDIUM',
-        explanation: 'Factorise as (x − 2)(x − 3): roots are 2 and 3.',
+        explanation: 'Supervised learning learns from labeled input-output pairs.',
         payload: {
           choices: [
-            { id: 'mc1', text: 'x = 1 or x = 6' },
-            { id: 'mc2', text: 'x = 2 or x = 3' },
-            { id: 'mc3', text: 'x = −2 or x = −3' },
-            { id: 'mc4', text: 'x = 5 or x = 1' },
+            { id: 'ai9', text: 'labeled input-output pairs' },
+            { id: 'ai10', text: 'only unlabeled examples' },
+            { id: 'ai11', text: 'a pre-trained reward model' },
+            { id: 'ai12', text: 'no data at all' },
           ],
-          correctChoiceId: 'mc2',
+          correctChoiceId: 'ai9',
         },
       },
       {
-        chapterSlug: 'algebra',
-        topicSlug: 'polynomials',
-        stem: 'The degree of the polynomial 3x⁴ − 2x² + 1 is',
-        type: 'MCQ',
-        difficulty: 'MEDIUM',
-        explanation: 'The degree is the highest power of the variable, which is 4.',
-        payload: {
-          choices: [
-            { id: 'md1', text: '1' },
-            { id: 'md2', text: '2' },
-            { id: 'md3', text: '3' },
-            { id: 'md4', text: '4' },
-          ],
-          correctChoiceId: 'md4',
-        },
+        chapterSlug: 'ml-fundamentals',
+        topicSlug: 'unsupervised-learning',
+        stem: 'Clustering is an example of ________ learning.',
+        type: 'FILL_IN_BLANK',
+        difficulty: 'EASY',
+        explanation: 'Clustering groups unlabeled data, so it is unsupervised.',
+        payload: { acceptableAnswers: ['unsupervised'] },
       },
       {
-        chapterSlug: 'algebra',
-        topicSlug: 'quadratic-equations',
-        stem: 'Which statement is true for every quadratic equation ax² + bx + c = 0?',
-        type: 'MCQ',
-        difficulty: 'HARD',
-        explanation: 'The discriminant b² − 4ac determines the nature of the roots.',
-        payload: {
-          choices: [
-            { id: 'me1', text: 'It always has two distinct real roots' },
-            { id: 'me2', text: 'Its roots are always integers' },
-            { id: 'me3', text: 'The nature of its roots depends on b² − 4ac' },
-            { id: 'me4', text: 'It never has real roots' },
-          ],
-          correctChoiceId: 'me3',
-        },
-      },
-      {
-        chapterSlug: 'geometry',
-        topicSlug: 'triangles',
-        stem: 'The sum of the interior angles of a triangle is 180°.',
+        chapterSlug: 'ml-fundamentals',
+        topicSlug: 'neural-networks',
+        stem: 'A neural network with no hidden layers can only learn linearly separable functions.',
         type: 'TRUE_FALSE',
-        difficulty: 'EASY',
-        explanation: 'This is a fundamental property of triangles.',
+        difficulty: 'HARD',
+        explanation: 'A single-layer perceptron cannot separate non-linearly separable classes.',
         payload: { correctAnswer: true },
       },
-      {
-        chapterSlug: 'geometry',
-        topicSlug: 'circles',
-        stem: 'Opposite angles of a cyclic quadrilateral are',
-        type: 'MCQ',
-        difficulty: 'HARD',
-        explanation:
-          'Opposite angles of a cyclic quadrilateral sum to 180°, so they are supplementary.',
-        payload: {
-          choices: [
-            { id: 'mf1', text: 'supplementary' },
-            { id: 'mf2', text: 'complementary' },
-            { id: 'mf3', text: 'equal' },
-            { id: 'mf4', text: 'acute' },
-          ],
-          correctChoiceId: 'mf1',
-        },
-      },
-      {
-        chapterSlug: 'number-systems',
-        topicSlug: 'rational-numbers',
-        stem: 'Write 0.5 as a fraction in simplest form.',
-        type: 'FILL_IN_BLANK',
-        difficulty: 'EASY',
-        explanation: '0.5 = 5/10 = 1/2.',
-        payload: { acceptableAnswers: ['1/2', '0.5/1'] },
-      },
-      {
-        chapterSlug: 'number-systems',
-        topicSlug: 'real-numbers',
-        stem: 'The number √2 belongs to the set of ________ numbers.',
-        type: 'MCQ',
-        difficulty: 'MEDIUM',
-        explanation: '√2 cannot be written as a ratio of two integers, so it is irrational.',
-        payload: {
-          choices: [
-            { id: 'mg1', text: 'rational' },
-            { id: 'mg2', text: 'irrational' },
-            { id: 'mg3', text: 'whole' },
-            { id: 'mg4', text: 'integer' },
-          ],
-          correctChoiceId: 'mg2',
-        },
-      },
-      {
-        chapterSlug: 'number-systems',
-        topicSlug: 'real-numbers',
-        stem: 'The decimal expansion of 1/3 is ________ (one word).',
-        type: 'FILL_IN_BLANK',
-        difficulty: 'MEDIUM',
-        explanation: '1/3 = 0.333... which is a non-terminating, repeating decimal.',
-        payload: {
-          acceptableAnswers: [
-            'non-terminating repeating',
-            'repeating',
-            'non-terminating and repeating',
-          ],
-        },
-      },
     ],
-    patternTitle: 'Mathematics — Term Blueprint',
-    assessmentTitle: 'Mathematics — End of Term Quiz',
+    patternTitle: 'Artificial Intelligence — Term Blueprint',
+    assessmentTitle: 'Artificial Intelligence — End of Term Quiz',
   },
   {
-    name: 'Physics',
-    slug: 'physics',
+    name: 'Cyber and Information Security',
+    slug: 'cyber-security',
     syllabusText:
-      "1. Mechanics: kinematics, Newton's laws of motion, work and energy.\n2. Optics: reflection, refraction and lenses.\n\nExamination scheme carries 10 marks over 40 minutes.",
-    contentTopicSlug: 'kinematics',
+      '1. Cyber threats and defence: threat landscape, malware, firewalls and intrusion detection.\n' +
+      '2. Information security foundations: cryptography basics and authentication.\n\n' +
+      'Examination scheme carries 13 marks over 45 minutes.',
+    contentTopicSlug: 'cryptography-basics',
     chapters: [
       {
-        slug: 'mechanics',
-        name: 'Mechanics',
+        slug: 'cyber-threats',
+        name: 'Cyber Threats and Defence',
         topics: [
-          { slug: 'kinematics', name: 'Kinematics' },
-          { slug: 'newtons-laws', name: "Newton's Laws" },
-          { slug: 'work-energy', name: 'Work and Energy' },
+          { slug: 'threat-landscape', name: 'Threat Landscape' },
+          { slug: 'malware', name: 'Malware' },
+          { slug: 'firewalls-ids', name: 'Firewalls and IDS' },
         ],
       },
       {
-        slug: 'optics',
-        name: 'Optics',
+        slug: 'info-security-foundations',
+        name: 'Information Security Foundations',
         topics: [
-          { slug: 'reflection-refraction', name: 'Reflection and Refraction' },
-          { slug: 'lenses', name: 'Lenses' },
+          { slug: 'cryptography-basics', name: 'Cryptography Basics' },
+          { slug: 'authentication', name: 'Authentication' },
         ],
       },
     ],
     questions: [
       {
-        chapterSlug: 'mechanics',
-        topicSlug: 'kinematics',
-        stem: 'The SI unit of speed is',
+        chapterSlug: 'cyber-threats',
+        topicSlug: 'threat-landscape',
+        stem: 'A social engineering attack that tricks a user into revealing credentials is known as',
         type: 'MCQ',
         difficulty: 'EASY',
-        explanation: 'Speed is measured distance per time: metre per second (m/s).',
+        explanation: 'Phishing typically uses deceptive messages to obtain sensitive data.',
         payload: {
           choices: [
-            { id: 'pa1', text: 'm/s' },
-            { id: 'pa2', text: 'm/s²' },
-            { id: 'pa3', text: 'newton' },
-            { id: 'pa4', text: 'joule' },
+            { id: 'cs1', text: 'phishing' },
+            { id: 'cs2', text: 'denial of service' },
+            { id: 'cs3', text: 'sniffing' },
+            { id: 'cs4', text: 'spoofing' },
           ],
-          correctChoiceId: 'pa1',
+          correctChoiceId: 'cs1',
         },
       },
       {
-        chapterSlug: 'mechanics',
-        topicSlug: 'kinematics',
-        stem: 'Acceleration is the rate of change of',
+        chapterSlug: 'cyber-threats',
+        topicSlug: 'malware',
+        stem: 'Malware that replicates itself and spreads across hosts without user action is a',
         type: 'MCQ',
         difficulty: 'MEDIUM',
-        explanation: 'Acceleration measures how quickly velocity changes with time.',
+        explanation: 'A worm self-replicates and spreads automatically across the network.',
         payload: {
           choices: [
-            { id: 'pb1', text: 'displacement' },
-            { id: 'pb2', text: 'speed' },
-            { id: 'pb3', text: 'velocity' },
-            { id: 'pb4', text: 'momentum' },
+            { id: 'cs5', text: 'worm' },
+            { id: 'cs6', text: 'trojan' },
+            { id: 'cs7', text: 'adware' },
+            { id: 'cs8', text: 'spyware' },
           ],
-          correctChoiceId: 'pb3',
+          correctChoiceId: 'cs5',
         },
       },
       {
-        chapterSlug: 'mechanics',
-        topicSlug: 'kinematics',
-        stem: 'Speed in a particular direction is called ________.',
+        chapterSlug: 'cyber-threats',
+        topicSlug: 'firewalls-ids',
+        stem: 'A device that filters traffic between trusted and untrusted networks is a',
         type: 'FILL_IN_BLANK',
         difficulty: 'EASY',
-        explanation: 'Velocity is speed together with direction.',
-        payload: { acceptableAnswers: ['velocity'] },
+        explanation: 'A firewall enforces network access policy at the boundary.',
+        payload: { acceptableAnswers: ['firewall'] },
       },
       {
-        chapterSlug: 'mechanics',
-        topicSlug: 'newtons-laws',
-        stem: 'The force that opposes the motion of a body across a surface is called',
+        chapterSlug: 'info-security-foundations',
+        topicSlug: 'cryptography-basics',
+        stem: 'Encryption that uses the same key for encryption and decryption is called',
         type: 'MCQ',
-        difficulty: 'EASY',
-        explanation: 'Friction resists the relative motion between two surfaces.',
-        payload: {
-          choices: [
-            { id: 'pc1', text: 'gravity' },
-            { id: 'pc2', text: 'friction' },
-            { id: 'pc3', text: 'tension' },
-            { id: 'pc4', text: 'normal force' },
-          ],
-          correctChoiceId: 'pc2',
-        },
-      },
-      {
-        chapterSlug: 'mechanics',
-        topicSlug: 'newtons-laws',
-        stem: 'A body at rest stays at rest unless acted on by an unbalanced force.',
-        type: 'TRUE_FALSE',
         difficulty: 'MEDIUM',
-        explanation: "This is Newton's first law of motion.",
-        payload: { correctAnswer: true },
-      },
-      {
-        chapterSlug: 'mechanics',
-        topicSlug: 'work-energy',
-        stem: 'The SI unit of energy is the',
-        type: 'MCQ',
-        difficulty: 'EASY',
-        explanation: 'Energy is measured in joules (J) in the SI system.',
+        explanation: 'Symmetric (secret-key) cryptography shares one key both ways.',
         payload: {
           choices: [
-            { id: 'pd1', text: 'joule' },
-            { id: 'pd2', text: 'watt' },
-            { id: 'pd3', text: 'newton' },
-            { id: 'pd4', text: 'pascal' },
+            { id: 'cs9', text: 'symmetric encryption' },
+            { id: 'cs10', text: 'public-key encryption' },
+            { id: 'cs11', text: 'quantum encryption' },
+            { id: 'cs12', text: 'one-time-pad only' },
           ],
-          correctChoiceId: 'pd1',
+          correctChoiceId: 'cs9',
         },
       },
       {
-        chapterSlug: 'mechanics',
-        topicSlug: 'work-energy',
-        stem: 'One joule of work is done when a force of one newton moves a body through one ________.',
+        chapterSlug: 'info-security-foundations',
+        topicSlug: 'authentication',
+        stem: 'Multi-factor authentication combines at least two ________ evidence factors.',
         type: 'FILL_IN_BLANK',
         difficulty: 'MEDIUM',
-        explanation: 'Work = force × distance, so the distance unit completes the definition.',
-        payload: { acceptableAnswers: ['metre', 'meter'] },
+        explanation: 'MFA mixes knowledge, possession, and/or inherence factors.',
+        payload: { acceptableAnswers: ['independent'] },
       },
       {
-        chapterSlug: 'optics',
-        topicSlug: 'reflection-refraction',
-        stem: 'The angle of incidence equals the angle of',
-        type: 'MCQ',
-        difficulty: 'MEDIUM',
-        explanation: 'The law of reflection states i = r.',
-        payload: {
-          choices: [
-            { id: 'pe1', text: 'refraction' },
-            { id: 'pe2', text: 'reflection' },
-            { id: 'pe3', text: 'diffraction' },
-            { id: 'pe4', text: 'deviation' },
-          ],
-          correctChoiceId: 'pe2',
-        },
-      },
-      {
-        chapterSlug: 'optics',
-        topicSlug: 'lenses',
-        stem: 'A convex lens converges light rays that pass through it.',
+        chapterSlug: 'info-security-foundations',
+        topicSlug: 'cryptography-basics',
+        stem: 'Hashing is reversible with the correct key.',
         type: 'TRUE_FALSE',
-        difficulty: 'HARD',
-        explanation: 'A convex (converging) lens bends light rays towards the principal axis.',
-        payload: { correctAnswer: true },
+        difficulty: 'EASY',
+        explanation: 'Hash functions are one-way; they cannot be reversed to recover input.',
+        payload: { correctAnswer: false },
       },
     ],
-    patternTitle: 'Physics — Term Blueprint',
-    assessmentTitle: 'Physics — End of Term Quiz',
+    patternTitle: 'Cyber and Information Security — Term Blueprint',
+    assessmentTitle: 'Cyber and Information Security — End of Term Quiz',
+  },
+  {
+    name: 'Indian Knowledge Systems in Computational System',
+    slug: 'iks-computational',
+    syllabusText:
+      '1. Traditional knowledge systems: introduction to Indian Knowledge Systems and computational framing.\n' +
+      '2. Heritage numeracy: ancient algorithms and positional numerals.\n\n' +
+      'Examination scheme carries 13 marks over 45 minutes.',
+    contentTopicSlug: 'introduction-to-iks',
+    chapters: [
+      {
+        slug: 'traditional-knowledge',
+        name: 'Traditional Knowledge Systems',
+        topics: [
+          { slug: 'introduction-to-iks', name: 'Introduction to IKS' },
+          { slug: 'computational-frameworks', name: 'Computational Frameworks' },
+        ],
+      },
+      {
+        slug: 'heritage-numeracy',
+        name: 'Heritage Numeracy',
+        topics: [
+          { slug: 'ancient-algorithms', name: 'Ancient Algorithms' },
+          { slug: 'positional-numerals', name: 'Positional Numerals' },
+        ],
+      },
+    ],
+    questions: [
+      {
+        chapterSlug: 'traditional-knowledge',
+        topicSlug: 'introduction-to-iks',
+        stem: 'Indian Knowledge Systems (IKS) primarily emphasizes',
+        type: 'MCQ',
+        difficulty: 'EASY',
+        explanation: 'IKS centers indigenous knowledge rooted in Indian tradition and texts.',
+        payload: {
+          choices: [
+            { id: 'ik1', text: 'indigenous knowledge from Indian tradition' },
+            { id: 'ik2', text: 'only modern western science' },
+            { id: 'ik3', text: 'strictly oral folklore' },
+            { id: 'ik4', text: 'hardware-only design' },
+          ],
+          correctChoiceId: 'ik1',
+        },
+      },
+      {
+        chapterSlug: 'heritage-numeracy',
+        topicSlug: 'positional-numerals',
+        stem: 'The invention of the decimal place-value numeral system is attributed to Indian mathematics.',
+        type: 'TRUE_FALSE',
+        difficulty: 'EASY',
+        explanation: 'The decimal position-place system originates in Indian mathematics.',
+        payload: { correctAnswer: true },
+      },
+      {
+        chapterSlug: 'heritage-numeracy',
+        topicSlug: 'ancient-algorithms',
+        stem: 'The square-root algorithm described in the Sulba Sutras predates modern digit-by-digit methods.',
+        type: 'TRUE_FALSE',
+        difficulty: 'HARD',
+        explanation: 'Sulba Sutra geometry includes an ancient iterative square-root procedure.',
+        payload: { correctAnswer: true },
+      },
+      {
+        chapterSlug: 'heritage-numeracy',
+        topicSlug: 'positional-numerals',
+        stem: 'In place-value notation, the value of a digit depends on its ________.',
+        type: 'FILL_IN_BLANK',
+        difficulty: 'EASY',
+        explanation: 'Place determines weight in a positional system.',
+        payload: { acceptableAnswers: ['position', 'place'] },
+      },
+      {
+        chapterSlug: 'traditional-knowledge',
+        topicSlug: 'computational-frameworks',
+        stem: 'A modern computational framework for studying IKS heritage methods is best described as',
+        type: 'MCQ',
+        difficulty: 'MEDIUM',
+        explanation: 'Formalizing classical methods into algorithms lets software reproduce them.',
+        payload: {
+          choices: [
+            { id: 'ik5', text: 'encoding classical procedures as algorithms' },
+            { id: 'ik6', text: 'discarding ancient methods entirely' },
+            { id: 'ik7', text: 'translating texts into prose only' },
+            { id: 'ik8', text: 'replacing IKS with spreadsheet models' },
+          ],
+          correctChoiceId: 'ik5',
+        },
+      },
+    ],
+    patternTitle: 'IKS in Computational System — Term Blueprint',
+    assessmentTitle: 'IKS in Computational System — End of Term Quiz',
+  },
+  {
+    name: 'Software Testing and Quality Assurance',
+    slug: 'software-testing',
+    syllabusText:
+      '1. Testing foundations: test principles and test case design.\n' +
+      '2. Test management: defect lifecycle and test automation basics.\n\n' +
+      'Examination scheme carries 13 marks over 45 minutes.',
+    contentTopicSlug: 'testing-principles',
+    chapters: [
+      {
+        slug: 'testing-foundations',
+        name: 'Testing Foundations',
+        topics: [
+          { slug: 'testing-principles', name: 'Testing Principles' },
+          { slug: 'test-case-design', name: 'Test Case Design' },
+        ],
+      },
+      {
+        slug: 'test-management',
+        name: 'Test Management',
+        topics: [
+          { slug: 'defect-lifecycle', name: 'Defect Lifecycle' },
+          { slug: 'test-automation', name: 'Test Automation Basics' },
+        ],
+      },
+    ],
+    questions: [
+      {
+        chapterSlug: 'testing-foundations',
+        topicSlug: 'testing-principles',
+        stem: 'Testing can prove that a program is completely free of defects.',
+        type: 'TRUE_FALSE',
+        difficulty: 'EASY',
+        explanation: 'Testing shows the presence of defects, never their absence.',
+        payload: { correctAnswer: false },
+      },
+      {
+        chapterSlug: 'testing-foundations',
+        topicSlug: 'test-case-design',
+        stem: 'Partitioning inputs into classes that should be handled equivalently is called',
+        type: 'MCQ',
+        difficulty: 'MEDIUM',
+        explanation: 'Equivalence partitioning reduces the input space into representative classes.',
+        payload: {
+          choices: [
+            { id: 'st1', text: 'equivalence partitioning' },
+            { id: 'st2', text: 'boundary value analysis' },
+            { id: 'st3', text: 'fuzz testing' },
+            { id: 'st4', text: 'mutation testing' },
+          ],
+          correctChoiceId: 'st1',
+        },
+      },
+      {
+        chapterSlug: 'testing-foundations',
+        topicSlug: 'test-case-design',
+        stem: 'Testing just above and below the edges of equivalence classes is called ________ value analysis.',
+        type: 'FILL_IN_BLANK',
+        difficulty: 'EASY',
+        explanation: 'Boundary value analysis checks the limits of input ranges.',
+        payload: { acceptableAnswers: ['boundary'] },
+      },
+      {
+        chapterSlug: 'test-management',
+        topicSlug: 'defect-lifecycle',
+        stem: 'The first state of the defect lifecycle before any validation is',
+        type: 'MCQ',
+        difficulty: 'MEDIUM',
+        explanation: 'A reported defect is typically opened or "new" at the start.',
+        payload: {
+          choices: [
+            { id: 'st5', text: 'new' },
+            { id: 'st6', text: 'resolved' },
+            { id: 'st7', text: 'verified' },
+            { id: 'st8', text: 'closed' },
+          ],
+          correctChoiceId: 'st5',
+        },
+      },
+      {
+        chapterSlug: 'test-management',
+        topicSlug: 'test-automation',
+        stem: 'Automated test scripts are best suited to repeatable, ________ regression scenarios.',
+        type: 'FILL_IN_BLANK',
+        difficulty: 'MEDIUM',
+        explanation: 'Automation shines for frequent repeatable regression checks.',
+        payload: { acceptableAnswers: ['frequent', 'repetitive', 'repeatable'] },
+      },
+    ],
+    patternTitle: 'Software Testing and QA — Term Blueprint',
+    assessmentTitle: 'Software Testing and QA — End of Term Quiz',
   },
 ];
 
@@ -841,6 +912,64 @@ async function ensureContentItem(
   return row;
 }
 
+// Deterministically remove any leftover data from the demo curriculum that has
+// been phased out. Scoped to the demo institute by the old subject slugs, so
+// production tenants are untouched. Delete order follows the FK graph:
+// attempts and practice sessions (restrict on source ids) first, then
+// assessments (cascade assessment_questions), patterns, and finally the
+// subjects, whose cascades clean up chapters/topics/materials/questions/content
+// items.
+async function cleanupPhasedOutDemoData(db: ReturnType<typeof createDatabase>) {
+  const subjectRows = await db
+    .select({ id: subjects.id })
+    .from(subjects)
+    .where(
+      and(
+        eq(subjects.instituteId, DEMO_INSTITUTE_ID),
+        inArray(subjects.slug, PHASED_OUT_DEMO_SLUGS),
+      ),
+    );
+  if (subjectRows.length === 0) return;
+  const subjectIds = subjectRows.map((r) => r.id);
+
+  const [patternRows, contentRows, topicRows] = await Promise.all([
+    db.select({ id: paperPatterns.id }).from(paperPatterns).where(inArray(paperPatterns.subjectId, subjectIds)),
+    db.select({ id: contentItems.id }).from(contentItems).where(inArray(contentItems.subjectId, subjectIds)),
+    db
+      .select({ id: topics.id })
+      .from(topics)
+      .innerJoin(chapters, eq(topics.chapterId, chapters.id))
+      .where(inArray(chapters.subjectId, subjectIds)),
+  ]);
+  const patternIds = patternRows.map((r) => r.id);
+  const contentIds = contentRows.map((r) => r.id);
+  const topicIds = topicRows.map((r) => r.id);
+
+  const assessmentRows = patternIds.length
+    ? await db.select({ id: assessments.id }).from(assessments).where(inArray(assessments.blueprintId, patternIds))
+    : [];
+  const assessmentIds = assessmentRows.map((r) => r.id);
+
+  // Practice sessions snapshot source ids; delete them first or the subject
+  // cascade fails on the restrict FKs (content_id / topic_id).
+  const sessionIds = [
+    ...(contentIds.length
+      ? await db.select({ id: practiceSessions.id }).from(practiceSessions).where(inArray(practiceSessions.contentId, contentIds))
+      : []),
+    ...(topicIds.length
+      ? await db.select({ id: practiceSessions.id }).from(practiceSessions).where(inArray(practiceSessions.topicId, topicIds))
+      : []),
+  ].map((r) => r.id);
+
+  if (sessionIds.length) await db.delete(practiceSessions).where(inArray(practiceSessions.id, sessionIds));
+  if (assessmentIds.length) {
+    await db.delete(attempts).where(inArray(attempts.assessmentId, assessmentIds));
+    await db.delete(assessments).where(inArray(assessments.id, assessmentIds));
+  }
+  if (patternIds.length) await db.delete(paperPatterns).where(inArray(paperPatterns.id, patternIds));
+  await db.delete(subjects).where(inArray(subjects.id, subjectIds));
+}
+
 async function seedDemoCurriculum(db: ReturnType<typeof createDatabase>) {
   const instituteId = DEMO_INSTITUTE_ID;
   const teacher = await upsertUser(db, 'teacher@catlium.dev', 'Demo Teacher');
@@ -1054,6 +1183,7 @@ async function main() {
   const studentMembership = await upsertMembership(db, student.id, institute.id);
   await ensureRole(db, studentMembership.id, 'STUDENT');
 
+  await cleanupPhasedOutDemoData(db);
   await seedDemoCurriculum(db);
   await seedValidationFixtures(db);
 
@@ -1062,8 +1192,11 @@ async function main() {
       `  admin@catlium.dev / ${PASSWORD}   (INSTITUTE_ADMIN)\n` +
       `  teacher@catlium.dev / ${PASSWORD}  (INSTITUTE_ADMIN, TEACHER)\n` +
       `  student@catlium.dev / ${PASSWORD}  (STUDENT)\n` +
-      `  curriculum: Mathematics + Physics (chapters/topics, syllabus + reading materials,\n` +
-      `    approved questions, approved paper pattern, active assessment per subject)`,
+      `  curriculum: NEP-2020 B.Sc. CS — AI, Cyber & Information Security,\n` +
+      `    IKS in Computational System, Software Testing & QA (chapters/topics,\n` +
+      `    syllabus + reading materials, approved questions, approved paper\n` +
+      `    pattern, active assessment per subject; phased-out Mathematics/Physics\n` +
+      `    demo data removed deterministically)`,
   );
 }
 

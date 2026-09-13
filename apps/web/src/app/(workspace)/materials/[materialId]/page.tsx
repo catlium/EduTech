@@ -385,6 +385,11 @@ export default function MaterialDetailPage() {
           <span className="flex items-center gap-1.5">
             <FileText className="size-3.5" /> {material.sourceType}
           </span>
+          {material.sourceType === "GENERATED" && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              Starter material
+            </span>
+          )}
           <StatusBadge status={typeLabel} />
           <span className="flex items-center gap-1.5">
             <BookOpen className="size-3.5" /> Revision {material.revision}

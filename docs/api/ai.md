@@ -129,6 +129,14 @@ On success the job `result` records:
 }
 ```
 
+### Coverage rule (starter + syllabus)
+
+Starter-material and syllabus generation are **coverage-bound**: the prompt is
+kept within the given academic scope (subject → chapter → topic names and
+descriptions, plus the existing syllabus skeleton) and is asked to reach the
+topic in under a page. They are never textbook expansions — the model must not
+invent chapters, broaden into the whole subject, or fabricate facts.
+
 ## Tracking generation
 
 ```

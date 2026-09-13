@@ -32,6 +32,25 @@ function onUnauthorized() {
   }
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    const csrf = readCookie("csrf_token");
+    refreshPromise = fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: csrf ? { "x-csrf-token": csrf } : {},
+    })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
 function parseMessage(message: unknown): string {
   if (typeof message === "string") return message;
   if (Array.isArray(message)) return message.map(String).join(", ");
@@ -52,24 +71,33 @@ export async function api<T>(
   path: string,
   { method = "GET", body, signal, json = true }: ApiOptions = {},
 ): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (body !== undefined && !(body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
+  const doRequest = async (): Promise<Response> => {
+    const headers: Record<string, string> = {};
+    if (body !== undefined && !(body instanceof FormData)) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    const instituteId = getActiveInstituteId();
+    if (instituteId) headers["x-institute-id"] = instituteId;
+
+    const csrf = readCookie("csrf_token");
+    if (method.toUpperCase() !== "GET" && csrf) headers["x-csrf-token"] = csrf;
+
+    return fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      credentials: "include",
+      body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+    });
+  };
+
+  let response = await doRequest();
+  if (response.status === 401 && path !== "/auth/refresh") {
+    if (await refreshSession()) {
+      response = await doRequest();
+    }
   }
-
-  const instituteId = getActiveInstituteId();
-  if (instituteId) headers["x-institute-id"] = instituteId;
-
-  const csrf = readCookie("csrf_token");
-  if (method.toUpperCase() !== "GET" && csrf) headers["x-csrf-token"] = csrf;
-
-  const response = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    credentials: "include",
-    body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
-  });
 
   if (response.status === 401) {
     onUnauthorized();
@@ -98,10 +126,20 @@ export function jobDone(job: { status: string }): boolean {
 
 /** Download a file endpoint (export) as a blob and trigger a browser download. */
 export async function downloadFile(path: string, filename: string): Promise<void> {
-  const headers: Record<string, string> = {};
-  const instituteId = getActiveInstituteId();
-  if (instituteId) headers["x-institute-id"] = instituteId;
-  const response = await fetch(`${API_URL}${path}`, { headers, credentials: "include" });
+  const doRequest = async (): Promise<Response> => {
+    const headers: Record<string, string> = {};
+    const instituteId = getActiveInstituteId();
+    if (instituteId) headers["x-institute-id"] = instituteId;
+    return fetch(`${API_URL}${path}`, { headers, credentials: "include" });
+  };
+  let response = await doRequest();
+  if (response.status === 401) {
+    if (await refreshSession()) {
+      response = await doRequest();
+    } else {
+      onUnauthorized();
+    }
+  }
   if (!response.ok) {
     throw new ApiError(response.status, `Download failed with status ${response.status}`);
   }

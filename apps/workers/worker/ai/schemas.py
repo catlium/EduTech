@@ -49,10 +49,20 @@ class NoteTableBlock(BaseModel):
     rows: list[list[str]] = Field(min_length=1, max_length=100)
 
 
+class NoteFormulaVariable(BaseModel):
+    symbol: str = Field(min_length=1, max_length=50)
+    meaning: str = Field(min_length=1, max_length=300)
+
+
 class NoteFormulaBlock(BaseModel):
     id: str = Field(min_length=1, max_length=128)
     type: Literal["formula"] = "formula"
     content: str = Field(min_length=1, max_length=2000)
+    title: str | None = Field(default=None, max_length=255)
+    explanation: str | None = Field(default=None, max_length=2000)
+    variables: list[NoteFormulaVariable] | None = Field(default=None, max_length=20)
+    example: str | None = Field(default=None, max_length=2000)
+    note: str | None = Field(default=None, max_length=1000)
 
 
 class NoteExampleBlock(BaseModel):

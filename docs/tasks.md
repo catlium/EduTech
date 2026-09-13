@@ -35,27 +35,27 @@ Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
 
 ### Goal: P7/P8/P9 Formula + Export
 
-- [ ] P7.1 Formula block enrichment (contracts Zod + worker Pydantic + prompts +
+- [x] P7.1 Formula block enrichment (contracts Zod + worker Pydantic + prompts +
       web renderer)
-- [ ] P8.1 Export DocBlock formula kind + PDF/DOCX renderers
-- [ ] P9.1 Export visual redesign (A4, headers/footers, page numbers, styling)
+- [x] P8.1 Export DocBlock formula kind + PDF/DOCX renderers
+- [x] P9.1 Export visual redesign (A4, headers/footers, page numbers, styling)
       + tests
 
 ### Goal: P10 Auth refresh
 
-- [ ] P10.1 CSRF cookie lifetime raised to refresh-session; fix any guard
+- [x] P10.1 CSRF cookie lifetime raised to refresh-session; fix any guard
       interferences
-- [ ] P10.2 Web client single-flight 401 → refresh → retry; logout on failure
+- [x] P10.2 Web client single-flight 401 → refresh → retry; logout on failure
 
 ### Goal: P11/P12 Material hub + coverage
 
-- [ ] P11.1 Material detail: independent Cornell action, starter-material
+- [x] P11.1 Material detail: independent Cornell action, starter-material
       provenance/state badge
-- [ ] P12.1 Starter-material + syllabus prompts stay coverage-bound; docs note
+- [x] P12.1 Starter-material + syllabus prompts stay coverage-bound; docs note
 
 ### Goal: P13 Data cleanup & seed
 
-- [ ] P13.1 Seed: NEP-2020 B.Sc. CS curriculum (4 intended subjects) replaces
+- [x] P13.1 Seed: NEP-2020 B.Sc. CS curriculum (4 intended subjects) replaces
       demo Mathematics/Physics; deterministic demo-tier cleanup
 
 ### Goal: P15/P16/P17 Validation & Checkpoints

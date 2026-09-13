@@ -18,7 +18,9 @@ SYSTEM_PROMPT = (
     '  {"id": string, "type": "steps", "title": string (optional), "items": [string]},\n'
     '  {"id": string, "type": "table", "caption": string (optional), '
     '"headers": [string] (optional), "rows": [[string]]},\n'
-    '  {"id": string, "type": "formula", "content": string},\n'
+    '  {"id": string, "type": "formula", "content": string, "title": string (optional), '
+    '"explanation": string (optional), "variables": [{"symbol": string, "meaning": string}] '
+    '(optional), "example": string (optional), "note": string (optional)},\n'
     '  {"id": string, "type": "example", "title": string (optional), "content": string},\n'
     '  {"id": string, "type": "callout", "variant": "note"|"tip"|"warning"|"important", '
     '"content": string},\n'
@@ -54,6 +56,12 @@ SYSTEM_PROMPT = (
     "multiplication, never LaTeX like \\frac or \\sqrt. Do NOT emit markdown "
     "emphasis (**..**, _.._), backticks, or HTML in any string field or table "
     "cell; the app displays these fields verbatim.\n"
+    '- A "formula" block may add a short "title" (the formula name), an '
+    '"explanation" in plain words, a "variables" list (each {"symbol", '
+    '"meaning"}), a single concrete worked "example", and a "note" for a '
+    "common pitfall. Fill these only when they genuinely aid understanding — "
+    "a bare formula with no context is usually worse than one with a one-line "
+    "explanation.\n"
     '- "furtherLearning" is OPTIONAL and must only list real, authoritative '
     "resources (e.g. well-known documentation, textbooks, university pages). "
     "NEVER fabricate URLs, titles, or authors. If you cannot confidently provide "
