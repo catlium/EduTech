@@ -571,6 +571,10 @@ export type CreateTextMaterialRequest = z.infer<typeof CreateTextMaterialRequest
 export const UpdateMaterialRequestSchema = z.object({
   title: z.string().min(1).max(255).optional(),
   description: z.string().max(1000).optional(),
+  text: z.string().max(1_000_000).optional(),
+  subjectId: z.string().uuid().optional(),
+  chapterId: z.string().uuid().optional(),
+  topicId: z.string().uuid().optional(),
 });
 export type UpdateMaterialRequest = z.infer<typeof UpdateMaterialRequestSchema>;
 
@@ -592,6 +596,7 @@ export const MaterialResponseSchema = z.object({
   textContent: z.string().nullable(),
   processingStatus: MaterialProcessingStatusEnum,
   status: MaterialStatusEnum,
+  revision: z.number().int().positive(),
   createdBy: z.string().uuid(),
   updatedBy: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
@@ -694,11 +699,83 @@ export const ContentGenerationStatusSchema = z.object({
 });
 export type ContentGenerationStatus = z.infer<typeof ContentGenerationStatusSchema>;
 
+// Every derived resource (one per content_versions revision) generated from a
+// material, with its source version and deterministic stale status.
+export const MaterialResourceSchema = z.object({
+  contentId: z.string().uuid(),
+  type: ContentPackageTypeEnum,
+  title: z.string(),
+  status: z.string(),
+  version: z.number(),
+  changeType: z.string(),
+  generatedAt: z.string().datetime().nullable(),
+  sourceRevision: z.number().nullable(),
+  stale: z.boolean(),
+});
+export type MaterialResource = z.infer<typeof MaterialResourceSchema>;
+
+export const MaterialQuestionSummarySchema = z.object({
+  total: z.number(),
+  pending: z.number(),
+  approved: z.number(),
+});
+export type MaterialQuestionSummary = z.infer<typeof MaterialQuestionSummarySchema>;
+
 export const ContentGenerationStatusResponseSchema = z.object({
   materialId: z.string().uuid(),
+  materialRevision: z.number().int().positive(),
   items: z.array(ContentGenerationStatusSchema),
+  resources: z.array(MaterialResourceSchema),
+  questions: MaterialQuestionSummarySchema,
 });
 export type ContentGenerationStatusResponse = z.infer<typeof ContentGenerationStatusResponseSchema>;
+
+// ── Generation batch contracts ─────────────
+//
+// A batch is a group of existing jobs sharing a `batchId` in their payload — no
+// separate job system. One job per selected resource type; CORNELL_NOTE runs
+// through the existing content-package operation restricted to ["cornell"].
+
+export const GenerationBatchJobStatusSchema = z.string();
+export type GenerationBatchJobStatus = z.infer<typeof GenerationBatchJobStatusSchema>;
+
+export const GenerateBatchRequestSchema = z.object({
+  sourceType: z.enum(['MATERIAL', 'TOPIC']),
+  sourceId: z.string().uuid(),
+  types: z.array(ContentPackageTypeEnum).min(1),
+});
+export type GenerateBatchRequest = z.infer<typeof GenerateBatchRequestSchema>;
+
+export const GenerationBatchJobSchema = z.object({
+  jobId: z.string().uuid(),
+  type: ContentPackageTypeEnum,
+  operation: z.string(),
+  status: GenerationBatchJobStatusSchema,
+  error: z.string().nullable(),
+});
+export type GenerationBatchJob = z.infer<typeof GenerationBatchJobSchema>;
+
+export const GenerationBatchResponseSchema = z.object({
+  batchId: z.string().uuid(),
+  sourceType: z.enum(['MATERIAL', 'TOPIC']),
+  sourceId: z.string().uuid(),
+  total: z.number(),
+  completed: z.number(),
+  failed: z.number(),
+  cancelled: z.number(),
+  active: z.number(),
+  jobs: z.array(GenerationBatchJobSchema),
+});
+export type GenerationBatchResponse = z.infer<typeof GenerationBatchResponseSchema>;
+
+export const GenerateBatchJobIdsSchema = z.object({
+  batchId: z.string().uuid(),
+  sourceType: z.enum(['MATERIAL', 'TOPIC']),
+  sourceId: z.string().uuid(),
+  jobIds: z.array(z.string().uuid()),
+  alreadyActive: z.array(ContentPackageTypeEnum),
+});
+export type GenerateBatchJobIds = z.infer<typeof GenerateBatchJobIdsSchema>;
 
 // ── Question Contracts ─────────────────────
 

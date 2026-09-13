@@ -131,7 +131,7 @@ export class JobsService {
       updateData.startedAt = new Date();
     }
 
-    if (status === 'completed' || status === 'failed') {
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
       updateData.completedAt = new Date();
     }
 
@@ -144,6 +144,25 @@ export class JobsService {
     }
 
     await this.db.update(jobs).set(updateData).where(eq(jobs.id, jobId));
+  }
+
+  /**
+   * Cancel a job. Honest cancellation only:
+   * - queued → cancelled (never started)
+   * - processing → cancelling (the worker settles it to cancelled at the next
+   *   chunk or persist boundary; it never becomes failed, and nothing is
+   *   persisted after cancellation)
+   * - completed/failed/cancelled → no-op, current state returned
+   * Completed derived resources are never deleted by cancellation.
+   */
+  async cancelJob(jobId: string, instituteId: string): Promise<Job> {
+    const job = await this.getJob(jobId, instituteId);
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+      return job;
+    }
+    const nextStatus = job.status === 'queued' ? 'cancelled' : 'cancelling';
+    await this.updateJobStatus(job.id, nextStatus);
+    return { ...job, status: nextStatus };
   }
 
   private toJob(job: typeof jobs.$inferSelect): Job {

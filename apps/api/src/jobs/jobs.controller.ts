@@ -50,4 +50,16 @@ export class JobsController {
     const job = await this.jobsService.getJob(jobId, tenant.instituteId);
     return { job };
   }
+
+  @Post(':jobId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async cancel(
+    @CurrentUser() _user: AuthenticatedUser,
+    @Tenant() tenant: TenantContext,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+  ) {
+    const job = await this.jobsService.cancelJob(jobId, tenant.instituteId);
+    return { job };
+  }
 }

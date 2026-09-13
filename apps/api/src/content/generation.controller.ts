@@ -1,8 +1,9 @@
-import { Controller, Post, Get, Body, Query, UseGuards, HttpCode, HttpStatus, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, UseGuards, HttpCode, HttpStatus, ParseUUIDPipe } from '@nestjs/common';
 
 import { GenerationService } from './generation.service.js';
 import { GenerateContentDto } from './dto/generate-content.dto.js';
 import { GenerateContentPackageDto } from './dto/generate-content-package.dto.js';
+import { GenerateBatchDto } from './dto/generate-batch.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -61,10 +62,52 @@ export class GenerationController {
     @Tenant() tenant: TenantContext,
     @Query('materialId', ParseUUIDPipe) materialId: string,
   ) {
-    const items = await this.generationService.getContentGenerationStatus(
+    const status = await this.generationService.getContentGenerationStatus(
       tenant.instituteId,
       materialId,
     );
-    return { materialId, items };
+    return { generationStatus: status };
+  }
+
+  @Post('generate-batch')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async generateBatch(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: GenerateBatchDto,
+  ) {
+    const batch = await this.generationService.requestBatchGeneration(
+      tenant.instituteId,
+      user.userId,
+      dto.sourceType,
+      dto.sourceId,
+      dto.types,
+    );
+    return { batch };
+  }
+
+  @Get('generation-batches/:batchId')
+  @RequiredRoles(...WRITE_ROLES)
+  async getBatch(
+    @Tenant() tenant: TenantContext,
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ) {
+    const batch = await this.generationService.getGenerationBatch(batchId, tenant.instituteId);
+    return { batch };
+  }
+
+  @Post('generation-batches/:batchId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async cancelBatch(
+    @Tenant() tenant: TenantContext,
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ) {
+    const batch = await this.generationService.cancelGenerationBatch(
+      batchId,
+      tenant.instituteId,
+    );
+    return { batch };
   }
 }

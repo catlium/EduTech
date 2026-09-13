@@ -5,10 +5,32 @@ import {
   InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { eq, and, desc, sql } from 'drizzle-orm';
-import { materials, topics, chapters, subjects, contentItems, contentVersions } from '@catlium/database';
+import {
+  materials,
+  topics,
+  chapters,
+  subjects,
+  contentItems,
+  contentVersions,
+  questions,
+  jobs,
+} from '@catlium/database';
 import type { Database } from '@catlium/database';
-import type { GenerateContentResponse, GenerateContentPackageResponse, GenerationOperation, ContentGenerationStatus } from '@catlium/contracts';
+import type {
+  GenerateContentResponse,
+  GenerateContentPackageResponse,
+  GenerationOperation,
+  ContentGenerationStatus,
+  ContentGenerationStatusResponse,
+  MaterialResource,
+  MaterialQuestionSummary,
+  ContentPackageType,
+  GenerateBatchJobIds,
+  GenerationBatchResponse,
+  GenerationBatchJob,
+} from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { JobsService } from '../jobs/jobs.service.js';
@@ -31,6 +53,19 @@ const AI_CONTENT_TYPES = [
   'IMPORTANT_CONCEPTS',
   'CORNELL_NOTE',
 ] as const;
+
+// Batch resource type → job operation. CORNELL_NOTE reuses the content-package
+// operation restricted to ["cornell"] — batches stay on the existing jobs
+// system, never a second queue.
+const BATCH_TYPE_TO_OPERATION: Record<string, string> = {
+  NOTE: 'AI_GENERATE_NOTE',
+  SUMMARY: 'AI_GENERATE_SUMMARY',
+  FLASHCARD_SET: 'AI_GENERATE_FLASHCARDS',
+  IMPORTANT_CONCEPTS: 'AI_GENERATE_CONCEPTS',
+  CORNELL_NOTE: CONTENT_PACKAGE_OPERATION,
+};
+
+const ACTIVE_JOB_STATUSES = ['queued', 'processing', 'cancelling'] as const;
 
 @Injectable()
 export class GenerationService {
@@ -144,31 +179,34 @@ export class GenerationService {
   async getContentGenerationStatus(
     instituteId: string,
     materialId: string,
-  ): Promise<ContentGenerationStatus[]> {
+  ): Promise<ContentGenerationStatusResponse> {
     const [material] = await this.db
-      .select({ id: materials.id, updatedAt: materials.updatedAt })
+      .select({
+        id: materials.id,
+        revision: materials.revision,
+        updatedAt: materials.updatedAt,
+      })
       .from(materials)
       .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
       .limit(1);
 
     if (!material) throw new NotFoundException('Material not found');
 
+    // Every derived-resource revision generated from this material (not just
+    // the latest): the Material Detail hub shows the full provenance trail.
     const rows = await this.db
       .select({
-        type: contentItems.type,
         contentId: contentItems.id,
-        version: contentItems.currentVersion,
+        type: contentItems.type,
+        title: contentItems.title,
+        status: contentItems.status,
+        version: contentVersions.version,
+        changeType: contentVersions.changeType,
         generatedAt: contentVersions.createdAt,
-        model: sql<string | null>`(${contentVersions.aiContext} ->> 'model')`,
+        sourceReference: contentVersions.sourceReference,
       })
       .from(contentItems)
-      .innerJoin(
-        contentVersions,
-        and(
-          eq(contentItems.id, contentVersions.contentId),
-          eq(contentItems.currentVersion, contentVersions.version),
-        ),
-      )
+      .innerJoin(contentVersions, eq(contentItems.id, contentVersions.contentId))
       .where(
         and(
           eq(contentItems.instituteId, instituteId),
@@ -182,24 +220,226 @@ export class GenerationService {
       )
       .orderBy(contentItems.type, desc(contentVersions.version));
 
-    const materialUpdatedAt = material.updatedAt;
+    const isStale = (row: (typeof rows)[number]): boolean => {
+      // Deterministic staleness: source revision recorded at generation time
+      // vs. the material's current revision. Timestamp is only the fallback
+      // for legacy rows written before revisions existed.
+      const sourceRef = row.sourceReference as Record<string, unknown> | null;
+      const revisions =
+        sourceRef && typeof sourceRef.revisions === 'object' && sourceRef.revisions !== null
+          ? (sourceRef.revisions as Record<string, unknown>)
+          : {};
+      const recorded =
+        typeof (sourceRef?.revision as unknown) === 'number'
+          ? (sourceRef?.revision as number)
+          : typeof revisions[materialId] === 'number'
+            ? (revisions[materialId] as number)
+            : undefined;
+      if (recorded !== undefined) {
+        return material.revision > recorded;
+      }
+      return Boolean(material.updatedAt && row.generatedAt && material.updatedAt > row.generatedAt);
+    };
+
+    const resources: MaterialResource[] = rows.map((row) => ({
+      contentId: row.contentId,
+      type: row.type as MaterialResource['type'],
+      title: row.title,
+      status: row.status,
+      version: row.version,
+      changeType: row.changeType,
+      generatedAt: row.generatedAt?.toISOString() ?? null,
+      sourceRevision: (() => {
+        const sourceRef = row.sourceReference as Record<string, unknown> | null;
+        const revisions =
+          sourceRef && typeof sourceRef.revisions === 'object' && sourceRef.revisions !== null
+            ? (sourceRef.revisions as Record<string, unknown>)
+            : {};
+        const recorded =
+          typeof (sourceRef?.revision as unknown) === 'number'
+            ? (sourceRef?.revision as number)
+            : typeof revisions[materialId] === 'number'
+              ? (revisions[materialId] as number)
+              : undefined;
+        return recorded ?? null;
+      })(),
+      stale: isStale(row),
+    }));
 
     const items: ContentGenerationStatus[] = AI_CONTENT_TYPES.map((type) => {
       const row = rows.find((r) => r.type === type);
       if (!row) {
         return { type, state: 'not_generated', contentId: null, version: null, generatedAt: null };
       }
-      const isStale = materialUpdatedAt && row.generatedAt && materialUpdatedAt > row.generatedAt;
       return {
         type,
-        state: isStale ? 'stale' : 'generated',
+        state: isStale(row) ? 'stale' : 'generated',
         contentId: row.contentId,
         version: row.version,
         generatedAt: row.generatedAt?.toISOString() ?? null,
       };
     });
 
-    return items;
+    return {
+      materialId,
+      materialRevision: material.revision,
+      items,
+      resources,
+      questions: await this.getMaterialQuestionSummary(instituteId, materialId),
+    };
+  }
+
+  private async getMaterialQuestionSummary(
+    instituteId: string,
+    materialId: string,
+  ): Promise<MaterialQuestionSummary> {
+    const rows = await this.db
+      .select({
+        approvalStatus: questions.approvalStatus,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(questions)
+      .where(
+        and(
+          eq(questions.instituteId, instituteId),
+          eq(questions.status, 'ACTIVE'),
+          sql`${questions.provenance}->'materialIds' ? ${materialId}`,
+        ),
+      )
+      .groupBy(questions.approvalStatus);
+
+    const summary: MaterialQuestionSummary = { total: 0, pending: 0, approved: 0 };
+    for (const row of rows) {
+      summary.total += row.count;
+      if (row.approvalStatus === 'PENDING') summary.pending += row.count;
+      if (row.approvalStatus === 'APPROVED') summary.approved += row.count;
+    }
+    return summary;
+  }
+
+  // ── Generation batches ────────────────────────────────────────────
+
+  async requestBatchGeneration(
+    instituteId: string,
+    userId: string,
+    sourceType: 'MATERIAL' | 'TOPIC',
+    sourceId: string,
+    types: string[],
+  ): Promise<GenerateBatchJobIds> {
+    if (sourceType === 'MATERIAL') {
+      await this.assertGeneratableMaterial(instituteId, sourceId);
+    } else {
+      await this.assertTopicInInstitute(instituteId, sourceId);
+    }
+
+    const resourceTypes = types as ContentPackageType[];
+    const batchId = randomUUID();
+    const jobIds: string[] = [];
+    const alreadyActive: ContentPackageType[] = [];
+
+    for (const type of resourceTypes) {
+      const operation = BATCH_TYPE_TO_OPERATION[type];
+      const payload: Record<string, unknown> = {
+        operation,
+        resourceType: type,
+        batchId,
+        source: { type: sourceType, id: sourceId },
+        requestedBy: userId,
+      };
+      // CORNELL_NOTE is a one-type package run; the worker's per-type package
+      // path already honours `params.types = ["cornell"]`.
+      if (operation === CONTENT_PACKAGE_OPERATION) {
+        payload.params = { types: ['cornell'] };
+      }
+
+      try {
+        const job = await this.jobs.insertJob(instituteId, operation, payload);
+        await this.jobs.publishJob(job);
+        jobIds.push(job.id);
+      } catch (error) {
+        // The active-generation unique index rejects a concurrent duplicate.
+        if (isUniqueViolation(error)) {
+          alreadyActive.push(type);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return { batchId, sourceType, sourceId, jobIds, alreadyActive };
+  }
+
+  async getGenerationBatch(
+    batchId: string,
+    instituteId: string,
+  ): Promise<GenerationBatchResponse> {
+    const rows = await this.db
+      .select({
+        id: jobs.id,
+        type: jobs.type,
+        status: jobs.status,
+        error: jobs.error,
+        payload: jobs.payload,
+      })
+      .from(jobs)
+      .where(and(eq(jobs.instituteId, instituteId), sql`${jobs.payload}->>'batchId' = ${batchId}`))
+      .orderBy(desc(jobs.createdAt));
+
+    if (rows.length === 0) throw new NotFoundException('Generation batch not found');
+
+    const first = rows[0];
+    const payload = first.payload as Record<string, unknown> | null;
+    const jobsList: GenerationBatchJob[] = rows.map((row) => {
+      const jobPayload = row.payload as Record<string, unknown> | null;
+      const resourceType =
+        typeof jobPayload?.resourceType === 'string'
+          ? (jobPayload.resourceType as GenerationBatchJob['type'])
+          : BATCH_TYPE_TO_OPERATION[row.type] === CONTENT_PACKAGE_OPERATION
+            ? 'CORNELL_NOTE'
+            : 'NOTE';
+      return {
+        jobId: row.id,
+        type: resourceType,
+        operation: row.type,
+        status: row.status,
+        error:
+          (row.error as Record<string, unknown> | null) &&
+          typeof (row.error as Record<string, unknown>).message === 'string'
+            ? ((row.error as Record<string, unknown>).message as string)
+            : null,
+      };
+    });
+
+    const count = (statuses: readonly string[]) =>
+      jobsList.filter((j) => statuses.includes(j.status)).length;
+
+    return {
+      batchId,
+      sourceType: (payload?.source as { type?: 'MATERIAL' | 'TOPIC' } | undefined)?.type ?? 'MATERIAL',
+      sourceId: (payload?.source as { id?: string } | undefined)?.id ?? '',
+      total: rows.length,
+      completed: count(['completed']),
+      failed: count(['failed']),
+      cancelled: count(['cancelled']),
+      active: count(ACTIVE_JOB_STATUSES),
+      jobs: jobsList,
+    };
+  }
+
+  async cancelGenerationBatch(batchId: string, instituteId: string) {
+    // Fail-safe: cancel what exists; an unknown batch still returns its listing
+    // if the row set is empty → NotFound from getGenerationBatch.
+    const rows = await this.db
+      .select({ id: jobs.id, status: jobs.status })
+      .from(jobs)
+      .where(and(eq(jobs.instituteId, instituteId), sql`${jobs.payload}->>'batchId' = ${batchId}`));
+
+    if (rows.length === 0) throw new NotFoundException('Generation batch not found');
+
+    for (const row of rows) {
+      await this.jobs.cancelJob(row.id, instituteId);
+    }
+    return this.getGenerationBatch(batchId, instituteId);
   }
 
   private async assertGeneratableMaterial(instituteId: string, materialId: string): Promise<void> {
