@@ -14,6 +14,7 @@ import {
   GraduationCap,
   Building2,
   Users,
+  Library,
   LogOut,
 } from 'lucide-react';
 
@@ -39,6 +40,7 @@ import {
 const teacherNav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/subjects', label: 'Subjects', icon: BookOpen },
+  { href: '/syllabus', label: 'Syllabi', icon: Library },
   { href: '/materials', label: 'Materials', icon: FileText },
   { href: '/content', label: 'Learning Content', icon: BookMarked },
   { href: '/questions', label: 'Question Bank', icon: HelpCircle },
@@ -176,6 +178,7 @@ export function sideCrumb(pathname: string): { label: string; href: string } | n
   const map = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/subjects', label: 'Subjects' },
+    { href: '/syllabus', label: 'Syllabi' },
     { href: '/materials', label: 'Materials' },
     { href: '/content', label: 'Learning Content' },
     { href: '/questions', label: 'Question Bank' },

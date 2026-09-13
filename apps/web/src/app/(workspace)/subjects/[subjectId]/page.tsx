@@ -113,7 +113,7 @@ export default function SubjectDetailPage() {
           <div className="flex items-center gap-2">
             <StatusBadge status={subject.status} />
             {isTeacher && (
-              <Button size="sm" variant="outline" onClick={() => router.push(`/subjects/${subjectId}/syllabus`)}>
+              <Button size="sm" variant="outline" onClick={() => router.push(`/syllabus`)}>
                 <BookMarked className="mr-1 size-3.5" /> Syllabus
               </Button>
             )}
