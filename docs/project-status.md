@@ -335,7 +335,7 @@ only operation that stays blocked for APPROVED is AI re-analysis (unchanged
 - **Actual dependency protections** — no artificial lock framework, no soft
   delete, no reference counting:
   - Subject junction: `paper_pattern_subjects.pattern_id` is `ON DELETE
-    CASCADE` — deleting a General, single-, or multi-subject pattern removes
+CASCADE` — deleting a General, single-, or multi-subject pattern removes
     its association rows (no orphans), subjects themselves are untouched.
   - Assessments: `assessments.blueprint_id` is `ON DELETE SET NULL` — an
     existing assessment keeps all its data; only the blueprint reference
@@ -357,6 +357,54 @@ only operation that stays blocked for APPROVED is AI re-analysis (unchanged
   status, General/multi-subject delete, junction cascade SQL, `blueprint_id`
   SET NULL SQL, no-orphan check) + subjects 10 + validation 13.
   Script `test:paper-pattern-policy` added to `apps/api/package.json`.
+- Worker untouched.
+
+### Sub-goal: F/G Dynamic question types + Paper Pattern export — COMPLETE (seventh checkpoint)
+
+Made the Paper Pattern builder genuinely dynamic and gave the feature its own
+minimal teacher-facing export, without starting the broad Academic Export
+System.
+
+- **Dynamic question types** (`apps/web/src/lib/paper-pattern-builder.ts` +
+  `[patternId]/page.tsx`): the hardcoded `TYPE_OPTIONS`/`TYPE_LABELS` list was
+  removed. The builder fetches `/question-types` (the existing single source of
+  truth — same endpoint the Question Bank uses) and renders the rule dropdown,
+  review readouts, and issue labels from those definitions. New/changed/inactive
+  types appear automatically; removed/deprecated codes fall back to their raw
+  code (via the pure `questionTypeLabel(code, labels?)` resolver) so saved
+  blueprints stay readable and editable. Backend representation unchanged —
+  `PaperPatternSection.questionType` stays an open string, and generation
+  (`build-bank-buckets.ts`, worker buckets) already types it dynamically.
+- **Paper Pattern export** (`apps/api/src/export/`): new
+  `GET /export/paper-pattern/:patternId` (PDF/DOCX, write roles only) reuses the
+  existing `DocumentModel` + `sendDoc` renderers. Pure, DB-free renderer
+  `paper-pattern-doc.ts` produces a professional configuration reference:
+  status/version/duration/marks meta, subjects (General or resolved names),
+  description, instructions, and a blueprint table (section, type name,
+  questions, marks, attempt rule, difficulty, topics). Subject + question-type
+  names are resolved from the current institute data; a pattern without a
+  blueprint exports a valid meta-only reference instead of erroring.
+- **Web**: `Export` dropdown (PDF/DOCX) in the builder header via the shared
+  `downloadFile` client; pattern page mirrors the questions/content export
+  pattern.
+- **Regression-safe**: approved editing, General/single/multi-subject
+  associations, subject validation, active-AI-job delete protection, junction
+  cascades, `blueprint_id` SET NULL, and question generation's subject/pattern
+  filtering are untouched.
+
+### Validation
+
+- turbo `pnpm typecheck` 10/10 PASS; api eslint clean; web `typecheck` +
+  `pnpm build` green.
+- `node --test` export + paper-pattern suites **52 PASS / 0 FAIL**
+  (`paper-pattern-doc.test.ts` 5: General/multi-subject meta, type-name
+  resolution, unknown-code fallback, empty-blueprint reference, instructions
+  omission; plus existing export content-blocks/renderers, policy 17, subjects
+  10, validation 13).
+- New `node --test apps/web/src/lib/paper-pattern-builder.test.ts` **4 PASS**:
+  label resolution from the config source, unknown/removed fallback, flatten/
+  parse round-trip of custom codes, `collectIssues` naming. Script
+  `test:paper-pattern-builder` added to `apps/web/package.json`.
 - Worker untouched.
 
 ### Known Issues / Deferred

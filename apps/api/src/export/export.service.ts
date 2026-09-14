@@ -1,16 +1,22 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import {
   contentItems,
   contentVersions,
   questions,
   assessments,
   assessmentQuestions,
+  paperPatterns,
+  paperPatternSubjects,
+  subjects,
+  questionTypes,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
+import type { PaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { contentBlocks, questionDocBlock } from './export.content-blocks.js';
 import type { DocBlock, DocumentModel } from './export.content-blocks.js';
+import { paperPatternDoc } from './paper-pattern-doc.js';
 
 export type { DocBlock, DocumentModel };
 
@@ -139,5 +145,60 @@ export class ExportService {
     );
 
     return { title: assessment.title, blocks };
+  }
+
+  async buildPaperPatternDoc(instituteId: string, patternId: string): Promise<DocumentModel> {
+    const [pattern] = await this.db
+      .select()
+      .from(paperPatterns)
+      .where(and(eq(paperPatterns.id, patternId), eq(paperPatterns.instituteId, instituteId)))
+      .limit(1);
+    if (!pattern) throw new NotFoundException('Paper pattern not found');
+
+    const subjectRows = await this.db
+      .select({ subjectId: paperPatternSubjects.subjectId })
+      .from(paperPatternSubjects)
+      .where(eq(paperPatternSubjects.patternId, patternId));
+    const subjectIds = subjectRows.map((r) => r.subjectId);
+    const subjectNames: Record<string, string> = {};
+    if (subjectIds.length > 0) {
+      const nameRows = await this.db
+        .select({ id: subjects.id, name: subjects.name })
+        .from(subjects)
+        .where(inArray(subjects.id, subjectIds));
+      for (const s of nameRows) subjectNames[s.id] = s.name;
+    }
+
+    const structure = pattern.structure as PaperPatternStructure | null;
+    const codes = new Set<string>();
+    if (structure) {
+      for (const section of structure.sections) {
+        if (section.questionType) codes.add(section.questionType);
+      }
+    }
+    const questionTypeNames: Record<string, string> = {};
+    if (codes.size > 0) {
+      const typeRows = await this.db
+        .select({ code: questionTypes.code, name: questionTypes.name })
+        .from(questionTypes)
+        .where(
+          and(
+            inArray(questionTypes.code, [...codes]),
+            or(isNull(questionTypes.instituteId), eq(questionTypes.instituteId, instituteId)),
+          ),
+        );
+      for (const t of typeRows) questionTypeNames[t.code] ??= t.name;
+    }
+
+    return paperPatternDoc({
+      title: pattern.title,
+      description: pattern.description,
+      status: pattern.status,
+      version: pattern.version,
+      subjectIds,
+      structure,
+      subjectNames,
+      questionTypeNames,
+    });
   }
 }

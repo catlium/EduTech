@@ -139,10 +139,17 @@ update docs; commit + push; checkpoint report; STOP.
 
 ### Goal: F/G Paper pattern config + targeted export
 
-- [ ] F1 Paper Pattern page + builder use dynamic question types (one config)
-- [ ] G1 Question Bank export carries scope (already) + distinct labels from
-      generation; pattern export button + `GET /export/paper-pattern/:patternId`
-      rendering the pattern structure — no broad export redesign
+- [x] F1 Paper Pattern builder uses the `/question-types` API as the single
+      source of truth — no hardcoded type list; configured/custom types appear
+      in the rule dropdown and review readout, removed/deprecated codes fall
+      back to the raw code
+- [x] G1 Pattern export: `GET /export/paper-pattern/:patternId` (PDF/DOCX)
+      renders a teacher-facing configuration reference (status, version,
+      duration, marks, subjects, instructions, blueprint table) via the
+      existing export infrastructure
+- [ ] (Deferred) Full Academic Export System — broad redesign (Puppeteer design
+      system, Notes/Flashcards/Question Bank/Examination export, student
+      question-paper/answer-key exports). Out of scope for this goal.
 
 ### Goal: FGD Approved-pattern edit + safe deletion
 
@@ -895,7 +902,7 @@ Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`
       (questionType/difficulty/count); one provider call per chunk covering all
       requested quotas; grouping + dedup + slice per bucket
 - [x] P2 API: `GET /questions/bank/stats` (scope-selectable), `POST
-  /questions/generate-more` (deficit vs APPROVED+ACTIVE existing; dryRun
+/questions/generate-more` (deficit vs APPROVED+ACTIVE existing; dryRun
       returns requested/existing/deficit without queueing; non-dry queues only
       deficits)
 - [x] P2 mock provider: `CONTENT_PACKAGE` + `BANK_QUESTIONS` canned responses +
@@ -1097,7 +1104,7 @@ Make the dockerized app fully verifiable + demo-able from the repo root.
       user-validation.md, architecture/infrastructure.md, development.md,
       AGENTS.md (compose paths + public boundary)
 - [x] Commit `feat(infra): complete testing and docker demonstration
-  readiness` + push + report
+readiness` + push + report
 
 ## Phase 15 — API Contract Verification (started/closed 2026-09-09)
 
@@ -1277,7 +1284,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       endpoint, teacher ledger, graded result UI, demo E2E)
 - [x] Phase 12 — Examination Analytics (delivered 2026-09-08,
       `feat(analytics): add examination analytics`: `GET
-  /assessments/:assessmentId/analytics`, on-demand summary / score
+/assessments/:assessmentId/analytics`, on-demand summary / score
       distribution / question accuracy / topic + difficulty performance;
       node:test 12/12, `attempts_e2e.sh` PASS=96, teacher results UI)
 - [x] Phase 13 — Practice System (delivered 2026-09-08, `feat(practice)`:
@@ -1303,7 +1310,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       RabbitMQ publish failure, syllabus extra 400s, content/materials
       archive/activate 201, AGENTS.md health route `GET /api/v1/health`;
       code fixes: removed dead 20MB check in `materials.service.ts
-  validateFile` (multer 413 fires first; unused `MAX_FILE_SIZE` import
+validateFile` (multer 413 fires first; unused `MAX_FILE_SIZE` import
       dropped), deleted unused `examinations/dto/assessment-query.dto.ts`;
       new `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01..10),
       regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 /

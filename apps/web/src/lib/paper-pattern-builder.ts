@@ -45,14 +45,15 @@ export interface BackendSection {
   topicDistribution?: { name: string; percentage?: number | null }[] | null;
 }
 
-export const TYPE_OPTIONS: string[] = ['', 'MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'];
-export const TYPE_LABELS: Record<string, string> = {
-  MCQ: 'MCQ',
-  TRUE_FALSE: 'True/False',
-  FILL_IN_BLANK: 'Fill in the Blank',
-};
-
 export const STEM_RE = /^(.*) — (.+?)(?: · \d+)?$/;
+
+/** Resolve the display label for a question-type code. `labels` comes from the
+ * /question-types API source (the single source of truth); codes that were
+ * removed or deprecated fall back to the raw code so saved blueprints stay
+ * readable and editable. Empty code = mixed/untyped rule. */
+export function questionTypeLabel(code: string, labels?: Record<string, string>): string {
+  return code === '' ? 'Mixed' : (labels?.[code] ?? code);
+}
 
 export function emptyRule(): Rule {
   return {
@@ -219,12 +220,12 @@ export function parseBackendSections(secs: BackendSection[]): Section[] {
   });
 }
 
-export function collectIssues(sections: Section[]): string[] {
+export function collectIssues(sections: Section[], labels?: Record<string, string>): string[] {
   const issues: string[] = [];
   for (const s of sections) {
     const name = s.name.trim() || '(untitled section)';
     s.rules.forEach((r) => {
-      const ruleLabel = `${name} · ${r.questionType ? TYPE_LABELS[r.questionType] : 'Mixed'}`;
+      const ruleLabel = `${name} · ${questionTypeLabel(r.questionType, labels)}`;
       if (r.count == null && r.marksPerQuestion == null && r.questionType === '') return;
       if (r.count != null && r.marksPerQuestion == null) {
         issues.push(`${ruleLabel}: marks per question not set`);

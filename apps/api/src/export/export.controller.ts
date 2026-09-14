@@ -15,6 +15,7 @@ import { sendDoc } from './export.renderers.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
+import { RequiredRoles } from '../common/decorators/roles.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 
@@ -65,5 +66,18 @@ export class ExportController {
   ): Promise<void> {
     const doc = await this.exportService.buildAssessmentDoc(tenant.instituteId, assessmentId);
     sendDoc(res, doc, format, `assessment-${assessmentId}`);
+  }
+
+  @Get('paper-pattern/:patternId')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  async exportPaperPattern(
+    @Tenant() tenant: TenantContext,
+    @Res() res: Response,
+    @Param('patternId', ParseUUIDPipe) patternId: string,
+    @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
+    format: (typeof EXPORT_FORMATS)[number] = 'pdf',
+  ): Promise<void> {
+    const doc = await this.exportService.buildPaperPatternDoc(tenant.instituteId, patternId);
+    sendDoc(res, doc, format, `paper-pattern-${patternId}`);
   }
 }

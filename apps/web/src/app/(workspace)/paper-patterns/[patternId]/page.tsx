@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Clock,
+  Download,
   Layers,
   ListChecks,
   CircleDollarSign,
@@ -18,7 +19,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, downloadFile } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
@@ -51,15 +52,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { PaperPattern, SubjectResponse, MaterialResponse } from '@catlium/contracts';
+import type {
+  PaperPattern,
+  SubjectResponse,
+  MaterialResponse,
+  QuestionTypeDefinition,
+} from '@catlium/contracts';
 import {
   type BackendSection,
   type Rule,
   type Section,
   type TopicRow,
-  TYPE_OPTIONS,
-  TYPE_LABELS,
   emptyRule,
   emptySection,
   buildInstructions,
@@ -70,6 +80,7 @@ import {
   flattenSections,
   parseBackendSections,
   collectIssues,
+  questionTypeLabel,
 } from '@/lib/paper-pattern-builder';
 
 const SOURCE_TYPES_TEXT = ['TEXT', 'MATERIAL'] as const;
@@ -188,6 +199,15 @@ export default function PatternBuilderPage() {
   }, [institute]);
   const subjectName = (id: string) =>
     allSubjects.find((s) => s.id === id)?.name ?? 'Unknown subject';
+
+  /* ── dynamic question types (single source of truth: /question-types) ── */
+  const [questionTypes, setQuestionTypes] = useState<QuestionTypeDefinition[]>([]);
+  useEffect(() => {
+    api<{ types: QuestionTypeDefinition[] }>('/question-types')
+      .then(({ types }) => setQuestionTypes(types))
+      .catch(() => setQuestionTypes([]));
+  }, []);
+  const typeLabels = Object.fromEntries(questionTypes.map((t) => [t.code, t.name]));
 
   /* ── materials for analyze dialog ── */
   useEffect(() => {
@@ -327,6 +347,19 @@ export default function PatternBuilderPage() {
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Delete failed');
       setDeleting(false);
+    }
+  }
+
+  /* ── export (teacher-facing PDF/DOCX) ── */
+  async function onExport(format: 'pdf' | 'docx') {
+    if (!pattern) return;
+    try {
+      await downloadFile(
+        `/export/paper-pattern/${pattern.id}?format=${format}`,
+        `paper-pattern.${format}`,
+      );
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Export failed');
     }
   }
 
@@ -567,6 +600,17 @@ export default function PatternBuilderPage() {
                       Create Assessment
                     </Button>
                   )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline">
+                        <Download className="mr-1 size-3.5" /> Export
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onExport('pdf')}>PDF</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onExport('docx')}>DOCX</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Button size="sm" variant="outline" onClick={() => setDeleteOpen(true)}>
                     <Trash2 className="mr-1 size-3.5" /> Delete
                   </Button>
@@ -875,9 +919,10 @@ export default function PatternBuilderPage() {
                                     <SelectValue placeholder="Select type" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {TYPE_OPTIONS.map((qt) => (
-                                      <SelectItem key={qt || 'MIXED'} value={qt}>
-                                        {qt === '' ? 'Mixed' : TYPE_LABELS[qt]}
+                                    <SelectItem value="">Mixed</SelectItem>
+                                    {questionTypes.map((t) => (
+                                      <SelectItem key={t.code} value={t.code}>
+                                        {t.name}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
@@ -1159,7 +1204,7 @@ export default function PatternBuilderPage() {
 
               {/* issues preview */}
               {(() => {
-                const issues = collectIssues(sections);
+                const issues = collectIssues(sections, typeLabels);
                 return issues.length ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
                     <p className="mb-1 font-medium">Heads-up before saving:</p>
@@ -1195,7 +1240,7 @@ export default function PatternBuilderPage() {
                     </div>
                     {configured.map((r, i) => {
                       const sub = ruleSubtotal(r);
-                      const title = TYPE_LABELS[r.questionType] ?? 'Mixed';
+                      const title = questionTypeLabel(r.questionType, typeLabels);
                       const diffParts = [
                         r.difficulty.EASY,
                         r.difficulty.MEDIUM,
