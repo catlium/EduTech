@@ -16,10 +16,17 @@ Message shape (matches the API RabbitMQService publish contract):
 
 Messages are always acked; failures are recorded on the job row (safe one-line
 message), matching the material-processing consumer policy.
+
+Concurrency: ``WORKER_AI_CONCURRENCY`` worker threads each open their own
+BlockingConnection (pika connections are not thread-safe) and consume with
+prefetch 1, so independent jobs run in parallel up to the cap. Material/OCR
+processing stays on the single-threaded generic consumer.
 """
 
 import json
 import logging
+import threading
+import time
 from typing import Any
 from uuid import UUID
 
@@ -90,16 +97,37 @@ def on_message(
         channel.basic_ack(delivery_tag=delivery_tag)
 
 
-def start_ai_consumer() -> None:
+def _consume_loop() -> None:
     connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
     channel = connection.channel()
     channel.queue_declare(queue=settings.ai_queue, durable=True)
     channel.basic_qos(prefetch_count=1)
     channel.basic_consume(queue=settings.ai_queue, on_message_callback=on_message)
-    logger.info("AI worker consuming from queue '%s'", settings.ai_queue)
+    logger.info(
+        "AI worker thread consuming from queue '%s' (concurrency %d)",
+        settings.ai_queue,
+        max(1, settings.ai_concurrency),
+    )
     try:
         channel.start_consuming()
     except KeyboardInterrupt:
         pass
     finally:
         connection.close()
+
+
+def start_ai_consumer() -> None:
+    count = max(1, settings.ai_concurrency)
+    threads = [
+        threading.Thread(target=_consume_loop, name=f"ai-consumer-{i}", daemon=True)
+        for i in range(count)
+    ]
+    for thread in threads:
+        thread.start()
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        logger.info("Stopping AI worker")
+        for thread in threads:
+            thread.join(timeout=5)

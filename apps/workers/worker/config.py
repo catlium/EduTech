@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     ai_model: str = "auto"
     ai_timeout_seconds: float = 60.0
     ai_queue: str = "ai_generation"
+    # Number of independent AI consumer threads (each with its own RabbitMQ
+    # connection, prefetch 1). Independent jobs run in parallel up to this cap;
+    # material processing stays on the single-threaded `jobs` consumer (its
+    # REPROCESS/OCR flow is deliberately serial).
+    ai_concurrency: int = 2
     ai_max_context_chars: int = 40_000
     # Character budget for AI input chunking. Large documents are split on
     # semantic boundaries into chunks of this size (with overlap) before any

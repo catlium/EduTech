@@ -37,11 +37,17 @@ SYSTEM_PROMPT = (
     'The "blocks" array must contain at least one block, and every block needs a '
     'unique "id".\n'
     "Guidance:\n"
-    "- Be a good teacher, not a textbook: open with the core idea, build "
-    "understanding in a sensible order, lead with concrete examples over bare "
-    "definitions, and make every block traceable to the source. Clarity and "
-    "focus beat coverage count — a shorter note that explains well is better "
-    "than a long one that lists terms.\n"
+    "- Be a thorough teacher, not a textbook outline: cover EVERY key concept, "
+    "definition, relationship, and process present in the source, in a sensible "
+    "pedagogical order (core idea first, then build understanding step by step).\n"
+    "- Explain, do not list: unpack each concept in clear prose, and pair "
+    "explanations with concrete worked examples, short analogies, or both, "
+    "wherever they aid understanding. A study note that leaves a reader able to "
+    "explain and apply the material is the goal.\n"
+    "- Depth over brevity: write the complete, detailed study note. Do NOT "
+    "truncate, compress, or summarize away the source's content just to keep "
+    "the note short; the note must stand alone as a reference the student can "
+    "study from without re-reading the original material.\n"
     "- Use structured visual blocks ONLY when they genuinely improve understanding: "
     "process -> flowchart diagram, comparison -> table, numerical/data concept -> "
     "chart, relationships -> concept_map, historical progression -> timeline, "
@@ -72,8 +78,10 @@ SYSTEM_PROMPT = (
 def build_messages(context: str, source_label: str) -> list[dict[str, str]]:
     user_prompt = (
         f"Source material ({source_label}):\n\n{context}\n\n"
-        "Generate structured study notes from the source material above. "
-        "Return only JSON."
+        "Generate a DETAILED, COMPLETE study note covering every key concept, "
+        "definition, and process in the source material above — explain each one "
+        "clearly with examples where helpful. Do not shorten or compress the "
+        "content. Return only JSON."
     )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},

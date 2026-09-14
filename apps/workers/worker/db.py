@@ -267,27 +267,43 @@ def insert_ai_content(
     Regeneration is an in-place version bump: if an item already exists for the
     same institute/type/`source_reference` provenance, its current_version is
     incremented and a `REGENERATION` version appended (see
-    docs/architecture/content.md) — never a duplicate item. The Pydantic mirror
-    in `worker.ai.schemas` remains the validation gate.
+    docs/architecture/content.md) — never a duplicate item. Derived resources
+    are Topic-owned (Phase 31): when generation resolves to a topic, the item
+    is deduplicated by `topic_id + type`, so generating via a Topic, a Chapter,
+    a Subject, or a material shortcut on the same topic all bump ONE item. The
+    Pydantic mirror in `worker.ai.schemas` remains the validation gate.
     """
     with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT ci.id, ci.current_version"
-            " FROM content_items ci"
-            " JOIN content_versions cv"
-            "   ON cv.content_id = ci.id AND cv.version = ci.current_version"
-            " WHERE ci.institute_id = %s AND ci.type = %s AND ci.source = 'AI_GENERATED'"
-            "   AND ci.status <> 'ARCHIVED'"
-            "   AND cv.source_reference->>'type' = %s"
-            "   AND cv.source_reference->>'id' = %s"
-            " LIMIT 1",
-            (
-                institute_id,
-                content_type,
-                source_reference.get("type"),
-                source_reference.get("id"),
-            ),
-        )
+        if topic_id is not None:
+            cur.execute(
+                "SELECT ci.id, ci.current_version"
+                " FROM content_items ci"
+                " WHERE ci.institute_id = %s AND ci.type = %s AND ci.source = 'AI_GENERATED'"
+                "   AND ci.status <> 'ARCHIVED' AND ci.topic_id = %s"
+                " ORDER BY ci.current_version DESC, ci.created_at DESC"
+                " LIMIT 1",
+                (institute_id, content_type, topic_id),
+            )
+        else:
+            # Topic-less generation (historical/edge): fall back to per-version
+            # generation-source provenance.
+            cur.execute(
+                "SELECT ci.id, ci.current_version"
+                " FROM content_items ci"
+                " JOIN content_versions cv"
+                "   ON cv.content_id = ci.id AND cv.version = ci.current_version"
+                " WHERE ci.institute_id = %s AND ci.type = %s AND ci.source = 'AI_GENERATED'"
+                "   AND ci.status <> 'ARCHIVED' AND ci.topic_id IS NULL"
+                "   AND cv.source_reference->>'type' = %s"
+                "   AND cv.source_reference->>'id' = %s"
+                " LIMIT 1",
+                (
+                    institute_id,
+                    content_type,
+                    source_reference.get("type"),
+                    source_reference.get("id"),
+                ),
+            )
         existing = cur.fetchone()
 
         if existing is None:
@@ -316,6 +332,13 @@ def insert_ai_content(
             change_type = "CREATION"
         else:
             content_id = str(existing[0])
+            # ponytail: read-then-write version bump; two simultaneous jobs for
+            # the same (topic, type) through DIFFERENT source paths could write
+            # the same version. Job-level dedup (jobs_active_generation_unique)
+            # blocks per-source duplicates and batches expand to per-topic
+            # TOPIC sources, so this is a corner not a normal path. If it ever
+            # shows up, upgrade: unique partial index (topic_id, type) on live
+            # AI_GENERATED items.
             version = int(existing[1]) + 1
             change_type = "REGENERATION"
             cur.execute(
@@ -333,6 +356,16 @@ def insert_ai_content(
                     content_id,
                 ),
             )
+            # Topic-owned purge: any other live item for the same topic+type is
+            # a pre-Phase-31 duplicate (different generation-source path). Archive
+            # it so the topic exposes exactly one item, healed on regeneration.
+            if topic_id is not None:
+                cur.execute(
+                    "UPDATE content_items SET status = 'ARCHIVED', updated_at = now()"
+                    " WHERE institute_id = %s AND type = %s AND source = 'AI_GENERATED'"
+                    "   AND status <> 'ARCHIVED' AND topic_id = %s AND id <> %s",
+                    (institute_id, content_type, topic_id, content_id),
+                )
 
         cur.execute(
             "INSERT INTO content_versions"
