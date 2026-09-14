@@ -96,7 +96,16 @@ def on_message(
         return
 
     try:
-        service.generate(str(job_id), str(institute_id), payload)
+        # The publish callback lets a completed starter material enqueue its
+        # dependent derived-resource jobs on the same channel that surfaced the
+        # batch (reusing the connection that is already open in this thread —
+        # pika BlockingConnection allows publish while consuming here).
+        service.generate(
+            str(job_id),
+            str(institute_id),
+            payload,
+            publish=lambda msg: _publish(msg, channel),
+        )
     except Exception:
         logger.exception("Unexpected error processing %s job %s", job_type, job_id)
         db.update_job_status(

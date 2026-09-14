@@ -44,7 +44,53 @@ never duplicate resources.
 **Status: COMPLETE** — committed + pushed. Full detail: `docs/tasks.md` (Phase
 32, Goal REL), `docs/api/ai.md` (§ AI reliability).
 
-**Next task:** Phase B material prerequisite orchestration (per `docs/tasks.md`).
+### Sub-goal: B Material prerequisite orchestration — COMPLETE (second checkpoint)
+
+When a teacher requests derived resources for a Topic/Chapter/Subject scope and
+the topic has no usable material yet, the API now generates the starter
+material FIRST via the existing starter-material job, and the worker enqueues
+the requested derived resources only after the starter material has been
+written — the batch status view shows the prerequisite then its dependents
+under ONE shared `batchId`. Starter failure never runs dependents; concurrent
+duplicate requests are absorbed by the existing active-generation unique index
+(no duplicate starter material or jobs).
+
+- **API** (`generation.service.ts` + new `content/batch-plan.ts`): resolved
+  sources are planned by a pure, DB-free `planBatchJobs` (unit-tested with
+  `node --test`, matching the repo's pure-function test convention). Per TOPIC
+  source without `ACTIVE/READY` extracted material, ONE
+  `AI_GENERATE_STARTER_MATERIAL` job is enqueued carrying `dependentResources`
+  (operation/type/params, sharing `batchId`/`batchSource`); the existing topics
+  race back to the unique index (`jobs_active_generation_unique`) and are
+  reused instead of duplicated.
+- **Mode (`missing` vs `regenerate`)** — new optional `mode` on
+  `GenerateBatchDto`, default `missing`: skip a type when a live (non-ARCHIVED)
+  topic-owned `AI_GENERATED` item already exists for it (`skipped` + reason
+  `exists`); `regenerate` forces re-generation (still honouring active-job
+  dedup → `alreadyActive`). Web callers send no `mode` → default `missing`.
+- **Contracts**: `GenerateBatchJobIdsSchema` gains optional `skipped`
+  (`{type, topicId, reason: 'exists' | 'starter_pending'}`); `alreadyActive`
+  kept as the concurrent-active signal.
+- **Worker** (`service.py` `_enqueue_dependents`, `db.insert_generation_job`,
+  `consumer.py`): `service.generate(..., publish=…)` threads the consumer
+  channel's `_publish`; on starter completion (after the terminal update) each
+  dependent is inserted with the starter's canonical `source` + shared
+  `batchId`/`batchSource` and published; `UniqueViolation` on a dependent skips
+  it silently; unknown dependent operations are skipped with a warning.
+- **Validation**: API `node --test` batch-plan suite **9 PASS**; worker pytest
+  **51 PASS** (+5 new `test_batch_prerequisite.py`: dependents-after-success
+  sharing batchId, starter-failure-never-enqueues, already-active-dependent
+  skip, no-publish noop, CORNELL params preserved); ruff + mypy clean (26
+  files); turbo typecheck 10/10 + api lint clean.
+
+**Status: COMPLETE** — implementation + focused + regression tests green,
+documentation updated. Committed + pushed in this checkpoint.
+
+**Web "waiting for prerequisite" (task B3)** — deliberately deferred to the C/D
+generation-UX checkpoint (frontend), not part of this backend checkpoint.
+
+**Next task:** C/D idempotent generation UX + Material Detail (per
+`docs/tasks.md`), then E Question Bank generation + prompt/context correction.
 
 ## Phase 31 — Resource Ownership, Parallel AI, Correction & Validation (2026-09-14)
 

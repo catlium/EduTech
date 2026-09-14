@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID, uuid4
 
+from psycopg.errors import UniqueViolation
 from pydantic import BaseModel, ValidationError
 
 from worker import db
@@ -441,7 +442,13 @@ def _aggregate(operation: Operation, outputs: list[dict[str, Any]]) -> dict[str,
     return operation.model.model_validate(operation.aggregate(outputs)).model_dump()
 
 
-def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
+def generate(
+    job_id: str,
+    institute_id: str,
+    payload: dict[str, Any],
+    *,
+    publish: Callable[[dict[str, Any]], None] | None = None,
+) -> None:
     # Cancellation is checked before any work: a queued job cancelled by the
     # teacher must never start, and a job already marked `cancelling` settles to
     # `cancelled` without producing a derived resource.
@@ -462,7 +469,7 @@ def generate(job_id: str, institute_id: str, payload: dict[str, Any]) -> None:
             _analyze_syllabus(job_id, institute_id, operation, payload)
             return
         if operation.operation == STARTER_MATERIAL_OPERATION:
-            _generate_starter_material(job_id, institute_id, operation, source)
+            _generate_starter_material(job_id, institute_id, operation, source, payload, publish)
             return
 
         materials = _resolve_materials(institute_id, source)
@@ -932,9 +939,7 @@ def _analyze_syllabus(
             outputs.append(_validate_output(operation, raw))
 
         assert operation.aggregate is not None
-        aggregated = operation.model.model_validate(
-            operation.aggregate(outputs)
-        ).model_dump()
+        aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
 
         _check_cancelled(job_id)
         context = aggregated.get("context") or {}
@@ -988,6 +993,8 @@ def _generate_starter_material(
     institute_id: str,
     operation: Operation,
     source: dict[str, str],
+    payload: dict[str, Any],
+    publish: Callable[[dict[str, Any]], None] | None = None,
 ) -> None:
     """Generate a topic's first material when none exists ('teach this topic').
 
@@ -998,6 +1005,12 @@ def _generate_starter_material(
     provenance metadata. Regeneration updates the material in place and bumps
     its revision (derived resources become stale). Never a textbook expansion:
     the prompt is bounded to the topic (P12).
+
+    When the starter was created by a batch that also requested derived
+    resources (``dependentResources`` in the payload), those jobs are enqueued
+    with the same batchId/batchSource only AFTER the material exists — the
+    dependents then resolve the freshly generated material as their source. A
+    starter failure therefore never triggers its dependents.
     """
     if source["type"] != "TOPIC":
         raise GenerationError("Starter material generation requires a topic source")
@@ -1085,7 +1098,78 @@ def _generate_starter_material(
             "model": settings.ai_model,
         },
     )
-    logger.info("AI starter material generated: job=%s material=%s", job_id, material_id)
+    dependents = _enqueue_dependents(institute_id, payload, publish)
+    logger.info(
+        "AI starter material generated: job=%s material=%s dependents=%s",
+        job_id,
+        material_id,
+        dependents,
+    )
+
+
+def _enqueue_dependents(
+    institute_id: str,
+    payload: dict[str, Any],
+    publish: Callable[[dict[str, Any]], None] | None,
+) -> int:
+    """Enqueue derived-resource jobs attached to a completed starter material.
+
+    Each dependent reuses the starter's canonical source, batchId and
+    batchSource, so the batch status view shows every job (prerequisite first,
+    then derived) under one batch. A dependent whose generation is already
+    active is dropped silently: the active-generation unique index rejects the
+    insert and the concurrent batch already carries the same work.
+    """
+    if publish is None:
+        return 0
+    dependents = payload.get("dependentResources")
+    if not isinstance(dependents, list) or not dependents:
+        return 0
+
+    source = payload.get("source")
+    batch_id = payload.get("batchId")
+    batch_source = payload.get("batchSource")
+    requested_by = payload.get("requestedBy")
+    if not isinstance(source, dict) or not isinstance(requested_by, str):
+        raise GenerationError("Invalid job payload")
+
+    enqueued = 0
+    for dep in dependents:
+        if not isinstance(dep, dict):
+            continue
+        operation = dep.get("operation")
+        if not isinstance(operation, str) or operation not in OPERATIONS:
+            logger.warning("Skipping unknown dependent operation: %s", operation)
+            continue
+        dep_payload: dict[str, Any] = {
+            "operation": operation,
+            "resourceType": dep.get("resourceType"),
+            "source": source,
+            "requestedBy": requested_by,
+        }
+        if isinstance(batch_id, str):
+            dep_payload["batchId"] = batch_id
+        if isinstance(batch_source, dict):
+            dep_payload["batchSource"] = batch_source
+        params = dep.get("params")
+        if isinstance(params, dict):
+            dep_payload["params"] = params
+
+        try:
+            dependent_job_id = db.insert_generation_job(institute_id, operation, dep_payload)
+        except UniqueViolation:
+            logger.info("Skipping dependent already active: op=%s", operation)
+            continue
+        publish(
+            {
+                "jobId": dependent_job_id,
+                "instituteId": institute_id,
+                "type": operation,
+                "payload": dep_payload,
+            }
+        )
+        enqueued += 1
+    return enqueued
 
 
 def _generate_blueprint(

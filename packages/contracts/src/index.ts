@@ -788,6 +788,15 @@ export const GenerateBatchJobIdsSchema = z.object({
   sourceId: z.string().uuid(),
   jobIds: z.array(z.string().uuid()),
   alreadyActive: z.array(ContentPackageTypeEnum),
+  skipped: z
+    .array(
+      z.object({
+        type: ContentPackageTypeEnum,
+        topicId: z.string().uuid(),
+        reason: z.enum(['exists', 'starter_pending']),
+      }),
+    )
+    .optional(),
 });
 export type GenerateBatchJobIds = z.infer<typeof GenerateBatchJobIdsSchema>;
 

@@ -100,6 +100,7 @@ export class GenerationController {
       dto.sourceType,
       dto.sourceId,
       dto.types,
+      dto.mode,
     );
     return { batch };
   }

@@ -199,6 +199,30 @@ def update_job_status(
         conn.execute(sql, params)
 
 
+def insert_generation_job(
+    institute_id: str,
+    job_type: str,
+    payload: dict[str, Any],
+) -> str:
+    """Insert a queued AI generation job and return its id.
+
+    The active-generation unique index on (institute, operation, source) can
+    reject a concurrent duplicate with a ``UniqueViolation``; callers decide
+    whether to skip or dedupe (starter-material dependents skip; API batches
+    surface it as already-active).
+    """
+
+    with psycopg.connect(settings.database_url) as conn:
+        cur = conn.execute(
+            "INSERT INTO jobs (institute_id, type, payload) VALUES (%s, %s, %s) RETURNING id",
+            (institute_id, job_type, Jsonb(payload)),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("job insert returned no id")
+        return str(row[0])
+
+
 def recover_stale_ai_jobs(older_than_minutes: int) -> list[dict[str, Any]]:
     """AI jobs stuck in ``processing`` longer than the threshold (a worker
     crash, container restart, or RabbitMQ connection loss can strand a job that

@@ -54,7 +54,7 @@ update docs; commit + push; checkpoint report; STOP.
       indistinguishable; consumer.py pika threads no reconnect (thread dies);
       questions NOT idempotent (no jobId guard); processing can hang forever on
       crash (no stale sweep); idempotency: content dedup topic-keyed, questions not
-- [~] A5 Remaining reads for phase B/E — worker generation/consumes flows, API
+- [x] A5 Remaining reads for phase B/E — worker generation/consumes flows, API
       generation.service + question-generation.service, jobs index/dedupKey,
       contracts response shapes (done during start of implementation)
 
@@ -81,14 +81,21 @@ update docs; commit + push; checkpoint report; STOP.
 
 ### Goal: B Material prerequisite orchestration
 
-- [ ] B1 API: per-topic usable-material check in batch/derived generation;
+- [x] B1 API: per-topic usable-material check in batch/derived generation;
       missing → ONE `AI_GENERATE_STARTER_MATERIAL` job carrying batchId +
       dependentResources (operation/type/params); concurrent starter enqueue
-      collides on unique index → reuse existing starter batch (no duplicate)
-- [ ] B2 Worker: on starter completion, before terminal update, enqueue the
-      dependent jobs (insert job rows + publish to ai_generation, shared batchId)
-- [ ] B3 Job Monitor: prerequisite job visible; web shows "waiting for
-      prerequisite" while a starter runs for a topic's batch
+      collides on unique index → reuse existing starter batch (no duplicate);
+      pure logic extracted to `apps/api/src/content/batch-plan.ts`
+      (node:test unit coverage: derived-proceeds, starter-first,
+      starter-duplicate, mode skip/regenerate, ready-other-topics)
+- [x] B2 Worker: on starter completion, after the terminal update, enqueue the
+      dependent jobs (insert job rows + publish via the consuming channel,
+      shared batchId) in `_enqueue_dependents`; a starter failure never
+      enqueues dependents; a dependent whose generation is already active is
+      dropped silently (active-generation unique index). Tests:
+      `apps/workers/tests/test_batch_prerequisite.py` (5 cases)
+- [ ] B3 Job Monitor / web UX "waiting for prerequisite" — frontend, moved to
+      the C/D generation UX checkpoint (deliberately deferred here)
 
 ### Goal: C/D Idempotent generation + Material Detail UX
 

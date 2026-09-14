@@ -36,6 +36,7 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
+import { planBatchJobs, type PlanPort, type BatchSource } from './batch-plan.js';
 
 const CONTENT_PACKAGE_OPERATION = 'AI_GENERATE_CONTENT_PACKAGE' as const;
 const STARTER_MATERIAL_OPERATION = 'AI_GENERATE_STARTER_MATERIAL' as const;
@@ -368,51 +369,39 @@ export class GenerationService {
     sourceType: (typeof GenerationSourceTypeEnum.options)[number],
     sourceId: string,
     types: string[],
+    mode: 'missing' | 'regenerate' = 'missing',
   ): Promise<GenerateBatchJobIds> {
     const resourceTypes = types as ContentPackageType[];
     const batchId = randomUUID();
-    const jobIds: string[] = [];
-    const alreadyActive: ContentPackageType[] = [];
+    const batchSource: BatchSource = { type: sourceType, id: sourceId };
 
-    // Batch-level source is preserved for the batch summary; each child job
-    // carries its own per-resource source (a CHAPTER/SUBJECT batch expands to
-    // one TOPIC-sourced job per active topic × type — the worker never sees the
-    // whole scope at once, keeping context shared via the DB, not the payload).
-    const batchSource = { type: sourceType, id: sourceId };
-
-    for (const source of await this.resolveBatchSources(instituteId, sourceType, sourceId)) {
-      for (const type of resourceTypes) {
-        const operation = BATCH_TYPE_TO_OPERATION[type];
-        const payload: Record<string, unknown> = {
-          operation,
-          resourceType: type,
-          batchId,
-          batchSource,
-          source: { type: source.type, id: source.id },
-          requestedBy: userId,
-        };
-        // CORNELL_NOTE is a one-type package run; the worker's per-type package
-        // path already honours `params.types = ["cornell"]`.
-        if (operation === CONTENT_PACKAGE_OPERATION) {
-          payload.params = { types: ['cornell'] };
-        }
-
+    const port: PlanPort = {
+      hasUsableMaterial: (topicId) => this.hasUsableTopicMaterial(instituteId, topicId),
+      dedupTopicId: (source) => this.generationDedupTopicId(instituteId, source),
+      hasExistingDerived: (topicId, type) =>
+        this.hasExistingDerivedContent(instituteId, topicId, type),
+      enqueueJob: async (operation, payload) => {
         try {
           const job = await this.jobs.insertJob(instituteId, operation, payload);
           await this.jobs.publishJob(job);
-          jobIds.push(job.id);
+          return { jobId: job.id, duplicate: false };
         } catch (error) {
-          // The active-generation unique index rejects a concurrent duplicate.
-          if (isUniqueViolation(error)) {
-            alreadyActive.push(type);
-            continue;
-          }
+          if (isUniqueViolation(error)) return { jobId: '', duplicate: true };
           throw error;
         }
-      }
-    }
+      },
+    };
 
-    return { batchId, sourceType, sourceId, jobIds, alreadyActive };
+    const result = await planBatchJobs(port, {
+      sources: await this.resolveBatchSources(instituteId, sourceType, sourceId),
+      productTypes: resourceTypes,
+      mode,
+      batchId,
+      batchSource,
+      userId,
+    });
+
+    return { batchId, sourceType, sourceId, ...result };
   }
 
   /** Resolve a batch's per-resource sources: MATERIAL/TOPIC stay 1:1; a
@@ -594,5 +583,63 @@ export class GenerationService {
       .limit(1);
 
     if (!topic) throw new NotFoundException('Topic not found');
+  }
+
+  /** True when the topic already has extracted material usable as a generation
+   * source — same predicate the worker uses in `get_topic_materials`. */
+  private async hasUsableTopicMaterial(instituteId: string, topicId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: materials.id })
+      .from(materials)
+      .where(
+        and(
+          eq(materials.instituteId, instituteId),
+          eq(materials.topicId, topicId),
+          eq(materials.status, 'ACTIVE'),
+          eq(materials.processingStatus, 'READY'),
+          sql`length(btrim(${materials.textContent})) > 0`,
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
+  }
+
+  /** True when a live AI_GENERATED derived resource of `type` already exists for
+   * the topic — same dedup predicate as the worker's `insert_ai_content`. */
+  private async hasExistingDerivedContent(
+    instituteId: string,
+    topicId: string,
+    type: ContentPackageType,
+  ): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: contentItems.id })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.instituteId, instituteId),
+          eq(contentItems.topicId, topicId),
+          eq(contentItems.type, type),
+          eq(contentItems.source, 'AI_GENERATED'),
+          sql`${contentItems.status} <> 'ARCHIVED'`,
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
+  }
+
+  /** For a resolved source, the topic whose AI_GENERATED resources it maps to.
+   * TOPIC → itself; MATERIAL → the material's owning topic (generated resources
+   * are Topic-owned, so mode=missing dedup compares against that topic). */
+  private async generationDedupTopicId(
+    instituteId: string,
+    source: { type: string; id: string },
+  ): Promise<string | null> {
+    if (source.type === 'TOPIC') return source.id;
+    const [row] = await this.db
+      .select({ topicId: materials.topicId })
+      .from(materials)
+      .where(and(eq(materials.id, source.id), eq(materials.instituteId, instituteId)))
+      .limit(1);
+    return row?.topicId ?? null;
   }
 }

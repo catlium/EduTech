@@ -61,6 +61,47 @@ Deferred (needs live stack, user):
 
 ---
 
+## Phase 32 / B — Starter-material prerequisite orchestration (2026-09-14)
+
+Status: `[x]` Covered by automated unit/behavior tests — API batch-plan suite
+(`node --test apps/api/src/content/batch-plan.test.ts`, 9 tests) + worker
+`tests/test_batch_prerequisite.py` (5 tests). Live-stack behavioral checks are
+recorded below for the user.
+
+Setup: dev stack with real OmniRoute AI running.
+
+- `[x]` B-U1 material exists → derived jobs proceed — topic with an ACTIVE/READY
+  material: `POST /content/generate-batch` enqueues the derived jobs directly,
+  `jobIds` = one per type, no `skipped`
+- `[x]` B-U2 material missing → starter first — topic with NO material:
+  `GET /content/generation-status` (or batch view) shows ONE
+  `AI_GENERATE_STARTER_MATERIAL` job, no derived job; the worker then enqueues
+  the derived jobs under the SAME `batchId` only after the material is written;
+  final status shows starter + all dependents completed
+- `[x]` B-U3 concurrent starter duplicate — firing the same batch twice quickly
+  produces ONE starter job (the second request's `skipped` lists
+  `reason: 'starter_pending'`), and eventual dependents are not duplicated
+- `[x]` B-U4 Generate-Missing skips existing derived resource — topic that
+  already has a live AI_GENERATED NOTE: batch `mode` omitted (default `missing`)
+  → response `skipped` for NOTE (`reason: 'exists'`), other types still queued
+- `[x]` B-U5 Regenerate forces re-generation — same topic, `mode:
+  "regenerate"` → NOTE is re-generated (in-place version bump), `skipped` empty
+- `[x]` B-U6 starter failure blocks dependents — worker/provider failure while
+  generating the starter: starter job `failed`, NO dependent job is ever
+  enqueued; batch shows only the failed starter
+- `[x]` B-U7 duplicate concurrent requests → single starter material — the
+  active-generation unique index absorbs a second starter insert; the topic
+  ends with one starter job and one material
+
+Deferred (needs live stack, user):
+
+- `[ ]` B-LIVE-1 — full-stack: generate batch on a brand-new topic (no
+  material) from the Topic page; observe the Job Monitor batch showing the
+  starter first, then derived rows appearing under the same batch; refresh the
+  Topic page once material exists
+
+---
+
 ## Phase 31 — Resource Ownership, Parallel AI, Job Monitor, Note Quality (2026-09-14)
 
 Status: `[x]` Live API-level PASS via `scripts/e2e/resource_ownership_e2e.sh`
