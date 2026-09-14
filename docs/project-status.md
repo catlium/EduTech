@@ -1,6 +1,105 @@
 # Project Status
 
-## Phase 30 — Syllabus-First (`syllabi` + top-level `/syllabus`, 2026-09-13)
+## Phase 31 — Resource Ownership, Parallel AI, Correction & Validation (2026-09-14)
+
+**Goal:** close the resource-ownership, parallel-AI, note-quality, syllabus
+correction, and job-monitor work with full E2E validation. Rationalized the
+generation source model (TOPIC / CHAPTER / SUBJECT / MATERIAL with B3 guard),
+made worker-ai actually parallel (env-driven concurrency), fixed the material
+shortcut duplicate-`NOTE` bug at the root (topic-keyed dedup + in-place
+version bump), corrected the syllabus "subjects invented on upload/confirm"
+flows, shipped the Job Monitor page + jobs list/retry API, and verified the
+whole lifecycle against the deployed stack (real OmniRoute AI — no mock).
+
+Full detail: `docs/tasks.md` (Phase 31 block), `docs/api/jobs.md`,
+`docs/api/ai.md`, `scripts/e2e/resource_ownership_e2e.sh`,
+`scripts/e2e/syllabus_e2e.sh`.
+
+**Status: COMPLETE** — worker pytest 35 PASS + ruff/mypy clean; turbo typecheck
+10/10 + api lint clean; `resource_ownership_e2e.sh` **PASS=50 FAIL=0**;
+`syllabus_e2e.sh` **PASS=61 FAIL=0** (incl. new SYL-E1..E3) against the rebuilt
+stack; committed + pushed. Browser UI verification of the Phase 31 pages is
+deferred to the user.
+
+### Completed
+
+- **B — Resource ownership** — `content_items.topic_id` reused (no structural
+  migration). Generation DTOs accept `CHAPTER`/`SUBJECT` batch sources and
+  expand to per-topic child jobs sharing one `batchId`; topic-less MATERIAL
+  generation is guarded with `409` (no null-topic resources possible).
+- **C — Parallel AI** — `WORKER_AI_CONCURRENCY` (default 2) gives worker-ai N
+  consumer threads (own BlockingConnection, prefetch=1); worker-material stays
+  serial. Child jobs re-resolve immutable DB sources at run time (no message
+  bloat). Per-source active-job dedup verified to cover all 9 AI ops.
+- **D — Job monitor** — `GET /jobs` (status/type/batchId/sourceType filters
+  - labels + pagination), `POST /jobs/:id/retry` (new row, same payload, dedup
+    guards active collisions, 409 on non-terminal), `POST /jobs/:id/cancel` kept;
+    web `/jobs` page with material-ui tabs, source labels, timestamps, retry;
+    sidebar "Job Monitor" nav item. `docs/api/jobs.md` updated.
+- **E — Syllabus correction** — upload/paste for an existing subject never
+  creates a duplicate subject; uploaded source stays authoritative; confirm
+  reconciles into the pre-existing subject without inventing new ones
+  (absent → archived); per-subject syllabus isolation verified by E2E.
+- **F/G — Note quality + UI polish** — detailed pedagogical note prompt
+  (heading/paragraph/callout/table/list/diagram/formula/steps/blocks), summary
+  stays concise; Topic detail = Learning Resources (notes/summaries/
+  flashcards/Cornell/concepts + questions + generation + batch progress);
+  Chapter/Subject batch "Generate resources"; Material "resources for this
+  topic" shortcut (TOPIC source via material.topicId).
+- **Root-cause fix** — `insert_ai_content` dedup previously keyed on
+  `source_reference->>'type/id'`, so a MATERIAL-sourced NOTE and a
+  TOPIC-sourced NOTE for the same topic produced duplicate rows. Now keyed on
+  `(institute_id, type, source='AI_GENERATED', status<>'ARCHIVED', topic_id)`
+  when a topic exists: regeneration bumps the live item in place
+  (`current_version + 1`, new version row) and archives surplus rows.
+  (`ponytail:` read-then-write race note + upgrade path in
+  `apps/workers/worker/db.py`; active-job dedup makes the race unreachable in
+  practice.)
+- **Live demo heal** — the duplicate NOTE on subject "Mathematics Minor" →
+  topic "Natural Numbers" (two NOTE rows) was healed by regenerating NOTE
+  after the fix: the older row is now `ARCHIVED`, one `ACTIVE` NOTE remains.
+
+### Validation
+
+- Worker: `pytest` 35 passed (`test_note_quality.py` +6), `ruff` + `mypy` clean.
+- API: `tsc --noEmit` + eslint clean after jobs-filter case fix.
+- Web: `next typecheck` clean (no lint script); API/contracts/database clean.
+- Full: `pnpm typecheck` turbo 10/10 PASS.
+- Live E2E 1 — `scripts/e2e/resource_ownership_e2e.sh` **PASS=50 FAIL=0**:
+  OWN-01..03 (topic-less material 409 ×2, topic batch → 5 completed/topic-scoped,
+  material shortcut keeps single NOTE + bumps version), NOTE-23/24/25 (pedagogy
+  depth ≥3 blocks + ≥3 types, summary keyConcepts + shorter than note, schema),
+  PAR-11/15/14/13/12/16 (parallel, shared batchId, dedup, concurrency ≥2,
+  cancel→retry→complete), MON-17..21 (status/type filters, pagination, labels).
+- Live E2E 2 — `scripts/e2e/syllabus_e2e.sh` **PASS=61 FAIL=0** (SYL-01..11 +
+  new SYL-E1 no duplicate subject on upload, SYL-E2 confirm invents no subjects
+  - reaches CONFIRMED, SYL-E3 subject-specific syllabus isolation).
+- Browser journeys were run as a smoke (s02 admin PASS; s01/s03 fail only on
+  pre-existing env/seed drift — landing page not served unauthenticated and the
+  demo seed no longer contains an "Algebra" chapter; Phase 31 pages render
+  correctly per pageTail confirmation). Browser verification of Phase 31 UI is
+  on the user's side.
+
+### Known Issues / Deferred
+
+- Browser UI verification (subject/chapter/topic/material/jobs pages) left for
+  the user (by mutual agreement).
+- Worker-ai `WORKER_AI_CONCURRENCY` default `2` validated; per-account tuning
+  possible via `docker-compose.dev.yml`.
+- Pre-existing: OmniRoute Gemini fallback 404s on the configured key; worker-ai
+  RabbitMQ connection-reset crash observed earlier, out of scope.
+- **Future phase (documented, NOT started)** — Export enhancement
+  (redesigned export UX per topic/resource, PDF/Anki/CSV/JSON restructuring,
+  export queues/progress, note/image export fidelity). See `docs/tasks.md`
+  "FUTURE PHASE" block.
+- E2E leftovers in `catlium_dev`: text "Computer Science <rand>"
+  syllabus fixture (SYL-01) and the archived demo NOTE row — harmless.
+
+### Checkpoints
+
+| Commit       | Scope                                                                                          |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| (this phase) | contracts/API jobs+content, worker db.py+note quality, web jobs+generate UI, scripts e2e, docs |
 
 **Goal:** make the uploaded/pasted syllabus the authoritative source of the
 academic hierarchy. A subject never generates a syllabus; a teacher pastes the
@@ -78,8 +177,8 @@ rebuilt stack with real AI. Pending: commit + push.
 
 ### Checkpoints
 
-| Commit | Scope |
-| --- | --- |
+| Commit    | Scope                                                        |
+| --------- | ------------------------------------------------------------ |
 | (pending) | Databases/contracts/worker/API/web/scripts/docs for Phase 30 |
 
 ## Phase 29 — Syllabus, Academic Scope, Resource Quality & Auth (2026-09-13)
@@ -155,10 +254,10 @@ see Known Issues), final push.
 
 ### Checkpoints
 
-| Commit | Scope |
-| --- | --- |
+| Commit    | Scope                                                    |
+| --------- | -------------------------------------------------------- |
 | `1a06472` | P1–P6 starter material generation, canonical scope, docs |
-| `4e85f72` | P7–P13 formula + export + auth refresh + NEP-2020 seed |
+| `4e85f72` | P7–P13 formula + export + auth refresh + NEP-2020 seed   |
 
 **Exact recommended next task:** fix OmniRoute Gemini model names, restore the
 AI provider, then run `scripts/e2e/demo_e2e.sh` for the deferred live
@@ -262,8 +361,8 @@ P15 syllabus deferral.
 - **Batch progress panel** with per-type status chips
   (Queued/Generating/Completed/Failed/Cancelled) and **Cancel remaining**.
 - **Edit dialog**: academic scope cascade (on-demand subjects/chapters/topics)
-  + TEXT source editing, with a stale-warning banner that previews the revision
-  bump.
+  - TEXT source editing, with a stale-warning banner that previews the revision
+    bump.
 - Header shows **Revision N**; generation-status changes mark existing
   resources stale immediately.
 
@@ -518,6 +617,7 @@ integrity re-check, and P2.5 confirmed-syllabus amend/reopen (user decision).
 Phase 27's full work order (P0–P9) is now complete. Highlights:
 
 **P5 — Rich educational content** (`68e0a18`)
+
 - Line charts render as SVG polylines, pie charts as proportional SVG arcs +
   legend (both previously fell through to a bare key–value list). Native SVG,
   zero new dependencies.
@@ -529,6 +629,7 @@ Phase 27's full work order (P0–P9) is now complete. Highlights:
 - Unit checks: `note-blocks.test.tsx` 3/3 pass.
 
 **P6 — PDF/DOCX export fidelity** (`f70c5f5`)
+
 - Question-bank and assessment exports now include MCQ A–D options (correct
   one ✓ on bank exports, withheld on student papers), FIB accepted answers,
   TF correct value, NUMERICAL model answer, per-question marks (assessment),
@@ -541,6 +642,7 @@ Phase 27's full work order (P0–P9) is now complete. Highlights:
 - Unit checks: `export.test.ts` 3/3 pass.
 
 **P7 — Product polish** (`14c1057`)
+
 - Syllabus: Confirm & Create disabled while edits are dirty (was committing
   stored structure while the dialog showed local counts — silent data loss).
 - Approved paper-pattern blueprint editor locked (was interactive with no save
@@ -551,6 +653,7 @@ Phase 27's full work order (P0–P9) is now complete. Highlights:
   a toast.
 
 **P8 — Targeted manual validation** (this checkpoint)
+
 - Rebuilt api+web images from current source inside Docker (whole-workspace
   `pnpm build` PASS) and ran live smokes against the rebuilt stack: exports
   verified (assessment options/marks/explanations, bank ✓/answers, content
@@ -783,6 +886,7 @@ browser/cross-browser/E2E validation remains deferred until the user's manual
 findings are addressed and the resulting feedback backlog is closed.
 
 **Teacher content management**
+
 - Fixed the broken teacher content list: it sent `contentType` as the filter
   param (backend expects `type`) and read `content` from a response that
   returns `contents` — the whole Notes/Flashcard management surface was dead.
@@ -794,10 +898,12 @@ findings are addressed and the resulting feedback backlog is closed.
   source material and operation/model/generatedAt for AI-generated content.
 
 **Student notes reading**
+
 - The SUMMARY renderer dropped `keyConcepts` and `importantPoints`; now
   rendered alongside the summary text. NOTE/SUMMARY/CONCEPTS cards verified.
 
 **Question practice — explanations**
+
 - `practice_session_items` gains an `explanation` snapshot (migration 0015,
   applied to dev DB). `questionItems` snapshots `questions.explanation`;
   `serializeItem` returns it only after the student answers that item (the
@@ -806,6 +912,7 @@ findings are addressed and the resulting feedback backlog is closed.
   answered feedback and the completed-session review.
 
 **Flashcard study**
+
 - Replaced the all-cards-at-once list (every card's answer always visible)
   with a focused one-card-at-a-time study loop: flip → rate Again/Good →
   auto-advance to the next card, with prev/next and progress.
@@ -820,17 +927,19 @@ deferred until manual findings are closed.
 ### Infra notes
 
 - Host disk hit 100% twice during web image rebuilds → reclaimed via `docker
-  builder prune -f` + `docker system prune -f --volumes` (9G free).
+builder prune -f` + `docker system prune -f --volumes` (9G free).
 - `docker compose up -d --build web` does not always recreate the container;
   use `--force-recreate` after rebuilding web.
 
 ### Validation
+
 Typecheck + `next build` clean. Browser journeys s01–s03 PASS. No large
 regression suites scheduled until the product is substantially complete.
 
 ---
 
 ## Phase 21 — SaaS Management + Public Landing Page (2026-09-10)
+
 **Checkpoint committed + pushed.** The product now behaves as a multi-tenant
 SaaS (institute admins provision accounts; no public self-registration) and
 ships a public landing page with a role-aware admin experience.
@@ -912,7 +1021,7 @@ curriculum and the student attempt loop is proven end-to-end on the live stack.
   the single stale literal-choice row was removed and re-seeded.
 - **Student journey proof** (live API): quiz in `/attempts/available` →
   attempt 201 → 10/10 answers accepted → submit → `{"status":"SUBMITTED",
-  "score":12,"totalMarks":12}` (100%). Note: attempt payloads strip
+"score":12,"totalMarks":12}` (100%). Note: attempt payloads strip
   `correctChoiceId` (students can't cheat); verified using DB-sourced answers.
 - **Regression**: web_workflow_e2e 33/33 PASS; paper-patterns node tests PASS
   (13/13); api + web typecheck clean. DB data only (no migrations).
@@ -1061,11 +1170,12 @@ checkpoint 5 (validation + polish + E2E + docs).
 
 **Status: COMPLETE — closed 2026-09-09.** Paper Pattern / Blueprint backend
 fully implemented: paper-patterns module (CRUD + DRAFT→REVIEW→APPROVED lifecycle
-+ TEXT-source AI analysis + deterministic validation + assessment-from-blueprint
-+ blueprint-constrained generation with satisfaction report + marks override);
-unit tests 13/13; full 12-suite regression **583/583 FAIL=0** on the
-dockerized stack. `pnpm typecheck`/`lint` PASS. docs updated. FE phases
-renumbered 19-26. Clean tree, checkpoint pushed.
+
+- TEXT-source AI analysis + deterministic validation + assessment-from-blueprint
+- blueprint-constrained generation with satisfaction report + marks override);
+  unit tests 13/13; full 12-suite regression **583/583 FAIL=0** on the
+  dockerized stack. `pnpm typecheck`/`lint` PASS. docs updated. FE phases
+  renumbered 19-26. Clean tree, checkpoint pushed.
 
 ### What landed
 
@@ -1097,21 +1207,21 @@ renumbered 19-26. Clean tree, checkpoint pushed.
 
 ### Regression (all on the dockerized stack, 2026-09-09)
 
-| Suite | PASS | FAIL |
-|---|---|---|
-| paper_pattern_e2e.sh | **75** | 0 |
-| attempts_e2e.sh | 96 | 0 |
-| practice_e2e.sh | 73 | 0 |
-| sec14_e2e.sh | 22 | 0 |
-| api_contract_e2e.sh | 52 | 0 |
-| demo_e2e.sh | 52 | 0 |
-| syllabus_e2e.sh | 39 | 0 |
-| p8_e2e.sh | 86 | 0 |
-| auth_e2e.sh | 15 | 0 |
-| materials_e2e.sh | 21 | 0 |
-| web_smoke_e2e.sh | 20 | 0 |
-| docker_readiness_e2e.sh | 32 | 0 |
-| **TOTAL** | **583** | **0** |
+| Suite                   | PASS    | FAIL  |
+| ----------------------- | ------- | ----- |
+| paper_pattern_e2e.sh    | **75**  | 0     |
+| attempts_e2e.sh         | 96      | 0     |
+| practice_e2e.sh         | 73      | 0     |
+| sec14_e2e.sh            | 22      | 0     |
+| api_contract_e2e.sh     | 52      | 0     |
+| demo_e2e.sh             | 52      | 0     |
+| syllabus_e2e.sh         | 39      | 0     |
+| p8_e2e.sh               | 86      | 0     |
+| auth_e2e.sh             | 15      | 0     |
+| materials_e2e.sh        | 21      | 0     |
+| web_smoke_e2e.sh        | 20      | 0     |
+| docker_readiness_e2e.sh | 32      | 0     |
+| **TOTAL**               | **583** | **0** |
 
 ### DONE criteria status (Phase 17 gate)
 
@@ -1163,7 +1273,7 @@ demonstration readiness` (pushed).
   `docker-compose.dev.yml` / **new** `docker-compose.demo.yml`; Dockerfiles
   stay in `infrastructure/compose/`). One command runs the whole demo:
   `docker compose -f docker-compose.yml -f docker-compose.dev.yml
-  -f docker-compose.demo.yml up --build`.
+-f docker-compose.demo.yml up --build`.
 - **Web is now a public entry point (:3001)** — browser → `apps/web` →
   API. Internal services (Postgres/Redis/RabbitMQ/OCR/OmniRoute/workers/mock
   AI) stay private; `RD-03` verifies nothing else publishes host ports.
@@ -1183,20 +1293,20 @@ demonstration readiness` (pushed).
 
 ### Regression (all on the dockerized stack, 2026-09-09)
 
-| Suite | PASS | FAIL |
-|---|---|---|
-| attempts_e2e.sh | 96 | 0 |
-| practice_e2e.sh | 73 | 0 |
-| sec14_e2e.sh | 22 | 0 |
-| api_contract_e2e.sh | 49 | 0 |
-| demo_e2e.sh | 52 | 0 |
-| syllabus_e2e.sh | 39 | 0 |
-| p8_e2e.sh | 86 | 0 |
-| **auth_e2e.sh (new)** | **15** | **0** |
-| **materials_e2e.sh (new)** | **21** | **0** |
-| **web_smoke_e2e.sh (new)** | **20** | **0** |
-| **docker_readiness_e2e.sh (new)** | **32** | **0** |
-| **TOTAL** | **505** | **0** |
+| Suite                             | PASS    | FAIL  |
+| --------------------------------- | ------- | ----- |
+| attempts_e2e.sh                   | 96      | 0     |
+| practice_e2e.sh                   | 73      | 0     |
+| sec14_e2e.sh                      | 22      | 0     |
+| api_contract_e2e.sh               | 49      | 0     |
+| demo_e2e.sh                       | 52      | 0     |
+| syllabus_e2e.sh                   | 39      | 0     |
+| p8_e2e.sh                         | 86      | 0     |
+| **auth_e2e.sh (new)**             | **15**  | **0** |
+| **materials_e2e.sh (new)**        | **21**  | **0** |
+| **web_smoke_e2e.sh (new)**        | **20**  | **0** |
+| **docker_readiness_e2e.sh (new)** | **32**  | **0** |
+| **TOTAL**                         | **505** | **0** |
 
 Validation: attempts 96 / practice 73 / sec14 22 / api_contract 49 / demo 52 /
 syllabus 39 / p8 86 / auth 15 / materials 21 / web_smoke 20 / readiness 32 —
@@ -1280,6 +1390,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 **Database changes:** none (seed only; no migrations).
 
 **Wave 1 — Syllabus backend + UI complete (2026-09-08):**
+
 - `syllabus_proposals` table (unique per subject) via migration 0009; `AI_GENERATE_SYLLABUS`
   added to the active-job dedup index.
 - Worker op `AI_GENERATE_SYLLABUS`: Pydantic SyllabusTopic/Chapter/Payload mirrors, one-shot
@@ -1302,11 +1413,13 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   green; worker ruff + mypy green.
 
 **Next tasks (in priority order):**
+
 1. **Architecture boundary — single public API entry** ✓ (2026-09-08, commit `0ec1e79`)
 2. **Phase 10 — Automatic evaluation** ✓ (2026-09-08, commit `0c99867`)
 3. **Wave 4 — Full integration & demo validation** ✓ (2026-09-08, commit below)
 
 **Wave 2 — attempts backend + student UI complete (2026-09-08):**
+
 - `attempts` / `attempt_questions` / `attempt_responses` via migration 0010
   (question set snapshotted at start — full payload retained server-side for
   Phase 10 grading; `attempt_responses` unique on (attemptId, attemptQuestionId)
@@ -1335,6 +1448,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
   **syllabus PASS=39 FAIL=0** and **p8 PASS=86 FAIL=0** re-run green; API `typecheck`+`lint` green.
 
 **Phase 10 — Automatic Evaluation & Results ✓ (2026-09-08):**
+
 - Grading closes the Wave 2 gap (`submit` flips status only, `score` always
   null). Deterministic, synchronous, server-side — no job queue, no AI:
   `apps/api/src/attempts/attempts.grade.ts` pure `gradeAnswer(type,payload,answer)`
@@ -1433,7 +1547,7 @@ Web practice UI deliberately deferred to the frontend integration phases
   mode+source), `GET /practice/sessions` (history, newest first, per-session
   itemCount/answeredCount/correctCount — `count(*) filter (where is_correct)`),
   `GET /practice/sessions/:id` (own sessions only, else 404), `PUT
-  .../items/:itemId` (MCQ `{choiceId}` / TF `{value}` answers graded
+.../items/:itemId` (MCQ `{choiceId}` / TF `{value}` answers graded
   synchronously with the same deterministic grader as attempts; flashcard
   `{rating: AGAIN|GOOD}`; wrong mode/missing payload → 400),
   `POST .../complete` (idempotent; releases the open-session slot; answers
@@ -1453,7 +1567,7 @@ Web practice UI deliberately deferred to the frontend integration phases
   start/back-face/rating; PR-07 complete idempotency + answer-after-complete;
   PR-08 slot release; PR-09 history stats; PR-10 cross-student 404; PR-11
   tenant/anon gates 403/401; PR-12 PRAC-03: `count(*) FROM attempts WHERE
-  student_id = <fresh student> = 0`).
+student_id = <fresh student> = 0`).
 - **Regressions green (all FAIL=0):** attempts **96**, demo **52**, syllabus
   **39**, p8 **86**; API typecheck/lint/build green. (Demo/syllabus/p8 depend
   on RabbitMQ — 403 `ACCESS_REFUSED` if the API is launched without
@@ -1468,6 +1582,7 @@ Web practice UI deliberately deferred to the frontend integration phases
 automated coverage; Phases 17 then follow).
 
 **Wave 4 — Full integration & demo validation ✓ (2026-09-08):**
+
 - `scripts/e2e/mock_ai_provider.py` v2 (model-keyed outputs: `syllabus-mock` /
   `note-mock` / `questions-mock`; 3 distinct MCQs so question aggregation is
   meaningful); `scripts/e2e/demo_e2e.sh` mirrors the full browser journey —
@@ -1497,6 +1612,7 @@ automated coverage; Phases 17 then follow).
 **Commit:** `docs(demo): close demo milestone — full-journey E2E + docs` (pushed)
 
 **Wave 3a scaffold complete (2026-09-08):**
+
 - `apps/web` Next.js 15 + React 19 + TS strict + Tailwind v4 + shadcn/ui (26 components, new-york, zinc).
 - Centralized `src/lib/`: `api.ts` (credentials include, `x-institute-id`, CSRF header, 401→login, job polling), `auth.tsx` (session restore via `GET /auth/me` + memberships, logout), `tenant.tsx` (institute picker state, role helpers).
 - Teacher shell: role-aware `AppSidebar` + workspace layout with auth/tenant guards.
@@ -1506,6 +1622,7 @@ automated coverage; Phases 17 then follow).
 - `@catlium/contracts` resolved via tsconfig path alias to `packages/contracts/src` (no dist build needed for dev).
 
 **Frontend stack (authoritative):**
+
 - Next.js 15, App Router, React 19, TypeScript strict
 - Tailwind CSS v4, shadcn/ui, Radix UI primitives
 - lucide-react, react-hook-form, @hookform/resolvers
@@ -1514,6 +1631,7 @@ automated coverage; Phases 17 then follow).
 - Modern SaaS/EdTech appearance, not basic CRUD/admin template
 
 **Demo-first vertical-slice strategy:**
+
 - Do NOT wait for all backend phases before building UI
 - Frontend can develop against already-stable APIs while backend work continues
 - Prioritize working end-to-end demo path over non-essential features
@@ -1531,18 +1649,19 @@ links approved questions from the institute's question bank, configures
 duration/max marks/instructions and a schedule, publishes it (approved-only
 gate), activates and completes it — with every state transition enforced
 server-side. All Phase 8 items in `docs/user-validation.md` pass (EXAM-01..08
-+ security block + gap-closure cases, `p8_e2e.sh` PASS=86 FAIL=0).
+
+- security block + gap-closure cases, `p8_e2e.sh` PASS=86 FAIL=0).
 
 **Completed work:**
 
 - Examinations module (`apps/api/src/examinations`): 11 tenant-scoped
   endpoints — `POST /assessments` (201, status DRAFT server-computed), `GET
-  /assessments` (computed questionCount, updatedAt desc), `GET/PATCH/DELETE
-  /assessments/:assessmentId` (PATCH DRAFT-only + whitelist; DELETE
+/assessments` (computed questionCount, updatedAt desc), `GET/PATCH/DELETE
+/assessments/:assessmentId` (PATCH DRAFT-only + whitelist; DELETE
   DRAFT-only), question linking `POST/GET /assessments/:id/questions` +
   `DELETE /assessments/:id/questions/:questionId` (institute-scoped per-id
   check, duplicate → 409), lifecycle `POST /assessments/:id/publish|activate|
-  complete|unpublish`.
+complete|unpublish`.
 - State machine: `VALID_TRANSITIONS` lookup table
   (DRAFT→PUBLISHED, PUBLISHED→ACTIVE/DRAFT, ACTIVE→COMPLETED, COMPLETED
   terminal) + `assertValidTransition`; publish gate re-checks every linked
@@ -1644,7 +1763,7 @@ approve/reject) re-uses the Phase 6 question actions. All Phase 7 items in
 - API (`apps/api`): `QuestionGenerationService` (tenant-scoped topic validation
   via subjects→chapters→topics joined on `subjects.instituteId`), DTOs, and four
   new endpoints under `/questions` — `POST /generate` (202), `GET
-  /generate/:jobId`, `POST /batch-approve`, `POST /batch-reject`. JobsService
+/generate/:jobId`, `POST /batch-approve`, `POST /batch-reject`. JobsService
   routes `AI_GENERATE_QUESTIONS` → the dedicated `ai_generation` queue.
 - `docs/api/questions.md` — documented the four new endpoints.
 
@@ -2275,7 +2394,7 @@ authorization emphasis. Reqs SEC-01..05 ✓.
   institute-scoped; OCR internal-key enforcement is config-conditional (dev
   empty); assessment `setStatus` read-check-act race is negligible (comment
   documents the ceiling); CSRF = SameSite=lax + path-scoped httpOnly cookies
-  + double-submit guard on refresh/logout only (rationale documented).
+  - double-submit guard on refresh/logout only (rationale documented).
 
 **Commit:** `feat(security): complete cross-module validation and security hardening`
 
@@ -2300,10 +2419,10 @@ CON-01..03 ✓.
   added the refresh endpoint's 5/min rate limit; `ai.md` added the 500 on
   RabbitMQ publish failure; `syllabus.md` added the extra 400 cases (material
   not in subject / not ready / no extracted text) + a 500 note; `content.md`
-  + `materials.md` now document archive/activate → **201** (Nest default, no
-  `@HttpCode`); **AGENTS.md** health route corrected to `GET /api/v1/health`
-  (the global `api/v1` prefix applies; no bare `/health` route — nothing in
-  compose depends on it).
+  - `materials.md` now document archive/activate → **201** (Nest default, no
+    `@HttpCode`); **AGENTS.md** health route corrected to `GET /api/v1/health`
+    (the global `api/v1` prefix applies; no bare `/health` route — nothing in
+    compose depends on it).
 - **Code fixes (2, nothing else touched):** removed the dead 20MB size check
   in `materials.service.ts` `validateFile` (multer's 413 fires first; the
   check could never fire) + dropped the now-unused `MAX_FILE_SIZE` import from

@@ -349,7 +349,13 @@ source is reported in `alreadyActive` and not re-queued.
     "cancelled": 0,
     "active": 0,
     "jobs": [
-      { "jobId": "uuid", "type": "SUMMARY", "status": "completed", "error": null, "createdAt": "iso8601" }
+      {
+        "jobId": "uuid",
+        "type": "SUMMARY",
+        "status": "completed",
+        "error": null,
+        "createdAt": "iso8601"
+      }
     ]
   }
 }
@@ -359,6 +365,43 @@ source is reported in `alreadyActive` and not re-queued.
 separately); a batch is finished when `active === 0`. `POST
 .../cancel` cancels every non-terminal job (see the cancel semantics in
 `docs/api/jobs.md`).
+
+### Batch sources (Phase 31)
+
+`sourceType` is `MATERIAL`, `TOPIC`, `CHAPTER`, or `SUBJECT`:
+
+- `MATERIAL` — must resolve to a READY topic-linked material; a topic-less
+  material is rejected with `409` (resources are always topic-owned, they are
+  never attached to a bare material).
+- `TOPIC` — reads all ready materials under the topic.
+- `CHAPTER` / `SUBJECT` — expands server-side to one per-topic × per-type job
+  for each topic in scope, all sharing the same `batchId`. Consumer-side the
+  `chapterId`/`subjectId` is only a label; child jobs re-resolve the immutable
+  DB source the moment they run (no batch-wide material snapshot is embedded in
+  the message).
+
+### Content ownership + regeneration (Phase 31)
+
+- Resources are **owned by their effective topic**: every generated content
+  item records `subjectId`, `chapterId`, `topicId`. There is no topic-less
+  generated resource.
+- Regenerating the same `(topic, type)` **bumps the existing item in place**
+  (`current_version + 1`, `DRAFT`, new version row) instead of inserting a
+  duplicate; surplus live rows for that `(topic, type)` are archived so the
+  per-topic uniqueness invariant holds. Version bumps are a read-then-write
+  sequence — the batch-level active-job dedup prevents two same-source jobs
+  running concurrently, so a per-(topic,type) unique index is not required
+  (`ponytail:` note in `apps/workers/worker/db.py`, upgrade path = unique
+  partial index).
+
+### Worker concurrency (Phase 31)
+
+`WORKER_AI_CONCURRENCY` (default `2`) controls how many AI generation jobs the
+`worker-ai` container processes at once (N consumer threads, each with its own
+RabbitMQ `BlockingConnection`, `prefetch_count=1`). Set it in
+`docker-compose.dev.yml`. Applied to all `AI_*` operations. The `worker-material`
+(OCR/metadata) worker ignores it and stays serial — per-material processing is
+already effectively one-at-a-time.
 
 ## Question bank generation
 

@@ -90,6 +90,74 @@ Completed derived resources are **never** deleted by cancellation.
 
 Response: `{ "job": Job }` with the resulting status.
 
+## List jobs (job monitor, Phase 31)
+
+```
+GET /jobs
+```
+
+Lists jobs for the active institute, newest first, with `LIMIT`/`OFFSET`
+pagination. Roles: `INSTITUTE_ADMIN`, `TEACHER`.
+
+Query params (all optional):
+
+- `status` — one of `queued | processing | completed | failed | cancelled |
+cancelling` (matched case-insensitively against the stored lowercase value)
+- `type` — a job type without the `AI_GENERATE_`/`MATERIAL_` prefix, e.g.
+  `NOTE`, `SUMMARY`, `ANALYZE_SYLLABUS` (matched case-insensitively)
+- `batchId` — UUID; filters to jobs of that generation batch
+- `sourceType` — `TOPIC | MATERIAL | CHAPTER | SUBJECT`
+- `limit` (default 20, max 100), `offset` (default 0)
+
+Response:
+
+```json
+{
+  "jobs": [
+    {
+      "id": "uuid",
+      "instituteId": "uuid",
+      "type": "AI_GENERATE_NOTE",
+      "status": "completed",
+      "payload": { "source": { "id": "uuid", "type": "TOPIC" }, "batchId": "uuid" },
+      "result": { "contentItemId": "uuid" } | null,
+      "error": { "message": "..." } | null,
+      "createdAt": "iso8601",
+      "startedAt": "iso8601 | null",
+      "completedAt": "iso8601 | null"
+    }
+  ],
+  "total": 42,
+  "labels": {
+    "topic:{topicId}": "Algebraic Expressions",
+    "material:{materialId}": "Chapter 1: Reading",
+    "chapter:{chapterId}": "Algebra",
+    "subject:{subjectId}": "Mathematics",
+    "syllabus:{syllabusId}": "2026 Mathematics"
+  }
+}
+```
+
+`labels` resolves the referenced sources for the returned page so the UI can
+render human-readable source names in one round trip.
+
+## Retry a job (Phase 31)
+
+```
+POST /jobs/:jobId/retry
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Re-enqueues a `failed` or `cancelled` job
+by creating a **new** job row carrying the same payload (the original row keeps
+its terminal status; full history is preserved). The active-dedup index
+prevents a collision when an identical job is already `queued`/`processing` —
+in that case the existing active job is returned instead.
+
+Response: `{ "job": Job }` — the new `queued` row.
+
+Requeue targets: `failed`/`cancelled` only. `queued`/`processing`/`completed`
+return `409`.
+
 ## Job history on retry
 
 Retrying a failed material (`POST /materials/:id/retry`) creates a **new** job

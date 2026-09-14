@@ -30,8 +30,7 @@ provider anywhere in the flow.
       (latest per subject, optional subjectId), GET :id, GET :id/versions,
       PATCH :id, POST :id/process|retry|analyze|confirm|archive, DELETE :id;
       JobsService `latestSyllabusJob` + AI_ANALYZE_SYLLABUS queue routing
-- [x] S2.3 Confirm = reconciliation: exact normalized-name reuse, single
-      >60% token-overlap reuse as rename, ambiguous → create-new + uncertain
+- [x] S2.3 Confirm = reconciliation: exact normalized-name reuse, single >60% token-overlap reuse as rename, ambiguous → create-new + uncertain
       report, absent → archive (never delete). Chapters/topics created
       `status='active'`; academic `listChapters`/`listTopics` now filter
       `active` so archived-out items hide
@@ -41,8 +40,7 @@ provider anywhere in the flow.
 - [x] S3.1 DB layer on `syllabi`: get_syllabus, processing/analysis state
       transitions (guarded `<> CONFIRMED`), get_syllabus_context /
       get_syllabus_structure (latest CONFIRMED row)
-- [x] S3.2 `process_syllabus` (OCR text extraction, mirrors process_material)
-      + consumer dispatch for PROCESS_SYLLABUS in the generic jobs queue
+- [x] S3.2 `process_syllabus` (OCR text extraction, mirrors process_material) + consumer dispatch for PROCESS_SYLLABUS in the generic jobs queue
 - [x] S3.3 `_analyze_syllabus` (deep-analysis prompt: context + structure,
       document-bound), `_aggregate_syllabus_analysis` (fold), cancellation
       → honest FAILED on every terminal path; starter-material prompt now
@@ -81,6 +79,146 @@ provider anywhere in the flow.
 - [x] S6.2 Commit + push + final report (`7c5c73b` `4c4bf4a` `d173c60` `5ecceb2`
       `48470b9` `51690c7` → origin/main)
 
+## Phase 31 — Topic-Owned Resources, Parallel AI, Job Monitor & Note Quality (2026-09-14)
+
+Corrective phase (user-directed). Derived resources become **Topic-owned**
+(never Material→DerivedResource primary); the uploaded/pasted **syllabus stays
+authoritative** (no Subject invention, subject-specific syllabus only);
+generation is initiated from **Topic/Chapter/Subject**; independent AI jobs run
+**in parallel** (bounded concurrency) on existing Jobs + RabbitMQ only; a
+**unified Job Monitor** (`/jobs`) replaces scattered progress views; **Notes**
+become detailed pedagogical content; **Questions + all derived resources** are
+visible under the Topic; **Export enhancement is explicitly a SEPARATE future
+phase** (documented, NOT implemented here).
+
+Implementation order: A audit → B data/API ownership → C generation
+architecture → D job monitor → E syllabus correction → F note quality → G UI
+polish → H validation + docs. After this checkpoint **STOP** — do not start the
+next phase. Full spec: user's 2026-09-14 continuation directive; planning field
+notes in session (Phase A audit via 4 explore agents).
+
+DB cleanup (2026-09-14): removed 9 legacy/test subjects (Phase 30 E2E leftovers
+`Physics 1789297367`, `Computer Science 1789297367`; duplicate AI & STQA;
+`Botany`, `Chemistry`, `Repro Subject X`, `test`, `Test Subject P1`) with
+dependent attempts/practice_sessions/content/material/question/syllabus rows.
+Remaining demo subjects: 4 NEP-2020 (AI, Cyber & Info Sec, IKS, STQA) +
+Mathematics Minor.
+
+### Goal: A Audit
+
+- [x] A1 Ownership audit — content_items FKs (subject/chapter/topic), no
+      Material FK (provenance JSONB only); questions own table with topicId;
+      MATERIAL-source generation can produce topic-less resources + duplicate
+      items for the same topic (dedup keyed by source type/id)
+- [x] A2 Jobs/concurrency audit — single jobs table, dedup index, JOB_QUEUE_BY_TYPE
+      routing, worker single-threaded BlockingConnection prefetch=1 → AI jobs
+      serial; batch = shared batchId in payload, progress endpoint exists
+- [x] A3 Generation/Note-quality audit — prompt-driven concision in
+      note.py/coverage.py (not truncation); summary.py intentionally concise;
+      no frontend truncation
+- [x] A4 Frontend audit — topic route exists but materials-only; generation UI
+      lives on Material detail; no /jobs page; shadcn/ui available
+
+### Goal: B Data/API Ownership (Topic-owned resources)
+
+- [x] B1 Verify no structural migration needed (content_items.topic_id already
+      FKs topics; questions.topic_id present)
+- [x] B2 API: generation DTOs accept CHAPTER|SUBJECT sourceType for batches
+      (expand per-topic child jobs reusing batchId)
+- [x] B3 Guard: prevent MATERIAL-topic-less generation producing null-topic
+      resources (shared `assertGeneratableMaterial` requires topicId → 409)
+- [x] B4 API + web: generation initiated from Topic/Chapter/Subject pages
+      (not only Material detail); Material page keeps topic shortcut
+
+### Goal: C Generation Architecture (parallel, bounded)
+
+- [x] C1 Worker-ai concurrency env `WORKER_AI_CONCURRENCY` (default 2) → N
+      consumer threads, own BlockingConnection prefetch=1; material/OCR worker
+      stays serial (documented)
+- [x] C2 Batch generation expands CHAPTER|SUBJECT → per-topic × per-type jobs;
+      all share batchId; existing progress endpoint reused
+- [x] C3 Shared generation context: child jobs re-resolve immutable DB sources
+      (documented deliberate call — no RabbitMQ payload bloat)
+- [x] C4 Parallel-safe dedup stays consistent (jobs_active_generation_unique
+      enum covers all 9 AI ops incl. AI_ANALYZE_SYLLABUS — verified)
+
+### Goal: D Job Monitor (/jobs)
+
+- [x] D1 `GET /api/v1/jobs` (filters status/type/batchId/sourceType, pagination,
+      bulk label resolution topics/chapters/subjects/materials/syllabi)
+- [x] D2 `POST /api/v1/jobs/:id/retry` (re-enqueue failed/cancelled same payload;
+      dedup index prevents active collisions)
+- [x] D3 Web `/jobs` page: tabs All/Queued/Processing/Completed/Failed/
+      Cancelled, source label, batchId, timestamps, requeue actions
+- [x] D4 jobs API docs updated (`docs/api/jobs.md`)
+
+### Goal: E Syllabus Correction (no Subject invention, subject-specific)
+
+- [x] E1 E2E: uploading/pasting a syllabus for an EXISTING subject never creates
+      a duplicate subject; uploaded-source remains authoritative
+      (verified by design in ingest/confirm; E2E test in H1)
+- [x] E2 Reconciliation no longer creates new subjects on confirm (subject must
+      pre-exist; absent → archived, never invented — verified by design)
+- [x] E3 E2E: subject-specific syllabus isolation verified (each subject = own
+      version chain — design-verified; E2E test in H1)
+
+### Goal: F Note Quality (detailed pedagogy)
+
+- [x] F1 Rewrite note.py prompt: detailed pedagogical study note (explain,
+      structure, examples) — drop "shorter is better" for notes; coverage
+      contract keeps source-boundary/no-invention but neutralized for notes
+- [x] F2 summary.py stays concise (revision-focused); note blocks schema reused
+      (heading/paragraph/list/steps/table/formula/example/callout/timeline)
+- [x] F3 Note quality E2E asserts pedagogical depth (blocks > 1, not a
+      single-purpose list dump) — NOTE-23/25 PASS in H4
+
+### Goal: G UI Polish (Learning Workspace)
+
+- [x] G1 Topic detail = Learning Resources: Notes/Summaries/Flashcards/Cornell/
+      Concepts + Questions visible + generation controls (Topic as source) + batch progress polling/cancel
+- [x] G2 Chapter + Subject pages: batch "Generate resources" buttons
+- [x] G3 Material detail: "Generate resources for this topic" shortcut
+      (TOPIC source via material.topicId)
+
+### Goal: H Validation + Docs
+
+- [x] H1 Tests — SYLLABUS: (1) no duplicate Subject on upload for existing
+      subject; (2) uploaded-source authority; (3) reconciliation report;
+      (4) subject-specific syllabus; (5) confirm keeps existing subject;
+      (6) guards. OWNERSHIP: (7) Topic-sourced resources store topicId;
+      (8) no topic-less resources; (9) no duplicate per topic; (10) material
+      shortcut equals topic generation — `scripts/e2e/resource_ownership_e2e.sh`
+      (OWN-01..03) + `scripts/e2e/syllabus_e2e.sh` (SYL-E1..E3)
+- [x] H2 Tests — PARALLEL AI: (11) batch on 1 topic × 5 resource types runs
+      parallel; (12) all complete successfully; (13) shared batchId on all
+      children; (14) worker-ai concurrency env honored; (15) dedup blocks
+      identical active jobs; (16) retry re-enqueues failed job — PAR tests
+- [x] H3 Tests — JOB MONITOR: (17) list filters by status; (18) list filters by
+      type; (19) list filters by batchId; (20) pagination; (21) label
+      resolution; (22) retry endpoint semantics — MON tests
+- [x] H4 Tests — NOTE QUALITY: (23) generated Note is pedagogical (multiple
+      blocks, examples); (24) summary stays concise; (25) note schema valid
+      — NOTE tests + `apps/workers/tests/test_note_quality.py` (6 unit tests)
+- [x] H5 Tests — REGRESSION: (26) syllabus_e2e.sh PASS (61/0 incl. E1..E3);
+      (27) worker pytest (35) + ruff + mypy PASS; (28) API/web/contracts/
+      database typecheck PASS (turbo 10/10) + eslint PASS
+- [~] H6 Docker rebuild (watch stale-web-image trap: build then recreate) +
+  API-level verification COMPLETE (resource_ownership_e2e 50/0 after
+  rebuilds); browser verify of Phase 31 UI on the user's side (subject/
+  chapter/topic/material/jobs pages)
+- [x] H7 Docs: project-status, tasks.md, docs/api/jobs.md, docs/api/ai.md,
+      resource API docs; export enhancement documented as future phase block
+- [x] H8 Commit coherently + push origin/main + clean tree + final report;
+      STOP (no next phase)
+
+## FUTURE PHASE — Export Enhancement (documented, NOT implemented)
+
+Explicitly deferred by the Phase 31 directive. When scheduled, it covers:
+redesigned export UX (per-topic/per-resource export, richer formats —
+PDF/Anki/CSV/JSON restructuring), export queues/progress, and note/image
+export fidelity. Link it from project-status Deferred. Do not start before the
+directive.
+
 ## Phase 29 — Syllabus, Academic Scope, Resource Quality & Auth (2026-09-13)
 
 Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
@@ -97,18 +235,18 @@ Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
 ### Goal: P2/P3 Syllabus decoupled + honest states
 
 - [~] P2.1 Schema: syllabus_proposals `generation_job_id`, `generation_error`,
-      nullable `structure`; migration — **replaced by Phase 30 `syllabi`**
+  nullable `structure`; migration — **replaced by Phase 30 `syllabi`**
 - [~] P2.2 API: `generate` subject-based (source SUBJECT, material optional
-      enrichment); PROCESSING row creation; enqueue-failure → FAILED —
-      **replaced by Phase 30**
+  enrichment); PROCESSING row creation; enqueue-failure → FAILED —
+  **replaced by Phase 30**
 - [~] P2.3 API: PATCH/confirm guarded to PENDING_REVIEW; toSyllabus exposes
-      new fields; contracts updated (status enum, nullable structure) —
-      **replaced by Phase 30**
+  new fields; contracts updated (status enum, nullable structure) —
+  **replaced by Phase 30**
 - [~] P2.4 Worker: `_generate_syllabus` subject-context (optional validated
-      enrichment material); upsert writes PENDING_REVIEW + clears error;
-      failure path writes FAILED — **replaced by Phase 30**
+  enrichment material); upsert writes PENDING_REVIEW + clears error;
+  failure path writes FAILED — **replaced by Phase 30**
 - [~] P2.5 Web: syllabus page subject-based generate, FAILED/PROCESSING states,
-      resume polling from `generationJobId` — **replaced by Phase 30**
+  resume polling from `generationJobId` — **replaced by Phase 30**
 - [x] P10.1 CSRF cookie lifetime raised to refresh-session; fix any guard
       interferences
 - [x] P10.2 Web client single-flight 401 → refresh → retry; logout on failure
@@ -128,8 +266,7 @@ Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
 - [x] P7.1 Formula block enrichment (contracts Zod + worker Pydantic + prompts +
       web renderer)
 - [x] P8.1 Export DocBlock formula kind + PDF/DOCX renderers
-- [x] P9.1 Export visual redesign (A4, headers/footers, page numbers, styling)
-      + tests
+- [x] P9.1 Export visual redesign (A4, headers/footers, page numbers, styling) + tests
 
 ### Goal: P10 Auth refresh
 
@@ -271,8 +408,7 @@ Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
       generated-resources card (per-type rows NOTE/SUMMARY/FLASHCARD_SET/
       IMPORTANT_CONCEPTS/CORNELL_NOTE with state chip + contentId Open /
       Generate / Regenerate actions; CORNELL_NOTE only via Generate all)
-- [x] M3 Teacher actions moved to header: Process / Retry / Archive / Activate
-      + new Edit dialog (PATCH /materials/:id title/description — no UI existed)
+- [x] M3 Teacher actions moved to header: Process / Retry / Archive / Activate + new Edit dialog (PATCH /materials/:id title/description — no UI existed)
 - [x] M4 Validation: `pnpm typecheck` (10) + `pnpm lint` (9) + web build PASS;
       live smoke of every consumed endpoint (material detail w/ textContent,
       generation-status states, PATCH update + revert → 200, UPLOAD identity
@@ -309,12 +445,11 @@ Full detail: `docs/planning/PHASE-27-PRODUCT-VALIDATION-ENHANCEMENT.md`
       material whose subject doesn't match the job payload's subject before
       calling the provider
 - [-] P2.5 Confirm the confirmed-syllabus dead end: a CONFIRMED syllabus can
-      never be amended/reopened through the product (generate → 409,
-      PATCH → 409, worker upsert raises). Deliberate design boundary — product
-      decision needed (deferred 2026-09-12 per user; do not rebuild syllabus
-      module semantics)
-- [ ] P2.6 Validation: live smoke of fallback (textless material → immediate
-      400) and worker scope guard against the demo stack (deferred — no
+  never be amended/reopened through the product (generate → 409,
+  PATCH → 409, worker upsert raises). Deliberate design boundary — product
+  decision needed (deferred 2026-09-12 per user; do not rebuild syllabus
+  module semantics)
+- [ ] P2.6 Validation: live smoke of fallback (textless material → immediate 400) and worker scope guard against the demo stack (deferred — no
       textless READY material exists in demo data; guard paths covered by
       typecheck/lint/mypy)
 
@@ -376,20 +511,20 @@ P4.12 landed; P4.5–P4.11 deferred (see markers).**
       Dead `isUuid` helpers removed. Verified: `grade-mcq.test.ts` (2 pass
       UUID + legacy), typecheck 10/10, lint 9/9, web build
 - [-] P4.5 MATCHING-format questions unanswerable in exam attempt + practice
-      (no renderer; wrong submit shape; validateAnswer requires matches
-      map) — needs a matching UI component; product decision deferred
+  (no renderer; wrong submit shape; validateAnswer requires matches
+  map) — needs a matching UI component; product decision deferred
 - [x] P4.6 ~~Section totalMarks persisted~~ — DONE as part of P4.2
 - [-] P4.7 No question-type existence check on pattern structures (freeform
-      questionType string) — guard deferred (input-only corner; demo uses
-      only valid types; revisit if freeform types ship)
+  questionType string) — guard deferred (input-only corner; demo uses
+  only valid types; revisit if freeform types ship)
 - [-] P4.8 Blueprint composition not carried into assessments (question
-      set + marks fully manual) — product decision deferred
+  set + marks fully manual) — product decision deferred
 - [-] P4.9 Worker stores LLM-emitted type/format pairs without cross-check
-      (drift → misgraded/unanswerable) — defense-in-depth, deferred
+  (drift → misgraded/unanswerable) — defense-in-depth, deferred
 - [-] P4.10 Legacy `answerFormat ?? questionType` fallback assumes
-      code==format (pre-answer_format custom rows) — deferred
+  code==format (pre-answer_format custom rows) — deferred
 - [-] P4.11 Post-publish question integrity not re-checked at attempt start
-      (archived-after-publish still served) — snapshot design, deferred
+  (archived-after-publish still served) — snapshot design, deferred
 - [x] P4.12 Publish dialog allowed 0 questions while the API 400s (and a
       0-question PUBLISHED assessment is a dead end — addQuestions is
       DRAFT-only). Publish button now disabled when `questions.length === 0`
@@ -412,8 +547,8 @@ P4.12 landed; P4.5–P4.11 deferred (see markers).**
 - [x] P5.6 Docs: `docs/api/content.md` now documents the full 11-type
       NOTE block union
 - [-] P5.7 Deferred: markdown/LaTeX rendering of inline strings
-      (react-markdown/katex — dependency decision), image/code blocks in the
-      union, rich-block inline editing (table cells/formulas)
+  (react-markdown/katex — dependency decision), image/code blocks in the
+  union, rich-block inline editing (table cells/formulas)
 
 ### Goal: P6 PDF/DOCX Export Fidelity
 
@@ -439,9 +574,9 @@ P4.12 landed; P4.5–P4.11 deferred (see markers).**
 - [x] P6.7 UI: question-bank export now forwards the active
       subject/chapter/topic filters (was always whole-institute export)
 - [-] P6.8 Deferred: Devanagari font asset shipping (`nest-cli` assets config —
-      deploy-only crash risk, no Devanagari in demo data), page
-      numbers/headers, real Word list numbering config, question paper with
-      answer key toggle (`?answers=` product decision)
+  deploy-only crash risk, no Devanagari in demo data), page
+  numbers/headers, real Word list numbering config, question paper with
+  answer key toggle (`?answers=` product decision)
 
 ### Goal: P7 Product Polish
 
@@ -537,15 +672,14 @@ Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`
       added to `jobs_active_generation_unique` dedup index
 - [x] P1 jobs mapping: `AI_GENERATE_CONTENT_PACKAGE` → `ai_generation` queue
 - [x] P1 worker package op: single-pass-per-chunk generation of
-      note/summary/flashcards/concepts in one provider call; per-type aggregation
-      + independent content items; provenance filled
+      note/summary/flashcards/concepts in one provider call; per-type aggregation + independent content items; provenance filled
 - [x] P1 API: `POST /content/generate-package` (MATERIAL|TOPIC source) +
       `GET /content/generation-status?materialId=` (latest per type, stale flag)
 - [x] P2 worker bank: `AI_GENERATE_QUESTIONS` accepts `params.buckets`
       (questionType/difficulty/count); one provider call per chunk covering all
       requested quotas; grouping + dedup + slice per bucket
 - [x] P2 API: `GET /questions/bank/stats` (scope-selectable), `POST
-      /questions/generate-more` (deficit vs APPROVED+ACTIVE existing; dryRun
+    /questions/generate-more` (deficit vs APPROVED+ACTIVE existing; dryRun
       returns requested/existing/deficit without queueing; non-dry queues only
       deficits)
 - [x] P2 mock provider: `CONTENT_PACKAGE` + `BANK_QUESTIONS` canned responses +
@@ -636,14 +770,14 @@ DEFERRED statuses. Remaining work is core learning depth, not new modules.
       integration commits `126311a`, `b7f5982`, `6236287`, `c8151b8`,
       `86f91ed`, `47568ba`
 - [~] USER MANUAL VALIDATION — user is personally verifying admin/teacher/
-      student workflows + core AI learning flow; findings become the next
-      backlog (do NOT invent a backlog proactively)
+  student workflows + core AI learning flow; findings become the next
+  backlog (do NOT invent a backlog proactively)
 - [-][deferred] Attempt-result explanations per question (practice already has
-      this mechanism; attempt path needs snapshot + migration + contract)
+  this mechanism; attempt path needs snapshot + migration + contract)
 - [-][deferred] Teacher drill-down into individual attempt answers — no
-      teacher-scoped `GET /attempts/:id` endpoint exists (member-scoped only)
+  teacher-scoped `GET /attempts/:id` endpoint exists (member-scoped only)
 - [-][deferred] Access-token auto-refresh (15-min TTL currently bounces to
-      login); cheaper GET-401 gate shipped in `47568ba`
+  login); cheaper GET-401 gate shipped in `47568ba`
 - [ ] Close manual-validation findings (bugs / missing features / broken
       workflows / UX-API issues) as reported
 - [ ] Defer until manual findings are closed: full regression matrix,
@@ -674,8 +808,7 @@ the web app shows the product story publicly with role-gated admin tooling.
       assistant positioning, institute/tenant model, demo CTA, footer)
 - [x] Frontend: `/users` admin page (search, create dialog, deactivate/
       activate) + `/institute` admin dashboard (real member/teacher/student/
-      subject counts, account-model explainer); admin-sidebar group; middleware
-      + layout role gating; login page SaaS messaging
+      subject counts, account-model explainer); admin-sidebar group; middleware + layout role gating; login page SaaS messaging
 - [x] Remove web `/register` route; root `/` no longer redirects to dashboard
 - [x] E2E: new `scripts/e2e/saas_e2e.sh` (39 asserts) + adapt
       auth/docker_readiness/attempts/practice/web_smoke suites to
@@ -748,7 +881,7 @@ Make the dockerized app fully verifiable + demo-able from the repo root.
       user-validation.md, architecture/infrastructure.md, development.md,
       AGENTS.md (compose paths + public boundary)
 - [x] Commit `feat(infra): complete testing and docker demonstration
-      readiness` + push + report
+    readiness` + push + report
 
 ## Phase 15 — API Contract Verification (started/closed 2026-09-09)
 
@@ -759,8 +892,7 @@ inconsistencies deliberately; add a contract E2E suite.
       3-subagent review of all 11 `docs/api/*.md` and `packages/contracts`
 - [x] Reconcile each API doc against live code/behavior; keep code as source
       of truth except where docs state intent the code got wrong
-- [x] Doc fixes: questions wrong-job-type 404→`400`; jobs ADMIN|TEACHER gating
-      + `201`/`200` codes; attempts CSRF narrowed to refresh/logout +
+- [x] Doc fixes: questions wrong-job-type 404→`400`; jobs ADMIN|TEACHER gating + `201`/`200` codes; attempts CSRF narrowed to refresh/logout +
       analytics `12/12`; practice no `updatedAt` + class-validator wording;
       auth refresh `5/min`; ai `500` on RabbitMQ publish failure; syllabus
       extra `400` cases + `500`; content/materials archive/activate `201`;
@@ -788,8 +920,7 @@ snapshotted server-side). Deterministic, synchronous, server-side grading.
 
 - [x] Contract `AttemptResultSchema` (review view: score + per-question
       `isCorrect` / `marksAwarded` / `correctAnswer`); detail stays sanitized
-- [x] `apps/api/src/attempts/attempts.grade.ts` — pure `gradeAnswer(type,payload,answer)`
-      + `correctAnswerOf(type,payload)`; MCQ exact, TRUE_FALSE exact,
+- [x] `apps/api/src/attempts/attempts.grade.ts` — pure `gradeAnswer(type,payload,answer)` + `correctAnswerOf(type,payload)`; MCQ exact, TRUE_FALSE exact,
       FILL_IN_BLANK trimmed-case-insensitive; unanswered = 0
 - [x] Service: evaluate on SUBMITTED (submit) AND on EXPIRED (deadline
       auto-evaluation at refresh); persist per-response grading + `attempts.score`
@@ -806,8 +937,7 @@ snapshotted server-side). Deterministic, synchronous, server-side grading.
       `docs/project-status.md` (Phase 10 complete)
 - [x] Validation: typecheck/lint/web build + attempts/syllabus/p8 E2E + live
       route check for teacher results
-- [x] Commit `feat(attempts): phase 10 automatic evaluation and result review`
-      + push + checkpoint report
+- [x] Commit `feat(attempts): phase 10 automatic evaluation and result review` + push + checkpoint report
 
 ### Wave 0 — Bootstrap (seed + memberships) ✓
 
@@ -835,8 +965,7 @@ existed before; the worker defaulted to a host Ollama. Now:
       (no domain knowledge); deps numpy/pillow/pymupdf/paddlepaddle/paddleocr
       (`enable_mkldnn=False` required on paddle 3.x CPU)
 - [x] Workers: `AI_GENERATE_*` per-chunk calls via `chunk_text` (semantic
-      boundaries + overlap, `CHUNK_SIZE_CHARS=12000`/`CHUNK_OVERLAP_CHARS=400`)
-      + deterministic aggregation (dedupe; questions capped at count; notes
+      boundaries + overlap, `CHUNK_SIZE_CHARS=12000`/`CHUNK_OVERLAP_CHARS=400`) + deterministic aggregation (dedupe; questions capped at count; notes
       re-keyed; syllabus chapters merged); `ai_context` adds `chunkCount`
 - [x] Tests: OCR 11/11 (incl. paddle engine paths), workers 16/16 (chunking,
       aggregation, processing failures), ruff+mypy clean
@@ -932,7 +1061,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       endpoint, teacher ledger, graded result UI, demo E2E)
 - [x] Phase 12 — Examination Analytics (delivered 2026-09-08,
       `feat(analytics): add examination analytics`: `GET
-      /assessments/:assessmentId/analytics`, on-demand summary / score
+    /assessments/:assessmentId/analytics`, on-demand summary / score
       distribution / question accuracy / topic + difficulty performance;
       node:test 12/12, `attempts_e2e.sh` PASS=96, teacher results UI)
 - [x] Phase 13 — Practice System (delivered 2026-09-08, `feat(practice)`:
@@ -958,7 +1087,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       RabbitMQ publish failure, syllabus extra 400s, content/materials
       archive/activate 201, AGENTS.md health route `GET /api/v1/health`;
       code fixes: removed dead 20MB check in `materials.service.ts
-      validateFile` (multer 413 fires first; unused `MAX_FILE_SIZE` import
+    validateFile` (multer 413 fires first; unused `MAX_FILE_SIZE` import
       dropped), deleted unused `examinations/dto/assessment-query.dto.ts`;
       new `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01..10),
       regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 /
@@ -1008,7 +1137,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 - [x] FE-11 — practice UI (flashcards + question practice, answer/rate, complete, history)
 - [x] FE-12 — exam attempt UI polish + results/performance
 - [~] FE-13 — browser/test validation + responsive/accessibility polish + docs
-      (Phase 18 backend delivered; frontend feature phases now underway)
+  (Phase 18 backend delivered; frontend feature phases now underway)
 - [x] FE-14 — custom Paper Pattern builder (sections + multi question-type rules,
       add/remove/reorder, live totals, difficulty/topic constraints, review before
       save, save via existing PATCH structure + version; validated 2026-09-10:
@@ -1111,8 +1240,7 @@ System priority order:
       truthful (2026-09-05, PASS=60)
 - [x] 08-06 WR-01/WR-02 gap: merged-schedule re-validation on every PATCH
       (inverted/past-start → 400, null-clear legal, untouched-field freedom);
-      required non-blank title + bounded questionIds (POST {} / blank title →
-      400) (2026-09-07, PASS=81)
+      required non-blank title + bounded questionIds (POST {} / blank title → 400) (2026-09-07, PASS=81)
 - [x] 08-07 WR-04 gap: addQuestions sortOrder from a single in-transaction
       max-read, appends at max + i + 1 (no duplicates); tracked resync script
       `packages/database/scripts/resync-assessment-sort-order.sql` renumbered

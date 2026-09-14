@@ -15,6 +15,50 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Phase 31 — Resource Ownership, Parallel AI, Job Monitor, Note Quality (2026-09-14)
+
+Status: `[x]` Live API-level PASS via `scripts/e2e/resource_ownership_e2e.sh`
+(**PASS=50 FAIL=0**) + `scripts/e2e/syllabus_e2e.sh` (**PASS=61 FAIL=0**) against
+the rebuilt stack with real OmniRoute AI. Worker pytest 35 PASS + ruff/mypy
+clean; turbo typecheck 10/10. Browser UI verification of the new pages is
+**deferred to the user** (`[ ]` below).
+
+Setup: dev stack rebuilt (api, worker-ai, worker-material, web images rebuilt
+then recreated), demo seed applied, login `teacher@catlium.dev` / `Password123!`,
+institute header `x-institute-id: 99999999-9999-9999-9999-999999999999`. Note:
+`csrf_token` cookie only — the API does not require the `x-csrf-token` header
+for curl POSTs.
+
+Automated (already [x]):
+
+- `[x]` OWN-01 — topic-less MATERIAL batch/single generation → `409`
+- `[x]` OWN-02 — TOPIC batch × 5 types → 5 jobs, all completed, exactly 5
+  topic-scoped contents, no duplicates
+- `[x]` OWN-03 — material shortcut (TOPIC source via material.topicId) → keeps
+  exactly one NOTE, bumps the SAME item's current_version, archives surplus
+- `[x]` NOTE-23/24/25 — generated note ≥3 blocks with ≥3 distinct block types,
+  schema valid; summary has keyConcepts and is shorter than the note
+- `[x]` PAR-11/12/13/14/15/16 — batch parallelism (≥2 concurrent), all complete,
+  shared batchId, immediate re-batch dedups (no new jobs), cancel → retry → queued → complete
+- `[x]` MON-17/18/19/20/21 — jobs list status/type/batchId filters, offset
+  pagination disjoint, label resolution (topic "Algebraic Expressions" etc.)
+- `[x]` SYL-E1/E2/E3 — upload never duplicates an existing subject; confirm
+  invents no subjects and reaches CONFIRMED; per-subject syllabus isolation
+
+Deferred to the user (browser):
+
+- `[ ]` /jobs — sidebar "Job Monitor" nav; page loads with job lists, status
+  chips, source labels, Retry action works for a failed/cancelled job
+- `[ ]` /subjects/:id — "Generate resources" batch button + progress banner;
+  chapter/syllabus sections still render
+- `[ ]` /subjects/:id/topics/:topicId — Learning Resources: generated
+  notes/summaries/flashcards/Cornell/concepts + questions + Generate button +
+  batch progress polling
+- `[ ]` /materials/:materialId — "Generate resources for this topic" button on
+  a topic-linked material navigates to the topic page
+
+---
+
 ## Phase 30 — Syllabus-First: `syllabi` + top-level `/syllabus` (2026-09-13)
 
 Status: `[x]` All items PASS via `scripts/e2e/syllabus_e2e.sh` against the live
@@ -157,7 +201,7 @@ header `x-institute-id: 99999999-9999-9999-9999-999999999999`, CSRF header
 - **Endpoint:** `POST /api/v1/content/generation-batches/<batchId>/cancel` (a
   new NOTE+SUMMARY batch, cancelled ~1s in) and `POST /api/v1/jobs/<id>/cancel`
 - **Expected:** queued job → `cancelled`; already-running job → `cancelling →
-  cancelled` via worker; worker logs "Skipping cancelled job" / "Generation
+cancelled` via worker; worker logs "Skipping cancelled job" / "Generation
   cancelled"; NO new resource version persisted (NOTE stays v1); completed
   jobs/contents untouched. Verified live.
 
@@ -270,13 +314,13 @@ autonomously"); P1.5 items below.
   - Expected: seed prints the summary (no `materials_scope_chain` /
     `content_items_scope_chain` / `questions_scope_chain` violation);
     `SELECT count(*) FROM materials WHERE topic_id IS NOT NULL AND
-    (chapter_id IS NULL OR subject_id IS NULL)` → 0.
+(chapter_id IS NULL OR subject_id IS NULL)` → 0.
 
 - **Syllabus fallback rejects textless materials up front** — `[ ]` not run
   (guard path; no textless READY material exists in demo data to smoke it)
   - Setup: dev stack, teacher login; a MATERIAL with `processingStatus=READY`
     but empty `textContent` (create via API then `UPDATE materials SET
-    text_content='' WHERE id=...`).
+text_content='' WHERE id=...`).
   - Endpoint: `POST /api/v1/syllabus/proposals`
   - Payload: `{"subjectId":"<subject>","sourceType":"MATERIAL"}` (no
     `materialId` → fallback picker)
@@ -288,7 +332,7 @@ autonomously"); P1.5 items below.
     `materials` list contains a material belonging to a different subject
     than `subjectId`.
   - Expected: job fails with `Source material does not belong to the target
-    subject` before any provider call; no proposal row is written.
+subject` before any provider call; no proposal row is written.
 
 ### P3 — Generated-content semantics (2026-09-12)
 
@@ -309,8 +353,8 @@ autonomously"); P1.5 items below.
   - Setup: dev stack; a material with an existing generated NOTE.
   - Flow: material detail → Regenerate (stale item) → poll job → inspect DB.
   - Expected: `SELECT count(*) FROM content_items WHERE type='NOTE' AND
-    source='AI_GENERATED'` for that source stays 1; `GET
-    /content/<id>/versions` shows v1 CREATION + v2 REGENERATION; generation-
+source='AI_GENERATED'` for that source stays 1; `GET
+/content/<id>/versions` shows v1 CREATION + v2 REGENERATION; generation-
     status still reports a single well-defined state.
 
 - **Generate all produces all five types incl. Cornell** — `[ ]` browser/data
@@ -410,7 +454,7 @@ spot check pending (demo stack with mock AI).
   - Setup: above.
   - Endpoint: `GET /api/v1/content/generation-status?materialId=<material id>`
   - Expected: per-type `{status: "generated"|"stale"|"not_generated", version,
-    updatedAt}`; editing the material afterwards flips the item to `stale`.
+updatedAt}`; editing the material afterwards flips the item to `stale`.
 - **Question bank stats (P2)** — `[ ]` not run
   - Setup: demo seed with a topic + open questions; teacher cookie.
   - Endpoint: `GET /api/v1/questions/bank/stats?topicId=<id>`
@@ -420,14 +464,14 @@ spot check pending (demo stack with mock AI).
   - Endpoint: `POST /api/v1/questions/generate-more` (dry run)
   - Payload: `{"topicId":"<id>","buckets":[{"questionType":"MCQ","difficulty":"EASY","count":10}],"dryRun":true}`
   - Expected: `{generated:false,status:"NO_ACTION",buckets:[...],totalExisting,
-    totalDeficit}` — deficit = requested − APPROVED+ACTIVE existing; no job queued.
+totalDeficit}` — deficit = requested − APPROVED+ACTIVE existing; no job queued.
   - Repeat with `"dryRun":false`: queues a job for the deficit buckets only;
     duplicate of an active non-dry run `409`.
 - **Export (P6)** — `[ ]` not run
   - Setup: any content item + assessment with questions; teacher cookie.
   - Endpoint: `GET /api/v1/export/content/:contentId?format=pdf` (also `docx`),
     `GET /api/v1/export/questions?topicId=<id>&format=docx`, `GET
-    /api/v1/export/assessment/:assessmentId?format=pdf`
+/api/v1/export/assessment/:assessmentId?format=pdf`
   - Expected: valid file download; PDF opens, DOCX opens in Word; question/assessment
     exports omit the answer key.
 - **Frontend (P7)** — `[ ]` not run
@@ -937,8 +981,8 @@ teacher-A cookie + header `x-institute-id: 11111111-...`.
     "subjectId": "324428a6-8d42-4926-9540-9b8a83943a24",
     "payload": {
       "choices": [
-        {"id": "9f63bf7b-e9d4-49f4-8640-0888ffba3a5c", "text": "A"},
-        {"id": "7e0f0634-5649-4859-bbeb-af8d0b248c60", "text": "B"}
+        { "id": "9f63bf7b-e9d4-49f4-8640-0888ffba3a5c", "text": "A" },
+        { "id": "7e0f0634-5649-4859-bbeb-af8d0b248c60", "text": "B" }
       ],
       "correctChoiceId": "9f63bf7b-e9d4-49f4-8640-0888ffba3a5c"
     }
@@ -977,7 +1021,7 @@ teacher-A cookie + header `x-institute-id: 11111111-...`.
 - **Endpoint:** `POST /api/v1/questions`.
 - **Payload:** the QBN-01 create payload (has `explanation` + `source: "MANUAL"`).
 - **Expected output:** `201`; response echoes `explanation: "expected
-  explanation"` and `source: "MANUAL"`.
+explanation"` and `source: "MANUAL"`.
 
 ### QBN-05 — Approval lifecycle
 
@@ -987,8 +1031,8 @@ teacher-A cookie + header `x-institute-id: 11111111-...`.
 - **Payload:** none.
 - **Expected output:** reject PENDING → `200 approvalStatus: "REJECTED"`; approve
   same → `200 APPROVED` (REJECTED→APPROVED allowed); approve an already-APPROVED → `200
-  APPROVED` (idempotent); archive → `200 status: "ARCHIVED"`; activate → `200 status:
-  "ACTIVE"`; filter `?approvalStatus=PENDING` returns pending rows; random UUID action
+APPROVED` (idempotent); archive → `200 status: "ARCHIVED"`; activate → `200 status:
+"ACTIVE"`; filter `?approvalStatus=PENDING` returns pending rows; random UUID action
   → `404`.
 
 ### QBN-06 — Manual source → APPROVED
@@ -1011,7 +1055,7 @@ teacher-A cookie + header `x-institute-id: 11111111-...`.
     "difficulty": "MEDIUM",
     "source": "AI_GENERATED",
     "topicId": "10df37f8-acd5-4406-9a36-eb631c4c54f3",
-    "payload": {"correctAnswer": true}
+    "payload": { "correctAnswer": true }
   }
   ```
 - **Expected output:** `201` with `approvalStatus: "PENDING"` (server-computed).
@@ -1066,8 +1110,8 @@ Headers on all requests: Cookie `access_token=<teacher session>` +
   { "topicId": "<topic-id>", "questionType": "MCQ", "count": 3, "difficulty": "MEDIUM" }
   ```
 - **Expected output:** `202` `{ "generation": { "jobId", "operation":
-  "AI_GENERATE_QUESTIONS", "sourceType": "TOPIC", "sourceId": "<topic-id>",
-  "status": "QUEUED" } }`.
+"AI_GENERATE_QUESTIONS", "sourceType": "TOPIC", "sourceId": "<topic-id>",
+"status": "QUEUED" } }`.
 
 ### AIGQ-02 — Generation job completes with the generated questions
 
@@ -1131,7 +1175,8 @@ security/negative block. Full sweep: `p8_e2e.sh` **PASS=86 FAIL=0** (52 main
 run + 4 corrected EXAM-08 gate cases + 4 ARCHIVED-gate cases from 08-05 +
 16 body-assert superset from the 2026-09-07 reconstruction + 5
 merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
-+ 3 DELETE-guard cases from 08-07).
+
+- 3 DELETE-guard cases from 08-07).
 
 ### Fixtures (created/promoted during this run, `catlium_dev`)
 
@@ -1147,7 +1192,7 @@ merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
   `6421b5f4-4e99-474c-86eb-ba4b7c600690` role `STUDENT` (institute A).
 - Academic scope (institute A): subject `math`
   `324428a6-8d42-4926-9540-9b8a83943a24` (from `SELECT id FROM subjects WHERE
-  slug='math'`); topic `Linear Equations`
+slug='math'`); topic `Linear Equations`
   `10df37f8-acd5-4406-9a36-eb631c4c54f3` (AI_GENERATED question scope).
 - Fresh questions via `POST /api/v1/questions`: two APPROVED `MANUAL` MCQs and
   one PENDING `AI_GENERATED` TRUE_FALSE (server-computed approval — MANUAL →
@@ -1243,9 +1288,9 @@ merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
 - **Setup required:** live stack up; teacher-A cookie.
 - **Endpoint:** `POST /api/v1/assessments`; `PATCH /api/v1/assessments/:id`.
 - **Payload:** create `{ "durationMinutes": 60, "maxMarks": 100,
-  "instructions": { "text": "Read carefully" } }`; PATCH `{
-  "durationMinutes": 90, "maxMarks": 150, "instructions": { "text": "Updated" }
-  }`.
+"instructions": { "text": "Read carefully" } }`; PATCH `{
+"durationMinutes": 90, "maxMarks": 150, "instructions": { "text": "Updated" }
+}`.
 - **Expected output:** the 201 create response echoes `durationMinutes: 60`,
   `maxMarks: 100` and the `instructions` object; PATCH → `200` echoing the new
   values (90 / 150 / `{"text":"Updated"}`). Result `[x]` 2026-09-05.
@@ -1255,7 +1300,7 @@ merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
 - **Setup required:** live stack up; teacher-A cookie.
 - **Endpoint:** `POST /api/v1/assessments`.
 - **Payload:** valid `{ "startsAt": "2030-01-01T09:00:00.000Z", "endsAt":
-  "2030-01-01T11:00:00.000Z" }`; invalid endsAt-before-startsAt (`endsAt`
+"2030-01-01T11:00:00.000Z" }`; invalid endsAt-before-startsAt (`endsAt`
   2030-01-01T09:00, `startsAt` 2030-01-01T11:00); past `startsAt`
   (2020-01-01T09:00 with a future endsAt).
 - **Expected output:** valid window → `201`; endsAt before startsAt → `400`;
@@ -1290,16 +1335,16 @@ merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
   these POST transition endpoints return the NestJS POST default `201`, not
   `200` — see the Task 2 discrepancy log.) Result `[x]` 2026-09-05.
 - **DRAFT-only DELETE guard (WR-05, added 08-07):** `DELETE
-  /api/v1/assessments/:assessmentId` refuses any non-DRAFT assessment with
+/api/v1/assessments/:assessmentId` refuses any non-DRAFT assessment with
   `400` body `Only DRAFT assessments can be deleted; unpublish or complete
-  first`:
+first`:
   - DELETE on a PUBLISHED assessment → `400` (unpublish
     `PUBLISHED → DRAFT` first to make it deletable).
   - DELETE on an ACTIVE assessment → `400` (students may be attempting).
   - DELETE on a COMPLETED assessment → `400` (historical record).
   - DELETE on a DRAFT assessment → `204` unchanged (EXAM-01 regression).
-  Result `[x]` 2026-09-07 (first three live in `p8_e2e.sh` DELETE-guard
-  block, PASS=86; DRAFT regression = the EXAM-01 delete-204 case).
+    Result `[x]` 2026-09-07 (first three live in `p8_e2e.sh` DELETE-guard
+    block, PASS=86; DRAFT regression = the EXAM-01 delete-204 case).
 
 ### EXAM-06 — Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED — [x]
 
@@ -1324,7 +1369,7 @@ merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
   ACTIVE→DRAFT (unpublish from an ACTIVE assessment) → `400`; any transition on
   a COMPLETED assessment (publish/activate/complete) → `400` each. Every `400`
   body names the attempted transition (`Cannot transition assessment from X to
-  Y`). Result `[x]` 2026-09-05 (six illegal cases).
+Y`). Result `[x]` 2026-09-05 (six illegal cases).
 
 ### EXAM-08 — Only APPROVED questions usable in official assessments — [x]
 
@@ -1379,7 +1424,7 @@ merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
 2. **docs/api/assessments.md "Add questions" scope error:** the doc says `404`
    for "a foreign-institute assessment **or question**"; actual behavior is
    foreign-institute **questionId** → `400` (`Question ... not found or not in
-   this institute`, Pitfall 3) while foreign-institute **assessmentId** → `404`.
+this institute`, Pitfall 3) while foreign-institute **assessmentId** → `404`.
 3. **docs/api/assessments.md "List assessment questions" roles error:** the doc
    lists roles `INSTITUTE_ADMIN`, `TEACHER`, but the route has no
    `@RequiredRoles` — student GET `:id/questions` → `200` (reads open to all
@@ -1387,7 +1432,7 @@ merged-schedule/DTO cases from 08-06 + 2 sortOrder append/ordering cases
 4. **docs/api/assessments.md "Complete assessment" is vague:** "(or applies the
    state-machine rules defined in 08-03)" should be the precise rule: source
    must be `ACTIVE`; any other source → `400 Cannot transition assessment from
-   X to COMPLETED`.
+X to COMPLETED`.
 
 ---
 
@@ -1453,7 +1498,7 @@ after the Wave 1 checkpoint).
 
 - **Endpoint:** `POST /api/v1/attempts` — payload `{ "assessmentId": "<open>" }`
 - **Expected:** `201` with `{ attempt: { status: "IN_PROGRESS", totalMarks,
-  deadline, questions: [...] } }`; ticking a deadline transition even after
+deadline, questions: [...] } }`; ticking a deadline transition even after
   refresh; duplicate concurrent start → `409`.
 
 ### DEMO-W2-03 — Save answers per type, then submit idempotently
@@ -1476,8 +1521,8 @@ after the Wave 1 checkpoint).
 - **Endpoint:** second student on `GET /attempts/:id` / `PUT .../submit` of
   another student's attempt
 - **Expected:** `404`; non-member institute header → `403`; teacher ledger
-  `GET /assessments/:id/attempts` shows student email + graded `score` *(not
-  null — automatic evaluation since Phase 10)*; student on the ledger route →
+  `GET /assessments/:id/attempts` shows student email + graded `score` _(not
+  null — automatic evaluation since Phase 10)_; student on the ledger route →
   `403`.
 
 ## Demo Milestone — Phase 10 (Automatic Evaluation & Results, E2E-run 2026-09-08) [x]
@@ -1536,8 +1581,8 @@ IN_PROGRESS attempt (excluded).
 - **Endpoint:** `GET /api/v1/assessments/:assessmentId/analytics`
 - **Payload:** none (authenticated teacher + `x-institute-id`)
 - **Expected:** `200` `{ analytics: { summary: { evaluatedAttempts: 2,
-  averageScore: 1.5, highestScore: 3, lowestScore: 0, totalMarks: 4 },
-  scoreDistribution: [{score:0,count:1},{score:3,count:1}], … } }`.
+averageScore: 1.5, highestScore: 3, lowestScore: 0, totalMarks: 4 },
+scoreDistribution: [{score:0,count:1},{score:3,count:1}], … } }`.
   Q1 `correctCount: 1 / unansweredCount: 1 / accuracy: 1`; Q2
   `correctCount: 0 / unansweredCount: 2 / accuracy: null`; single topic →
   `questionCount: 4, correctResponses: 3, marksEarned: 3, marksAvailable: 8`;
@@ -1630,8 +1675,8 @@ IN_PROGRESS attempt (excluded).
   `DELETE /questions/:id` → 204, deleted read → 404; CT-09 `POST /jobs` →
   201, `GET /jobs/:id` → 200, unknown → 404, student → 403).
 - **Endpoint examples:** `GET /api/v1/health` → 200; `POST
-  /api/v1/auth/refresh` with wrong `x-csrf-token` → 403; `POST
-  /api/v1/materials/:id/upload` with `type=text/plain` file >20MB → 413;
+/api/v1/auth/refresh` with wrong `x-csrf-token` → 403; `POST
+/api/v1/materials/:id/upload` with `type=text/plain` file >20MB → 413;
   `PATCH /api/v1/content/:id` with the wrong payload type → 400.
 - **Docs:** all 11 `docs/api/*.md` verified + `AGENTS.md` health route now
   `GET /api/v1/health`.
@@ -1708,7 +1753,7 @@ IN_PROGRESS attempt (excluded).
 
 - **Setup required (deferred reason: host disk 4.2G free; demo image builds
   need >6G):** docker demo env (`docker compose -f docker-compose.yml -f
-  docker-compose.dev.yml -f docker-compose.demo.yml up --build`), mock AI on
+docker-compose.dev.yml -f docker-compose.demo.yml up --build`), mock AI on
   127.0.0.1:8899/v1, seeded institute
   `99999999-9999-9999-9999-999999999999`, teacher@catlium.dev /
   student@catlium.dev `Password123!`. Space API logins ≥65s apart (auth
@@ -1776,8 +1821,8 @@ IN_PROGRESS attempt (excluded).
 ### WF-11 — Custom Paper Pattern builder (2026-09-10) [x]
 
 - **Setup required:** docker demo stack up (`docker compose -f
-  docker-compose.yml -f docker-compose.dev.yml -f docker-compose.demo.yml up
-  -d`), web :3001, api :3000, seeded institute `99999999-9999-9999-9999-999999999999`,
+docker-compose.yml -f docker-compose.dev.yml -f docker-compose.demo.yml up
+-d`), web :3001, api :3000, seeded institute `99999999-9999-9999-9999-999999999999`,
   teacher@catlium.dev / `Password123!`.
 - **Endpoint:** `PATCH /api/v1/paper-patterns/:id` (structure + version) and
   create `POST /api/v1/paper-patterns` with `{title, subjectId, structure}`;
@@ -1799,8 +1844,8 @@ IN_PROGRESS attempt (excluded).
 ### WF-21 — SaaS Management + Public Landing Page (2026-09-10) [x]
 
 - **Setup required:** docker demo stack up (`docker compose -f
-  docker-compose.yml -f docker-compose.dev.yml -f docker-compose.demo.yml up
-  -d`); seed applied (adds `admin@catlium.dev`); api :3000, web :3001,
+docker-compose.yml -f docker-compose.dev.yml -f docker-compose.demo.yml up
+-d`); seed applied (adds `admin@catlium.dev`); api :3000, web :3001,
   institute `99999999-9999-9999-9999-999999999999`. Space API logins ≥65s
   apart (auth throttle 5/min per route+IP).
 - **Endpoints & expected output** (all asserted by
@@ -1812,8 +1857,8 @@ IN_PROGRESS attempt (excluded).
     `x-institute-id: 99999999-9999-9999-9999-999999999999`) → 200 roster
     with roles incl. `INSTITUTE_ADMIN`.
   - `POST /api/v1/users` `{"email","password","name","role":
-    "TEACHER"|"STUDENT"}` → 201; same email again → 409; `role:
-    "INSTITUTE_ADMIN"` or unknown → 400; weak password / bad email → 400.
+"TEACHER"|"STUDENT"}` → 201; same email again → 409; `role:
+"INSTITUTE_ADMIN"` or unknown → 400; weak password / bad email → 400.
   - `PATCH /api/v1/users/:userId/status` `{"status":"deactivated"}` → 200;
     deactivated student then gets 403 on all tenant endpoints
     (`/attempts/available`) until `{"status":"active"}` → 200 restores
@@ -1824,8 +1869,8 @@ IN_PROGRESS attempt (excluded).
     admins; role guard shows Forbidden for non-admins; anonymous visits
     redirect to /login via middleware.
 - **Regression:** `bash scripts/e2e/{auth,web_smoke,docker_readiness,attempts,
-  practice,web_workflow,paper_pattern,materials,syllabus,p8,sec14,demo,
-  api_contract}_e2e.sh` all PASS (auth 14, web_smoke 24, readiness 32,
+practice,web_workflow,paper_pattern,materials,syllabus,p8,sec14,demo,
+api_contract}_e2e.sh` all PASS (auth 14, web_smoke 24, readiness 32,
   attempts 97 incl. provisioning-based second student, practice 74,
   web_workflow 33, paper-pattern 75, materials 21, syllabus 39, p8 86,
   sec14 22, demo 52, api_contract 52); api + web typecheck + lint clean.
