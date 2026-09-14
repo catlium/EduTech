@@ -1,34 +1,27 @@
-"use client";
+'use client';
 
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import { toast } from "sonner";
-import {
-  ArrowLeft,
-  FileText,
-  ExternalLink,
-  Loader2,
-  Sparkles,
-  BookOpen,
-  Eye,
-  RefreshCw,
-} from "lucide-react";
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { toast } from 'sonner';
+import { ArrowLeft, FileText, ExternalLink, Loader2, Sparkles, BookOpen, Eye } from 'lucide-react';
 
-import { api, ApiError, waitForJob } from "@/lib/api";
-import { useTenant, canManage } from "@/lib/tenant";
-import { AppBreadcrumbs } from "@/components/app/app-breadcrumbs";
-import { StatusBadge } from "@/components/app/status-badge";
-import { SectionHeader } from "@/components/app/section-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { SkeletonCards } from "@/components/app/loading";
-import { ErrorState } from "@/components/app/error-state";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { api, ApiError, waitForJob } from '@/lib/api';
+import { useTenant, canManage } from '@/lib/tenant';
+import { AppBreadcrumbs } from '@/components/app/app-breadcrumbs';
+import { StatusBadge } from '@/components/app/status-badge';
+import { SectionHeader } from '@/components/app/section-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { SkeletonCards } from '@/components/app/loading';
+import { ErrorState } from '@/components/app/error-state';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import {
+  batchStartMessages,
   GenerateResourcesDialog,
   RESOURCE_TYPES,
-} from "@/components/app/generate-resources-dialog";
+  type GenerateMode,
+} from '@/components/app/generate-resources-dialog';
 import type {
   SubjectResponse,
   ChapterResponse,
@@ -38,7 +31,7 @@ import type {
   QuestionListItem,
   GenerationBatchResponse,
   GenerateBatchJobIds,
-} from "@catlium/contracts";
+} from '@catlium/contracts';
 
 export default function TopicPage() {
   const { subjectId, topicId } = useParams<{
@@ -56,7 +49,7 @@ export default function TopicPage() {
   const [questions, setQuestions] = useState<QuestionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [starter, setStarter] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [starter, setStarter] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [starterError, setStarterError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -93,7 +86,7 @@ export default function TopicPage() {
       }
 
       if (!foundTopic || !foundChapter) {
-        setError("Topic not found.");
+        setError('Topic not found.');
         return;
       }
 
@@ -113,8 +106,8 @@ export default function TopicPage() {
       setResources(contents.filter((c) => resourceTypes.includes(c.type)));
       setQuestions(qs);
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError("Failed to load topic. Please try again.");
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setError('Failed to load topic. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -149,40 +142,40 @@ export default function TopicPage() {
   }, [batch?.batchId]);
 
   async function startStarter() {
-    setStarter("running");
+    setStarter('running');
     setStarterError(null);
     try {
       const { generation } = await api<{ generation: { jobId: string } }>(
-        "/content/starter-material",
-        { method: "POST", body: { topicId } },
+        '/content/starter-material',
+        { method: 'POST', body: { topicId } },
       );
-      await waitForJob(() =>
-        api<{ job: { status: string } }>(`/jobs/${generation.jobId}`),
-      );
-      setStarter("done");
+      await waitForJob(() => api<{ job: { status: string } }>(`/jobs/${generation.jobId}`));
+      setStarter('done');
       void load();
     } catch (err) {
-      setStarter("error");
-      setStarterError(err instanceof ApiError ? err.message : "Generation failed");
+      setStarter('error');
+      setStarterError(err instanceof ApiError ? err.message : 'Generation failed');
     }
   }
 
-  async function startBatch(types: string[]) {
+  async function startBatch(types: string[], mode: GenerateMode) {
     setStarting(true);
     try {
-      const { batch: b } = await api<{ batch: GenerateBatchJobIds }>("/content/generate-batch", {
-        method: "POST",
-        body: { sourceType: "TOPIC", sourceId: topicId, types },
+      const { batch: b } = await api<{ batch: GenerateBatchJobIds }>('/content/generate-batch', {
+        method: 'POST',
+        body: { sourceType: 'TOPIC', sourceId: topicId, types, mode },
       });
       setDialogOpen(false);
-      if (b.jobIds.length === 0) {
-        toast.info("Those resources are already being generated");
+      const messages = batchStartMessages(b);
+      if (messages.length > 0) {
+        toast.info(messages.join(' · '));
+      } else {
+        toast.info('Everything is already up to date');
         return;
       }
-      toast.success(`Started ${b.jobIds.length} generation job${b.jobIds.length > 1 ? "s" : ""}`);
-      setBatch({ batchId: b.batchId, status: null });
+      if (b.jobIds.length > 0) setBatch({ batchId: b.batchId, status: null });
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to start generation");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to start generation');
     } finally {
       setStarting(false);
     }
@@ -194,9 +187,18 @@ export default function TopicPage() {
       .sort((a, b) => b.currentVersion - a.currentVersion)[0];
   }
 
+  const batchStartPending =
+    batch?.status?.jobs.some(
+      (j) =>
+        j.operation === 'AI_GENERATE_STARTER_MATERIAL' &&
+        j.status !== 'completed' &&
+        j.status !== 'failed' &&
+        j.status !== 'cancelled',
+    ) ?? false;
+
   const questionsSummary = (() => {
-    const pending = questions.filter((q) => q.approvalStatus === "PENDING").length;
-    const approved = questions.filter((q) => q.approvalStatus === "APPROVED").length;
+    const pending = questions.filter((q) => q.approvalStatus === 'PENDING').length;
+    const approved = questions.filter((q) => q.approvalStatus === 'APPROVED').length;
     return { total: questions.length, pending, approved };
   })();
 
@@ -204,7 +206,7 @@ export default function TopicPage() {
     return <SkeletonCards count={2} />;
   }
   if (error || !topic || !subject || !chapter) {
-    return <ErrorState description={error ?? "Topic not found."} onRetry={() => void load()} />;
+    return <ErrorState description={error ?? 'Topic not found.'} onRetry={() => void load()} />;
   }
 
   return (
@@ -220,7 +222,7 @@ export default function TopicPage() {
         </Button>
         <AppBreadcrumbs
           items={[
-            { label: "Subjects", href: "/subjects" },
+            { label: 'Subjects', href: '/subjects' },
             { label: subject.name, href: `/subjects/${subjectId}` },
             { label: chapter.name },
             { label: topic.name },
@@ -233,9 +235,7 @@ export default function TopicPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{topic.name}</h1>
           <StatusBadge status={topic.status} />
         </div>
-        {topic.description && (
-          <p className="text-sm text-muted-foreground">{topic.description}</p>
-        )}
+        {topic.description && <p className="text-sm text-muted-foreground">{topic.description}</p>}
       </div>
 
       {batch?.status && batch.status.active > 0 && (
@@ -243,15 +243,16 @@ export default function TopicPage() {
           <CardContent className="flex items-center justify-between p-3 text-sm">
             <span className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Generating… {batch.status.completed + batch.status.failed}/
-              {batch.status.total} jobs done
+              {batchStartPending
+                ? 'Waiting for starter material → generating resources…'
+                : `Generating… ${batch.status.completed + batch.status.failed}/${batch.status.total} jobs done`}
             </span>
             <Button
               size="sm"
               variant="ghost"
               onClick={() => {
                 void api(`/content/generation-batches/${batch.batchId}/cancel`, {
-                  method: "POST",
+                  method: 'POST',
                 }).then(() => setBatch(null));
               }}
             >
@@ -267,7 +268,11 @@ export default function TopicPage() {
           description="Notes, summaries, flashcards and more — generated from this topic's materials"
           actions={
             isTeacher ? (
-              <Button size="sm" onClick={() => setDialogOpen(true)} disabled={Boolean(batch?.status?.active)}>
+              <Button
+                size="sm"
+                onClick={() => setDialogOpen(true)}
+                disabled={Boolean(batch?.status?.active)}
+              >
                 <Sparkles className="mr-1 size-3.5" /> Generate resources
               </Button>
             ) : undefined
@@ -280,7 +285,7 @@ export default function TopicPage() {
             description={
               isTeacher
                 ? "Generate notes, a summary, flashcards, concepts and Cornell notes from this topic's materials."
-                : "The teacher has not generated learning resources for this topic yet."
+                : 'The teacher has not generated learning resources for this topic yet.'
             }
           >
             {isTeacher && (
@@ -302,10 +307,13 @@ export default function TopicPage() {
                     <p className="text-sm font-medium">{label}</p>
                     {item ? (
                       <p className="text-xs text-muted-foreground">
-                        v{item.currentVersion} · {item.status === "ACTIVE" ? "active" : "not published"}
+                        v{item.currentVersion} ·{' '}
+                        {item.status === 'ACTIVE' ? 'active' : 'not published'}
                       </p>
                     ) : batch?.status?.active ? (
-                      <p className="text-xs text-muted-foreground animate-pulse">Queued…</p>
+                      <p className="text-xs text-muted-foreground animate-pulse">
+                        {batchStartPending ? 'Waiting for starter material…' : 'Queued…'}
+                      </p>
                     ) : (
                       <p className="text-xs text-muted-foreground">Not generated yet</p>
                     )}
@@ -317,26 +325,6 @@ export default function TopicPage() {
                       onClick={() => router.push(`/content/${item.id}`)}
                     >
                       <Eye className="mr-1 size-3.5" /> Open
-                    </Button>
-                  )}
-                  {!item && isTeacher && !batch?.status?.active && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void startBatch([type])}
-                      disabled={starting}
-                    >
-                      <Sparkles className="mr-1 size-3.5" /> Generate
-                    </Button>
-                  )}
-                  {item && isTeacher && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void startBatch([type])}
-                      disabled={starting}
-                    >
-                      <RefreshCw className="mr-1 size-3.5" /> Regenerate
                     </Button>
                   )}
                 </li>
@@ -374,8 +362,8 @@ export default function TopicPage() {
           </EmptyState>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Question generation and review happen in the question bank (
-            {questionsSummary.total} active questions).
+            Question generation and review happen in the question bank ({questionsSummary.total}{' '}
+            active questions).
           </p>
         )}
       </section>
@@ -385,7 +373,7 @@ export default function TopicPage() {
           title="Materials"
           description={
             materials.length > 0
-              ? `${materials.length} material${materials.length !== 1 ? "s" : ""}`
+              ? `${materials.length} material${materials.length !== 1 ? 's' : ''}`
               : undefined
           }
           actions={
@@ -401,30 +389,30 @@ export default function TopicPage() {
             icon={<FileText className="size-8" />}
             title="No materials yet"
             description={
-              starter === "running"
-                ? "Generating a starter material for this topic…"
-                : starter === "error"
-                  ? starterError ?? "Generation failed."
-                  : "Upload or create materials for this topic, or let AI draft a starter material from the syllabus scope."
+              starter === 'running'
+                ? 'Generating a starter material for this topic…'
+                : starter === 'error'
+                  ? (starterError ?? 'Generation failed.')
+                  : 'Upload or create materials for this topic, or let AI draft a starter material from the syllabus scope.'
             }
           >
             <div className="flex flex-wrap justify-center gap-2">
               {isTeacher && (
                 <Button
                   size="sm"
-                  disabled={starter === "running"}
+                  disabled={starter === 'running'}
                   onClick={() => void startStarter()}
                 >
-                  {starter === "running" ? (
+                  {starter === 'running' ? (
                     <Loader2 className="mr-1 size-3.5 animate-spin" />
                   ) : (
                     <Sparkles className="mr-1 size-3.5" />
                   )}
-                  {starter === "running"
-                    ? "Generating…"
-                    : starter === "done"
-                      ? "Generate another"
-                      : "Generate starter material"}
+                  {starter === 'running'
+                    ? 'Generating…'
+                    : starter === 'done'
+                      ? 'Generate another'
+                      : 'Generate starter material'}
                 </Button>
               )}
               <Button size="sm" variant="outline" asChild>
@@ -457,12 +445,12 @@ export default function TopicPage() {
       </section>
 
       <GenerateResourcesDialog
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-          onGenerate={(types) => void startBatch(types)}
-          starting={starting}
-          sourceLabel={topic.name}
-        />
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onGenerate={(types, mode) => void startBatch(types, mode)}
+        starting={starting}
+        sourceLabel={topic.name}
+      />
     </div>
   );
 }

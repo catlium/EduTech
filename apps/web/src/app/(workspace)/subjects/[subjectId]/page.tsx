@@ -1,22 +1,26 @@
-"use client";
+'use client';
 
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { Plus, BookMarked, BookOpen, Hash, Loader2, Sparkles } from "lucide-react";
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { Plus, BookMarked, BookOpen, Hash, Loader2, Sparkles } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { useTenant, canManage } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { ChapterTree } from "@/components/app/chapter-tree";
-import { StatusBadge } from "@/components/app/status-badge";
-import { SectionHeader } from "@/components/app/section-header";
-import { StatCard } from "@/components/app/stat-card";
-import { SkeletonCards } from "@/components/app/loading";
-import { ErrorState } from "@/components/app/error-state";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { GenerateResourcesDialog } from "@/components/app/generate-resources-dialog";
+import { api, ApiError } from '@/lib/api';
+import { useTenant, canManage } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { ChapterTree } from '@/components/app/chapter-tree';
+import { StatusBadge } from '@/components/app/status-badge';
+import { SectionHeader } from '@/components/app/section-header';
+import { StatCard } from '@/components/app/stat-card';
+import { SkeletonCards } from '@/components/app/loading';
+import { ErrorState } from '@/components/app/error-state';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  GenerateResourcesDialog,
+  batchStartMessages,
+  type GenerateMode,
+} from '@/components/app/generate-resources-dialog';
 import {
   Dialog,
   DialogContent,
@@ -24,14 +28,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import type {
   SubjectResponse,
   ChapterResponse,
   GenerationBatchResponse,
   GenerateBatchJobIds,
-} from "@catlium/contracts";
+} from '@catlium/contracts';
 
 export default function SubjectDetailPage() {
   const { subjectId } = useParams<{ subjectId: string }>();
@@ -43,7 +47,7 @@ export default function SubjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showChapterDialog, setShowChapterDialog] = useState(false);
-  const [newChapterName, setNewChapterName] = useState("");
+  const [newChapterName, setNewChapterName] = useState('');
   const [adding, setAdding] = useState(false);
   const [topicCount, setTopicCount] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -73,8 +77,8 @@ export default function SubjectDetailPage() {
       );
       setTopicCount(total.reduce((a, b) => a + b, 0));
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError("Failed to load subject. Please try again.");
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setError('Failed to load subject. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -97,7 +101,7 @@ export default function SubjectDetailPage() {
           setBatch((prev) => (prev ? { ...prev, status: b } : prev));
           if (b.active === 0) {
             setBatch(null);
-            toast.success("Generation complete");
+            toast.success('Generation complete');
             void load();
           }
         })
@@ -112,24 +116,24 @@ export default function SubjectDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batch?.batchId]);
 
-  async function startBatch(types: string[]) {
+  async function startBatch(types: string[], mode: GenerateMode) {
     setStarting(true);
     try {
-      const { batch: b } = await api<{ batch: GenerateBatchJobIds }>("/content/generate-batch", {
-        method: "POST",
-        body: { sourceType: "SUBJECT", sourceId: subjectId, types },
+      const { batch: b } = await api<{ batch: GenerateBatchJobIds }>('/content/generate-batch', {
+        method: 'POST',
+        body: { sourceType: 'SUBJECT', sourceId: subjectId, types, mode },
       });
       setDialogOpen(false);
-      if (b.jobIds.length === 0) {
-        toast.info("Those resources are already being generated");
+      const messages = batchStartMessages(b);
+      if (messages.length > 0) {
+        toast.info(messages.join(' · '));
+      } else {
+        toast.info('Everything is already up to date');
         return;
       }
-      toast.success(
-        `Started ${b.jobIds.length} generation job${b.jobIds.length > 1 ? "s" : ""} across the subject's topics`,
-      );
-      setBatch({ batchId: b.batchId, status: null });
+      if (b.jobIds.length > 0) setBatch({ batchId: b.batchId, status: null });
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to start generation");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to start generation');
     } finally {
       setStarting(false);
     }
@@ -142,18 +146,18 @@ export default function SubjectDetailPage() {
     try {
       const slug = name
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)/g, "");
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
       const { chapter } = await api<{ chapter: ChapterResponse }>(
         `/academic/subjects/${subjectId}/chapters`,
-        { method: "POST", body: { name, slug } },
+        { method: 'POST', body: { name, slug } },
       );
       setChapters((prev) => [...prev, chapter]);
-      setNewChapterName("");
+      setNewChapterName('');
       setShowChapterDialog(false);
-      toast.success("Chapter added");
+      toast.success('Chapter added');
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Failed to add chapter");
+      toast.error(error instanceof ApiError ? error.message : 'Failed to add chapter');
     } finally {
       setAdding(false);
     }
@@ -163,7 +167,7 @@ export default function SubjectDetailPage() {
     return <SkeletonCards count={2} />;
   }
   if (error || !subject) {
-    return <ErrorState description={error ?? "Subject not found."} onRetry={() => void load()} />;
+    return <ErrorState description={error ?? 'Subject not found.'} onRetry={() => void load()} />;
   }
 
   return (
@@ -201,7 +205,7 @@ export default function SubjectDetailPage() {
       <section className="space-y-4">
         <SectionHeader
           title="Chapters"
-          description={`${chapters.length} chapter${chapters.length !== 1 ? "s" : ""}`}
+          description={`${chapters.length} chapter${chapters.length !== 1 ? 's' : ''}`}
           actions={
             isTeacher && (
               <Button size="sm" variant="outline" onClick={() => setShowChapterDialog(true)}>
@@ -230,16 +234,14 @@ export default function SubjectDetailPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add chapter</DialogTitle>
-            <DialogDescription>
-              Chapters organize topics within {subject.name}.
-            </DialogDescription>
+            <DialogDescription>Chapters organize topics within {subject.name}.</DialogDescription>
           </DialogHeader>
           <Input
             value={newChapterName}
             onChange={(e) => setNewChapterName(e.target.value)}
             placeholder="Chapter name..."
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === 'Enter') {
                 e.preventDefault();
                 void addChapter();
               }
@@ -250,7 +252,7 @@ export default function SubjectDetailPage() {
               Cancel
             </Button>
             <Button disabled={adding || !newChapterName.trim()} onClick={() => void addChapter()}>
-              {adding ? "Adding..." : "Add Chapter"}
+              {adding ? 'Adding...' : 'Add Chapter'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -259,7 +261,7 @@ export default function SubjectDetailPage() {
       <GenerateResourcesDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onGenerate={(types) => void startBatch(types)}
+        onGenerate={(types, mode) => void startBatch(types, mode)}
         starting={starting}
         sourceLabel={`every topic in ${subject.name}`}
       />

@@ -94,17 +94,35 @@ update docs; commit + push; checkpoint report; STOP.
       enqueues dependents; a dependent whose generation is already active is
       dropped silently (active-generation unique index). Tests:
       `apps/workers/tests/test_batch_prerequisite.py` (5 cases)
-- [ ] B3 Job Monitor / web UX "waiting for prerequisite" — frontend, moved to
-      the C/D generation UX checkpoint (deliberately deferred here)
+- [x] B3 Job Monitor / web UX "waiting for prerequisite" — frontend. Web waiting
+      state ("Waiting for starter material → generating resources") shipped in
+      the C/D generation-UX checkpoint (topic page detects the starter job in
+      the shared batch and labels progress + per-type rows accordingly); the
+      Job Monitor page already lists prerequisite jobs regardless.
+      Deliberately deferred here.
 
 ### Goal: C/D Idempotent generation + Material Detail UX
 
-- [ ] C1 `generate-batch` mode `missing` (default, skip types with a live
+- [x] C1 `generate-batch` mode `missing` (default, skip types with a live
       non-ARCHIVED AI_GENERATED item on the topic) vs `regenerate` (force,
       still honouring active-job dedup); response reports `skipped` + reasons
-- [ ] D1 Material Detail: remove local generation dialog + per-type
-      Generate/Regenerate; read-only derived-resource display; header button
-      becomes "Generate resources for this Topic" linking to the topic workspace
+      — backend shipped with Phase B (batch-plan.ts pure suite, project-status
+      sub-goal B); C/D adds the frontend surfacing below.
+- [x] C2 Web generation UX: shared `GenerateResourcesDialog` gains explicit
+      actions "Generate missing" (mode=missing) vs "Regenerate"
+      (mode=regenerate); all callers (Topic page, ChapterTree, Subject page)
+      pass `mode` and show `batchStartMessages` (started / already generated /
+      already running / waiting for starter); per-type Generate/Regenerate
+      buttons removed from the Topic page (single batch workflow, no duplicate
+      generation entry points); Topic page batch card shows
+      "Waiting for starter material → generating resources…" while the
+      prerequisite job is active and per-type rows show
+      "Waiting for starter material…"
+- [x] D1 Material Detail: local generation dialog removed; per-type
+      Generate/Regenerate removed; derived-resource display is read-only
+      (versions, stale badges, open links); header button is now
+      "Generate resources for this Topic" linking to the topic workspace —
+      generation owns the topic, a material never hides a second generator.
 
 ### Goal: E Question Bank unification
 

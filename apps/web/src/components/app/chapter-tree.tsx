@@ -10,7 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { StatusBadge } from './status-badge';
-import { GenerateResourcesDialog } from './generate-resources-dialog';
+import {
+  GenerateResourcesDialog,
+  batchStartMessages,
+  type GenerateMode,
+} from './generate-resources-dialog';
 import type { ChapterResponse, TopicResponse, GenerateBatchJobIds } from '@catlium/contracts';
 
 export function ChapterTree({
@@ -110,21 +114,20 @@ function ChapterItem({
     }
   }
 
-  async function startGenerate(types: string[]) {
+  async function startGenerate(types: string[], mode: GenerateMode) {
     setStarting(true);
     try {
       const { batch } = await api<{ batch: GenerateBatchJobIds }>('/content/generate-batch', {
         method: 'POST',
-        body: { sourceType: 'CHAPTER', sourceId: chapter.id, types },
+        body: { sourceType: 'CHAPTER', sourceId: chapter.id, types, mode },
       });
       setDialogOpen(false);
-      if (batch.jobIds.length === 0) {
-        toast.info('Those resources are already being generated');
-        return;
+      const messages = batchStartMessages(batch);
+      if (messages.length > 0) {
+        toast.info(messages.join(' · '));
+      } else {
+        toast.info('Everything is already up to date');
       }
-      toast.success(
-        `Started ${batch.jobIds.length} generation job${batch.jobIds.length > 1 ? 's' : ''} across the chapter's topics`,
-      );
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to start generation');
     } finally {
@@ -226,7 +229,7 @@ function ChapterItem({
           <GenerateResourcesDialog
             open={dialogOpen}
             onOpenChange={setDialogOpen}
-            onGenerate={(types) => void startGenerate(types)}
+            onGenerate={(types, mode) => void startGenerate(types, mode)}
             starting={starting}
             sourceLabel={`every topic in this chapter`}
           />

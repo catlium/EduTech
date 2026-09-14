@@ -89,8 +89,50 @@ documentation updated. Committed + pushed in this checkpoint.
 **Web "waiting for prerequisite" (task B3)** — deliberately deferred to the C/D
 generation-UX checkpoint (frontend), not part of this backend checkpoint.
 
-**Next task:** C/D idempotent generation UX + Material Detail (per
-`docs/tasks.md`), then E Question Bank generation + prompt/context correction.
+### Sub-goal: C/D Idempotent generation UX + Material Detail — COMPLETE (third checkpoint)
+
+Surfaced the Phase-B `generate-batch` mode in the web generation flow so a
+teacher never guesses whether an action overwrites resources, removed the
+conflicting per-type generation actions, and demoted Material Detail to a
+read-only derived-resource view with a single entry point back to the topic
+workflow.
+
+- **Shared dialog** (`components/app/generate-resources-dialog.tsx`): now has
+  two explicit actions — **Generate missing** (`mode=missing`: skips types
+  that already have a live topic-owned resource; server reports them in
+  `skipped`) and **Regenerate** (`mode=regenerate`: forces re-generation,
+  still honouring active-job dedup → `alreadyActive`). New
+  `batchStartMessages(batch)` helper renders the outcome (started / already
+  generated, left as-is / already running / waiting for starter material).
+- **Callers pass mode**: Topic page, ChapterTree, and Subject page send `mode`
+  and surface `batchStartMessages` as toasts. Per-type Generate/Regenerate
+  buttons on the Topic page are removed — the batch dialog is the single
+  generation entry point (a per-type "Regenerate" had silently defaulted to
+  `mode=missing` and would never regenerate).
+- **Waiting for prerequisite (B3)**: the Topic page batch card detects the
+  `AI_GENERATE_STARTER_MATERIAL` job in the shared batch and shows
+  "Waiting for starter material → generating resources…" (and per-type rows
+  "Waiting for starter material…") instead of a generic queued/failed state.
+  When the starter finishes, Phase B enqueues the dependent jobs into the same
+  batch, so the poll continues seamlessly.
+- **Material Detail (D1)**: the local `GenerateResourcesDialog` and per-type
+  Generate/Regenerate/Generate-all UI are gone; the "Generated resources" card
+  is read-only (status lines, version rows, aged/stale badges, Open links,
+  question summary). The header action is now **"Generate resources for this
+  Topic"**, linking to the topic's generation workflow — a material no longer
+  hides a second generator, and topic-less materials offer no generation here.
+- **Deletions (ponytail)**: `BatchProgressPanel`, `JOB_STATUS_CHIP`,
+  `CONTENT_TYPE_LABEL`, `TYPE_TO_OPERATION`, `operationLabel`, `JobState`,
+  and the `waitForJob`/batch-poll machinery in the Material page (~360 lines
+  removed); the batch progress panel on the Topic page remains.
+- **Validation**: `pnpm typecheck` 10/10 green; `pnpm --filter @catlium/web
+  build` succeeds; web tsc clean (no web lint script configured in the repo).
+
+**Status: COMPLETE** — committed + pushed in this checkpoint.
+
+**Next task:** E Question Bank unification (single /question-types source,
+Check Bank / Generate Missing / Create New Set actions, per-type parallel
+`AI_GENERATE_QUESTIONS` jobs), then F/G Paper Pattern config + targeted export.
 
 ## Phase 31 — Resource Ownership, Parallel AI, Correction & Validation (2026-09-14)
 
