@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ChevronRight, ChevronDown, Plus, FileText, Circle } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, FileText, Circle, Loader2, Sparkles } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { StatusBadge } from './status-badge';
-import type { ChapterResponse, TopicResponse } from '@catlium/contracts';
+import { GenerateResourcesDialog } from './generate-resources-dialog';
+import type { ChapterResponse, TopicResponse, GenerateBatchJobIds } from '@catlium/contracts';
 
 export function ChapterTree({
   subjectId,
@@ -58,6 +59,8 @@ function ChapterItem({
   const [newTopicName, setNewTopicName] = useState('');
   const [adding, setAdding] = useState(false);
   const [topicCounts, setTopicCounts] = useState<Record<string, number>>({});
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     if (!expanded || topics.length > 0) return;
@@ -104,6 +107,28 @@ function ChapterItem({
       toast.error(err instanceof ApiError ? err.message : 'Failed to add topic');
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function startGenerate(types: string[]) {
+    setStarting(true);
+    try {
+      const { batch } = await api<{ batch: GenerateBatchJobIds }>('/content/generate-batch', {
+        method: 'POST',
+        body: { sourceType: 'CHAPTER', sourceId: chapter.id, types },
+      });
+      setDialogOpen(false);
+      if (batch.jobIds.length === 0) {
+        toast.info('Those resources are already being generated');
+        return;
+      }
+      toast.success(
+        `Started ${batch.jobIds.length} generation job${batch.jobIds.length > 1 ? 's' : ''} across the chapter's topics`,
+      );
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to start generation');
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -182,8 +207,29 @@ function ChapterItem({
               >
                 <Plus className="mr-1 size-3" /> Add
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => setDialogOpen(true)}
+                disabled={starting}
+              >
+                {starting ? (
+                  <Loader2 className="mr-1 size-3 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-1 size-3" />
+                )}
+                Generate resources
+              </Button>
             </div>
           )}
+          <GenerateResourcesDialog
+            open={dialogOpen}
+            onOpenChange={setDialogOpen}
+            onGenerate={(types) => void startGenerate(types)}
+            starting={starting}
+            sourceLabel={`every topic in this chapter`}
+          />
         </div>
       )}
     </div>

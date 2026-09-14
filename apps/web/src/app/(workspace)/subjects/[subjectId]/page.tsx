@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, BookMarked, BookOpen, Hash } from "lucide-react";
+import { Plus, BookMarked, BookOpen, Hash, Loader2, Sparkles } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
 import { useTenant, canManage } from "@/lib/tenant";
@@ -15,6 +15,8 @@ import { StatCard } from "@/components/app/stat-card";
 import { SkeletonCards } from "@/components/app/loading";
 import { ErrorState } from "@/components/app/error-state";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { GenerateResourcesDialog } from "@/components/app/generate-resources-dialog";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +26,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { SubjectResponse, ChapterResponse } from "@catlium/contracts";
+import type {
+  SubjectResponse,
+  ChapterResponse,
+  GenerationBatchResponse,
+  GenerateBatchJobIds,
+} from "@catlium/contracts";
 
 export default function SubjectDetailPage() {
   const { subjectId } = useParams<{ subjectId: string }>();
@@ -39,6 +46,12 @@ export default function SubjectDetailPage() {
   const [newChapterName, setNewChapterName] = useState("");
   const [adding, setAdding] = useState(false);
   const [topicCount, setTopicCount] = useState(0);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [batch, setBatch] = useState<{
+    batchId: string;
+    status: GenerationBatchResponse | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     if (!institute) return;
@@ -72,6 +85,55 @@ export default function SubjectDetailPage() {
     void load();
     return () => ctrl.abort();
   }, [load]);
+
+  useEffect(() => {
+    if (!batch) return;
+    const ctrl = new AbortController();
+    const tick = () => {
+      api<{ batch: GenerationBatchResponse }>(`/content/generation-batches/${batch.batchId}`, {
+        signal: ctrl.signal,
+      })
+        .then(({ batch: b }) => {
+          setBatch((prev) => (prev ? { ...prev, status: b } : prev));
+          if (b.active === 0) {
+            setBatch(null);
+            toast.success("Generation complete");
+            void load();
+          }
+        })
+        .catch(() => {});
+    };
+    const id = setInterval(tick, 4000);
+    tick();
+    return () => {
+      clearInterval(id);
+      ctrl.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch?.batchId]);
+
+  async function startBatch(types: string[]) {
+    setStarting(true);
+    try {
+      const { batch: b } = await api<{ batch: GenerateBatchJobIds }>("/content/generate-batch", {
+        method: "POST",
+        body: { sourceType: "SUBJECT", sourceId: subjectId, types },
+      });
+      setDialogOpen(false);
+      if (b.jobIds.length === 0) {
+        toast.info("Those resources are already being generated");
+        return;
+      }
+      toast.success(
+        `Started ${b.jobIds.length} generation job${b.jobIds.length > 1 ? "s" : ""} across the subject's topics`,
+      );
+      setBatch({ batchId: b.batchId, status: null });
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to start generation");
+    } finally {
+      setStarting(false);
+    }
+  }
 
   async function addChapter() {
     const name = newChapterName.trim();
@@ -113,9 +175,19 @@ export default function SubjectDetailPage() {
           <div className="flex items-center gap-2">
             <StatusBadge status={subject.status} />
             {isTeacher && (
-              <Button size="sm" variant="outline" onClick={() => router.push(`/syllabus`)}>
-                <BookMarked className="mr-1 size-3.5" /> Syllabus
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDialogOpen(true)}
+                  disabled={Boolean(batch?.status?.active)}
+                >
+                  <Sparkles className="mr-1 size-3.5" /> Generate resources
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => router.push(`/syllabus`)}>
+                  <BookMarked className="mr-1 size-3.5" /> Syllabus
+                </Button>
+              </>
             )}
           </div>
         }
@@ -138,6 +210,15 @@ export default function SubjectDetailPage() {
             )
           }
         />
+        {batch?.status && batch.status.active > 0 && (
+          <Card>
+            <CardContent className="flex items-center gap-2 p-3 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              Generating… {batch.status.completed + batch.status.failed}/{batch.status.total}
+              jobs done
+            </CardContent>
+          </Card>
+        )}
         <ChapterTree
           subjectId={subjectId}
           isTeacher={isTeacher}
@@ -174,6 +255,14 @@ export default function SubjectDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <GenerateResourcesDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onGenerate={(types) => void startBatch(types)}
+        starting={starting}
+        sourceLabel={`every topic in ${subject.name}`}
+      />
     </div>
   );
 }

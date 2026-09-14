@@ -354,6 +354,17 @@ export default function MaterialDetailPage() {
           actions={
             isTeacher && (
               <div className="flex flex-wrap gap-2">
+                {material.topicId && material.subjectId && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      router.push(`/subjects/${material.subjectId}/topics/${material.topicId}`)
+                    }
+                  >
+                    <BookOpen className="mr-1 size-3.5" /> Topic resources
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
                   <Pencil className="mr-1 size-3.5" /> Edit
                 </Button>

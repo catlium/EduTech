@@ -15,6 +15,7 @@ import {
   Building2,
   Users,
   Library,
+  Activity,
   LogOut,
 } from 'lucide-react';
 
@@ -46,6 +47,7 @@ const teacherNav = [
   { href: '/questions', label: 'Question Bank', icon: HelpCircle },
   { href: '/assessments', label: 'Assessments', icon: ClipboardList },
   { href: '/paper-patterns', label: 'Paper Patterns', icon: ScrollText },
+  { href: '/jobs', label: 'Job Monitor', icon: Activity },
 ];
 
 const studentNav = [
@@ -184,6 +186,7 @@ export function sideCrumb(pathname: string): { label: string; href: string } | n
     { href: '/questions', label: 'Question Bank' },
     { href: '/assessments', label: 'Assessments' },
     { href: '/paper-patterns', label: 'Paper Patterns' },
+    { href: '/jobs', label: 'Job Monitor' },
     { href: '/student/dashboard', label: 'Dashboard' },
     { href: '/student/learning', label: 'My Subjects' },
     { href: '/student/exams', label: 'Exams' },
