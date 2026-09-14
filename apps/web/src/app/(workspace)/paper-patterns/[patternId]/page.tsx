@@ -122,6 +122,8 @@ export default function PatternBuilderPage() {
 
   const [approveOpen, setApproveOpen] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const [assessmentOpen, setAssessmentOpen] = useState(false);
   const [assessmentTitle, setAssessmentTitle] = useState('');
@@ -315,6 +317,19 @@ export default function PatternBuilderPage() {
     }
   }
 
+  async function onDelete() {
+    if (!pattern) return;
+    setDeleting(true);
+    try {
+      await api(`/paper-patterns/${pattern.id}`, { method: 'DELETE' });
+      toast.success('Pattern deleted');
+      router.replace('/paper-patterns');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Delete failed');
+      setDeleting(false);
+    }
+  }
+
   /* ── analyze (unchanged behavior) ── */
   async function onAnalyze() {
     if (!pattern) return;
@@ -501,7 +516,8 @@ export default function PatternBuilderPage() {
   }
 
   const canApprove = pattern.status !== 'APPROVED';
-  const readOnly = pattern.status === 'APPROVED';
+  // Approved patterns stay editable; only AI re-analysis stays blocked.
+  const canAnalyze = pattern.status !== 'APPROVED';
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -523,7 +539,7 @@ export default function PatternBuilderPage() {
               <StatusBadge status={pattern.status} />
               {isTeacher && (
                 <>
-                  {!readOnly && (
+                  {canAnalyze && (
                     <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
                       Analyze
                     </Button>
@@ -551,20 +567,22 @@ export default function PatternBuilderPage() {
                       Create Assessment
                     </Button>
                   )}
-                  {!readOnly && (
-                    <Button size="sm" onClick={() => setReviewOpen(true)}>
-                      <Eye className="mr-1 size-3.5" /> Review &amp; Save
-                    </Button>
-                  )}
+                  <Button size="sm" variant="outline" onClick={() => setDeleteOpen(true)}>
+                    <Trash2 className="mr-1 size-3.5" /> Delete
+                  </Button>
+                  <Button size="sm" onClick={() => setReviewOpen(true)}>
+                    <Eye className="mr-1 size-3.5" /> Review &amp; Save
+                  </Button>
                 </>
               )}
             </div>
           }
         />
 
-        {readOnly && (
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-            This pattern is approved and read-only. Create an assessment from it instead.
+        {pattern.status === 'APPROVED' && (
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+            Approved patterns remain editable. Saving changes updates the template — it does not
+            alter any assessment already created from it.
           </div>
         )}
 
@@ -634,21 +652,19 @@ export default function PatternBuilderPage() {
                 {pattern.subjectIds.map((id) => (
                   <Badge key={id} variant="secondary">
                     {subjectName(id)}
-                    {!readOnly && (
-                      <button
-                        type="button"
-                        className="ml-1 cursor-pointer text-muted-foreground hover:text-foreground"
-                        disabled={savingSubjects}
-                        onClick={() => onSaveSubjects(pattern.subjectIds.filter((s) => s !== id))}
-                      >
-                        ×
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="ml-1 cursor-pointer text-muted-foreground hover:text-foreground"
+                      disabled={savingSubjects}
+                      onClick={() => onSaveSubjects(pattern.subjectIds.filter((s) => s !== id))}
+                    >
+                      ×
+                    </button>
                   </Badge>
                 ))}
               </div>
             )}
-            {!readOnly && allSubjects.length > 0 && (
+            {allSubjects.length > 0 && (
               <Select
                 value=""
                 onValueChange={(id) => {
@@ -673,7 +689,7 @@ export default function PatternBuilderPage() {
                 </SelectContent>
               </Select>
             )}
-            {!readOnly && pattern.subjectIds.length > 0 && (
+            {pattern.subjectIds.length > 0 && (
               <Button
                 type="button"
                 variant="ghost"
@@ -698,13 +714,7 @@ export default function PatternBuilderPage() {
               </Badge>
             )}
           </CardHeader>
-          <CardContent className="relative space-y-4">
-            {readOnly && (
-              <div
-                className="absolute inset-0 z-10 cursor-not-allowed bg-background/40"
-                aria-hidden="true"
-              />
-            )}
+          <CardContent className="space-y-4">
             {sections.length === 0 && !pattern.structure && !structureLoaded && (
               <EmptyState
                 title="No blueprint yet"
@@ -1306,6 +1316,18 @@ export default function PatternBuilderPage() {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* ── Delete dialog ── */}
+        <ConfirmDialog
+          open={deleteOpen}
+          onOpenChange={(o) => !deleting && setDeleteOpen(o)}
+          title="Delete this pattern?"
+          description="This action cannot be undone. Any assessment already created from this pattern will retain its data but lose the blueprint reference."
+          confirmLabel="Delete"
+          destructive
+          loading={deleting}
+          onConfirm={onDelete}
+        />
 
         {/* ── Approve dialog ── */}
         <ConfirmDialog

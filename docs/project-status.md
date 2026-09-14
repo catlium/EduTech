@@ -311,6 +311,54 @@ validation on every write path.
   remove-all → General, match logic, cross-institute).
 - Worker untouched (pytest suite unaffected).
 
+### Sub-goal: FGD Approved-pattern edit + safe deletion — COMPLETE (sixth checkpoint)
+
+APPROVED no longer freezes a paper pattern. It is a reusable template: an
+authorized user can keep editing it and delete it when deletion is safe. The
+only operation that stays blocked for APPROVED is AI re-analysis (unchanged
+`409`), and the only deletion blocker is an active blueprint-analysis job.
+
+- **Editable APPROVED** (`paper-patterns.service.ts` `updatePattern`): the
+  `APPROVED → 409` guard was removed. Edit is allowed at any lifecycle status;
+  optimistic `version` handling, tenant scoping, per-subject institute
+  validation, and subject-association replacement (empty array → General) are
+  unchanged. Editing never touches assessments already created from the
+  pattern (they copy their metadata at creation).
+- **`DELETE /paper-patterns/:patternId`** → `{ deleted: true }` (matches the
+  `syllabus` deletion response convention). Enforced in the service layer, not
+  the UI: `JobsService.hasActivePatternJob` rejects with `409` when an
+  `AI_GENERATE_BLUEPRINT` job for the pattern is `queued`/`processing`/
+  `cancelling`. Check-then-delete (same as syllabus); a job landing after the
+  DELETE just fails to find the pattern harmlessly
+  (`ponytail:` comment names `SELECT FOR UPDATE` as the per-pattern-lock
+  upgrade only if contention appears).
+- **Actual dependency protections** — no artificial lock framework, no soft
+  delete, no reference counting:
+  - Subject junction: `paper_pattern_subjects.pattern_id` is `ON DELETE
+    CASCADE` — deleting a General, single-, or multi-subject pattern removes
+    its association rows (no orphans), subjects themselves are untouched.
+  - Assessments: `assessments.blueprint_id` is `ON DELETE SET NULL` — an
+    existing assessment keeps all its data; only the blueprint reference
+    nulls. Deleting/editing a pattern can never corrupt a published exam.
+- **Frontend** (`[patternId]/page.tsx`): `readOnly` (the APPROVED lock) is
+  gone; the editor, subject-chips editor, and Review & Save are active for
+  every status, the amber "read-only" banner became an "approved remains
+  editable" note, and Analyze stays hidden for APPROVED. New destructive
+  **Delete** action uses the existing `ConfirmDialog`, calls the real DELETE,
+  surfaces `409`/conflict errors via toast, and navigates back to the pattern
+  list on success. The DELETE route still requires `INSTITUTE_ADMIN`/`TEACHER`.
+
+### Validation
+
+- turbo `pnpm typecheck` 10/10 PASS; api eslint clean; web `pnpm build` green.
+- `node --test` paper patterns **40 PASS**: `paper-pattern-policy.test.ts`
+  **17 PASS** (DRAFT/REVIEW/APPROVED editable, write-role decorators on
+  PATCH/DELETE routes, version conflict, active-job delete block, delete at any
+  status, General/multi-subject delete, junction cascade SQL, `blueprint_id`
+  SET NULL SQL, no-orphan check) + subjects 10 + validation 13.
+  Script `test:paper-pattern-policy` added to `apps/api/package.json`.
+- Worker untouched.
+
 ### Known Issues / Deferred
 
 - Browser UI verification (subject/chapter/topic/material/jobs pages) left for

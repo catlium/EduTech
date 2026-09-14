@@ -144,6 +144,36 @@ update docs; commit + push; checkpoint report; STOP.
       generation; pattern export button + `GET /export/paper-pattern/:patternId`
       rendering the pattern structure — no broad export redesign
 
+### Goal: FGD Approved-pattern edit + safe deletion
+
+Make APPROVED patterns a reusable template in the true sense: editable and
+deletable when authorized and when no active/protected dependency blocks the
+operation. AI re-analysis stays blocked for APPROVED. Assessments referenced via
+`blueprint_id` keep the existing `ON DELETE SET NULL` (no artificial lock, no
+mutation of published exams).
+
+- [x] D1 Backend: `updatePattern` no longer rejects APPROVED (edit allowed at any
+      status; optimistic `version` check unchanged; subject association
+      replacement preserved)
+- [x] D2 `DELETE /paper-patterns/:patternId` → `{ deleted: true }`, guarded by
+      `JobsService.hasActivePatternJob` (queued/processing/cancelling
+      `AI_GENERATE_BLUEPRINT` → `409`); junction rows + `blueprint_id` self-clean
+      via existing FKs (no orphaned rows, assessments keep data)
+- [x] D3 Frontend: APPROVED no longer read-only (editor + subject chips + Review
+      & Save all active; "approved remains editable" banner; Analyze still hidden
+      for APPROVED); Delete button + destructive ConfirmDialog → DELETE →
+      navigate to list; 409 surfaced as toast
+- [x] D4 Tests `paper-pattern-policy.ts` + `paper-pattern-policy.test.ts`
+      (17 PASS): DRAFT/REVIEW/APPROVED editable, authorize roles on PATCH/DELETE
+      routes, version conflict, active-job delete block, delete-any-status,
+      General/multi-subject delete, junction cascade, `blueprint_id` SET NULL,
+      no orphaned relationships
+- [x] D5 Docs: tasks.md + project-status.md + `docs/api/paper-patterns.md`
+      (lifecycle §, Edit §, new Delete §)
+- [x] D6 Validation: turbo typecheck 10/10, api lint, web build, node:test 40
+      PASS (policy 17 + subjects 10 + validation 13); prettier on touched files
+- [x] D7 Commit + push + checkpoint report + STOP
+
 ### Goal: FG Many-to-many paper patterns ↔ subjects
 
 Normalize the one-to-one `subject_id` column into a junction table so a pattern

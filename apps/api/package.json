@@ -15,6 +15,7 @@
     "test:analytics": "node --test src/attempts/analytics.test.ts",
     "test:paper-patterns": "node --test src/paper-patterns/paper-patterns.validation.test.ts",
     "test:paper-pattern-subjects": "node --test src/paper-patterns/paper-pattern-subjects.test.ts",
+    "test:paper-pattern-policy": "node --test src/paper-patterns/paper-pattern-policy.test.ts",
     "test:export": "node --test src/export/export.service.test.ts",
     "clean": "rm -rf dist .turbo"
   },

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -79,6 +80,16 @@ export class PaperPatternsController {
       dto,
     );
     return { pattern };
+  }
+
+  @Delete(':patternId')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async remove(
+    @Tenant() tenant: TenantContext,
+    @Param('patternId', ParseUUIDPipe) patternId: string,
+  ) {
+    return this.paperPatternsService.deletePattern(tenant.instituteId, patternId);
   }
 
   @Post(':patternId/analyze')

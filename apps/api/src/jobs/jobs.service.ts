@@ -145,6 +145,23 @@ export class JobsService {
     return row ? this.toJob(row) : null;
   }
 
+  /** True when an active blueprint-analysis job references this paper pattern. */
+  async hasActivePatternJob(instituteId: string, patternId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.instituteId, instituteId),
+          eq(jobs.type, 'AI_GENERATE_BLUEPRINT'),
+          inArray(jobs.status, ['queued', 'processing', 'cancelling']),
+          sql`${jobs.payload}->>'patternId' = ${patternId}`,
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
+  }
+
   async updateJobStatus(
     jobId: string,
     status: string,

@@ -98,10 +98,6 @@ export class PaperPatternsService {
     },
   ) {
     const row = await this.requirePattern(instituteId, patternId);
-    // APPROVED is immutable — an edited copy must be created instead.
-    if (row.status === 'APPROVED') {
-      throw new ConflictException('Approved paper patterns cannot be edited');
-    }
     if (input.version !== undefined && input.version !== row.version) {
       throw new ConflictException('Paper pattern has been modified — refresh and retry');
     }
@@ -146,6 +142,27 @@ export class PaperPatternsService {
     });
 
     return (await this.attachSubjectIds([updated!]))[0]!;
+  }
+
+  async deletePattern(instituteId: string, patternId: string) {
+    // requirePattern gives 404 + tenant scope; the pattern row itself is not
+    // otherwise needed for deletion (junction + assessment-blueprint FKs
+    // self-clean on delete).
+    await this.requirePattern(instituteId, patternId);
+    // Guard against concurrent worker operations: if a blueprint analysis
+    // job is queued or running, refuse deletion rather than race with the
+    // worker. Check-then-delete has a small window; concurrent jobs that
+    // land after the DELETE will simply fail to find the pattern (harmless).
+    // ponytail: same check-then-delete as syllabus; per-pattern lock only
+    // matters at >1 req/s per pattern, upgrade to SELECT FOR UPDATE if seen.
+    if (await this.jobs.hasActivePatternJob(instituteId, patternId)) {
+      throw new ConflictException('A blueprint analysis is still running for this paper pattern');
+    }
+
+    await this.db
+      .delete(paperPatterns)
+      .where(and(eq(paperPatterns.id, patternId), eq(paperPatterns.instituteId, instituteId)));
+    return { deleted: true };
   }
 
   // ── AI analysis ───────────────────────────

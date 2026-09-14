@@ -9,8 +9,8 @@ import { users } from './users.js';
 // jsonb holds the PaperPatternStructure contract; it stays null until the
 // teacher provides one (MANUAL source) or an AI analysis completes (TEXT /
 // MATERIAL / PREVIOUS_YEAR_PAPER source). Status lifecycle is app-controlled
-// (DRAFT → REVIEW → APPROVED); APPROVED patterns are immutable through the API
-// and are the only ones that can drive generation or assessment creation.
+// (DRAFT → REVIEW → APPROVED); APPROVED patterns remain editable and are the
+// only ones that can drive generation or assessment creation.
 export const paperPatterns = pgTable('paper_patterns', {
   id: uuid('id').primaryKey().defaultRandom(),
   instituteId: uuid('institute_id')

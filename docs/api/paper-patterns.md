@@ -5,7 +5,7 @@ Base URL: `/api/v1/paper-patterns`
 The paper pattern API manages reusable exam blueprints: teachers create a pattern
 (subject + optional structure), optionally have an AI analyse a source material to
 populate the structure, validate it against deterministic rules, then approve it.
-Approved patterns are immutable. A pattern can be used to:
+Approved patterns remain editable and deletable. A pattern can be used to:
 
 1. **Pre-fill assessment metadata** — create an assessment whose `durationMinutes`
    and `maxMarks` are copied from the pattern.
@@ -66,8 +66,11 @@ Errors follow the global format:
 }
 ```
 
-`status` lifecycle: `DRAFT → REVIEW → APPROVED`. An APPROVED pattern is immutable
-(no edits, re-analyses, or approvals). Every PATCH atomically increments `version`.
+`status` lifecycle: `DRAFT → REVIEW → APPROVED`. Approval marks a pattern ready
+for generation and assessment creation; it is **not** a permanent freeze. An
+APPROVED pattern stays editable and deletable when authorized and when no
+active/protected dependency prevents the operation. AI re-analysis remains
+blocked for APPROVED patterns. Every PATCH atomically increments `version`.
 
 `structure` may be `null` (no structure set yet). When present, all section fields
 are validated by the deterministic rules described below.
@@ -118,7 +121,7 @@ GET /paper-patterns/:patternId
 
 Roles: any institute member. Returns `200`. `404` if not in the active institute.
 
-## Edit pattern (DRAFT only)
+## Edit pattern
 
 ```
 PATCH /paper-patterns/:patternId
@@ -126,10 +129,36 @@ PATCH /paper-patterns/:patternId
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `200`.
 
-Body accepts any subset of `title`, `description`, `structure`. Optimistic
-concurrency: send `"version": <current>` or the edit is rejected with `409`
-(`Paper pattern has been modified — refresh and retry`). `409` if the pattern is
-APPROVED. The `version` is atomically incremented.
+Body accepts any subset of `title`, `description`, `structure`, `subjectIds`.
+Optimistic concurrency: send `"version": <current>` or the edit is rejected with
+`409` (`Paper pattern has been modified — refresh and retry`). Editing is allowed
+for every status, including APPROVED; an APPROVED pattern is a reusable template
+and edits never mutate assessments already created from it. The `version` is
+atomically incremented.
+
+## Delete pattern
+
+```
+DELETE /paper-patterns/:patternId
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `200`.
+
+```json
+{ "deleted": true }
+```
+
+A pattern may be deleted at any status, including APPROVED. Actual deletion
+protections:
+
+- **Active AI analysis** — `409` (`A blueprint analysis is still running for
+  this paper pattern`) when an `AI_GENERATE_BLUEPRINT` job is `queued`,
+  `processing`, or `cancelling` for the pattern.
+- **Subject associations** — a delete cascades through `paper_pattern_subjects`
+  (junction rows are removed; no orphaned associations).
+- **Assessments** — `assessments.blueprint_id` is `ON DELETE SET NULL`: an
+  existing assessment keeps all its data and only loses the blueprint
+  reference.
 
 ## Validate pattern
 
