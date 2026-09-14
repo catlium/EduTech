@@ -196,6 +196,7 @@ DL=$(req DELETE "/syllabus/$SYL" -H "x-institute-id: $DEMO")
 ok "$DL" 409 "SYL-07 delete after confirm -> 409"
 
 echo "== SYL-08 upload file -> process -> text extracted =="
+SCOUNT=$(curl -s -b "$CJ" -X GET "$BASE/academic/subjects" -H "x-institute-id: $DEMO" | python3 -c "import sys,json;print(len(json.load(sys.stdin)['subjects']))")
 CS2=$(req POST /academic/subjects -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" \
   -d "{\"name\":\"Physics $RAND\",\"slug\":\"phy-$RAND\"}")
 ok "$CS2" 201 "SYL-08 create subject 201"
@@ -207,6 +208,10 @@ ok "$CU" 201 "SYL-08 upload 201"
 body_has '"processingStatus":"UPLOADED"' "SYL-08 uploaded state"
 SYL2=$(jget id)
 echo "  uploaded syllabus=$SYL2"
+# SYL-E1: uploading for an existing subject never duplicates the subject
+SCOUNT_AFTER=$(curl -s -b "$CJ" -X GET "$BASE/academic/subjects" -H "x-institute-id: $DEMO" | python3 -c "import sys,json;print(len(json.load(sys.stdin)['subjects']))")
+if [ "$SCOUNT_AFTER" = "$((SCOUNT + 1))" ]; then PASS=$((PASS+1)); echo "  ok SYL-E1 no duplicate subject on upload (subjects $(($SCOUNT + 1)) = create 1, upload 0)";
+else FAIL=$((FAIL+1)); FAILURES+=("SYL-E1 subject count grew beyond the one explicit create ($SCOUNT -> $SCOUNT_AFTER)"); echo "  FAIL SYL-E1 subject count grew beyond the one explicit create"; fi
 PU2=$(req POST "/syllabus/$SYL2/process" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO")
 ok "$PU2" 202 "SYL-08 process 202"
 body_has '"jobId"' "SYL-08 process enqueues job"
@@ -243,6 +248,27 @@ XN=$(req GET "/syllabus/$SYL2" -H "x-institute-id: 11111111-1111-1111-1111-11111
 ok "$XN" 403 "SYL-11 foreign tenant read -> 403"
 NC=$(curl -s -X GET "$BASE/syllabus/$SYL2" -H "x-institute-id: $DEMO" -o /dev/null -w "%{http_code}")
 ok "$NC" 401 "SYL-11 no cookie -> 401"
+
+echo "== SYL-E2 confirm -> reconciliation invents no subjects =="
+SCP=$(curl -s -b "$CJ" -X GET "$BASE/academic/subjects" -H "x-institute-id: $DEMO" | python3 -c "import sys,json;print(len(json.load(sys.stdin)['subjects']))")
+CN2=$(req POST "/syllabus/$SYL2/confirm" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" -d '{}')
+ok "$CN2" 201 "SYL-E2 confirm 201"
+SCA=$(curl -s -b "$CJ" -X GET "$BASE/academic/subjects" -H "x-institute-id: $DEMO" | python3 -c "import sys,json;print(len(json.load(sys.stdin)['subjects']))")
+if [ "$SCA" = "$SCP" ]; then PASS=$((PASS+1)); echo "  ok SYL-E2 no new subjects invented by confirm ($SCP)";
+else FAIL=$((FAIL+1)); FAILURES+=("SYL-E2 confirm added subjects ($SCP -> $SCA)"); echo "  FAIL SYL-E2 confirm added subjects ($SCP -> $SCA)"; fi
+ST2=$(poll_syllabus_field "$SYL2" status "CONFIRMED" 30)
+ok "$ST2" "CONFIRMED" "SYL-E2 syllabus reaches CONFIRMED"
+
+echo "== SYL-E3 subject-specific syllabus isolation =="
+ST1=$(poll_syllabus_field "$SYL" status "CONFIRMED" 30)
+ok "$ST1" "CONFIRMED" "SYL-E3 subject 1 syllabus still CONFIRMED (unaffected)"
+SLIST=$(curl -s -b "$CJ" -X GET "$BASE/syllabus?subjectId=$SUBJ2" -H "x-institute-id: $DEMO" | python3 -c "import sys,json;s=json.load(sys.stdin)['syllabi'];print(len(s), s[0]['id'] if s else '', s[0]['subjectId'] if s else '')")
+SLN=$(echo "$SLIST" | cut -d' ' -f1)
+SLID=$(echo "$SLIST" | cut -d' ' -f2)
+SLSUBJ=$(echo "$SLIST" | cut -d' ' -f3)
+ok "$SLN" "1" "SYL-E3 subject 2 has exactly its own syllabus"
+ok "$SLSUBJ" "$SUBJ2" "SYL-E3 syllabus owned by subject 2"
+ok "$SLID" "$SYL2" "SYL-E3 version chain belongs to subject 2"
 
 echo ""
 echo "=========================================="
