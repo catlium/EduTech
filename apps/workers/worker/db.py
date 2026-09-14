@@ -199,6 +199,35 @@ def update_job_status(
         conn.execute(sql, params)
 
 
+def recover_stale_ai_jobs(older_than_minutes: int) -> list[dict[str, Any]]:
+    """AI jobs stuck in ``processing`` longer than the threshold (a worker
+    crash, container restart, or RabbitMQ connection loss can strand a job that
+    never reached a terminal state). Returns the rows so the consumer can reset
+    them to ``queued`` and re-publish. A genuinely long-running job is never
+    touched until it exceeds the threshold."""
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT id, institute_id, type, payload FROM jobs"
+            " WHERE type LIKE 'AI_%' AND status = 'processing'"
+            " AND started_at IS NOT NULL"
+            " AND started_at < now() - make_interval(mins => %s)",
+            (older_than_minutes,),
+        ).fetchall()
+
+
+def reset_job_to_queued(job_id: str) -> bool:
+    """Race-safe reset: only a row still ``processing`` is reset to ``queued``
+    (started_at cleared). A live worker that finished the job in the meantime
+    is never clobbered. Returns whether a row was reset."""
+    with psycopg.connect(settings.database_url) as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET status = 'queued', started_at = NULL, updated_at = %s"
+            " WHERE id = %s AND status = 'processing' RETURNING id",
+            (_now(), job_id),
+        )
+        return cur.fetchone() is not None
+
+
 def get_topic_materials(topic_id: str, institute_id: str) -> list[dict[str, Any]]:
     """Eligible generation sources for a topic (ACTIVE + READY + extracted text)."""
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
@@ -407,6 +436,19 @@ def insert_generated_questions(
     """
     ids: list[str] = []
     with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
+        # Idempotency for same-job re-runs (API retry / stale-recovery requeue
+        # reuse the SAME jobId). A previous partial run of this job may have
+        # inserted PENDING rows before failing; purge them so a retry never
+        # duplicates questions. Only untouched system rows: anything a teacher
+        # already reviewed is never deleted.
+        job_id = provenance.get("jobId") if isinstance(provenance, dict) else None
+        if isinstance(job_id, str):
+            cur.execute(
+                "DELETE FROM questions"
+                " WHERE status = 'ACTIVE' AND approval_status = 'PENDING'"
+                "   AND provenance->>'jobId' = %s",
+                (job_id,),
+            )
         for q in questions:
             # Effective answer format mirrors the GeneratedQuestion validator:
             # the LLM may omit it, in which case the type code is the format.

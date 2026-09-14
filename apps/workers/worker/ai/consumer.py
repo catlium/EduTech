@@ -21,6 +21,15 @@ Concurrency: ``WORKER_AI_CONCURRENCY`` worker threads each open their own
 BlockingConnection (pika connections are not thread-safe) and consume with
 prefetch 1, so independent jobs run in parallel up to the cap. Material/OCR
 processing stays on the single-threaded generic consumer.
+
+Resilience (reliability directive): a consumer thread that loses its RabbitMQ
+connection reconnects with exponential backoff instead of dying (a broker
+restart must not strand the worker). On startup, AI jobs stuck in
+``processing`` longer than ``WORKER_AI_STALE_PROCESSING_MINUTES`` (worker
+crash / connection loss left them non-terminal) are reset to ``queued`` and
+re-published before consumption starts, so stranded work resumes. A
+re-published job reuses its own jobId, which keeps question/content
+idempotency intact (purge-by-jobId / topic dedup).
 """
 
 import json
@@ -116,10 +125,78 @@ def _consume_loop() -> None:
         connection.close()
 
 
+def _publish(message: dict[str, Any], channel: BlockingChannel | None = None) -> None:
+    """Publish a job message to the ai queue (durable, persistent)."""
+    close = channel is None
+    if channel is None:
+        connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
+        channel = connection.channel()
+        channel.queue_declare(queue=settings.ai_queue, durable=True)
+    try:
+        channel.basic_publish(
+            exchange="",
+            routing_key=settings.ai_queue,
+            body=json.dumps(message),
+            properties=pika.BasicProperties(delivery_mode=2),
+        )
+    finally:
+        if close:
+            channel.close()
+            connection.close()
+
+
+def _republish_stale_jobs() -> None:
+    """Reset AI jobs stranded in ``processing`` and re-queue them.
+
+    Reuses the job's own id: the worker re-runs the identical payload with the
+    same jobId, and question/content idempotency (purge-by-jobId / topic dedup)
+    keeps the retry free of duplicates.
+    """
+    rows = db.recover_stale_ai_jobs(settings.ai_stale_processing_minutes)
+    if not rows:
+        return
+    connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
+    channel = connection.channel()
+    channel.queue_declare(queue=settings.ai_queue, durable=True)
+    requeued = 0
+    for row in rows:
+        if not db.reset_job_to_queued(row["id"]):
+            logger.info("Skipping stale job no longer processing: %s", row["id"])
+            continue
+        _publish(
+            {
+                "jobId": row["id"],
+                "instituteId": row["institute_id"],
+                "type": row["type"],
+                "payload": row["payload"] or {},
+            },
+            channel,
+        )
+        requeued += 1
+    connection.close()
+    if requeued:
+        logger.warning("Stale processing sweep: requeued %d AI job(s)", requeued)
+
+
+def _run_consumer_thread() -> None:
+    """Run the consume loop forever, reconnecting with backoff on failure."""
+    backoff = 1.0
+    while True:
+        try:
+            _consume_loop()
+        except pika.exceptions.AMQPConnectionError:
+            logger.warning("AI consumer lost its RabbitMQ connection; reconnecting")
+        except Exception:
+            logger.exception("AI consumer thread failed; reconnecting")
+        time.sleep(backoff)
+        backoff = min(backoff * 2, 60.0)
+
+
 def start_ai_consumer() -> None:
+    _republish_stale_jobs()
     count = max(1, settings.ai_concurrency)
     threads = [
-        threading.Thread(target=_consume_loop, name=f"ai-consumer-{i}", daemon=True)
+        threading.Thread(target=_run_consumer_thread, name=f"ai-consumer-{i}", daemon=True)
         for i in range(count)
     ]
     for thread in threads:

@@ -1,5 +1,51 @@
 # Project Status
 
+## Phase 32 — Correction: Generation Workflows & AI Reliability (2026-09-14)
+
+**Goal:** correct the post-Phase 31 AI generation workflows. Sub-goals:
+REL (worker AI reliability) → B starter-material prerequisite orchestration →
+C/D idempotent generation + Material Detail UX → Question Bank generation +
+prompt/context correction → Paper Pattern consistency → targeted exports →
+final regression. Audits (question bank, paper pattern, material/topic, AI
+reliability) recorded in `docs/tasks.md` (Goal A/A2) before implementation.
+
+### Sub-goal: REL AI reliability — COMPLETE (first checkpoint)
+
+Hardened the worker → OmniRoute AI path so transient failures are retried,
+permanent failures fail fast, worker connections survive resets, stranded
+`processing` jobs are recovered at startup, and a retried question job can
+never duplicate resources.
+
+- **Provider** (`worker/ai/provider.py`): split connect(10s)/read(300s)
+  timeouts, transient-vs-permanent classification (transient: timeouts, any
+  httpx transport error except redirects, HTTP 408/409/425/429/500/502/503/
+  504; permanent: other 4xx + invalid payload), exponential backoff with
+  jitter, `max_retries` attempts after the first call, job FAILED only after
+  exhaustion.
+- **Consumer** (`worker/ai/consumer.py`): each worker thread reconnects with
+  backoff (1s→60s cap) instead of dying on connection loss; `_publish`
+  mirrors API `persistent: true` (`delivery_mode=2`).
+- **Stale-processing sweep**: startup resets `AI_%` jobs stuck in
+  `processing` past `WORKER_AI_STALE_PROCESSING_MINUTES` (default 60) to
+  `queued` (race-safe `WHERE status='processing'`, started_at cleared) and
+  re-publishes with the same `jobId`. Long-running jobs are never touched
+  until the threshold.
+- **Question retry idempotency**: `insert_generated_questions` purges
+  `PENDING` questions of the same `jobId` in the same transaction before
+  inserting; API `retryJob` reuses the `jobId`, so re-runs cannot duplicate.
+- **Config**: `WORKER_AI_CONNECT_TIMEOUT_SECONDS`,
+  `WORKER_AI_READ_TIMEOUT_SECONDS`, `WORKER_AI_MAX_RETRIES`,
+  `WORKER_AI_RETRY_BACKOFF_SECONDS`, `WORKER_AI_RETRY_BACKOFF_MAX_SECONDS`,
+  `WORKER_AI_STALE_PROCESSING_MINUTES` (old `WORKER_AI_TIMEOUT_SECONDS`
+  removed from `.env.example` + `infrastructure/compose/.env.example`).
+- **Validation**: worker pytest **46 PASS** (incl. new 11-test
+  `test_ai_reliability.py`), ruff + mypy clean; turbo typecheck 10/10.
+
+**Status: COMPLETE** — committed + pushed. Full detail: `docs/tasks.md` (Phase
+32, Goal REL), `docs/api/ai.md` (§ AI reliability).
+
+**Next task:** Phase B material prerequisite orchestration (per `docs/tasks.md`).
+
 ## Phase 31 — Resource Ownership, Parallel AI, Correction & Validation (2026-09-14)
 
 **Goal:** close the resource-ownership, parallel-AI, note-quality, syllabus

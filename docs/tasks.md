@@ -1,5 +1,137 @@
 # Task Tracker
 
+## Phase 32 — Generation Workflow & AI Reliability Correction (2026-09-14)
+
+User-directed corrective phase (post-Phase 31, continuation directive + the
+"fix the AI generation reliability issue" directive appended mid-phase). Two
+workstreams:
+
+**Workstream 1 — Generation workflows (directive items 1–25):** resources
+reference required Material; missing material auto-generates starter first
+(and waits for READY) before derived jobs dispatch; duplicate starter/material
+generation is avoided; batch generation is idempotent (Generate Missing skips
+existing; explicit Regenerate overrides); Material Detail is informational
+(no misleading "Generate Content"; shortcut says "Generate resources for this
+Topic"); Question Bank page/dialog use ONE authoritative type config and
+explicit actions (type selection, quantity, read-only Check Bank / Generate
+Missing / Create New Set); independent question types run in parallel via
+existing Jobs + Job Monitor; Paper Pattern Maker uses the same authoritative
+config; targeted export fixes (no full export redesign); consistent action
+model; Job Monitor shows prerequisite jobs + "waiting for prerequisite"
+explanation; per-topic material check → starter → wait → skip-existing-unless-
+regenerate → parallel dispatch → honest partial failures; "Material required"
+errors replaced by the intelligent workflow; shadcn/ui consistent dialogs;
+test items 28–31 (material prerequisite, idempotency, question bank, paper
+pattern, job monitor, regression); implementation order A–H; browser journeys
+J1–J7 are the user's responsibility; docs updates; final validation +
+checkpoint + STOP (do not start the next phase).
+
+**Workstream 2 — AI reliability (second directive):** increase AI request/read
+timeout (configurable via existing env pattern); classify transient failures
+(timeout, connection reset, 429, 502, 503, 504) vs permanent (invalid API key,
+model 404, 400/401/403, bad request, validation); auto retry/requeue with
+exponential backoff + max retry count; permanent → FAILED immediately;
+idempotent retries (no duplicate Notes/Questions; reuse Phase 31 topic/type
+dedup; questions jobId guard); long-running active job stays PROCESSING;
+worker/RabbitMQ connection reset recovery/reconnect; show retry state in Job
+Monitor if the schema supports it (reuse existing job model); smallest
+reliable fix; focused retention tests; run worker/API tests + existing E2E;
+update docs; commit + push; checkpoint report; STOP.
+
+### Goal: A/A2 Audit (read-only)
+
+- [x] A1 Question Bank audit — 11 predefined types (`PredefinedQuestionTypeEnum`
+      contracts :804) seeded globally (0017_gray_slyde.sql:27), page hardcodes 3,
+      panel loads /question-types dynamically; `/questions/bank/generate`
+      unused; questions have no versioning; `/questions/generate` topic-only
+- [x] A2 Paper Pattern audit — rule Select hardcodes 3 + "Mixed" (page :762),
+      builder TYPE_OPTIONS/TYPE_LABELS 3 types; dialog shows all types; no export
+- [x] A3 Material/Topic audit — Material Detail has own gen dialog (:966), misleading
+      "Generate learning resources" owner UX (:719-722), per-type Generate (:798)/
+      Regenerate (:818); topic page has startStarter; no missing-vs-regenerate split
+- [x] A4 AI-reliability audit — provider.py raw httpx.post, single float timeout
+      (default 60, env WORKER_AI_TIMEOUT_SECONDS), NO retry, transient/permanent
+      indistinguishable; consumer.py pika threads no reconnect (thread dies);
+      questions NOT idempotent (no jobId guard); processing can hang forever on
+      crash (no stale sweep); idempotency: content dedup topic-keyed, questions not
+- [~] A5 Remaining reads for phase B/E — worker generation/consumes flows, API
+      generation.service + question-generation.service, jobs index/dedupKey,
+      contracts response shapes (done during start of implementation)
+
+### Goal: REL AI reliability (worker, first commit)
+
+- [x] REL1 Provider retry + timeout tuple: connect/read timeout
+      (`ai_connect_timeout_seconds`, `ai_read_timeout_seconds` default 300),
+      transient (timeout, connect reset, 408, 409, 429, 500–504) → exponential
+      backoff retry up to `ai_max_retries`; permanent (400/401/403/404/405/422,
+      invalid payload/glyph) → fail immediately
+- [x] REL2 Consumer reconnect: each worker thread retries its RabbitMQ
+      connection with backoff instead of dying on connection reset
+- [x] REL3 Startup stale-processing sweep: `processing` jobs older than
+      `ai_stale_processing_minutes` reset to `queued` (started_at cleared) and
+      re-published; a live job is NEVER failed by this sweep
+- [x] REL4 Question retry idempotency: `insert_generated_questions` purges rows
+      written by the same jobId before re-insert (content already topic-deduped)
+- [x] REL5 Tests: timeout→retry, transient→retry, permanent→FAILED,
+      max-retries→FAILED, retry-no-dup, long-running stays processing —
+      `apps/workers/tests/test_ai_reliability.py`
+- [x] REL6 Validation: worker pytest + ruff + mypy, turbo typecheck;
+      docs/tasks + project-status + user-validation + docs/api/ai.md;
+      commit + push + stop-point
+
+### Goal: B Material prerequisite orchestration
+
+- [ ] B1 API: per-topic usable-material check in batch/derived generation;
+      missing → ONE `AI_GENERATE_STARTER_MATERIAL` job carrying batchId +
+      dependentResources (operation/type/params); concurrent starter enqueue
+      collides on unique index → reuse existing starter batch (no duplicate)
+- [ ] B2 Worker: on starter completion, before terminal update, enqueue the
+      dependent jobs (insert job rows + publish to ai_generation, shared batchId)
+- [ ] B3 Job Monitor: prerequisite job visible; web shows "waiting for
+      prerequisite" while a starter runs for a topic's batch
+
+### Goal: C/D Idempotent generation + Material Detail UX
+
+- [ ] C1 `generate-batch` mode `missing` (default, skip types with a live
+      non-ARCHIVED AI_GENERATED item on the topic) vs `regenerate` (force,
+      still honouring active-job dedup); response reports `skipped` + reasons
+- [ ] D1 Material Detail: remove local generation dialog + per-type
+      Generate/Regenerate; read-only derived-resource display; header button
+      becomes "Generate resources for this Topic" linking to the topic workspace
+
+### Goal: E Question Bank unification
+
+- [ ] E1 Single source of truth: page filter/dialog/panel all use dynamic
+      /question-types; page "Ask AI" dialog removed (one workflow via panel)
+- [ ] E2 Explicit dialog actions: Check Bank (dry run) / Generate Missing
+      (deficit) / Create New Set (full count) with type selection + quantity;
+      questions stay Topic-owned, documented no set/version model → no fake
+      "Regenerate" for questions
+- [ ] E3 Per-type parallel generation: one `AI_GENERATE_QUESTIONS` job per
+      questionType per source sharing batchId (dedupKey/COALESCE migration on
+      jobs_active_generation_unique); response carries jobIds[] + batchId;
+      web polls `GET /jobs?batchId=`
+
+### Goal: F/G Paper pattern config + targeted export
+
+- [ ] F1 Paper Pattern page + builder use dynamic question types (one config)
+- [ ] G1 Question Bank export carries scope (already) + distinct labels from
+      generation; pattern export button + `GET /export/paper-pattern/:patternId`
+      rendering the pattern structure — no broad export redesign
+
+### Goal: H Validation + docs + checkpoint
+
+- [ ] H1 Tests — material prerequisite, idempotency (missing vs regenerate),
+      question bank actions, paper pattern config, job monitor prerequisite,
+      AI reliability regression
+- [ ] H2 Docs: project-status, tasks.md, docs/api/jobs.md + ai.md + questions.md
+      + paper-patterns.md, user-validation (J1–J7 browser journeys = user)
+- [ ] H3 Full validation: worker pytest/ruff/mypy, turbo typecheck + lint,
+      `resource_ownership_e2e.sh` + `syllabus_e2e.sh` stay green, rebuild +
+      --force-recreate affected images
+- [ ] H4 Commits (coherent, one per workstream) + push origin/main + clean tree
+      + checkpoint report + STOP
+
 ## Phase 30 — Syllabus-First: `syllabi` table + top-level /syllabus (2026-09-13)
 
 The syllabus became a first-class, authoritative source (replacing the

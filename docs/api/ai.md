@@ -403,6 +403,45 @@ RabbitMQ `BlockingConnection`, `prefetch_count=1`). Set it in
 (OCR/metadata) worker ignores it and stays serial — per-material processing is
 already effectively one-at-a-time.
 
+### AI reliability (Correction Phase, REL)
+
+Worker → AI gateway reliability, in `apps/workers/worker/ai/provider.py` and
+`consumer.py`.
+
+- **Timeouts**: httpx tuple `(connect=_WORKER_AI_CONNECT_TIMEOUT_SECONDS_,
+  read=_WORKER_AI_READ_TIMEOUT_SECONDS_, pool=10s, write=30s)`. The generous
+  read timeout (default **300s**) covers the long generation phase; connect
+  (default **10s**) fails fast when the gateway is down. A read timeout is a
+  **transient** error → retried.
+- **Retries**: `_WORKER_AI_MAX_RETRIES_` (default **3**) retries after a
+  transient failure with exponential backoff
+  (`base*2^(attempt-2)`, capped at `_WORKER_AI_RETRY_BACKOFF_MAX_SECONDS_`,
+  default 60s) plus ±10% jitter. Transient = read/connect/pool timeouts, any
+  httpx transport error except redirects, and HTTP status `408 409 425 429
+  500 502 503 504`. Permanent = other 4xx + invalid response payload → fails
+  the job immediately, no retry. A job is marked `FAILED` only after retries
+  are exhausted.
+- **Consumer reconnect**: each worker thread runs a reconnect loop — on
+  connection error it backs off 1s → 60s (cap) and reconnects instead of
+  dying; the queue survives, so jobs are not lost.
+- **Stale-processing sweep**: at worker startup
+  `_WORKER_AI_STALE_PROCESSING_MINUTES_` (default **60**) bounds the sweep —
+  `AI_%` jobs still `processing` older than the threshold are reset to
+  `queued` (started_at cleared, race-safe `WHERE status='processing'`) and
+  re-published with the same `jobId`. A genuinely long-running job is never
+  touched until it exceeds the threshold; one completes in the meantime, the
+  guarded reset leaves it alone.
+- **Question retry idempotency**: `insert_generated_questions` issues
+  `DELETE FROM questions WHERE status='ACTIVE' AND approval_status='PENDING'
+  AND provenance->>'jobId' = <jobId>` in the same transaction before
+  inserting. API `retryJob` reuses the same `jobId`, so a retried job can
+  never accumulate duplicate questions.
+- **Config**: all knobs in `.env`/`.env.example`
+  (`WORKER_AI_CONNECT_TIMEOUT_SECONDS`, `WORKER_AI_READ_TIMEOUT_SECONDS`,
+  `WORKER_AI_MAX_RETRIES`, `WORKER_AI_RETRY_BACKOFF_SECONDS`,
+  `WORKER_AI_RETRY_BACKOFF_MAX_SECONDS`, `WORKER_AI_STALE_PROCESSING_MINUTES`).
+  Old `WORKER_AI_TIMEOUT_SECONDS` is removed.
+
 ## Question bank generation
 
 ```

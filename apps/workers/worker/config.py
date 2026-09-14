@@ -29,7 +29,19 @@ class Settings(BaseSettings):
     ai_provider_url: str = "http://localhost:20128/v1"
     ai_api_key: str = ""
     ai_model: str = "auto"
-    ai_timeout_seconds: float = 60.0
+    # Read timeout is generous: a long generation must not be cut off, and a
+    # genuine timeout is retried with backoff (transient) rather than failing
+    # the job instantly. Connect gets its own shorter bound.
+    ai_connect_timeout_seconds: float = 10.0
+    ai_read_timeout_seconds: float = 300.0
+    # Transient AI failures (timeout, connection reset, 429/5xx) are retried
+    # with exponential backoff up to this many retries before the job fails.
+    ai_max_retries: int = 3
+    ai_retry_backoff_seconds: float = 2.0
+    ai_retry_backoff_max_seconds: float = 60.0
+    # A job stuck in `processing` this long (worker crash, connection loss) is
+    # reset to `queued` and re-published on worker startup.
+    ai_stale_processing_minutes: int = 60
     ai_queue: str = "ai_generation"
     # Number of independent AI consumer threads (each with its own RabbitMQ
     # connection, prefetch 1). Independent jobs run in parallel up to this cap;

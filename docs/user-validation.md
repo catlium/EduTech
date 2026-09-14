@@ -15,6 +15,52 @@ three marker states and block milestone closure until resolved.
 
 ---
 
+## Phase 32 / REL — AI Reliability (2026-09-14)
+
+Status: `[x]` Covered by automated worker tests `apps/workers/tests/
+test_ai_reliability.py` (11 tests) + the Phase 31 E2E suites. A live-failure
+E2E (killing the gateway mid-job) is **deferred** — REL unit/behavior suite
+below covers the semantics; a kill-the-gateway scenario needs the full stack
+and is recorded here for the user.
+
+- `[x]` REL-U1 timeout→retry — read timeout on first 2 calls then success:
+  provider returns the note, `httpx.post` called 3× (exponential backoff
+  exercised with `retry_backoff_seconds=0.01`)
+- `[x]` REL-U2 transient→retry — HTTP 503, 503, then 200: success, 3 calls
+- `[x]` REL-U3 permanent→FAILED — HTTP 400: `AIProviderError` immediately,
+  exactly 1 HTTP call; service marks the job `failed`
+- `[x]` REL-U4 max-retries→FAILED — 503 ×(max_retries+1): raises after
+  exhaustion (cleanup removes all 3 posts); service marks the job `failed`
+- `[x]` REL-U5 retry-no-dup — transient 503 then success through the real
+  provider in `service.generate`: job `completed` exactly once, never `failed`
+- `[x]` REL-U6 long-running stays processing — a transient failure inside a
+  job never flips the job to `failed`; `reset_job_to_queued` only resets rows
+  still `status='processing'` (race-safe guard), so a live job is untouched
+- `[x]` REL-U7 question idempotency — `insert_generated_questions` issues the
+  jobId-scoped `DELETE ... provenance->>'jobId'` before any `INSERT`
+- `[x]` REL-U8 question no-purge without jobId — no `DELETE` when provenance
+  has no `jobId`
+- `[x]` REL-U9 stale sweep bounds — `recover_stale_ai_jobs` filters `AI_%`,
+  `status='processing'`, `started_at < now()-make_interval(mins=>N)`
+
+Setup: `cd apps/workers && .venv/bin/pytest tests/test_ai_reliability.py`
+(46 worker tests total pass).
+
+Deferred (needs live stack, user):
+
+- `[ ]` REL-LIVE-1 — kill the OmniRoute gateway mid-generation: active job's
+  next chunk read times out, provider retries (backoff visible in worker
+  logs), job completes once gateway returns before `WORKER_AI_MAX_RETRIES`
+  exhausts; no duplicate resources
+- `[ ]` REL-LIVE-2 — restart the gateway repeatedly for > 60s: jobs FAILED
+  after retries; Job Monitor shows the failure; `POST /jobs/:id/retry`
+  re-runs the same `jobId` and purges the partial questions
+- `[ ]` REL-LIVE-3 — stop worker-ai while a job is `processing`, leave it past
+  `WORKER_AI_STALE_PROCESSING_MINUTES`, restart the worker: the stale job is
+  reset to `queued` and re-runs to completion without duplicating questions
+
+---
+
 ## Phase 31 — Resource Ownership, Parallel AI, Job Monitor, Note Quality (2026-09-14)
 
 Status: `[x]` Live API-level PASS via `scripts/e2e/resource_ownership_e2e.sh`
