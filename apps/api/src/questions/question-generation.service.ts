@@ -6,16 +6,21 @@ import {
   InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
-import { eq, and, sql, type SQL } from 'drizzle-orm';
-import { topics, chapters, subjects, paperPatterns, questions } from '@catlium/database';
+import { ConfigService } from '@nestjs/config';
+import { eq, and, sql, asc, type SQL } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { topics, chapters, subjects, paperPatterns, questions, jobs } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { QuestionTypesService } from './question-types.service.js';
 import { buildBucketsFromBlueprint } from './build-bank-buckets.js';
+import { planQuestionBankJobs, DEFAULT_QUESTION_BATCH_SIZE } from './build-question-batch.js';
 
 const OPERATION = 'AI_GENERATE_QUESTIONS';
+
+const ACTIVE_JOB_STATUSES = ['queued', 'processing', 'cancelling'] as const;
 
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
@@ -48,15 +53,23 @@ export class QuestionGenerationService {
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly jobs: JobsService,
     private readonly typesService: QuestionTypesService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** Per-child question quota (env `QUESTION_BANK_BATCH_SIZE`, default 10). A
+   * bucket above this is split so the worker never answers a 100+ question
+   * prompt in one request. Clamped to the worker's MAX_QUESTION_COUNT (50). */
+  private get maxPerJob(): number {
+    const raw = this.config.get<string>('QUESTION_BANK_BATCH_SIZE');
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    return Number.isInteger(parsed) && parsed > 0
+      ? Math.min(parsed, 50)
+      : DEFAULT_QUESTION_BATCH_SIZE;
+  }
 
   // ── Legacy single-type generation (backward compatible) ────────────
 
-  async requestGeneration(
-    instituteId: string,
-    userId: string,
-    input: GenerateQuestionsInput,
-  ) {
+  async requestGeneration(instituteId: string, userId: string, input: GenerateQuestionsInput) {
     const topic = await this.assertTopicInInstitute(instituteId, input.topicId);
 
     const typeFormats = await this.resolveTypeFormats(instituteId, [input.questionType]);
@@ -80,10 +93,7 @@ export class QuestionGenerationService {
         .select()
         .from(paperPatterns)
         .where(
-          and(
-            eq(paperPatterns.id, input.blueprintId),
-            eq(paperPatterns.instituteId, instituteId),
-          ),
+          and(eq(paperPatterns.id, input.blueprintId), eq(paperPatterns.instituteId, instituteId)),
         )
         .limit(1);
       if (!pattern || pattern.status !== 'APPROVED') {
@@ -92,9 +102,7 @@ export class QuestionGenerationService {
         );
       }
       if (topic.subjectId !== pattern.subjectId) {
-        throw new BadRequestException(
-          'Blueprint subject must match the generation topic subject',
-        );
+        throw new BadRequestException('Blueprint subject must match the generation topic subject');
       }
       payload['params'] = {
         ...(payload['params'] as Record<string, unknown>),
@@ -140,7 +148,7 @@ export class QuestionGenerationService {
     return job;
   }
 
-  // ── Bank generation ────────────────────────────────────────────────
+  // ── Bank generation (batched, Goal E) ───────────────────────────────
 
   async requestBankGeneration(
     instituteId: string,
@@ -165,67 +173,186 @@ export class QuestionGenerationService {
 
     // Build worker payload
     const workerSource = this.scopeToWorkerSource(scope);
-    const payload: Record<string, unknown> = {
-      operation: OPERATION,
-      source: workerSource,
-      requestedBy: userId,
-      params: {
-        buckets: buckets.map((b) => ({
-          questionType: b.questionType,
-          difficulty: b.difficulty,
-          count: b.count,
-        })),
-        types: typeFormats,
-      },
-    };
+    const batchId = randomUUID();
+    const batchSource = { type: workerSource.type, id: workerSource.id };
 
     // Attach blueprint if provided (for satisfaction report only).
+    let blueprint: { patternId: string; structure: Record<string, unknown> } | undefined;
     if (input.blueprintId) {
       const [pattern] = await this.db
         .select()
         .from(paperPatterns)
         .where(
-          and(
-            eq(paperPatterns.id, input.blueprintId),
-            eq(paperPatterns.instituteId, instituteId),
-          ),
+          and(eq(paperPatterns.id, input.blueprintId), eq(paperPatterns.instituteId, instituteId)),
         )
         .limit(1);
       if (pattern?.status === 'APPROVED') {
-        payload.params = {
-          ...(payload.params as Record<string, unknown>),
-          blueprint: { patternId: pattern.id, structure: pattern.structure },
+        blueprint = {
+          patternId: pattern.id,
+          structure: pattern.structure as Record<string, unknown>,
         };
       }
     }
 
-    let job: Job;
-    try {
-      job = await this.jobs.insertJob(instituteId, OPERATION, payload);
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new ConflictException('A generation is already in progress for this source');
-      }
-      throw error;
+    // One child job per (questionType, difficulty) bucket, split to maxPerJob;
+    // all children share the batchId. Each child is one small request, never a
+    // single 100+ question prompt (Goal E batching).
+    const plan = planQuestionBankJobs({
+      batchId,
+      batchSource,
+      source: workerSource,
+      userId,
+      buckets,
+      typeFormats,
+      maxPerJob: this.maxPerJob,
+    });
+    if (plan.children.length === 0) {
+      throw new BadRequestException('No questions to generate for the requested buckets');
     }
 
-    try {
-      await this.jobs.publishJob(job);
-    } catch {
-      await this.jobs.updateJobStatus(job.id, 'failed', undefined, {
-        message: 'Failed to enqueue generation job',
-      });
-      throw new InternalServerErrorException('Failed to enqueue generation job');
+    const jobIds: string[] = [];
+    const alreadyActive: string[] = [];
+    for (const child of plan.children) {
+      const params: Record<string, unknown> = { ...child.payload.params };
+      if (blueprint) params['blueprint'] = blueprint;
+      try {
+        const job = await this.jobs.insertJob(instituteId, OPERATION, {
+          ...child.payload,
+          params,
+        });
+        await this.jobs.publishJob(job);
+        jobIds.push(job.id);
+      } catch (error) {
+        // The dedupKey slot is already active (or raced in) — skip, don't
+        // double-enqueue the same bucket.
+        if (isUniqueViolation(error)) {
+          alreadyActive.push(child.dedupKey);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (jobIds.length === 0) {
+      throw new ConflictException('A generation is already in progress for these buckets');
     }
 
     return {
-      jobId: job.id,
+      batchId,
+      jobIds,
+      jobId: jobIds[0]!,
       operation: OPERATION,
       sourceType: workerSource.type,
       sourceId: workerSource.id,
       status: 'QUEUED' as const,
+      alreadyActive,
       buckets,
     };
+  }
+
+  // ── Bank batch monitor (Goal E) ─────────────────────────────────────
+
+  private async loadBankBatchRows(batchId: string, instituteId: string) {
+    const rows = await this.db
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        error: jobs.error,
+        result: jobs.result,
+        payload: jobs.payload,
+      })
+      .from(jobs)
+      .where(and(eq(jobs.instituteId, instituteId), sql`${jobs.payload}->>'batchId' = ${batchId}`))
+      .orderBy(asc(jobs.createdAt));
+
+    if (rows.length === 0) throw new NotFoundException('Question bank batch not found');
+    return rows;
+  }
+
+  async getBankBatch(batchId: string, instituteId: string) {
+    const rows = await this.loadBankBatchRows(batchId, instituteId);
+
+    const batchSource = this.batchSourceFromPayload(rows[0]!.payload);
+    const jobsList = rows.map((row) => {
+      const rowParams = row.payload as Record<string, unknown> | null;
+      const params = (rowParams?.params as Record<string, unknown> | undefined) ?? {};
+      const rowResult = row.result as Record<string, unknown> | null;
+      const rowError = row.error as Record<string, unknown> | null;
+      const requested = typeof params['count'] === 'number' ? (params['count'] as number) : 0;
+      return {
+        jobId: row.id,
+        questionType: String(params['questionType'] ?? ''),
+        difficulty: String(params['difficulty'] ?? 'MEDIUM'),
+        status: row.status,
+        error:
+          rowError && typeof rowError['message'] === 'string'
+            ? (rowError['message'] as string)
+            : null,
+        requested,
+        generated:
+          rowResult && typeof rowResult['count'] === 'number'
+            ? (rowResult['count'] as number)
+            : null,
+      };
+    });
+
+    const count = (statuses: readonly string[]) =>
+      jobsList.filter((j) => statuses.includes(j.status)).length;
+
+    return {
+      batchId,
+      sourceType: batchSource?.type ?? 'TOPIC',
+      sourceId: batchSource?.id ?? '',
+      total: rows.length,
+      completed: count(['completed']),
+      failed: count(['failed']),
+      cancelled: count(['cancelled']),
+      active: count(ACTIVE_JOB_STATUSES),
+      jobs: jobsList,
+    };
+  }
+
+  async cancelBankBatch(batchId: string, instituteId: string) {
+    const rows = await this.loadBankBatchRows(batchId, instituteId);
+    for (const row of rows) {
+      if (ACTIVE_JOB_STATUSES.includes(row.status as (typeof ACTIVE_JOB_STATUSES)[number])) {
+        await this.jobs.cancelJob(row.id, instituteId);
+      }
+    }
+    return this.getBankBatch(batchId, instituteId);
+  }
+
+  /** Re-enqueue only the FAILED/cancelled children of a batch; completed
+   * children are never regenerated (no duplicates on retry). */
+  async retryFailedBankBatch(batchId: string, instituteId: string) {
+    const rows = await this.loadBankBatchRows(batchId, instituteId);
+    const retried: string[] = [];
+    const skipped: string[] = [];
+    for (const row of rows) {
+      if (row.status !== 'failed' && row.status !== 'cancelled') continue;
+      try {
+        await this.jobs.retryJob(row.id, instituteId);
+        retried.push(row.id);
+      } catch {
+        skipped.push(row.id);
+      }
+    }
+    return { ...(await this.getBankBatch(batchId, instituteId)), retried, skipped };
+  }
+
+  private batchSourceFromPayload(payload: unknown): { type?: string; id?: string } {
+    const root =
+      payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null;
+    const batchSource =
+      root && typeof root['batchSource'] === 'object' && root['batchSource'] !== null
+        ? (root['batchSource'] as { type?: string; id?: string })
+        : undefined;
+    if (batchSource?.type && batchSource.id) return batchSource;
+    const source =
+      root && typeof root['source'] === 'object' && root['source'] !== null
+        ? (root['source'] as { type?: string; id?: string })
+        : undefined;
+    return source?.type && source.id ? source : {};
   }
 
   // ── Blueprint-driven bank generation ────────────────────────────────
@@ -268,7 +395,9 @@ export class QuestionGenerationService {
     const sections = Array.isArray(pattern.structure['sections'])
       ? (pattern.structure as { sections: unknown[] }).sections
       : [];
-    const buckets = buildBucketsFromBlueprint(sections as Parameters<typeof buildBucketsFromBlueprint>[0]);
+    const buckets = buildBucketsFromBlueprint(
+      sections as Parameters<typeof buildBucketsFromBlueprint>[0],
+    );
     if (buckets.length === 0) {
       throw new BadRequestException(
         'Blueprint has no section with a concrete question type and count to generate',
@@ -378,7 +507,8 @@ export class QuestionGenerationService {
       const key = `${row.questionType}|${row.difficulty}`;
       signals.set(key, (signals.get(key) ?? 0) + row.value);
     }
-    if (existingCounts.length > 0) sources.push(`existing question bank (${existingCounts.length} type/difficulty groups)`);
+    if (existingCounts.length > 0)
+      sources.push(`existing question bank (${existingCounts.length} type/difficulty groups)`);
 
     // Signal 2: approved paper patterns on the scope subject.
     const patterns = await this.db
@@ -393,7 +523,9 @@ export class QuestionGenerationService {
       );
 
     for (const pattern of patterns) {
-      const sections = Array.isArray((pattern.structure as Record<string, unknown> | null)?.['sections'])
+      const sections = Array.isArray(
+        (pattern.structure as Record<string, unknown> | null)?.['sections'],
+      )
         ? (pattern.structure as { sections: Array<Record<string, unknown>> }).sections
         : [];
       let added = 0;
@@ -401,9 +533,7 @@ export class QuestionGenerationService {
         const type = section['questionType'];
         const qCount = section['count'];
         if (typeof type !== 'string' || typeof qCount !== 'number' || !(qCount > 0)) continue;
-        const diffDist = section['difficultyDistribution'] as
-          | Record<string, number>
-          | undefined;
+        const diffDist = section['difficultyDistribution'] as Record<string, number> | undefined;
         if (diffDist && typeof diffDist === 'object') {
           for (const diff of ['EASY', 'MEDIUM', 'HARD'] as const) {
             const pct = diffDist[diff];
@@ -439,7 +569,11 @@ export class QuestionGenerationService {
         buckets: [
           { questionType: 'MCQ', difficulty: 'MEDIUM', count: Math.round(count * 0.3) },
           { questionType: 'SHORT_ANSWER', difficulty: 'MEDIUM', count: Math.round(count * 0.3) },
-          { questionType: 'LONG_ANSWER', difficulty: 'MEDIUM', count: Math.min(count, Math.max(1, Math.round(count * 0.4))) },
+          {
+            questionType: 'LONG_ANSWER',
+            difficulty: 'MEDIUM',
+            count: Math.min(count, Math.max(1, Math.round(count * 0.4))),
+          },
         ],
       };
     }
@@ -460,7 +594,7 @@ export class QuestionGenerationService {
     const floors = raw.map((r) => ({ ...r, floor: Math.floor(r.exact) }));
     const remainder = count - floors.reduce((a, r) => a + r.floor, 0);
     floors
-      .sort((a, b) => (b.exact - b.floor) - (a.exact - a.floor))
+      .sort((a, b) => b.exact - b.floor - (a.exact - a.floor))
       .forEach((r, i) => {
         if (i < remainder) r.floor += 1;
       });
@@ -494,18 +628,10 @@ export class QuestionGenerationService {
     const scope = await this.resolveScopeOrThrow(instituteId, input);
 
     // Count existing approved+active questions per bucket
-    const existingCounts = await this.countApprovedQuestions(
-      instituteId,
-      scope,
-      input.buckets,
-    );
+    const existingCounts = await this.countApprovedQuestions(instituteId, scope, input.buckets);
     // Count pending (generated, awaiting approval) so the UI can warn about
     // outstanding work instead of re-generating duplicates.
-    const pendingCounts = await this.countPendingQuestions(
-      instituteId,
-      scope,
-      input.buckets,
-    );
+    const pendingCounts = await this.countPendingQuestions(instituteId, scope, input.buckets);
 
     const bucketStatuses: BucketStatus[] = input.buckets.map((b) => {
       const key = `${b.questionType}|${b.difficulty}`;
@@ -526,6 +652,8 @@ export class QuestionGenerationService {
     if (totalDeficit === 0 || input.dryRun) {
       return {
         generated: false,
+        batchId: null,
+        jobIds: null,
         jobId: null,
         status: 'NO_ACTION' as const,
         buckets: bucketStatuses,
@@ -540,13 +668,20 @@ export class QuestionGenerationService {
       .filter((b) => b.deficit > 0)
       .map((b) => ({ ...b, count: b.deficit }));
 
-    const generation = await this.requestBankGeneration(instituteId, userId, {
-      ...input,
-      count: deficitBuckets.reduce((sum, b) => sum + b.count, 0),
-    }, deficitBuckets);
+    const generation = await this.requestBankGeneration(
+      instituteId,
+      userId,
+      {
+        ...input,
+        count: deficitBuckets.reduce((sum, b) => sum + b.count, 0),
+      },
+      deficitBuckets,
+    );
 
     return {
       generated: true,
+      batchId: generation.batchId,
+      jobIds: generation.jobIds,
       jobId: generation.jobId,
       status: 'QUEUED' as const,
       buckets: bucketStatuses,
@@ -568,7 +703,9 @@ export class QuestionGenerationService {
     ].filter((x): x is { kind: 'subject' | 'chapter' | 'topic'; id: string } => x !== null);
 
     if (provided.length !== 1) {
-      throw new BadRequestException('Exactly one of subjectId, chapterId, topicId must be provided');
+      throw new BadRequestException(
+        'Exactly one of subjectId, chapterId, topicId must be provided',
+      );
     }
     const scope = provided[0]!;
     await this.assertScopeInInstitute(instituteId, scope);
@@ -617,9 +754,10 @@ export class QuestionGenerationService {
     if (!row) throw new NotFoundException('Chapter not found');
   }
 
-  private scopeToWorkerSource(
-    scope: { kind: 'subject' | 'chapter' | 'topic'; id: string },
-  ): { type: string; id: string } {
+  private scopeToWorkerSource(scope: { kind: 'subject' | 'chapter' | 'topic'; id: string }): {
+    type: string;
+    id: string;
+  } {
     const typeMap = { subject: 'SUBJECT', chapter: 'CHAPTER', topic: 'TOPIC' } as const;
     return { type: typeMap[scope.kind], id: scope.id };
   }
@@ -683,7 +821,19 @@ export class QuestionGenerationService {
         count: sql<number>`count(*)::int`,
       })
       .from(questions)
-      .where(and(...conditions, sql`${questions.questionType} IN (${sql.join(types.map((t) => sql`${t}`), sql`,`)})`, sql`${questions.difficulty} IN (${sql.join(diffs.map((d) => sql`${d}`), sql`,`)})`))
+      .where(
+        and(
+          ...conditions,
+          sql`${questions.questionType} IN (${sql.join(
+            types.map((t) => sql`${t}`),
+            sql`,`,
+          )})`,
+          sql`${questions.difficulty} IN (${sql.join(
+            diffs.map((d) => sql`${d}`),
+            sql`,`,
+          )})`,
+        ),
+      )
       .groupBy(questions.questionType, questions.difficulty);
 
     const map = new Map<string, number>();
@@ -719,7 +869,19 @@ export class QuestionGenerationService {
         count: sql<number>`count(*)::int`,
       })
       .from(questions)
-      .where(and(...conditions, sql`${questions.questionType} IN (${sql.join(types.map((t) => sql`${t}`), sql`,`)})`, sql`${questions.difficulty} IN (${sql.join(diffs.map((d) => sql`${d}`), sql`,`)})`))
+      .where(
+        and(
+          ...conditions,
+          sql`${questions.questionType} IN (${sql.join(
+            types.map((t) => sql`${t}`),
+            sql`,`,
+          )})`,
+          sql`${questions.difficulty} IN (${sql.join(
+            diffs.map((d) => sql`${d}`),
+            sql`,`,
+          )})`,
+        ),
+      )
       .groupBy(questions.questionType, questions.difficulty);
 
     const map = new Map<string, number>();

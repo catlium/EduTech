@@ -17,11 +17,13 @@ import {
 import { QuestionsService } from './questions.service.js';
 import { QuestionGenerationService } from './question-generation.service.js';
 import { CreateQuestionDto, UpdateQuestionDto } from './dto/question.dto.js';
+import { GenerateQuestionsDto, BatchQuestionActionDto } from './dto/question-generation.dto.js';
 import {
-  GenerateQuestionsDto,
-  BatchQuestionActionDto,
-} from './dto/question-generation.dto.js';
-import { GenerateBankDto, GenerateMoreDto, GenerateBankFromBlueprintDto, DeriveDistributionDto } from './dto/question-bank.dto.js';
+  GenerateBankDto,
+  GenerateMoreDto,
+  GenerateBankFromBlueprintDto,
+  DeriveDistributionDto,
+} from './dto/question-bank.dto.js';
 import { buildBankBuckets, QUESTION_TYPES } from './build-bank-buckets.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
@@ -67,7 +69,10 @@ export class QuestionsController {
     @Query('questionType') questionType?: string,
     @Query('difficulty', new ParseEnumPipe(['EASY', 'MEDIUM', 'HARD'], { optional: true }))
     difficulty?: 'EASY' | 'MEDIUM' | 'HARD',
-    @Query('approvalStatus', new ParseEnumPipe(['PENDING', 'APPROVED', 'REJECTED'], { optional: true }))
+    @Query(
+      'approvalStatus',
+      new ParseEnumPipe(['PENDING', 'APPROVED', 'REJECTED'], { optional: true }),
+    )
     approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED',
     @Query('q') q?: string,
     @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
@@ -171,13 +176,15 @@ export class QuestionsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: GenerateBankDto,
   ) {
-    // Build (type, difficulty, count) buckets from the request config.
-    const types = dto.questionTypes ?? QUESTION_TYPES;
-    const buckets = buildBankBuckets({
-      questionTypes: types,
-      count: dto.count,
-      difficultyDistribution: dto.difficultyDistribution,
-    });
+    // Build (type, difficulty, count) buckets from the request config, or use
+    // the explicit buckets supplied by the client (Create New Set).
+    const buckets =
+      dto.buckets ??
+      buildBankBuckets({
+        questionTypes: dto.questionTypes ?? QUESTION_TYPES,
+        count: dto.count,
+        difficultyDistribution: dto.difficultyDistribution,
+      });
 
     const generation = await this.generationService.requestBankGeneration(
       tenant.instituteId,
@@ -194,6 +201,37 @@ export class QuestionsController {
       buckets,
     );
     return { generation };
+  }
+
+  // ── Bank batch monitor (Goal E): one batch per generation request ──
+
+  @Get('bank/batches/:batchId')
+  @RequiredRoles(...WRITE_ROLES)
+  async bankBatch(
+    @Tenant() tenant: TenantContext,
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ) {
+    return this.generationService.getBankBatch(batchId, tenant.instituteId);
+  }
+
+  @Post('bank/batches/:batchId/cancel')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async cancelBankBatch(
+    @Tenant() tenant: TenantContext,
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ) {
+    return this.generationService.cancelBankBatch(batchId, tenant.instituteId);
+  }
+
+  @Post('bank/batches/:batchId/retry-failed')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async retryFailedBankBatch(
+    @Tenant() tenant: TenantContext,
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ) {
+    return this.generationService.retryFailedBankBatch(batchId, tenant.instituteId);
   }
 
   @Get('bank/stats')
@@ -237,10 +275,7 @@ export class QuestionsController {
   @Post('bank/derive')
   @HttpCode(HttpStatus.OK)
   @RequiredRoles(...WRITE_ROLES)
-  async deriveDistribution(
-    @Tenant() tenant: TenantContext,
-    @Body() dto: DeriveDistributionDto,
-  ) {
+  async deriveDistribution(@Tenant() tenant: TenantContext, @Body() dto: DeriveDistributionDto) {
     return this.generationService.deriveDistribution(
       tenant.instituteId,
       { subjectId: dto.subjectId, chapterId: dto.chapterId, topicId: dto.topicId },
@@ -273,10 +308,7 @@ export class QuestionsController {
 
   @Post('batch-approve')
   @RequiredRoles(...WRITE_ROLES)
-  async batchApprove(
-    @Tenant() tenant: TenantContext,
-    @Body() dto: BatchQuestionActionDto,
-  ) {
+  async batchApprove(@Tenant() tenant: TenantContext, @Body() dto: BatchQuestionActionDto) {
     const updated = await this.questionsService.batchSetApprovalStatus(
       tenant.instituteId,
       dto.questionIds,
@@ -287,10 +319,7 @@ export class QuestionsController {
 
   @Post('batch-reject')
   @RequiredRoles(...WRITE_ROLES)
-  async batchReject(
-    @Tenant() tenant: TenantContext,
-    @Body() dto: BatchQuestionActionDto,
-  ) {
+  async batchReject(@Tenant() tenant: TenantContext, @Body() dto: BatchQuestionActionDto) {
     const updated = await this.questionsService.batchSetApprovalStatus(
       tenant.instituteId,
       dto.questionIds,
@@ -333,7 +362,11 @@ export class QuestionsController {
     @Tenant() tenant: TenantContext,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
-    const question = await this.questionsService.setStatus(tenant.instituteId, questionId, 'ARCHIVED');
+    const question = await this.questionsService.setStatus(
+      tenant.instituteId,
+      questionId,
+      'ARCHIVED',
+    );
     return { question };
   }
 
@@ -343,7 +376,11 @@ export class QuestionsController {
     @Tenant() tenant: TenantContext,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
-    const question = await this.questionsService.setStatus(tenant.instituteId, questionId, 'ACTIVE');
+    const question = await this.questionsService.setStatus(
+      tenant.instituteId,
+      questionId,
+      'ACTIVE',
+    );
     return { question };
   }
 }

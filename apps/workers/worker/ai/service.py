@@ -45,7 +45,6 @@ logger = logging.getLogger(__name__)
 VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC", "CHAPTER", "SUBJECT", "SYLLABUS"}
 
 QA_OPERATION = "AI_GENERATE_QUESTIONS"
-VALID_QUESTION_TYPES = {"MCQ", "TRUE_FALSE", "FILL_IN_BLANK"}
 VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
 
 CONTENT_PACKAGE_OPERATION = "AI_GENERATE_CONTENT_PACKAGE"
@@ -532,6 +531,38 @@ def generate(
         _fail(job_id, exc)
 
 
+def _build_academic_context(
+    institute_id: str,
+    scope: dict[str, str | None],
+    operation_name: str,
+) -> str:
+    """Build the academic-context block for question generation prompts.
+
+    Includes subject/chapter/topic names + descriptions plus the syllabus
+    extract (objectives/outcomes/scope) when available. The rendered block
+    always carries the coverage-boundary statement: the source material is
+    the boundary, never a licence to invent content beyond it.
+    """
+    if operation_name != QA_OPERATION:
+        return ""
+
+    academic: dict[str, Any] = db.get_scope_context(
+        institute_id,
+        subject_id=scope.get("subjectId"),
+        chapter_id=scope.get("chapterId"),
+        topic_id=scope.get("topicId"),
+    )
+
+    syllabus: dict[str, Any] | None = None
+    if scope.get("subjectId"):
+        syllabus = db.get_syllabus_context(str(scope["subjectId"]))
+
+    if syllabus is not None:
+        academic["syllabus"] = syllabus
+
+    return generation.questions.build_academic_context(academic)
+
+
 def _generate_questions(
     job_id: str,
     institute_id: str,
@@ -585,6 +616,8 @@ def _generate_questions(
     # deterministic aggregate back at the requested count.
     per_chunk_count = max(1, math.ceil(count_int / max(len(chunks), 1)))
     provider = create_provider()
+    scope = _resolve_scope(institute_id, source, materials)
+    academic_context = _build_academic_context(institute_id, scope, QA_OPERATION)
     outputs: list[dict[str, Any]] = []
     for index, chunk in enumerate(chunks):
         _check_cancelled(job_id)
@@ -597,6 +630,7 @@ def _generate_questions(
                 count=per_chunk_count,
                 difficulty=difficulty,
                 answer_format=answer_format,
+                academic_context=academic_context,
             )
         )
         outputs.append(_validate_output(operation, raw))
@@ -605,7 +639,6 @@ def _generate_questions(
     aggregated = operation.model.model_validate(
         operation.aggregate(outputs, count_int)
     ).model_dump()
-    scope = _resolve_scope(institute_id, source, materials)
     provenance = _build_question_provenance(job_id, source, materials, context_meta)
     _check_cancelled(job_id)
     question_ids = db.insert_generated_questions(
@@ -682,6 +715,8 @@ def _generate_bank_questions(
     format_map = {b["questionType"]: b["answerFormat"] for b in bucket_specs}
 
     provider = create_provider()
+    scope = _resolve_scope(institute_id, source, materials)
+    academic_context = _build_academic_context(institute_id, scope, QA_OPERATION)
     outputs: list[dict[str, Any]] = []
     for index, chunk in enumerate(chunks):
         _check_cancelled(job_id)
@@ -693,6 +728,7 @@ def _generate_bank_questions(
                 quota_desc=quota_desc,
                 total=total_requested,
                 format_map=format_map,
+                academic_context=academic_context,
             )
         )
         outputs.append(_validate_output(operation, raw))
@@ -725,7 +761,6 @@ def _generate_bank_questions(
     if not selected:
         raise GenerationError("AI generated no valid questions for the requested buckets")
 
-    scope = _resolve_scope(institute_id, source, materials)
     provenance = _build_question_provenance(job_id, source, materials, context_meta)
     _check_cancelled(job_id)
     question_ids = db.insert_generated_questions(

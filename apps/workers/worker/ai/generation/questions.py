@@ -79,7 +79,14 @@ _SYSTEM_BANK_TEMPLATE = (
 
 
 def build_messages(
-    context: str, source_label: str, *, type_: str, count: int, difficulty: str, answer_format: str
+    context: str,
+    source_label: str,
+    *,
+    type_: str,
+    count: int,
+    difficulty: str,
+    answer_format: str,
+    academic_context: str = "",
 ) -> list[dict[str, str]]:
     user_prompt = (
         f"Source material ({source_label}):\n\n{context}\n\n"
@@ -93,6 +100,8 @@ def build_messages(
         formats=_FORMATS_REFERENCE,
         format_name=answer_format,
     )
+    if academic_context:
+        system = f"{academic_context}\n\n{system}"
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user_prompt},
@@ -106,6 +115,7 @@ def build_bank_messages(
     quota_desc: str,
     total: int,
     format_map: dict[str, str],
+    academic_context: str = "",
 ) -> list[dict[str, str]]:
     user_prompt = (
         f"Source material ({source_label}):\n\n{context}\n\n"
@@ -117,10 +127,55 @@ def build_bank_messages(
         formats=_FORMATS_REFERENCE,
         format_map=", ".join(f"{k}={v}" for k, v in format_map.items()),
     )
+    if academic_context:
+        system = f"{academic_context}\n\n{system}"
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user_prompt},
     ]
+
+
+def build_academic_context(academic: dict[str, Any] | None) -> str:
+    """Render resolved academic-scope names/descriptions + syllabus extract.
+
+    The academic context frames the COURSE BOUNDARY. The block always states
+    that every question must be based strictly on the source material so the
+    model never invents content beyond the provided document (boundary, not a
+    licence to expand generation).
+    """
+    if not academic:
+        return ""
+    block = [
+        "ACADEMIC CONTEXT (course boundary): Base every question strictly on the "
+        "source material provided below; never write a question whose answer "
+        "requires information outside that source material."
+    ]
+    for level in ("subject", "chapter", "topic"):
+        info = academic.get(level)
+        if not isinstance(info, dict) or not (info.get("name") or "").strip():
+            continue
+        label = f"{level}: {info['name'].strip()}"
+        description = (info.get("description") or "").strip()
+        if description:
+            label = f"{label} — {description}"
+        block.append(label)
+
+    syllabus = academic.get("syllabus")
+    if isinstance(syllabus, dict):
+        parts: list[str] = []
+        for key in ("program", "course", "academicYear", "scope"):
+            value = syllabus.get(key)
+            if isinstance(value, str) and value.strip():
+                parts.append(f"{key}: {value.strip()}")
+        for key in ("objectives", "learningOutcomes"):
+            values = syllabus.get(key)
+            if isinstance(values, list):
+                joined = "; ".join(str(v) for v in values if isinstance(v, str) and v.strip())
+                if joined:
+                    parts.append(f"{key}: {joined}")
+        if parts:
+            block.append("syllabus: " + " | ".join(parts))
+    return "\n".join(block)
 
 
 def parse_questions_json(content: str) -> dict[str, Any]:

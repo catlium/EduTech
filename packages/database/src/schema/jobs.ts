@@ -34,6 +34,11 @@ export const jobs = pgTable(
         sql`((payload -> 'operation'))`,
         sql`((payload -> 'source' ->> 'type'))`,
         sql`((payload -> 'source' ->> 'id'))`,
+        // Question-bank batches (Goal E) run one child job per (source, type,
+        // difficulty) sharing a batchId. The dedupKey slot differentiates the
+        // children so per-type jobs for one source coexist; absent (legacy)
+        // it coalesces to '' and keeps the historic single-job dedupe.
+        sql`(COALESCE((payload -> 'params' ->> 'dedupKey'), ''))`,
       )
       .where(
         sql`type IN ('AI_GENERATE_NOTE', 'AI_GENERATE_SUMMARY', 'AI_GENERATE_FLASHCARDS', 'AI_GENERATE_CONCEPTS', 'AI_GENERATE_CONTENT_PACKAGE', 'AI_GENERATE_QUESTIONS', 'AI_GENERATE_BLUEPRINT', 'AI_GENERATE_STARTER_MATERIAL', 'AI_ANALYZE_SYLLABUS') AND status IN ('queued', 'processing')`,

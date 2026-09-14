@@ -126,13 +126,13 @@ update docs; commit + push; checkpoint report; STOP.
 
 ### Goal: E Question Bank unification
 
-- [ ] E1 Single source of truth: page filter/dialog/panel all use dynamic
+- [x] E1 Single source of truth: page filter/dialog/panel all use dynamic
       /question-types; page "Ask AI" dialog removed (one workflow via panel)
-- [ ] E2 Explicit dialog actions: Check Bank (dry run) / Generate Missing
+- [x] E2 Explicit dialog actions: Check Bank (dry run) / Generate Missing
       (deficit) / Create New Set (full count) with type selection + quantity;
       questions stay Topic-owned, documented no set/version model → no fake
       "Regenerate" for questions
-- [ ] E3 Per-type parallel generation: one `AI_GENERATE_QUESTIONS` job per
+- [x] E3 Per-type parallel generation: one `AI_GENERATE_QUESTIONS` job per
       questionType per source sharing batchId (dedupKey/COALESCE migration on
       jobs_active_generation_unique); response carries jobIds[] + batchId;
       web polls `GET /jobs?batchId=`

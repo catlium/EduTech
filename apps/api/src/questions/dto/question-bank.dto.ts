@@ -72,6 +72,16 @@ export class GenerateBankDto extends QuestionBankScopeDto {
     HARD: number;
   };
 
+  /* Explicit target buckets (Create New Set) — the full count is generated as
+   * a fresh set regardless of existing questions. Takes precedence over the
+   * count/questionTypes/difficultyDistribution shorthand. */
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => GenerateBankBucketDto)
+  buckets?: GenerateBankBucketDto[];
+
   @IsOptional()
   @IsUUID()
   blueprintId?: string;

@@ -130,9 +130,60 @@ workflow.
 
 **Status: COMPLETE** — committed + pushed in this checkpoint.
 
-**Next task:** E Question Bank unification (single /question-types source,
-Check Bank / Generate Missing / Create New Set actions, per-type parallel
-`AI_GENERATE_QUESTIONS` jobs), then F/G Paper Pattern config + targeted export.
+### Sub-goal: E Question Bank unification — COMPLETE (fourth checkpoint)
+
+One multi-bucket generation request is one **batch**: `batchId` groups one
+`AI_GENERATE_QUESTIONS` child job per (questionType, difficulty) bucket, each
+child capped at the worker `MAX_QUESTION_COUNT` (50) and split per chunk. The
+web panel drives it with three explicit actions and an in-dialog progress grid.
+
+- **Migration `0025_question_bank_batches.sql`**: `jobs_active_generation_unique`
+  recreated as `(COALESCE((payload -> 'params' ->> 'dedupKey'), ''))` — one
+  concurrent slot per batch/type/difficulty child while legacy jobs (empty
+  `''`) keep their historical dedupe. Fresh `batchId` ⇒ re-requested sets can
+  be explicitly re-generated.
+- **Planner** (`questions/build-question-batch.ts`): `planQuestionBankJobs`
+  splits buckets into ≤max children with typed
+  `QuestionBatchChildPayload` (`dedupKey`, `questionType`, `difficulty`,
+  `count`, `types`); 7-test `build-question-batch.test.ts` (split counts
+  exact, dedupKeys unique, empty buckets dropped, ceiling clamp).
+- **API service** (`question-generation.service.ts`): `requestBankGeneration`
+  returns `{batchId, jobIds[], jobId, status:'QUEUED', alreadyActive}` and
+  publishes one child per bucket; per-request batch size from env
+  `QUESTION_BANK_BATCH_SIZE` (default 10, cap 50), children dedupe-inserted
+  when already running (`alreadyActive`), empty plan → 400, all-active → 409.
+  New `getBankBatch` / `cancelBankBatch` / `retryFailedBankBatch`
+  (retries only failed/cancelled children). Endpoints: `GET`
+  `/questions/bank/batches/:batchId`, `POST` `.../cancel`,
+  `POST` `.../retry-failed`. `GenerateBankDto.buckets` accepted (full-count
+  Create New Set), else defaulted from a scope's type/difficulty quotas.
+- **Worker academic context**: `_build_academic_context` (QA only, via
+  `db.get_scope_context` + `db.get_syllabus_context`) renders subject/chapter/
+  topic name+description and the syllabus block into a system-prefix
+  `academic_context` passed to `build_messages`/`build_bank_messages`, with an
+  explicit coverage boundary: "Base every question strictly on the source
+  material… Never go beyond it" — context can only shrink generation, never
+  broaden it. `AI_GENERATE_QUESTIONS` children keep the tested single-type
+  path (`params.questionType/count/difficulty/types`); count > 50 and zero
+  valid questions fail the job for retry (never silent zero-complete).
+- **Web**: page `Ask AI` dialog + poll machinery removed (−~218 lines); filter
+  and manual-create dialogs now use dynamic `questionTypes` (`GET
+  /question-types`); non-FIB preview payloads hidden; panel dialog now has
+  **Check bank** (dry run) / **Create new set** (full count via explicit
+  buckets, or blueprint) / **Generate missing** (deficit-only, keeps dialog
+  open) plus a batch-progress grid that polls
+  `GET /questions/bank/batches/:batchId` and surfaces
+  **Retry failed** for failed-only batches.
+- **Validation**: API typecheck + lint green, planner tests 7/7, worker pytest
+  **57 PASS** (incl. new `test_question_bank_batch.py` — academic context
+  present/absent/boundary, single-type legacy path, count-ceiling fail, zero-
+  valid fail), ruff + mypy clean, `pnpm typecheck` 10/10, web build green.
+
+**Status: COMPLETE** — committed + pushed in this checkpoint.
+
+**Next task:** F/G — Paper Pattern config + targeted export
+(`docs/tasks.md` Goal F/G): paper-pattern builder/page dynamic question types,
+pattern export button + `GET /export/paper-pattern/:patternId`.
 
 ## Phase 31 — Resource Ownership, Parallel AI, Correction & Validation (2026-09-14)
 

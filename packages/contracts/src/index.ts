@@ -1139,6 +1139,8 @@ export const DeriveDistributionResponseSchema = z.object({
 export type DeriveDistributionResponse = z.infer<typeof DeriveDistributionResponseSchema>;
 
 export const GenerateBankResponseSchema = z.object({
+  batchId: z.string().uuid(),
+  jobIds: z.array(z.string().uuid()).min(1),
   jobId: z.string().uuid(),
   operation: z.literal('AI_GENERATE_QUESTIONS'),
   sourceType: GenerationSourceTypeEnum,
@@ -1192,6 +1194,8 @@ export type GenerateMoreBucketStatus = z.infer<typeof GenerateMoreBucketStatusSc
 
 export const GenerateMoreQuestionsResponseSchema = z.object({
   generated: z.boolean(),
+  batchId: z.string().uuid().nullable(),
+  jobIds: z.array(z.string().uuid()).nullable(),
   jobId: z.string().uuid().nullable(),
   status: z.enum(['QUEUED', 'NO_ACTION']),
   buckets: z.array(GenerateMoreBucketStatusSchema),
@@ -1199,6 +1203,30 @@ export const GenerateMoreQuestionsResponseSchema = z.object({
   totalDeficit: z.number(),
 });
 export type GenerateMoreQuestionsResponse = z.infer<typeof GenerateMoreQuestionsResponseSchema>;
+
+export const QuestionBankBatchJobSchema = z.object({
+  jobId: z.string().uuid(),
+  questionType: QuestionTypeRefSchema,
+  difficulty: QuestionDifficultyEnum,
+  status: GenerationBatchJobStatusSchema,
+  error: z.string().nullable(),
+  requested: z.number(),
+  generated: z.number().nullable(),
+});
+export type QuestionBankBatchJob = z.infer<typeof QuestionBankBatchJobSchema>;
+
+export const QuestionBankBatchResponseSchema = z.object({
+  batchId: z.string().uuid(),
+  sourceType: GenerationSourceTypeEnum,
+  sourceId: z.string().uuid(),
+  total: z.number(),
+  completed: z.number(),
+  failed: z.number(),
+  cancelled: z.number(),
+  active: z.number(),
+  jobs: z.array(QuestionBankBatchJobSchema),
+});
+export type QuestionBankBatchResponse = z.infer<typeof QuestionBankBatchResponseSchema>;
 
 // ── Export Contracts ────────────────────────
 
