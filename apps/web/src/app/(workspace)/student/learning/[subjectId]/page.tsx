@@ -1,37 +1,26 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { ArrowLeft, BookOpen, ChevronRight } from "lucide-react";
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { ArrowLeft, BookOpen, ChevronRight } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { useTenant } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { ErrorState } from "@/components/app/error-state";
-import { SkeletonCards, SkeletonRows } from "@/components/app/loading";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import type {
-  SubjectResponse,
-  ChapterResponse,
-  TopicResponse,
-} from "@catlium/contracts";
+import { api, ApiError } from '@/lib/api';
+import { useTenant } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { ErrorState } from '@/components/app/error-state';
+import { SkeletonCards, SkeletonRows } from '@/components/app/loading';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { SubjectResponse, ChapterResponse, TopicResponse } from '@catlium/contracts';
 
 export default function SubjectExplorerPage() {
   const { subjectId } = useParams<{ subjectId: string }>();
   const { institute } = useTenant();
   const [subject, setSubject] = useState<SubjectResponse | null>(null);
   const [chapters, setChapters] = useState<ChapterResponse[]>([]);
-  const [topicsByChapter, setTopicsByChapter] = useState<
-    Record<string, TopicResponse[]>
-  >({});
+  const [topicsByChapter, setTopicsByChapter] = useState<Record<string, TopicResponse[]>>({});
   const [loading, setLoading] = useState(true);
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,20 +53,18 @@ export default function SubjectExplorerPage() {
           );
           const map: Record<string, TopicResponse[]> = {};
           chs.chapters.forEach((ch, i) => {
-            map[ch.id] = settled[i]?.status === "fulfilled"
-              ? settled[i].value.topics
-              : [];
+            map[ch.id] = settled[i]?.status === 'fulfilled' ? settled[i].value.topics : [];
           });
           setTopicsByChapter(map);
         } finally {
           setLoadingTopics(false);
         }
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         if (err instanceof ApiError && err.status === 404) {
           setNotFound(true);
         } else {
-          setError("Failed to load subject. Please try again.");
+          setError('Failed to load subject. Please try again.');
         }
       } finally {
         setLoading(false);

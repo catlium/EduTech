@@ -9,7 +9,15 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { eq, and, sql, asc, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { topics, chapters, subjects, paperPatterns, questions, jobs } from '@catlium/database';
+import {
+  topics,
+  chapters,
+  subjects,
+  paperPatterns,
+  paperPatternSubjects,
+  questions,
+  jobs,
+} from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
@@ -17,6 +25,7 @@ import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { QuestionTypesService } from './question-types.service.js';
 import { buildBucketsFromBlueprint } from './build-bank-buckets.js';
 import { planQuestionBankJobs, DEFAULT_QUESTION_BATCH_SIZE } from './build-question-batch.js';
+import { patternMatchesSubject } from '../paper-patterns/paper-pattern-subjects.js';
 
 const OPERATION = 'AI_GENERATE_QUESTIONS';
 
@@ -89,19 +98,8 @@ export class QuestionGenerationService {
     // Blueprint-constrained generation: the approved pattern's structure is
     // attached to the job so the worker can target it and report satisfaction.
     if (input.blueprintId) {
-      const [pattern] = await this.db
-        .select()
-        .from(paperPatterns)
-        .where(
-          and(eq(paperPatterns.id, input.blueprintId), eq(paperPatterns.instituteId, instituteId)),
-        )
-        .limit(1);
-      if (!pattern || pattern.status !== 'APPROVED') {
-        throw new BadRequestException(
-          'Blueprint must be an approved paper pattern in this institute',
-        );
-      }
-      if (topic.subjectId !== pattern.subjectId) {
+      const pattern = await this.loadApprovedPattern(instituteId, input.blueprintId);
+      if (!patternMatchesSubject(pattern.subjectIds, topic.subjectId)) {
         throw new BadRequestException('Blueprint subject must match the generation topic subject');
       }
       payload['params'] = {
@@ -360,7 +358,17 @@ export class QuestionGenerationService {
   async getApprovedPattern(
     instituteId: string,
     blueprintId: string,
-  ): Promise<{ id: string; subjectId: string; structure: Record<string, unknown> }> {
+  ): Promise<{ id: string; subjectIds: string[]; structure: Record<string, unknown> }> {
+    const pattern = await this.loadApprovedPattern(instituteId, blueprintId);
+    return {
+      id: pattern.id,
+      subjectIds: pattern.subjectIds,
+      structure: pattern.structure as Record<string, unknown>,
+    };
+  }
+
+  /** Load an APPROVED pattern with its subject associations (empty = General). */
+  private async loadApprovedPattern(instituteId: string, blueprintId: string) {
     const [pattern] = await this.db
       .select()
       .from(paperPatterns)
@@ -373,10 +381,13 @@ export class QuestionGenerationService {
     if (!pattern.structure) {
       throw new BadRequestException('Blueprint has no structure to generate from');
     }
+    const subjectRows = await this.db
+      .select({ subjectId: paperPatternSubjects.subjectId })
+      .from(paperPatternSubjects)
+      .where(eq(paperPatternSubjects.patternId, pattern.id));
     return {
-      id: pattern.id,
-      subjectId: pattern.subjectId,
-      structure: pattern.structure as Record<string, unknown>,
+      ...pattern,
+      subjectIds: subjectRows.map((r) => r.subjectId),
     };
   }
 
@@ -388,7 +399,7 @@ export class QuestionGenerationService {
     const pattern = await this.getApprovedPattern(instituteId, input.blueprintId);
     const scope = await this.resolveScopeOrThrow(instituteId, input);
     const scopeSubjectId = await this.scopeSubjectId(instituteId, scope);
-    if (scopeSubjectId !== pattern.subjectId) {
+    if (!patternMatchesSubject(pattern.subjectIds, scopeSubjectId)) {
       throw new BadRequestException('Blueprint subject must match the generation scope subject');
     }
 
@@ -510,19 +521,22 @@ export class QuestionGenerationService {
     if (existingCounts.length > 0)
       sources.push(`existing question bank (${existingCounts.length} type/difficulty groups)`);
 
-    // Signal 2: approved paper patterns on the scope subject.
+    // Signal 2: approved paper patterns associated with the scope subject.
+    // A General pattern (no association) is deliberately excluded here so a
+    // subject never inherits a signal from a pattern the teacher did not scope.
     const patterns = await this.db
-      .select()
+      .select({ pattern: paperPatterns })
       .from(paperPatterns)
+      .innerJoin(paperPatternSubjects, eq(paperPatternSubjects.patternId, paperPatterns.id))
       .where(
         and(
           eq(paperPatterns.instituteId, instituteId),
-          eq(paperPatterns.subjectId, subjectId),
+          eq(paperPatternSubjects.subjectId, subjectId),
           eq(paperPatterns.status, 'APPROVED'),
         ),
       );
 
-    for (const pattern of patterns) {
+    for (const { pattern } of patterns) {
       const sections = Array.isArray(
         (pattern.structure as Record<string, unknown> | null)?.['sections'],
       )

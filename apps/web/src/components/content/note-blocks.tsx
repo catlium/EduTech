@@ -3,8 +3,8 @@ import type {
   FurtherLearningResource,
   NoteDiagramBlock,
   NoteChartBlock,
-} from "@catlium/contracts";
-import { BookOpen, ExternalLink } from "lucide-react";
+} from '@catlium/contracts';
+import { BookOpen, ExternalLink } from 'lucide-react';
 
 export function FurtherLearning({ resources }: { resources: FurtherLearningResource[] }) {
   if (!resources || resources.length === 0) return null;
@@ -39,16 +39,16 @@ export function FurtherLearning({ resources }: { resources: FurtherLearningResou
 export function ChartBlockView({ block }: { block: NoteChartBlock }) {
   const max = Math.max(...block.data.map((d) => d.value), 1);
   const palette = [
-    "#2563eb",
-    "#059669",
-    "#d97706",
-    "#dc2626",
-    "#7c3aed",
-    "#0891b2",
-    "#db2777",
-    "#65a30d",
+    '#2563eb',
+    '#059669',
+    '#d97706',
+    '#dc2626',
+    '#7c3aed',
+    '#0891b2',
+    '#db2777',
+    '#65a30d',
   ];
-  if (block.chartType === "line") {
+  if (block.chartType === 'line') {
     const w = 340;
     const h = 150;
     const pad = 10;
@@ -62,19 +62,30 @@ export function ChartBlockView({ block }: { block: NoteChartBlock }) {
         {block.caption && (
           <figcaption className="mb-2 text-sm font-medium">{block.caption}</figcaption>
         )}
-        <svg viewBox={`0 0 ${w} ${h + 18}`} className="w-full" role="img" aria-label={block.caption ?? "line chart"}>
+        <svg
+          viewBox={`0 0 ${w} ${h + 18}`}
+          className="w-full"
+          role="img"
+          aria-label={block.caption ?? 'line chart'}
+        >
           <polyline
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
             strokeLinejoin="round"
-            points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
+            points={pts.map((p) => `${p.x},${p.y}`).join(' ')}
             className="text-primary"
           />
           {pts.map((p, i) => (
             <g key={i}>
               <circle cx={p.x} cy={p.y} r="3" className="fill-primary" />
-              <text x={p.x} y={p.y - 7} textAnchor="middle" fontSize="9" className="fill-muted-foreground">
+              <text
+                x={p.x}
+                y={p.y - 7}
+                textAnchor="middle"
+                fontSize="9"
+                className="fill-muted-foreground"
+              >
                 {block.data[i].value}
               </text>
             </g>
@@ -88,14 +99,14 @@ export function ChartBlockView({ block }: { block: NoteChartBlock }) {
               fontSize="9"
               className="fill-muted-foreground"
             >
-              {d.label.length > 14 ? d.label.slice(0, 13) + "…" : d.label}
+              {d.label.length > 14 ? d.label.slice(0, 13) + '…' : d.label}
             </text>
           ))}
         </svg>
       </figure>
     );
   }
-  if (block.chartType === "pie") {
+  if (block.chartType === 'pie') {
     const total = block.data.reduce((s, d) => s + d.value, 0);
     if (total <= 0) {
       return (
@@ -122,18 +133,34 @@ export function ChartBlockView({ block }: { block: NoteChartBlock }) {
           <figcaption className="mb-2 text-sm font-medium">{block.caption}</figcaption>
         )}
         <div className="flex flex-wrap items-center gap-4">
-          <svg viewBox="0 0 140 140" className="h-40 w-40 shrink-0" role="img" aria-label={block.caption ?? "pie chart"}>
+          <svg
+            viewBox="0 0 140 140"
+            className="h-40 w-40 shrink-0"
+            role="img"
+            aria-label={block.caption ?? 'pie chart'}
+          >
             {block.data.map((d, i) => {
               const sweep = (d.value / total) * Math.PI * 2;
               const path = arc(angle, angle + sweep);
               angle += sweep;
-              return <path key={i} d={path} fill={palette[i % palette.length]} stroke="white" strokeWidth="1" />;
+              return (
+                <path
+                  key={i}
+                  d={path}
+                  fill={palette[i % palette.length]}
+                  stroke="white"
+                  strokeWidth="1"
+                />
+              );
             })}
           </svg>
           <ul className="min-w-0 flex-1 space-y-1 text-xs">
             {block.data.map((d, i) => (
               <li key={i} className="flex items-center gap-2">
-                <span className="size-2.5 shrink-0 rounded-sm" style={{ background: palette[i % palette.length] }} />
+                <span
+                  className="size-2.5 shrink-0 rounded-sm"
+                  style={{ background: palette[i % palette.length] }}
+                />
                 <span className="truncate">{d.label}</span>
                 <span className="ml-auto tabular-nums text-muted-foreground">{d.value}</span>
               </li>
@@ -143,7 +170,7 @@ export function ChartBlockView({ block }: { block: NoteChartBlock }) {
       </figure>
     );
   }
-  if (block.chartType === "bar") {
+  if (block.chartType === 'bar') {
     return (
       <figure className="rounded-lg border p-3">
         {block.caption && (
@@ -192,10 +219,7 @@ export function DiagramBlockView({ block }: { block: NoteDiagramBlock }) {
       )}
       <div className="flex flex-wrap gap-1.5">
         {block.nodes.map((n) => (
-          <span
-            key={n.id}
-            className="rounded border bg-muted/30 px-2 py-1 text-xs font-medium"
-          >
+          <span key={n.id} className="rounded border bg-muted/30 px-2 py-1 text-xs font-medium">
             {n.label}
           </span>
         ))}
@@ -204,9 +228,7 @@ export function DiagramBlockView({ block }: { block: NoteDiagramBlock }) {
         <ol className="mt-2 space-y-1">
           {block.edges.map((e, i) => (
             <li key={i} className="flex items-center gap-1 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {nodeById.get(e.from) ?? e.from}
-              </span>
+              <span className="font-medium text-foreground">{nodeById.get(e.from) ?? e.from}</span>
               <span aria-hidden>→</span>
               {e.label && <span className="text-muted-foreground">({e.label})</span>}
               <span className="font-medium text-foreground">{nodeById.get(e.to) ?? e.to}</span>
@@ -223,19 +245,19 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
     <div className="max-w-none space-y-4">
       {blocks.map((block, i) => {
         switch (block.type) {
-          case "heading":
+          case 'heading':
             return (
               <h3 key={block.id} className="text-lg font-semibold">
                 {block.content}
               </h3>
             );
-          case "paragraph":
+          case 'paragraph':
             return (
               <p key={block.id} className="whitespace-pre-wrap text-sm leading-relaxed">
                 {block.content}
               </p>
             );
-          case "list":
+          case 'list':
             return (
               <ul key={block.id} className="list-disc space-y-1 pl-5 text-sm">
                 {block.items.map((item, i) => (
@@ -243,7 +265,7 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
                 ))}
               </ul>
             );
-          case "steps":
+          case 'steps':
             return (
               <div key={block.id} className="space-y-1">
                 {block.title && <p className="text-sm font-semibold">{block.title}</p>}
@@ -254,7 +276,7 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
                 </ol>
               </div>
             );
-          case "table":
+          case 'table':
             return (
               <div key={block.id} className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
@@ -283,7 +305,7 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
                 </table>
               </div>
             );
-          case "formula":
+          case 'formula':
             return (
               <div
                 key={block.id}
@@ -316,14 +338,18 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
                   </div>
                 ) : null}
                 {block.explanation ? (
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{block.explanation}</p>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">
+                    {block.explanation}
+                  </p>
                 ) : null}
                 {block.example ? (
                   <div className="mt-3 rounded border-l-2 border-primary bg-muted/40 px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Example
                     </p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{block.example}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">
+                      {block.example}
+                    </p>
                   </div>
                 ) : null}
                 {block.note ? (
@@ -331,27 +357,27 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
                 ) : null}
               </div>
             );
-          case "example":
+          case 'example':
             return (
               <div key={block.id} className="rounded-lg border-l-4 border-primary bg-muted/20 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                  {block.title ? `Example — ${block.title}` : "Example"}
+                  {block.title ? `Example — ${block.title}` : 'Example'}
                 </p>
                 <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{block.content}</p>
               </div>
             );
-          case "callout":
+          case 'callout':
             return (
               <div
                 key={block.id}
                 className={
-                  block.variant === "warning"
-                    ? "rounded-lg border-l-4 border-amber-500 bg-amber-50 p-3 text-sm dark:bg-amber-950/30"
-                    : block.variant === "tip"
-                      ? "rounded-lg border-l-4 border-emerald-500 bg-emerald-50 p-3 text-sm dark:bg-emerald-950/30"
-                      : block.variant === "important"
-                        ? "rounded-lg border-l-4 border-destructive bg-destructive/5 p-3 text-sm"
-                        : "rounded-lg border-l-4 border-sky-500 bg-sky-50 p-3 text-sm dark:bg-sky-950/30"
+                  block.variant === 'warning'
+                    ? 'rounded-lg border-l-4 border-amber-500 bg-amber-50 p-3 text-sm dark:bg-amber-950/30'
+                    : block.variant === 'tip'
+                      ? 'rounded-lg border-l-4 border-emerald-500 bg-emerald-50 p-3 text-sm dark:bg-emerald-950/30'
+                      : block.variant === 'important'
+                        ? 'rounded-lg border-l-4 border-destructive bg-destructive/5 p-3 text-sm'
+                        : 'rounded-lg border-l-4 border-sky-500 bg-sky-50 p-3 text-sm dark:bg-sky-950/30'
                 }
               >
                 <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
@@ -360,7 +386,7 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
                 <p className="mt-1 leading-relaxed">{block.content}</p>
               </div>
             );
-          case "timeline":
+          case 'timeline':
             return (
               <div key={block.id} className="rounded-lg border p-3">
                 {block.caption && <p className="mb-2 text-sm font-medium">{block.caption}</p>}
@@ -381,9 +407,9 @@ export function NoteBlocks({ blocks }: { blocks: NoteBlock[] }) {
                 </ol>
               </div>
             );
-          case "diagram":
+          case 'diagram':
             return <DiagramBlockView key={block.id} block={block} />;
-          case "chart":
+          case 'chart':
             return <ChartBlockView key={block.id} block={block} />;
           default: {
             // Unknown/legacy block: degrade to a styled paragraph, never hide content.

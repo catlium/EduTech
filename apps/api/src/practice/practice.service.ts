@@ -52,10 +52,12 @@ export class PracticeService {
   // ── Start ─────────────────────────────────
   async start(instituteId: string, studentId: string, dto: PracticeCreateDto) {
     if (dto.mode === 'FLASHCARD') {
-      if (!dto.contentId) throw new BadRequestException('contentId required for flashcard practice');
+      if (!dto.contentId)
+        throw new BadRequestException('contentId required for flashcard practice');
       if (dto.topicId) throw new BadRequestException('topicId is not valid for flashcard practice');
     } else {
-      if (dto.contentId) throw new BadRequestException('contentId is not valid for question practice');
+      if (dto.contentId)
+        throw new BadRequestException('contentId is not valid for question practice');
     }
 
     await this.assertNoOpenSession(instituteId, studentId, dto);
@@ -80,9 +82,9 @@ export class PracticeService {
           })
           .returning();
         if (items.length > 0) {
-          await tx.insert(practiceSessionItems).values(
-            items.map((i) => ({ ...i, sessionId: session.id })),
-          );
+          await tx
+            .insert(practiceSessionItems)
+            .values(items.map((i) => ({ ...i, sessionId: session.id })));
         }
         return session;
       });
@@ -102,7 +104,12 @@ export class PracticeService {
     const sessions = await this.db
       .select()
       .from(practiceSessions)
-      .where(and(eq(practiceSessions.instituteId, instituteId), eq(practiceSessions.studentId, studentId)))
+      .where(
+        and(
+          eq(practiceSessions.instituteId, instituteId),
+          eq(practiceSessions.studentId, studentId),
+        ),
+      )
       .orderBy(desc(practiceSessions.startedAt));
 
     const ids = sessions.map((s) => s.id);
@@ -116,7 +123,10 @@ export class PracticeService {
         correctCount: countFilteredTrue,
       })
       .from(practiceSessionItems)
-      .leftJoin(practiceSessionResponses, eq(practiceSessionResponses.sessionItemId, practiceSessionItems.id))
+      .leftJoin(
+        practiceSessionResponses,
+        eq(practiceSessionResponses.sessionItemId, practiceSessionItems.id),
+      )
       .where(inArray(practiceSessionItems.sessionId, ids))
       .groupBy(practiceSessionItems.sessionId);
 
@@ -148,7 +158,12 @@ export class PracticeService {
       const rows = await this.db
         .select()
         .from(practiceSessionResponses)
-        .where(inArray(practiceSessionResponses.sessionItemId, items.map((i) => i.id)));
+        .where(
+          inArray(
+            practiceSessionResponses.sessionItemId,
+            items.map((i) => i.id),
+          ),
+        );
       for (const r of rows) responses.set(r.sessionItemId, r);
     }
 
@@ -158,7 +173,8 @@ export class PracticeService {
       mode: session.mode,
       status: session.status,
       itemCount: serialized.length,
-      answeredCount: serialized.filter((i) => i.answer !== undefined || i.rating !== undefined).length,
+      answeredCount: serialized.filter((i) => i.answer !== undefined || i.rating !== undefined)
+        .length,
       correctCount: serialized.filter((i) => i.isCorrect === true).length,
       startedAt: session.startedAt.toISOString(),
       completedAt: session.completedAt?.toISOString() ?? null,
@@ -195,7 +211,12 @@ export class PracticeService {
       const [item] = await tx
         .select()
         .from(practiceSessionItems)
-        .where(and(eq(practiceSessionItems.id, sessionItemId), eq(practiceSessionItems.sessionId, sessionId)))
+        .where(
+          and(
+            eq(practiceSessionItems.id, sessionItemId),
+            eq(practiceSessionItems.sessionId, sessionId),
+          ),
+        )
         .limit(1);
       if (!item) throw new NotFoundException('Practice item not found');
 
@@ -209,7 +230,11 @@ export class PracticeService {
         .values({ ...values, sessionItemId })
         .onConflictDoUpdate({
           target: practiceSessionResponses.sessionItemId,
-          set: { answer: values.answer ?? null, rating: values.rating ?? null, isCorrect: values.isCorrect ?? null },
+          set: {
+            answer: values.answer ?? null,
+            rating: values.rating ?? null,
+            isCorrect: values.isCorrect ?? null,
+          },
         })
         .returning();
 
@@ -232,7 +257,11 @@ export class PracticeService {
   }
 
   // ── Private ───────────────────────────────
-  private async assertNoOpenSession(instituteId: string, studentId: string, dto: PracticeCreateDto) {
+  private async assertNoOpenSession(
+    instituteId: string,
+    studentId: string,
+    dto: PracticeCreateDto,
+  ) {
     const open = await this.db
       .select()
       .from(practiceSessions)
@@ -245,11 +274,10 @@ export class PracticeService {
         ),
       );
     const clash = open.find((s) =>
-      s.contentId != null
-        ? s.contentId === dto.contentId
-        : s.topicId === (dto.topicId ?? null),
+      s.contentId != null ? s.contentId === dto.contentId : s.topicId === (dto.topicId ?? null),
     );
-    if (clash) throw new ConflictException('An open practice session already exists for this source');
+    if (clash)
+      throw new ConflictException('An open practice session already exists for this source');
   }
 
   private async flashcardItems(instituteId: string, contentId: string) {
@@ -265,12 +293,18 @@ export class PracticeService {
     const [current] = await this.db
       .select()
       .from(contentVersions)
-      .where(and(eq(contentVersions.contentId, contentId), eq(contentVersions.version, item.currentVersion)))
+      .where(
+        and(
+          eq(contentVersions.contentId, contentId),
+          eq(contentVersions.version, item.currentVersion),
+        ),
+      )
       .limit(1);
-    const cards = ((current?.payload as { cards?: Array<{ id: string; front: string; back: string }> })?.cards ?? []);
+    const cards =
+      (current?.payload as { cards?: Array<{ id: string; front: string; back: string }> })?.cards ??
+      [];
 
     return cards.map((c, i) => ({
-      
       sourceKey: `fc:${c.id}`,
       sortOrder: i,
       prompt: c.front,
@@ -312,7 +346,6 @@ export class PracticeService {
       .orderBy(asc(questions.createdAt));
 
     return rows.map((q, i) => ({
-      
       sourceKey: `q:${q.id}`,
       sortOrder: i,
       prompt: q.stem,
@@ -335,7 +368,12 @@ export class PracticeService {
       throw new BadRequestException('answer required for question item');
     }
     if (dto.rating) throw new BadRequestException('rating is not valid for question items');
-    const { isCorrect } = gradeAnswer(item.questionType ?? '', item.payload, dto.answer, item.answerFormat);
+    const { isCorrect } = gradeAnswer(
+      item.questionType ?? '',
+      item.payload,
+      dto.answer,
+      item.answerFormat,
+    );
     return { answer: dto.answer, rating: null, isCorrect };
   }
 
@@ -369,7 +407,12 @@ export class PracticeService {
     // student answers that item (the explanation may reference the key).
     if (item.questionType) {
       if (!response) return base;
-      const { correctAnswer } = gradeAnswer(item.questionType, item.payload, response.answer, item.answerFormat);
+      const { correctAnswer } = gradeAnswer(
+        item.questionType,
+        item.payload,
+        response.answer,
+        item.answerFormat,
+      );
       return {
         ...base,
         answer: response.answer,

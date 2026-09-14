@@ -1,19 +1,19 @@
-"use client";
+'use client';
 
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Timer, AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, Check, Timer, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 
-import { api, ApiError } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { api, ApiError } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Dialog,
   DialogClose,
@@ -23,12 +23,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import type {
   AttemptDetail,
   StudentAttemptQuestion,
   StudentQuestionPayload,
-} from "@catlium/contracts";
+} from '@catlium/contracts';
 
 type Answer = Record<string, unknown>;
 
@@ -36,15 +36,16 @@ function choiceList(payload: StudentQuestionPayload): Array<{ id: string; text: 
   const choices = payload.choices;
   return Array.isArray(choices)
     ? (choices as Array<{ id?: string; text?: string }>).filter(
-        (c): c is { id: string; text: string } => typeof c.id === "string" && typeof c.text === "string",
+        (c): c is { id: string; text: string } =>
+          typeof c.id === 'string' && typeof c.text === 'string',
       )
     : [];
 }
 
 function mmss(ms: number): string {
-  if (ms < 0) return "00:00";
+  if (ms < 0) return '00:00';
   const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 export default function AttemptPlayerPage() {
@@ -67,7 +68,7 @@ export default function AttemptPlayerPage() {
     api<{ attempt: AttemptDetail }>(`/attempts/${params.attemptId}`, { signal: ctrl.signal })
       .then(({ attempt }) => {
         setAttempt(attempt);
-        if (attempt.status !== "IN_PROGRESS") {
+        if (attempt.status !== 'IN_PROGRESS') {
           router.replace(`/student/attempts/${attempt.id}/result`);
           return;
         }
@@ -76,11 +77,11 @@ export default function AttemptPlayerPage() {
         setAnswers(map);
       })
       .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (error instanceof DOMException && error.name === 'AbortError') return;
         if (error instanceof ApiError && error.status === 404) {
-          setLoadError("not-found");
+          setLoadError('not-found');
         } else {
-          setLoadError(error instanceof ApiError ? error.message : "Failed to load attempt");
+          setLoadError(error instanceof ApiError ? error.message : 'Failed to load attempt');
         }
       })
       .finally(() => setLoading(false));
@@ -112,9 +113,12 @@ export default function AttemptPlayerPage() {
     setAnswers((prev) => ({ ...prev, [aqId]: answer }));
     setSaving(true);
     try {
-      await api(`/attempts/${params.attemptId}/questions/${aqId}`, { method: "PUT", body: { answer } });
+      await api(`/attempts/${params.attemptId}/questions/${aqId}`, {
+        method: 'PUT',
+        body: { answer },
+      });
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Failed to save answer");
+      toast.error(error instanceof ApiError ? error.message : 'Failed to save answer');
     } finally {
       setSaving(false);
     }
@@ -125,12 +129,12 @@ export default function AttemptPlayerPage() {
     submittedRef.current = true;
     setSubmitting(true);
     try {
-      await api(`/attempts/${params.attemptId}/submit`, { method: "POST" });
+      await api(`/attempts/${params.attemptId}/submit`, { method: 'POST' });
       router.replace(`/student/attempts/${params.attemptId}/result`);
     } catch (error) {
       submittedRef.current = false;
       setSubmitting(false);
-      toast.error(error instanceof ApiError ? error.message : "Failed to submit attempt");
+      toast.error(error instanceof ApiError ? error.message : 'Failed to submit attempt');
     }
   }
 
@@ -151,7 +155,7 @@ export default function AttemptPlayerPage() {
     );
   }
 
-  if (loadError === "not-found") {
+  if (loadError === 'not-found') {
     return (
       <div className="mx-auto max-w-3xl space-y-4">
         <Card>
@@ -205,12 +209,12 @@ export default function AttemptPlayerPage() {
         <h1 className="text-xl font-semibold tracking-tight">Attempt in progress</h1>
         <div
           className={cn(
-            "inline-flex items-center gap-1 rounded-md border px-3 py-1 text-sm font-medium tabular-nums",
-            low ? "border-destructive text-destructive" : "border-border",
+            'inline-flex items-center gap-1 rounded-md border px-3 py-1 text-sm font-medium tabular-nums',
+            low ? 'border-destructive text-destructive' : 'border-border',
           )}
         >
           <Timer className="size-4" />
-          {remaining === null ? "No time limit" : mmss(remaining)}
+          {remaining === null ? 'No time limit' : mmss(remaining)}
         </div>
       </div>
 
@@ -272,12 +276,12 @@ export default function AttemptPlayerPage() {
                       type="button"
                       onClick={() => setIndex(i)}
                       className={cn(
-                        "flex h-9 items-center justify-center rounded-md border text-sm",
+                        'flex h-9 items-center justify-center rounded-md border text-sm',
                         i === index
-                          ? "border-primary bg-primary text-primary-foreground"
+                          ? 'border-primary bg-primary text-primary-foreground'
                           : answered
-                            ? "border-primary/40 text-primary"
-                            : "text-muted-foreground",
+                            ? 'border-primary/40 text-primary'
+                            : 'text-muted-foreground',
                       )}
                     >
                       {i + 1}
@@ -299,7 +303,7 @@ export default function AttemptPlayerPage() {
           <Dialog>
             <DialogTrigger asChild>
               <Button className="w-full" variant="destructive" disabled={submitting}>
-                {submitting ? "Submitting…" : "Submit attempt"}
+                {submitting ? 'Submitting…' : 'Submit attempt'}
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -307,7 +311,7 @@ export default function AttemptPlayerPage() {
                 <DialogTitle>Submit your attempt?</DialogTitle>
                 <DialogDescription>
                   {answeredCount === questions.length
-                    ? "All questions answered. You can still change answers before submitting."
+                    ? 'All questions answered. You can still change answers before submitting.'
                     : `${questions.length - answeredCount} question(s) left unanswered. You can still change answers before submitting.`}
                 </DialogDescription>
               </DialogHeader>
@@ -316,7 +320,7 @@ export default function AttemptPlayerPage() {
                   <Button variant="outline">Cancel</Button>
                 </DialogClose>
                 <Button onClick={() => void doSubmit()} disabled={submitting}>
-                  {submitting ? "Submitting…" : "Submit now"}
+                  {submitting ? 'Submitting…' : 'Submit now'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -345,10 +349,14 @@ function QuestionAnswerer({
 }) {
   const { questionType, payload } = question;
 
-  if (questionType === "MCQ") {
-    const selected = typeof value?.choiceId === "string" ? value.choiceId : undefined;
+  if (questionType === 'MCQ') {
+    const selected = typeof value?.choiceId === 'string' ? value.choiceId : undefined;
     return (
-      <RadioGroup value={selected} onValueChange={(choiceId) => onChange({ choiceId })} className="gap-3">
+      <RadioGroup
+        value={selected}
+        onValueChange={(choiceId) => onChange({ choiceId })}
+        className="gap-3"
+      >
         {choiceList(payload).map((choice, i) => (
           <div key={choice.id} className="flex items-center gap-3 rounded-md border p-3">
             <RadioGroupItem id={`mc-${choice.id}`} value={choice.id} />
@@ -362,17 +370,17 @@ function QuestionAnswerer({
     );
   }
 
-  if (questionType === "TRUE_FALSE") {
-    const selected = typeof value?.value === "boolean" ? String(value.value) : undefined;
+  if (questionType === 'TRUE_FALSE') {
+    const selected = typeof value?.value === 'boolean' ? String(value.value) : undefined;
     return (
       <RadioGroup
         value={selected}
-        onValueChange={(v) => onChange({ value: v === "true" })}
+        onValueChange={(v) => onChange({ value: v === 'true' })}
         className="gap-3"
       >
         {[
-          { label: "True", val: "true" },
-          { label: "False", val: "false" },
+          { label: 'True', val: 'true' },
+          { label: 'False', val: 'false' },
         ].map((opt) => (
           <div key={opt.val} className="flex items-center gap-3 rounded-md border p-3">
             <RadioGroupItem id={`tf-${opt.val}`} value={opt.val} />
@@ -385,7 +393,7 @@ function QuestionAnswerer({
     );
   }
 
-  const text = typeof value?.value === "string" ? value.value : "";
+  const text = typeof value?.value === 'string' ? value.value : '';
   const [draft, setDraft] = useState(text);
   useEffect(() => setDraft(text), [text]);
   useEffect(() => {

@@ -53,16 +53,16 @@ docker compose -f docker-compose.yml \
 
 ### Internal services
 
-| Service        | Internal port | Exposed?                    | Purpose                                  |
-| -------------- | ------------- | --------------------------- | ---------------------------------------- |
-| Web app        | 3001          | **public**                  | Next.js frontend (server-side auth guard) |
-| API (NestJS)   | 3000          | **public**                  | The single public API boundary           |
-| PostgreSQL 17  | 5432          | dev override (loopback)     | Primary database                         |
-| Redis 7        | 6379          | dev override (loopback)     | Cache / rate limiting                    |
-| RabbitMQ 3     | 5672 (+15672 mgmt) | dev override (loopback) | Async job queues (API -> workers)        |
-| OCR (FastAPI)  | 8000          | dev override (loopback)     | Local document extraction                |
-| OmniRoute      | 20128         | dev override (loopback)     | Internal AI gateway (OpenAI-compatible)  |
-| mock AI        | 8899          | none (demo profile)         | Deterministic canned responses (demo)    |
+| Service       | Internal port      | Exposed?                | Purpose                                   |
+| ------------- | ------------------ | ----------------------- | ----------------------------------------- |
+| Web app       | 3001               | **public**              | Next.js frontend (server-side auth guard) |
+| API (NestJS)  | 3000               | **public**              | The single public API boundary            |
+| PostgreSQL 17 | 5432               | dev override (loopback) | Primary database                          |
+| Redis 7       | 6379               | dev override (loopback) | Cache / rate limiting                     |
+| RabbitMQ 3    | 5672 (+15672 mgmt) | dev override (loopback) | Async job queues (API -> workers)         |
+| OCR (FastAPI) | 8000               | dev override (loopback) | Local document extraction                 |
+| OmniRoute     | 20128              | dev override (loopback) | Internal AI gateway (OpenAI-compatible)   |
+| mock AI       | 8899               | none (demo profile)     | Deterministic canned responses (demo)     |
 
 ### Internal authentication
 
@@ -115,16 +115,16 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
 
 ## Service URLs (development)
 
-| Service        | URL                          | Note                            |
-| -------------- | ---------------------------- | ------------------------------- |
-| Web app        | http://localhost:3001        | PUBLIC                          |
-| API            | http://localhost:3000        | PUBLIC                          |
+| Service        | URL                                 | Note                            |
+| -------------- | ----------------------------------- | ------------------------------- |
+| Web app        | http://localhost:3001               | PUBLIC                          |
+| API            | http://localhost:3000               | PUBLIC                          |
 | API Health     | http://localhost:3000/api/v1/health | PUBLIC                          |
 | API Health     | http://localhost:3000/api/v1/health | PUBLIC                          |
-| OCR Service    | http://localhost:8000        | loopback-only (dev override)    |
-| OmniRoute UI   | http://localhost:20128       | loopback-only (dev override)    |
-| RabbitMQ UI    | http://localhost:15672       | loopback-only (dev override)    |
-| Drizzle Studio | Via `pnpm db:studio`         | uses Postgres on 127.0.0.1:5432 |
+| OCR Service    | http://localhost:8000               | loopback-only (dev override)    |
+| OmniRoute UI   | http://localhost:20128              | loopback-only (dev override)    |
+| RabbitMQ UI    | http://localhost:15672              | loopback-only (dev override)    |
+| Drizzle Studio | Via `pnpm db:studio`                | uses Postgres on 127.0.0.1:5432 |
 
 ## Production Considerations
 

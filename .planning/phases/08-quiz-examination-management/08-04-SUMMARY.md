@@ -25,9 +25,9 @@ affects:
 
 # Actuals (#2632) — pairs with the plan's `estimate` (32000 tokens / 16000 raw, low confidence) to calibrate future estimates.
 actuals:
-  tokens: 4213   # chars/4 over the realized docs diff (16,852 diff chars across 1b51bc8..HEAD on docs/)
-  tasks: 3       # tasks completed (1: user-validation E2E section, 2: tasks/status/API sweep, 3: metadata)
-  commits: 3     # commits made (2 task commits + 1 metadata/docs close)
+  tokens: 4213 # chars/4 over the realized docs diff (16,852 diff chars across 1b51bc8..HEAD on docs/)
+  tasks: 3 # tasks completed (1: user-validation E2E section, 2: tasks/status/API sweep, 3: metadata)
+  commits: 3 # commits made (2 task commits + 1 metadata/docs close)
 
 # Tech tracking
 tech-stack:
@@ -47,9 +47,9 @@ key-files:
 
 key-decisions:
   - "Phase 8 E2E closes as COMPLETE on 2026-09-05 (real run date) — the plan's 2026-09-04 date in user-validation.md/project-status.md was a planning-day timestamp; truth wins"
-  - "Transition/add endpoints return 201 (NestJS POST default), not 200 as the 08-03 SUMMARY recorded — documented in the user-validation section and fixed in docs/api/assessments.md rather than hidden"
+  - 'Transition/add endpoints return 201 (NestJS POST default), not 200 as the 08-03 SUMMARY recorded — documented in the user-validation section and fixed in docs/api/assessments.md rather than hidden'
   - "docs/tasks.md keeps newest-first layout; the plan's awk-to-EOF gate on tasks.md inevitably counts legacy Phase 2/1 markers after the mid-file block (18) — verified 0 unchecked items INSIDE the Phase 8 block; fails_when ('any EXAM item not [x]') holds"
-  - "No code changes needed across the whole E2E close: the 56-check live sweep found zero implementation defects — only docs precision gaps"
+  - 'No code changes needed across the whole E2E close: the 56-check live sweep found zero implementation defects — only docs precision gaps'
 
 requirements-completed: [EXAM-01, EXAM-02, EXAM-03, EXAM-04, EXAM-05, EXAM-06, EXAM-07, EXAM-08]
 
@@ -83,12 +83,12 @@ Each task was committed atomically (normal commits, hooks enabled):
 
 ## Wave Commit Table (08-01..08-04)
 
-| Plan | Task commits | Metadata |
-| ---- | ------------ | -------- |
-| 08-01 (foundation) | `ff32bc0` feat (schema/migration 0008/contracts/create-get-list), `95788e6` docs (assessments API contract) | `39097fd` (complete docs), `bd50a10` (self-check append) |
-| 08-02 (CRUD + linking) | `5725a33` feat (PATCH/DELETE), `10f840b` feat (question linking join table) | `5dd52d4` (docs: CRUD + linking), `4e05f3d` (state/roadmap/requirements), `c193bbc` (self-check) |
-| 08-03 (state machine) | `f204d41` feat (VALID_TRANSITIONS + publish gate), `9a33f50` feat (manual activate/complete/unpublish) | `552b6d0` (docs: activate/unpublish), `8742a77` (state/roadmap/requirements), `57c1471` + `1b51bc8` (self-check + roadmap status) |
-| 08-04 (E2E close, this) | `f5028f2` (user-validation E2E), `86f2689` (tasks/status/API sweep) | final commit (this summary + STATE + ROADMAP) |
+| Plan                    | Task commits                                                                                                | Metadata                                                                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 08-01 (foundation)      | `ff32bc0` feat (schema/migration 0008/contracts/create-get-list), `95788e6` docs (assessments API contract) | `39097fd` (complete docs), `bd50a10` (self-check append)                                                                          |
+| 08-02 (CRUD + linking)  | `5725a33` feat (PATCH/DELETE), `10f840b` feat (question linking join table)                                 | `5dd52d4` (docs: CRUD + linking), `4e05f3d` (state/roadmap/requirements), `c193bbc` (self-check)                                  |
+| 08-03 (state machine)   | `f204d41` feat (VALID_TRANSITIONS + publish gate), `9a33f50` feat (manual activate/complete/unpublish)      | `552b6d0` (docs: activate/unpublish), `8742a77` (state/roadmap/requirements), `57c1471` + `1b51bc8` (self-check + roadmap status) |
+| 08-04 (E2E close, this) | `f5028f2` (user-validation E2E), `86f2689` (tasks/status/API sweep)                                         | final commit (this summary + STATE + ROADMAP)                                                                                     |
 
 **State-head spot-check across the wave:** prior SUMMARYs recorded `Self-Check: PASSED`; all listed commits verified present in `git log`. No dangling state-heads — each plan's metadata commit is in history.
 
@@ -112,7 +112,7 @@ Each task was committed atomically (normal commits, hooks enabled):
 
 None — plan executed as written (no code bugs, no missing critical functionality). The CON-02 sweep of `docs/api/assessments.md` surfaced four doc-vs-behavior gaps the plan itself predicted as Task 2 work; fixes were part of the task, not deviations:
 
-1. **Docs said `404` for a foreign-institute assessment *or question* in add-questions; runtime is `404` for the assessmentId but `400` for a foreign-institute questionId** (Pitfall 3 — `Question ... not found or not in this institute`).
+1. **Docs said `404` for a foreign-institute assessment _or question_ in add-questions; runtime is `404` for the assessmentId but `400` for a foreign-institute questionId** (Pitfall 3 — `Question ... not found or not in this institute`).
 2. **Docs restricted "List assessment questions" to INSTITUTE_ADMIN/TEACHER; the route has no `@RequiredRoles`** — student GET questions → 200 (verified: reads open to any institute member).
 3. **Docs lacked return codes on the lifecycle/add endpoints** — stated `201` explicitly (NestJS POST default) after live probing.
 4. **"Complete assessment" paraphrased "or applies the state-machine rules defined in 08-03"** — replaced with the precise rule: source must be `ACTIVE`; complete from DRAFT/PUBLISHED → 400 `Cannot transition assessment from X to COMPLETED`; no implicit ACTIVE step.
@@ -140,6 +140,7 @@ None — all fixture accounts (throwaway p8* users) were re-created/reset and va
 ## Self-Check: PASSED
 
 Verified before metadata commit:
+
 - FOUND: `docs/user-validation.md` (Phase 8 section, 0 unchecked markers, required strings present)
 - FOUND: `docs/tasks.md` (Phase 8 block, 13 `[x]`, EXAM-01 present)
 - FOUND: `docs/project-status.md` (Phase 8 COMPLETE entry)
@@ -147,12 +148,14 @@ Verified before metadata commit:
 - PASS: `pnpm typecheck && pnpm lint` green after all tasks (9/9 turbo tasks)
 
 ---
-*Phase: 08-quiz-examination-management — Plan 04*
-*Completed: 2026-09-05*
+
+_Phase: 08-quiz-examination-management — Plan 04_
+_Completed: 2026-09-05_
 
 ## Self-Check: PASSED (append)
 
 Verified after metadata commits:
+
 - FOUND: commit `23b3e58` (SUMMARY + STATE + ROADMAP band)
 - FOUND: STATE.md progress advanced (status `completed`, completed_plans 7→8, percent 100, state_head = `86f2689`), Phase 8 row ✓ in Phase Plans, next action = plan Phase 9
 - FOUND: ROADMAP.md Phase 8 → **COMPLETE** (all four plans 08-01..08-04 ✓)

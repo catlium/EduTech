@@ -1,50 +1,55 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Check, LayoutDashboard, Timer, X } from "lucide-react";
-import { toast } from "sonner";
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { Check, LayoutDashboard, Timer, X } from 'lucide-react';
+import { toast } from 'sonner';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { AttemptResult, AttemptResultQuestion, StudentQuestionPayload } from "@catlium/contracts";
+import { api, ApiError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type {
+  AttemptResult,
+  AttemptResultQuestion,
+  StudentQuestionPayload,
+} from '@catlium/contracts';
 
 function choiceList(payload: StudentQuestionPayload): Array<{ id: string; text: string }> {
   const choices = payload.choices;
   return Array.isArray(choices)
     ? (choices as Array<{ id?: string; text?: string }>).filter(
-        (c): c is { id: string; text: string } => typeof c.id === "string" && typeof c.text === "string",
+        (c): c is { id: string; text: string } =>
+          typeof c.id === 'string' && typeof c.text === 'string',
       )
     : [];
 }
 
 function displayMcq(payload: StudentQuestionPayload, choiceId: unknown): string {
-  if (typeof choiceId !== "string" || !choiceId) return "Not answered";
+  if (typeof choiceId !== 'string' || !choiceId) return 'Not answered';
   const label = choiceList(payload).find((c) => c.id === choiceId);
-  return label ? label.text : "Selected option";
+  return label ? label.text : 'Selected option';
 }
 
 function answerLabel(question: AttemptResultQuestion): string {
   const answer = question.answer;
-  if (question.questionType === "MCQ") return displayMcq(question.payload, answer?.choiceId);
-  if (question.questionType === "TRUE_FALSE") {
-    return typeof answer?.value === "boolean" ? (answer.value ? "True" : "False") : "Not answered";
+  if (question.questionType === 'MCQ') return displayMcq(question.payload, answer?.choiceId);
+  if (question.questionType === 'TRUE_FALSE') {
+    return typeof answer?.value === 'boolean' ? (answer.value ? 'True' : 'False') : 'Not answered';
   }
-  return typeof answer?.value === "string" && answer.value ? answer.value : "Not answered";
+  return typeof answer?.value === 'string' && answer.value ? answer.value : 'Not answered';
 }
 
 function correctLabel(question: AttemptResultQuestion): string {
   const correct = question.correctAnswer;
-  if (question.questionType === "MCQ") return displayMcq(question.payload, correct?.choiceId);
-  if (question.questionType === "TRUE_FALSE") {
-    return typeof correct?.value === "boolean" ? (correct.value ? "True" : "False") : "—";
+  if (question.questionType === 'MCQ') return displayMcq(question.payload, correct?.choiceId);
+  if (question.questionType === 'TRUE_FALSE') {
+    return typeof correct?.value === 'boolean' ? (correct.value ? 'True' : 'False') : '—';
   }
-  return typeof correct?.value === "string" ? correct.value : "—";
+  return typeof correct?.value === 'string' ? correct.value : '—';
 }
 
 export default function AttemptResultPage() {
@@ -89,7 +94,7 @@ export default function AttemptResultPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
-            {result.status === "SUBMITTED" ? (
+            {result.status === 'SUBMITTED' ? (
               <Badge className="bg-emerald-600">Submitted</Badge>
             ) : (
               <Badge variant="secondary">{result.status}</Badge>
@@ -118,15 +123,17 @@ export default function AttemptResultPage() {
             <CardContent className="p-4">
               <div className="mb-2 flex items-start justify-between gap-2">
                 <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Question {i + 1} · {question.marks} mark{question.marks === 1 ? "" : "s"}
+                  Question {i + 1} · {question.marks} mark{question.marks === 1 ? '' : 's'}
                 </span>
                 <span
                   className={`flex items-center gap-1 text-xs font-medium ${
-                    question.isCorrect ? "text-emerald-600" : "text-destructive"
+                    question.isCorrect ? 'text-emerald-600' : 'text-destructive'
                   }`}
                 >
                   {question.isCorrect ? <Check className="size-3.5" /> : <X className="size-3.5" />}
-                  {question.isCorrect ? `Correct · +${question.marksAwarded}` : `Incorrect · 0/${question.marks}`}
+                  {question.isCorrect
+                    ? `Correct · +${question.marksAwarded}`
+                    : `Incorrect · 0/${question.marks}`}
                 </span>
               </div>
               <p className="mb-3 text-sm leading-relaxed">{question.stem}</p>

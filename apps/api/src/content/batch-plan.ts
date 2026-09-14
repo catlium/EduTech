@@ -92,7 +92,11 @@ export async function planBatchJobs(
     for (const type of input.productTypes) {
       // mode=missing (default): a live topic-owned AI_GENERATED resource of
       // this type already exists → nothing to generate. Regenerate forces it.
-      if (input.mode === 'missing' && dedupTopicId && (await port.hasExistingDerived(dedupTopicId, type))) {
+      if (
+        input.mode === 'missing' &&
+        dedupTopicId &&
+        (await port.hasExistingDerived(dedupTopicId, type))
+      ) {
         skipped.push({ type, topicId: dedupTopicId, reason: 'exists' });
         continue;
       }

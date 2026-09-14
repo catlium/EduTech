@@ -1,28 +1,29 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { CalendarClock, ClipboardList, History, Play, RotateCcw, Trophy } from "lucide-react";
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { CalendarClock, ClipboardList, History, Play, RotateCcw, Trophy } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { ErrorState } from "@/components/app/error-state";
-import { SkeletonCards } from "@/components/app/loading";
-import { StatusBadge } from "@/components/app/status-badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "sonner";
-import type { AttemptHistoryItem, AvailableAssessment } from "@catlium/contracts";
+import { api, ApiError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { ErrorState } from '@/components/app/error-state';
+import { SkeletonCards } from '@/components/app/loading';
+import { StatusBadge } from '@/components/app/status-badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
+import type { AttemptHistoryItem, AvailableAssessment } from '@catlium/contracts';
 
-type AttemptStatus = AttemptHistoryItem["status"];
+type AttemptStatus = AttemptHistoryItem['status'];
 
 function statusAction(a: AttemptHistoryItem): { label: string; href: string } {
-  if (a.status === "IN_PROGRESS") return { label: "Continue", href: `/student/attempts/${a.id}` };
-  if (a.status === "SUBMITTED" || a.status === "EXPIRED") return { label: "View result", href: `/student/attempts/${a.id}/result` };
-  return { label: "Continue", href: `/student/attempts/${a.id}` };
+  if (a.status === 'IN_PROGRESS') return { label: 'Continue', href: `/student/attempts/${a.id}` };
+  if (a.status === 'SUBMITTED' || a.status === 'EXPIRED')
+    return { label: 'View result', href: `/student/attempts/${a.id}/result` };
+  return { label: 'Continue', href: `/student/attempts/${a.id}` };
 }
 
 export default function StudentExamsPage() {
@@ -36,16 +37,16 @@ export default function StudentExamsPage() {
     if (!institute) return;
     const ctrl = new AbortController();
     Promise.all([
-      api<{ assessments: AvailableAssessment[] }>("/attempts/available", { signal: ctrl.signal }),
-      api<{ attempts: AttemptHistoryItem[] }>("/attempts", { signal: ctrl.signal }),
+      api<{ assessments: AvailableAssessment[] }>('/attempts/available', { signal: ctrl.signal }),
+      api<{ attempts: AttemptHistoryItem[] }>('/attempts', { signal: ctrl.signal }),
     ])
       .then(([avail, mine]) => {
         setOpen(avail.assessments);
         setHistory(mine.attempts);
       })
       .catch((err) => {
-        if (!(err instanceof DOMException && err.name === "AbortError")) {
-          setError(err instanceof ApiError ? err.message : "Failed to load exams");
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setError(err instanceof ApiError ? err.message : 'Failed to load exams');
         }
       })
       .finally(() => setLoading(false));
@@ -64,8 +65,8 @@ export default function StudentExamsPage() {
   }
 
   const openCount = open.length;
-  const inProgress = history.filter((a) => a.status === "IN_PROGRESS");
-  const past = history.filter((a) => a.status !== "IN_PROGRESS");
+  const inProgress = history.filter((a) => a.status === 'IN_PROGRESS');
+  const past = history.filter((a) => a.status !== 'IN_PROGRESS');
 
   return (
     <div className="space-y-8">
@@ -156,14 +157,16 @@ export default function StudentExamsPage() {
                     <p className="truncate font-medium">{a.assessmentTitle}</p>
                     <p className="text-xs text-muted-foreground">
                       {a.questionCount} questions · started {formatDateTime(a.startedAt)}
-                      {a.status !== "IN_PROGRESS" && a.submittedAt
+                      {a.status !== 'IN_PROGRESS' && a.submittedAt
                         ? ` · submitted ${formatDateTime(a.submittedAt)}`
-                        : ""}
+                        : ''}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
-                    {a.status !== "IN_PROGRESS" && a.score !== null && a.totalMarks !== null ? (
-                      <span className={`text-sm font-semibold ${a.score >= a.totalMarks / 2 ? "text-emerald-600" : "text-muted-foreground"}`}>
+                    {a.status !== 'IN_PROGRESS' && a.score !== null && a.totalMarks !== null ? (
+                      <span
+                        className={`text-sm font-semibold ${a.score >= a.totalMarks / 2 ? 'text-emerald-600' : 'text-muted-foreground'}`}
+                      >
                         {a.score} / {a.totalMarks}
                       </span>
                     ) : null}

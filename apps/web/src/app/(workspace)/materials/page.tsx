@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import {
   FileText,
   Upload,
@@ -15,11 +15,11 @@ import {
   Eye,
   CheckCircle2,
   Search,
-} from "lucide-react";
+} from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
-import { useTenant, canManage } from "@/lib/tenant";
+import { api, ApiError } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
+import { useTenant, canManage } from '@/lib/tenant';
 import {
   CreateTextMaterialRequestSchema,
   type CreateTextMaterialRequest,
@@ -27,18 +27,18 @@ import {
   type SubjectResponse,
   type ChapterResponse,
   type TopicResponse,
-} from "@catlium/contracts";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { ErrorState } from "@/components/app/error-state";
-import { ResourceCard } from "@/components/app/resource-card";
-import { StatusBadge } from "@/components/app/status-badge";
-import { SkeletonCards } from "@/components/app/loading";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from '@catlium/contracts';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { ErrorState } from '@/components/app/error-state';
+import { ResourceCard } from '@/components/app/resource-card';
+import { StatusBadge } from '@/components/app/status-badge';
+import { SkeletonCards } from '@/components/app/loading';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -46,20 +46,20 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import {
   Form,
   FormControl,
@@ -67,14 +67,11 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import {
-  ScopeCascade,
-  FilterChip,
-} from "@/components/app/scope-cascade";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+} from '@/components/ui/form';
+import { ScopeCascade, FilterChip } from '@/components/app/scope-cascade';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
-type DialogMode = null | "text" | "upload";
+type DialogMode = null | 'text' | 'upload';
 
 interface ScopeState {
   subjects: SubjectResponse[];
@@ -87,7 +84,7 @@ interface ScopeState {
 
 function materialTypeLabel(m: MaterialResponse): string {
   if (m.fileName) {
-    const ext = m.fileName.split(".").pop()?.toUpperCase();
+    const ext = m.fileName.split('.').pop()?.toUpperCase();
     if (ext) return ext;
   }
   return m.materialType;
@@ -100,12 +97,12 @@ function materialsQuery(
   search: string,
 ): URLSearchParams {
   const params = new URLSearchParams();
-  if (statusFilter !== "all") params.set("status", statusFilter);
-  if (processingFilter !== "all") params.set("processingStatus", processingFilter);
-  if (scopeFilter.topicId) params.set("topicId", scopeFilter.topicId);
-  else if (scopeFilter.chapterId) params.set("chapterId", scopeFilter.chapterId);
-  else if (scopeFilter.subjectId) params.set("subjectId", scopeFilter.subjectId);
-  if (search) params.set("q", search);
+  if (statusFilter !== 'all') params.set('status', statusFilter);
+  if (processingFilter !== 'all') params.set('processingStatus', processingFilter);
+  if (scopeFilter.topicId) params.set('topicId', scopeFilter.topicId);
+  else if (scopeFilter.chapterId) params.set('chapterId', scopeFilter.chapterId);
+  else if (scopeFilter.subjectId) params.set('subjectId', scopeFilter.subjectId);
+  if (search) params.set('q', search);
   return params;
 }
 
@@ -120,9 +117,9 @@ export default function MaterialsListPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [scopeFilter, setScopeFilter] = useState(() => ({
-    subjectId: searchParams.get("subject") ?? "",
-    chapterId: searchParams.get("chapter") ?? "",
-    topicId: searchParams.get("topic") ?? "",
+    subjectId: searchParams.get('subject') ?? '',
+    chapterId: searchParams.get('chapter') ?? '',
+    topicId: searchParams.get('topic') ?? '',
   }));
 
   const [hierarchy, setHierarchy] = useState<{
@@ -133,33 +130,33 @@ export default function MaterialsListPage() {
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [processingFilter, setProcessingFilter] = useState<string>("all");
-  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [processingFilter, setProcessingFilter] = useState<string>('all');
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
   const debouncedSearch = useDebouncedValue(search, 300);
 
   const [scope, setScope] = useState<ScopeState>({
     subjects: [],
     chapters: [],
     topics: [],
-    subjectId: "",
-    chapterId: "",
-    topicId: "",
+    subjectId: '',
+    chapterId: '',
+    topicId: '',
   });
 
   const uploadFileRef = useRef<HTMLInputElement>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadTitle, setUploadTitle] = useState('');
 
   const textForm = useForm<CreateTextMaterialRequest>({
     resolver: zodResolver(CreateTextMaterialRequestSchema),
-    defaultValues: { title: "", description: "", text: "" },
+    defaultValues: { title: '', description: '', text: '' },
   });
 
   const fetchSubjects = useCallback(() => {
     if (!institute) return;
     const ctrl = new AbortController();
-    api<{ subjects: SubjectResponse[] }>("/academic/subjects", { signal: ctrl.signal })
+    api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal: ctrl.signal })
       .then(({ subjects }) => setScope((s) => ({ ...s, subjects })))
       .catch(() => {});
     return () => ctrl.abort();
@@ -197,55 +194,54 @@ export default function MaterialsListPage() {
     return () => ctrl.abort();
   }, [scope.subjects]);
 
-  const fetchChapters = useCallback(
-    (subjectId: string) => {
-      if (!subjectId) {
-        setScope((s) => ({ ...s, chapters: [], topics: [], chapterId: "", topicId: "" }));
-        return;
-      }
-      const ctrl = new AbortController();
-      api<{ chapters: ChapterResponse[] }>(`/academic/subjects/${subjectId}/chapters`, {
-        signal: ctrl.signal,
-      })
-        .then(({ chapters }) =>
-          setScope((s) => ({ ...s, chapters, topics: [], chapterId: "", topicId: "" })),
-        )
-        .catch(() => {});
-      return () => ctrl.abort();
-    },
-    [],
-  );
+  const fetchChapters = useCallback((subjectId: string) => {
+    if (!subjectId) {
+      setScope((s) => ({ ...s, chapters: [], topics: [], chapterId: '', topicId: '' }));
+      return;
+    }
+    const ctrl = new AbortController();
+    api<{ chapters: ChapterResponse[] }>(`/academic/subjects/${subjectId}/chapters`, {
+      signal: ctrl.signal,
+    })
+      .then(({ chapters }) =>
+        setScope((s) => ({ ...s, chapters, topics: [], chapterId: '', topicId: '' })),
+      )
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, []);
 
-  const fetchTopics = useCallback(
-    (chapterId: string) => {
-      if (!chapterId) {
-        setScope((s) => ({ ...s, topics: [], topicId: "" }));
-        return;
-      }
-      const ctrl = new AbortController();
-      api<{ topics: TopicResponse[] }>(`/academic/chapters/${chapterId}/topics`, {
-        signal: ctrl.signal,
-      })
-        .then(({ topics }) => setScope((s) => ({ ...s, topics, topicId: "" })))
-        .catch(() => {});
-      return () => ctrl.abort();
-    },
-    [],
-  );
+  const fetchTopics = useCallback((chapterId: string) => {
+    if (!chapterId) {
+      setScope((s) => ({ ...s, topics: [], topicId: '' }));
+      return;
+    }
+    const ctrl = new AbortController();
+    api<{ topics: TopicResponse[] }>(`/academic/chapters/${chapterId}/topics`, {
+      signal: ctrl.signal,
+    })
+      .then(({ topics }) => setScope((s) => ({ ...s, topics, topicId: '' })))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, []);
 
   const refresh = useCallback(() => {
     if (!institute) return;
     setLoading(true);
     setError(null);
     const ctrl = new AbortController();
-    const qs = materialsQuery(statusFilter, processingFilter, scopeFilter, debouncedSearch).toString();
-    api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ""}`, {
+    const qs = materialsQuery(
+      statusFilter,
+      processingFilter,
+      scopeFilter,
+      debouncedSearch,
+    ).toString();
+    api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ''}`, {
       signal: ctrl.signal,
     })
       .then(({ materials }) => setMaterials(materials))
       .catch((err) => {
-        if (!(err instanceof DOMException && err.name === "AbortError")) {
-          setError(err instanceof ApiError ? err.message : "Failed to load materials");
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setError(err instanceof ApiError ? err.message : 'Failed to load materials');
         }
       })
       .finally(() => setLoading(false));
@@ -259,13 +255,18 @@ export default function MaterialsListPage() {
   useEffect(() => {
     if (materials.length === 0) return;
     const polling = materials.filter(
-      (m) => m.processingStatus === "QUEUED" || m.processingStatus === "PROCESSING",
+      (m) => m.processingStatus === 'QUEUED' || m.processingStatus === 'PROCESSING',
     );
     if (polling.length === 0) return;
     const ctrl = new AbortController();
     const id = setInterval(() => {
-      const qs = materialsQuery(statusFilter, processingFilter, scopeFilter, debouncedSearch).toString();
-      api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ""}`, {
+      const qs = materialsQuery(
+        statusFilter,
+        processingFilter,
+        scopeFilter,
+        debouncedSearch,
+      ).toString();
+      api<{ materials: MaterialResponse[] }>(`/materials${qs ? `?${qs}` : ''}`, {
         signal: ctrl.signal,
       })
         .then(({ materials }) => setMaterials(materials))
@@ -279,12 +280,12 @@ export default function MaterialsListPage() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (scopeFilter.subjectId) params.set("subject", scopeFilter.subjectId);
-    if (scopeFilter.chapterId) params.set("chapter", scopeFilter.chapterId);
-    if (scopeFilter.topicId) params.set("topic", scopeFilter.topicId);
-    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (scopeFilter.subjectId) params.set('subject', scopeFilter.subjectId);
+    if (scopeFilter.chapterId) params.set('chapter', scopeFilter.chapterId);
+    if (scopeFilter.topicId) params.set('topic', scopeFilter.topicId);
+    if (debouncedSearch) params.set('q', debouncedSearch);
     const qs = params.toString();
-    router.replace(`/materials${qs ? `?${qs}` : ""}`, { scroll: false });
+    router.replace(`/materials${qs ? `?${qs}` : ''}`, { scroll: false });
   }, [scopeFilter, debouncedSearch, router]);
 
   const scopeId = scope.topicId || scope.chapterId || scope.subjectId;
@@ -297,24 +298,24 @@ export default function MaterialsListPage() {
     if (m.topicId) return topicNames.get(m.topicId) ?? m.topicId.slice(0, 8);
     if (m.chapterId) return chapterNames.get(m.chapterId) ?? m.chapterId.slice(0, 8);
     if (m.subjectId) return subjectNames.get(m.subjectId) ?? m.subjectId.slice(0, 8);
-    return "Unscoped";
+    return 'Unscoped';
   }
 
   function clearAllFilters() {
-    setScopeFilter({ subjectId: "", chapterId: "", topicId: "" });
-    setSearch("");
+    setScopeFilter({ subjectId: '', chapterId: '', topicId: '' });
+    setSearch('');
   }
 
-  function applyScope(field: "subjectId" | "chapterId" | "topicId", value: string) {
+  function applyScope(field: 'subjectId' | 'chapterId' | 'topicId', value: string) {
     textForm.setValue(field, value);
-    if (field !== "subjectId") textForm.setValue("subjectId", undefined);
-    if (field !== "chapterId") textForm.setValue("chapterId", undefined);
-    if (field !== "topicId") textForm.setValue("topicId", undefined);
+    if (field !== 'subjectId') textForm.setValue('subjectId', undefined);
+    if (field !== 'chapterId') textForm.setValue('chapterId', undefined);
+    if (field !== 'topicId') textForm.setValue('topicId', undefined);
   }
 
   async function onCreateText(values: CreateTextMaterialRequest) {
     if (!scopeId) {
-      toast.error("Select a subject, chapter, or topic");
+      toast.error('Select a subject, chapter, or topic');
       return;
     }
     setSubmitting(true);
@@ -327,17 +328,17 @@ export default function MaterialsListPage() {
       if (values.topicId) body.topicId = values.topicId;
       else if (values.chapterId) body.chapterId = values.chapterId;
       else body.subjectId = values.subjectId!;
-      await api<{ material: MaterialResponse }>("/materials/text", {
-        method: "POST",
+      await api<{ material: MaterialResponse }>('/materials/text', {
+        method: 'POST',
         body,
       });
-      toast.success("Text material created");
+      toast.success('Text material created');
       setDialogMode(null);
       textForm.reset();
-      setScope((s) => ({ ...s, subjectId: "", chapterId: "", topicId: "" }));
+      setScope((s) => ({ ...s, subjectId: '', chapterId: '', topicId: '' }));
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to create material");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to create material');
     } finally {
       setSubmitting(false);
     }
@@ -347,34 +348,34 @@ export default function MaterialsListPage() {
     e.preventDefault();
     if (!uploadFile) return;
     if (uploadFile.size > 20 * 1024 * 1024) {
-      toast.error("File exceeds 20 MB limit");
+      toast.error('File exceeds 20 MB limit');
       return;
     }
     if (!scopeId) {
-      toast.error("Select a subject, chapter, or topic");
+      toast.error('Select a subject, chapter, or topic');
       return;
     }
     setSubmitting(true);
     try {
       const form = new FormData();
-      form.append("file", uploadFile);
-      form.append("title", uploadTitle.trim());
-      if (scope.topicId) form.append("topicId", scope.topicId);
-      else if (scope.chapterId) form.append("chapterId", scope.chapterId);
-      else form.append("subjectId", scope.subjectId);
-      await api<{ material: MaterialResponse }>("/materials/upload", {
-        method: "POST",
+      form.append('file', uploadFile);
+      form.append('title', uploadTitle.trim());
+      if (scope.topicId) form.append('topicId', scope.topicId);
+      else if (scope.chapterId) form.append('chapterId', scope.chapterId);
+      else form.append('subjectId', scope.subjectId);
+      await api<{ material: MaterialResponse }>('/materials/upload', {
+        method: 'POST',
         body: form,
       });
-      toast.success("File uploaded");
+      toast.success('File uploaded');
       setDialogMode(null);
       setUploadFile(null);
-      setUploadTitle("");
-      if (uploadFileRef.current) uploadFileRef.current.value = "";
-      setScope((s) => ({ ...s, subjectId: "", chapterId: "", topicId: "" }));
+      setUploadTitle('');
+      if (uploadFileRef.current) uploadFileRef.current.value = '';
+      setScope((s) => ({ ...s, subjectId: '', chapterId: '', topicId: '' }));
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to upload file");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to upload file');
     } finally {
       setSubmitting(false);
     }
@@ -382,41 +383,41 @@ export default function MaterialsListPage() {
 
   async function processMaterial(materialId: string) {
     try {
-      await api(`/materials/${materialId}/process`, { method: "POST" });
-      toast.success("Processing started");
+      await api(`/materials/${materialId}/process`, { method: 'POST' });
+      toast.success('Processing started');
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to start processing");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to start processing');
     }
   }
 
   async function retryMaterial(materialId: string) {
     try {
-      await api(`/materials/${materialId}/retry`, { method: "POST" });
-      toast.success("Retry started");
+      await api(`/materials/${materialId}/retry`, { method: 'POST' });
+      toast.success('Retry started');
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to retry");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to retry');
     }
   }
 
   async function archiveMaterial(materialId: string) {
     try {
-      await api(`/materials/${materialId}/archive`, { method: "POST" });
-      toast.success("Material archived");
+      await api(`/materials/${materialId}/archive`, { method: 'POST' });
+      toast.success('Material archived');
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to archive");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to archive');
     }
   }
 
   async function activateMaterial(materialId: string) {
     try {
-      await api(`/materials/${materialId}/activate`, { method: "POST" });
-      toast.success("Material activated");
+      await api(`/materials/${materialId}/activate`, { method: 'POST' });
+      toast.success('Material activated');
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to activate");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to activate');
     }
   }
 
@@ -429,7 +430,7 @@ export default function MaterialsListPage() {
             value={scope.subjectId}
             onValueChange={(v) => {
               setScope((s) => ({ ...s, subjectId: v }));
-              applyScope("subjectId", v);
+              applyScope('subjectId', v);
               fetchChapters(v);
             }}
           >
@@ -451,7 +452,7 @@ export default function MaterialsListPage() {
             value={scope.chapterId}
             onValueChange={(v) => {
               setScope((s) => ({ ...s, chapterId: v }));
-              applyScope("chapterId", v);
+              applyScope('chapterId', v);
               fetchTopics(v);
             }}
             disabled={!scope.subjectId}
@@ -474,7 +475,7 @@ export default function MaterialsListPage() {
             value={scope.topicId}
             onValueChange={(v) => {
               setScope((s) => ({ ...s, topicId: v }));
-              applyScope("topicId", v);
+              applyScope('topicId', v);
             }}
             disabled={!scope.chapterId}
           >
@@ -507,14 +508,14 @@ export default function MaterialsListPage() {
     <div>
       <PageHeader
         title="Materials"
-        description={`${materials.length} material${materials.length !== 1 ? "s" : ""}`}
+        description={`${materials.length} material${materials.length !== 1 ? 's' : ''}`}
         actions={
           isTeacher && (
             <>
-              <Button size="sm" variant="outline" onClick={() => setDialogMode("text")}>
+              <Button size="sm" variant="outline" onClick={() => setDialogMode('text')}>
                 <FileText className="mr-1 size-3.5" /> Text material
               </Button>
-              <Button size="sm" onClick={() => setDialogMode("upload")}>
+              <Button size="sm" onClick={() => setDialogMode('upload')}>
                 <Upload className="mr-1 size-3.5" /> Upload file
               </Button>
             </>
@@ -563,30 +564,38 @@ export default function MaterialsListPage() {
           onChange={setScopeFilter}
         />
 
-        {(scopeFilter.subjectId || scopeFilter.chapterId || scopeFilter.topicId || debouncedSearch) && (
+        {(scopeFilter.subjectId ||
+          scopeFilter.chapterId ||
+          scopeFilter.topicId ||
+          debouncedSearch) && (
           <div className="flex flex-wrap items-center gap-2">
             {scopeFilter.subjectId && (
               <FilterChip
-                label={subjectNames.get(scopeFilter.subjectId) ?? "Subject"}
-                onClear={() => setScopeFilter((s) => ({ ...s, subjectId: "" }))}
+                label={subjectNames.get(scopeFilter.subjectId) ?? 'Subject'}
+                onClear={() => setScopeFilter((s) => ({ ...s, subjectId: '' }))}
               />
             )}
             {scopeFilter.chapterId && (
               <FilterChip
-                label={chapterNames.get(scopeFilter.chapterId) ?? "Chapter"}
-                onClear={() => setScopeFilter((s) => ({ ...s, chapterId: "" }))}
+                label={chapterNames.get(scopeFilter.chapterId) ?? 'Chapter'}
+                onClear={() => setScopeFilter((s) => ({ ...s, chapterId: '' }))}
               />
             )}
             {scopeFilter.topicId && (
               <FilterChip
-                label={topicNames.get(scopeFilter.topicId) ?? "Topic"}
-                onClear={() => setScopeFilter((s) => ({ ...s, topicId: "" }))}
+                label={topicNames.get(scopeFilter.topicId) ?? 'Topic'}
+                onClear={() => setScopeFilter((s) => ({ ...s, topicId: '' }))}
               />
             )}
             {debouncedSearch && (
-              <FilterChip label={`“${debouncedSearch}”`} onClear={() => setSearch("")} />
+              <FilterChip label={`“${debouncedSearch}”`} onClear={() => setSearch('')} />
             )}
-            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={clearAllFilters}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs"
+              onClick={clearAllFilters}
+            >
               Clear all
             </Button>
           </div>
@@ -603,10 +612,10 @@ export default function MaterialsListPage() {
         >
           {isTeacher && (
             <>
-              <Button size="sm" variant="outline" onClick={() => setDialogMode("text")}>
+              <Button size="sm" variant="outline" onClick={() => setDialogMode('text')}>
                 Text material
               </Button>
-              <Button size="sm" onClick={() => setDialogMode("upload")}>
+              <Button size="sm" onClick={() => setDialogMode('upload')}>
                 Upload file
               </Button>
             </>
@@ -615,24 +624,55 @@ export default function MaterialsListPage() {
       ) : (
         <div className="space-y-2">
           {materials.map((m) => {
-            const isProcessing = m.processingStatus === "QUEUED" || m.processingStatus === "PROCESSING";
-            const menuItems: { label: string; icon: React.ReactNode; onClick: () => void; destructive?: boolean }[] = [];
+            const isProcessing =
+              m.processingStatus === 'QUEUED' || m.processingStatus === 'PROCESSING';
+            const menuItems: {
+              label: string;
+              icon: React.ReactNode;
+              onClick: () => void;
+              destructive?: boolean;
+            }[] = [];
 
-            if (m.status === "ACTIVE" && m.sourceType === "UPLOAD" && m.processingStatus === "UPLOADED") {
-              menuItems.push({ label: "Process", icon: <Play className="size-4" />, onClick: () => processMaterial(m.id) });
+            if (
+              m.status === 'ACTIVE' &&
+              m.sourceType === 'UPLOAD' &&
+              m.processingStatus === 'UPLOADED'
+            ) {
+              menuItems.push({
+                label: 'Process',
+                icon: <Play className="size-4" />,
+                onClick: () => processMaterial(m.id),
+              });
             }
             if (
-              m.status === "ACTIVE" &&
-              (m.processingStatus === "FAILED" || m.processingStatus === "QUEUED")
+              m.status === 'ACTIVE' &&
+              (m.processingStatus === 'FAILED' || m.processingStatus === 'QUEUED')
             ) {
-              menuItems.push({ label: "Retry", icon: <RefreshCw className="size-4" />, onClick: () => retryMaterial(m.id) });
+              menuItems.push({
+                label: 'Retry',
+                icon: <RefreshCw className="size-4" />,
+                onClick: () => retryMaterial(m.id),
+              });
             }
-            if (m.status === "ACTIVE") {
-              menuItems.push({ label: "Archive", icon: <Archive className="size-4" />, onClick: () => archiveMaterial(m.id), destructive: true });
+            if (m.status === 'ACTIVE') {
+              menuItems.push({
+                label: 'Archive',
+                icon: <Archive className="size-4" />,
+                onClick: () => archiveMaterial(m.id),
+                destructive: true,
+              });
             } else {
-              menuItems.push({ label: "Activate", icon: <CheckCircle2 className="size-4" />, onClick: () => activateMaterial(m.id) });
+              menuItems.push({
+                label: 'Activate',
+                icon: <CheckCircle2 className="size-4" />,
+                onClick: () => activateMaterial(m.id),
+              });
             }
-            menuItems.push({ label: "View details", icon: <Eye className="size-4" />, onClick: () => router.push(`/materials/${m.id}`) });
+            menuItems.push({
+              label: 'View details',
+              icon: <Eye className="size-4" />,
+              onClick: () => router.push(`/materials/${m.id}`),
+            });
 
             return (
               <ResourceCard
@@ -661,7 +701,7 @@ export default function MaterialsListPage() {
                         <DropdownMenuItem
                           key={item.label}
                           onClick={item.onClick}
-                          className={item.destructive ? "text-destructive" : undefined}
+                          className={item.destructive ? 'text-destructive' : undefined}
                         >
                           {item.icon}
                           <span className="ml-2">{item.label}</span>
@@ -677,7 +717,7 @@ export default function MaterialsListPage() {
         </div>
       )}
 
-      <Dialog open={dialogMode === "text"} onOpenChange={(o) => !o && setDialogMode(null)}>
+      <Dialog open={dialogMode === 'text'} onOpenChange={(o) => !o && setDialogMode(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>New Text Material</DialogTitle>
@@ -718,7 +758,11 @@ export default function MaterialsListPage() {
                   <FormItem>
                     <FormLabel>Content *</FormLabel>
                     <FormControl>
-                      <Textarea {...field} placeholder="Paste or type content" className="min-h-32" />
+                      <Textarea
+                        {...field}
+                        placeholder="Paste or type content"
+                        className="min-h-32"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -730,7 +774,7 @@ export default function MaterialsListPage() {
                   Cancel
                 </Button>
                 <Button type="submit" disabled={submitting || !scopeId}>
-                  {submitting ? "Creating…" : "Create"}
+                  {submitting ? 'Creating…' : 'Create'}
                 </Button>
               </DialogFooter>
             </form>
@@ -738,13 +782,11 @@ export default function MaterialsListPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogMode === "upload"} onOpenChange={(o) => !o && setDialogMode(null)}>
+      <Dialog open={dialogMode === 'upload'} onOpenChange={(o) => !o && setDialogMode(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Upload File</DialogTitle>
-            <DialogDescription>
-              PDF, image, or document. Max 20 MB.
-            </DialogDescription>
+            <DialogDescription>PDF, image, or document. Max 20 MB.</DialogDescription>
           </DialogHeader>
           <form onSubmit={onUpload} className="space-y-4">
             <div className="grid gap-2">
@@ -774,8 +816,11 @@ export default function MaterialsListPage() {
               <Button type="button" variant="ghost" onClick={() => setDialogMode(null)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || !uploadFile || !scopeId || !uploadTitle.trim()}>
-                {submitting ? "Uploading…" : "Upload"}
+              <Button
+                type="submit"
+                disabled={submitting || !uploadFile || !scopeId || !uploadTitle.trim()}
+              >
+                {submitting ? 'Uploading…' : 'Upload'}
               </Button>
             </DialogFooter>
           </form>

@@ -1,6 +1,12 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
-import { contentItems, contentVersions, questions, assessments, assessmentQuestions } from '@catlium/database';
+import {
+  contentItems,
+  contentVersions,
+  questions,
+  assessments,
+  assessmentQuestions,
+} from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { contentBlocks, questionDocBlock } from './export.content-blocks.js';
@@ -110,12 +116,11 @@ export class ExportService {
       },
     ];
     const rawInstructions = assessment.instructions as string[] | { text: string } | null;
-    const instructionLines =
-      Array.isArray(rawInstructions)
-        ? rawInstructions.filter((i): i is string => typeof i === 'string')
-        : rawInstructions && typeof rawInstructions['text'] === 'string'
-          ? [rawInstructions['text']]
-          : [];
+    const instructionLines = Array.isArray(rawInstructions)
+      ? rawInstructions.filter((i): i is string => typeof i === 'string')
+      : rawInstructions && typeof rawInstructions['text'] === 'string'
+        ? [rawInstructions['text']]
+        : [];
     if (instructionLines.length > 0) {
       blocks.push({ kind: 'bullets', items: instructionLines });
     }

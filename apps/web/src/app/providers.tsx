@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import type { ReactNode } from "react";
-import { ThemeProvider as NextThemesProvider } from "next-themes";
-import { AuthProvider } from "@/lib/auth";
-import { TenantProvider } from "@/lib/tenant";
+import type { ReactNode } from 'react';
+import { ThemeProvider as NextThemesProvider } from 'next-themes';
+import { AuthProvider } from '@/lib/auth';
+import { TenantProvider } from '@/lib/tenant';
 
 export function Providers({ children }: { children: ReactNode }) {
   return (

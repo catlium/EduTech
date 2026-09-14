@@ -74,12 +74,8 @@
           "name": "chapters_subject_id_subjects_id_fk",
           "tableFrom": "chapters",
           "tableTo": "subjects",
-          "columnsFrom": [
-            "subject_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["subject_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -89,10 +85,7 @@
         "chapters_subject_slug_unique": {
           "name": "chapters_subject_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "subject_id",
-            "slug"
-          ]
+          "columns": ["subject_id", "slug"]
         }
       },
       "policies": {},
@@ -169,12 +162,8 @@
           "name": "subjects_institute_id_institutes_id_fk",
           "tableFrom": "subjects",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -184,10 +173,7 @@
         "subjects_institute_slug_unique": {
           "name": "subjects_institute_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "institute_id",
-            "slug"
-          ]
+          "columns": ["institute_id", "slug"]
         }
       },
       "policies": {},
@@ -264,12 +250,8 @@
           "name": "topics_chapter_id_chapters_id_fk",
           "tableFrom": "topics",
           "tableTo": "chapters",
-          "columnsFrom": [
-            "chapter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chapter_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -279,10 +261,7 @@
         "topics_chapter_slug_unique": {
           "name": "topics_chapter_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "chapter_id",
-            "slug"
-          ]
+          "columns": ["chapter_id", "slug"]
         }
       },
       "policies": {},
@@ -351,12 +330,8 @@
           "name": "attempt_questions_attempt_id_attempts_id_fk",
           "tableFrom": "attempt_questions",
           "tableTo": "attempts",
-          "columnsFrom": [
-            "attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -364,12 +339,8 @@
           "name": "attempt_questions_question_id_questions_id_fk",
           "tableFrom": "attempt_questions",
           "tableTo": "questions",
-          "columnsFrom": [
-            "question_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["question_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -379,10 +350,7 @@
         "attempt_questions_unique": {
           "name": "attempt_questions_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "attempt_id",
-            "question_id"
-          ]
+          "columns": ["attempt_id", "question_id"]
         }
       },
       "policies": {},
@@ -457,12 +425,8 @@
           "name": "attempt_responses_attempt_id_attempts_id_fk",
           "tableFrom": "attempt_responses",
           "tableTo": "attempts",
-          "columnsFrom": [
-            "attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -470,12 +434,8 @@
           "name": "attempt_responses_attempt_question_id_attempt_questions_id_fk",
           "tableFrom": "attempt_responses",
           "tableTo": "attempt_questions",
-          "columnsFrom": [
-            "attempt_question_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attempt_question_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -485,10 +445,7 @@
         "attempt_responses_unique": {
           "name": "attempt_responses_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "attempt_id",
-            "attempt_question_id"
-          ]
+          "columns": ["attempt_id", "attempt_question_id"]
         }
       },
       "policies": {},
@@ -606,12 +563,8 @@
           "name": "attempts_institute_id_institutes_id_fk",
           "tableFrom": "attempts",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -619,12 +572,8 @@
           "name": "attempts_assessment_id_assessments_id_fk",
           "tableFrom": "attempts",
           "tableTo": "assessments",
-          "columnsFrom": [
-            "assessment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["assessment_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -632,12 +581,8 @@
           "name": "attempts_student_id_users_id_fk",
           "tableFrom": "attempts",
           "tableTo": "users",
-          "columnsFrom": [
-            "student_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["student_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -704,12 +649,8 @@
           "name": "auth_sessions_user_id_users_id_fk",
           "tableFrom": "auth_sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -820,12 +761,8 @@
           "name": "content_items_institute_id_institutes_id_fk",
           "tableFrom": "content_items",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -833,12 +770,8 @@
           "name": "content_items_subject_id_subjects_id_fk",
           "tableFrom": "content_items",
           "tableTo": "subjects",
-          "columnsFrom": [
-            "subject_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["subject_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -846,12 +779,8 @@
           "name": "content_items_chapter_id_chapters_id_fk",
           "tableFrom": "content_items",
           "tableTo": "chapters",
-          "columnsFrom": [
-            "chapter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chapter_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -859,12 +788,8 @@
           "name": "content_items_topic_id_topics_id_fk",
           "tableFrom": "content_items",
           "tableTo": "topics",
-          "columnsFrom": [
-            "topic_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["topic_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -872,12 +797,8 @@
           "name": "content_items_created_by_users_id_fk",
           "tableFrom": "content_items",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -885,12 +806,8 @@
           "name": "content_items_updated_by_users_id_fk",
           "tableFrom": "content_items",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -985,12 +902,8 @@
           "name": "content_versions_content_id_content_items_id_fk",
           "tableFrom": "content_versions",
           "tableTo": "content_items",
-          "columnsFrom": [
-            "content_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["content_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -998,12 +911,8 @@
           "name": "content_versions_created_by_users_id_fk",
           "tableFrom": "content_versions",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1013,10 +922,7 @@
         "content_versions_content_version_unique": {
           "name": "content_versions_content_version_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "content_id",
-            "version"
-          ]
+          "columns": ["content_id", "version"]
         }
       },
       "policies": {},
@@ -1067,12 +973,8 @@
           "name": "assessment_questions_assessment_id_assessments_id_fk",
           "tableFrom": "assessment_questions",
           "tableTo": "assessments",
-          "columnsFrom": [
-            "assessment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["assessment_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1080,12 +982,8 @@
           "name": "assessment_questions_question_id_questions_id_fk",
           "tableFrom": "assessment_questions",
           "tableTo": "questions",
-          "columnsFrom": [
-            "question_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["question_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1095,10 +993,7 @@
         "assessment_questions_unique": {
           "name": "assessment_questions_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "assessment_id",
-            "question_id"
-          ]
+          "columns": ["assessment_id", "question_id"]
         }
       },
       "policies": {},
@@ -1210,12 +1105,8 @@
           "name": "assessments_institute_id_institutes_id_fk",
           "tableFrom": "assessments",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1223,12 +1114,8 @@
           "name": "assessments_blueprint_id_paper_patterns_id_fk",
           "tableFrom": "assessments",
           "tableTo": "paper_patterns",
-          "columnsFrom": [
-            "blueprint_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["blueprint_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1236,12 +1123,8 @@
           "name": "assessments_created_by_users_id_fk",
           "tableFrom": "assessments",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1249,12 +1132,8 @@
           "name": "assessments_updated_by_users_id_fk",
           "tableFrom": "assessments",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1317,9 +1196,7 @@
         "institutes_slug_unique": {
           "name": "institutes_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},
@@ -1442,12 +1319,8 @@
           "name": "jobs_institute_id_institutes_id_fk",
           "tableFrom": "jobs",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1607,12 +1480,8 @@
           "name": "materials_institute_id_institutes_id_fk",
           "tableFrom": "materials",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1620,12 +1489,8 @@
           "name": "materials_subject_id_subjects_id_fk",
           "tableFrom": "materials",
           "tableTo": "subjects",
-          "columnsFrom": [
-            "subject_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["subject_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1633,12 +1498,8 @@
           "name": "materials_chapter_id_chapters_id_fk",
           "tableFrom": "materials",
           "tableTo": "chapters",
-          "columnsFrom": [
-            "chapter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chapter_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1646,12 +1507,8 @@
           "name": "materials_topic_id_topics_id_fk",
           "tableFrom": "materials",
           "tableTo": "topics",
-          "columnsFrom": [
-            "topic_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["topic_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1659,12 +1516,8 @@
           "name": "materials_created_by_users_id_fk",
           "tableFrom": "materials",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1672,12 +1525,8 @@
           "name": "materials_updated_by_users_id_fk",
           "tableFrom": "materials",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1720,12 +1569,8 @@
           "name": "membership_roles_membership_id_memberships_id_fk",
           "tableFrom": "membership_roles",
           "tableTo": "memberships",
-          "columnsFrom": [
-            "membership_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["membership_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1735,10 +1580,7 @@
         "membership_roles_membership_role_unique": {
           "name": "membership_roles_membership_role_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "membership_id",
-            "role"
-          ]
+          "columns": ["membership_id", "role"]
         }
       },
       "policies": {},
@@ -1796,12 +1638,8 @@
           "name": "memberships_user_id_users_id_fk",
           "tableFrom": "memberships",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1809,12 +1647,8 @@
           "name": "memberships_institute_id_institutes_id_fk",
           "tableFrom": "memberships",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1824,10 +1658,7 @@
         "memberships_user_institute_unique": {
           "name": "memberships_user_institute_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id",
-            "institute_id"
-          ]
+          "columns": ["user_id", "institute_id"]
         }
       },
       "policies": {},
@@ -1947,12 +1778,8 @@
           "name": "paper_patterns_institute_id_institutes_id_fk",
           "tableFrom": "paper_patterns",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1960,12 +1787,8 @@
           "name": "paper_patterns_subject_id_subjects_id_fk",
           "tableFrom": "paper_patterns",
           "tableTo": "subjects",
-          "columnsFrom": [
-            "subject_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["subject_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1973,12 +1796,8 @@
           "name": "paper_patterns_source_material_id_materials_id_fk",
           "tableFrom": "paper_patterns",
           "tableTo": "materials",
-          "columnsFrom": [
-            "source_material_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_material_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1986,12 +1805,8 @@
           "name": "paper_patterns_created_by_users_id_fk",
           "tableFrom": "paper_patterns",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1999,12 +1814,8 @@
           "name": "paper_patterns_updated_by_users_id_fk",
           "tableFrom": "paper_patterns",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2082,12 +1893,8 @@
           "name": "practice_session_items_session_id_practice_sessions_id_fk",
           "tableFrom": "practice_session_items",
           "tableTo": "practice_sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2097,10 +1904,7 @@
         "practice_session_items_unique": {
           "name": "practice_session_items_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "session_id",
-            "source_key"
-          ]
+          "columns": ["session_id", "source_key"]
         }
       },
       "policies": {},
@@ -2156,12 +1960,8 @@
           "name": "practice_session_responses_session_item_id_practice_session_items_id_fk",
           "tableFrom": "practice_session_responses",
           "tableTo": "practice_session_items",
-          "columnsFrom": [
-            "session_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_item_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2171,9 +1971,7 @@
         "practice_session_responses_unique": {
           "name": "practice_session_responses_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "session_item_id"
-          ]
+          "columns": ["session_item_id"]
         }
       },
       "policies": {},
@@ -2297,12 +2095,8 @@
           "name": "practice_sessions_institute_id_institutes_id_fk",
           "tableFrom": "practice_sessions",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2310,12 +2104,8 @@
           "name": "practice_sessions_student_id_users_id_fk",
           "tableFrom": "practice_sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "student_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["student_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2323,12 +2113,8 @@
           "name": "practice_sessions_content_id_content_items_id_fk",
           "tableFrom": "practice_sessions",
           "tableTo": "content_items",
-          "columnsFrom": [
-            "content_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["content_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2336,12 +2122,8 @@
           "name": "practice_sessions_topic_id_topics_id_fk",
           "tableFrom": "practice_sessions",
           "tableTo": "topics",
-          "columnsFrom": [
-            "topic_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["topic_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2478,12 +2260,8 @@
           "name": "questions_institute_id_institutes_id_fk",
           "tableFrom": "questions",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2491,12 +2269,8 @@
           "name": "questions_subject_id_subjects_id_fk",
           "tableFrom": "questions",
           "tableTo": "subjects",
-          "columnsFrom": [
-            "subject_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["subject_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2504,12 +2278,8 @@
           "name": "questions_chapter_id_chapters_id_fk",
           "tableFrom": "questions",
           "tableTo": "chapters",
-          "columnsFrom": [
-            "chapter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chapter_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2517,12 +2287,8 @@
           "name": "questions_topic_id_topics_id_fk",
           "tableFrom": "questions",
           "tableTo": "topics",
-          "columnsFrom": [
-            "topic_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["topic_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2530,12 +2296,8 @@
           "name": "questions_created_by_users_id_fk",
           "tableFrom": "questions",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2543,12 +2305,8 @@
           "name": "questions_updated_by_users_id_fk",
           "tableFrom": "questions",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2645,12 +2403,8 @@
           "name": "syllabus_proposals_institute_id_institutes_id_fk",
           "tableFrom": "syllabus_proposals",
           "tableTo": "institutes",
-          "columnsFrom": [
-            "institute_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institute_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2658,12 +2412,8 @@
           "name": "syllabus_proposals_subject_id_subjects_id_fk",
           "tableFrom": "syllabus_proposals",
           "tableTo": "subjects",
-          "columnsFrom": [
-            "subject_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["subject_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2671,12 +2421,8 @@
           "name": "syllabus_proposals_source_material_id_materials_id_fk",
           "tableFrom": "syllabus_proposals",
           "tableTo": "materials",
-          "columnsFrom": [
-            "source_material_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_material_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2684,12 +2430,8 @@
           "name": "syllabus_proposals_created_by_users_id_fk",
           "tableFrom": "syllabus_proposals",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2697,12 +2439,8 @@
           "name": "syllabus_proposals_updated_by_users_id_fk",
           "tableFrom": "syllabus_proposals",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2712,9 +2450,7 @@
         "syllabus_proposals_subject_unique": {
           "name": "syllabus_proposals_subject_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "subject_id"
-          ]
+          "columns": ["subject_id"]
         }
       },
       "policies": {},
@@ -2779,9 +2515,7 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},

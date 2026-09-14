@@ -27,7 +27,8 @@ function toDefinition(row: typeof questionTypes.$inferSelect): QuestionTypeDefin
     answerFormat: row.answerFormat as QuestionTypeDefinition['answerFormat'],
     kind: row.kind as QuestionTypeDefinition['kind'],
     defaultMarks: row.defaultMarks,
-    allowedDifficulties: (row.allowedDifficulties as QuestionTypeDefinition['allowedDifficulties']) ?? null,
+    allowedDifficulties:
+      (row.allowedDifficulties as QuestionTypeDefinition['allowedDifficulties']) ?? null,
     evaluationConfig: row.evaluationConfig,
     isGlobal: row.instituteId === null,
     active: row.active,
@@ -92,10 +93,7 @@ export class QuestionTypesService {
         .where(
           and(
             eq(questionTypes.code, code),
-            or(
-              isNull(questionTypes.instituteId),
-              eq(questionTypes.instituteId, instituteId),
-            ),
+            or(isNull(questionTypes.instituteId), eq(questionTypes.instituteId, instituteId)),
           ),
         )
         .limit(1)

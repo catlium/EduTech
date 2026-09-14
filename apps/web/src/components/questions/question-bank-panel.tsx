@@ -222,7 +222,7 @@ export function QuestionBankPanel({
   const availablePatterns = useMemo(
     () =>
       patterns
-        .filter((p) => p.status === 'APPROVED' && p.subjectId === subjectId)
+        .filter((p) => p.status === 'APPROVED' && p.subjectIds.includes(subjectId))
         .sort((a, b) => a.title.localeCompare(b.title)),
     [patterns, subjectId],
   );

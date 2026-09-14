@@ -136,7 +136,7 @@ questions, assessments)` then `feat(web): student UI (attempts, results)`.
 - E2E: `scripts/e2e/attempts_e2e.sh` (incl. answer-absence greps, deadline
   auto-submit, tenant isolation, duplicate 409).
 - Checkpoint: `feat(attempts): student attempts, deterministic evaluation,
-  results — closes WR-06`.
+results — closes WR-06`.
 
 ### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui)
 
@@ -233,7 +233,7 @@ password/profile management; unnecessary Institute CRUD; nonessential UI extras.
 - Phase 10 — Automatic Evaluation ✓ (delivered 2026-09-08)
 - Phase 11 — Results ✓ (delivered with Phase 10 + Wave 4)
 - Phase 12 — Examination Analytics ✓ (delivered 2026-09-08, `GET
-  /assessments/:assessmentId/analytics`, on-demand; node:test 12/12,
+/assessments/:assessmentId/analytics`, on-demand; node:test 12/12,
   attempts_e2e.sh PASS=96, teacher results UI)
 - Phase 13 — Practice System ✓ (delivered 2026-09-08, backend-only: migration
   0011 + `apps/api/src/practice`, ungraded flashcard + question practice,

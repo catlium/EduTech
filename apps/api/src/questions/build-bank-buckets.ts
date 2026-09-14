@@ -38,9 +38,7 @@ export function buildBankBuckets(config: BankConfig): BankBucket[] {
   const buckets = cells.map((c) => ({ ...c, count: Math.floor(c.weight) }));
   let remaining = count - buckets.reduce((sum, b) => sum + b.count, 0);
 
-  const byLargestFraction = [...buckets].sort(
-    (a, b) => b.weight - b.count - (a.weight - a.count),
-  );
+  const byLargestFraction = [...buckets].sort((a, b) => b.weight - b.count - (a.weight - a.count));
   for (const bucket of byLargestFraction) {
     if (remaining <= 0) break;
     bucket.count += 1;

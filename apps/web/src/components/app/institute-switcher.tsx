@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { Building2, Check, ChevronsUpDown, Plus } from "lucide-react";
-import Link from "next/link";
+import { Building2, Check, ChevronsUpDown, Plus } from 'lucide-react';
+import Link from 'next/link';
 
-import { useAuth } from "@/lib/auth";
-import { useTenant } from "@/lib/tenant";
-import { Button } from "@/components/ui/button";
+import { useAuth } from '@/lib/auth';
+import { useTenant } from '@/lib/tenant';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +13,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
 
 export function InstituteSwitcher() {
   const { memberships } = useAuth();

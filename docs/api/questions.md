@@ -147,14 +147,14 @@ GET /questions?questionType=MCQ&difficulty=EASY&approvalStatus=APPROVED&subjectI
 All query parameters are optional and applied with AND semantics. Available
 filters:
 
-| Filter          | Values |
-|-----------------|--------|
-| `questionType`  | `MCQ` \| `TRUE_FALSE` \| `FILL_IN_BLANK` |
-| `difficulty`    | `EASY` \| `MEDIUM` \| `HARD` |
-| `approvalStatus`| `PENDING` \| `APPROVED` \| `REJECTED` |
-| `subjectId`     | `uuid` |
-| `chapterId`     | `uuid` |
-| `topicId`       | `uuid` |
+| Filter           | Values                                   |
+| ---------------- | ---------------------------------------- |
+| `questionType`   | `MCQ` \| `TRUE_FALSE` \| `FILL_IN_BLANK` |
+| `difficulty`     | `EASY` \| `MEDIUM` \| `HARD`             |
+| `approvalStatus` | `PENDING` \| `APPROVED` \| `REJECTED`    |
+| `subjectId`      | `uuid`                                   |
+| `chapterId`      | `uuid`                                   |
+| `topicId`        | `uuid`                                   |
 
 An invalid enum value for `questionType`, `difficulty`, or `approvalStatus`
 returns `400`. Lists are ordered by `updatedAt` descending and are always
@@ -294,12 +294,12 @@ Body:
 }
 ```
 
-| Field          | Required | Values |
-|----------------|----------|--------|
-| `topicId`      | yes      | `uuid` (a topic in the active institute) |
-| `questionType` | yes      | `MCQ` \| `TRUE_FALSE` \| `FILL_IN_BLANK` |
-| `count`        | yes      | integer 1–50 |
-| `difficulty`   | no       | `EASY` \| `MEDIUM` \| `HARD` (default `MEDIUM`) |
+| Field          | Required | Values                                                 |
+| -------------- | -------- | ------------------------------------------------------ |
+| `topicId`      | yes      | `uuid` (a topic in the active institute)               |
+| `questionType` | yes      | `MCQ` \| `TRUE_FALSE` \| `FILL_IN_BLANK`               |
+| `count`        | yes      | integer 1–50                                           |
+| `difficulty`   | no       | `EASY` \| `MEDIUM` \| `HARD` (default `MEDIUM`)        |
 | `blueprintId`  | no       | `uuid` (APPROVED paper pattern, same subject as topic) |
 
 `404` if the `topicId` is not in the active institute. `400` on invalid enum or
@@ -458,12 +458,12 @@ Body:
 }
 ```
 
-| Field                   | Required | Notes |
-|-------------------------|----------|-------|
-| `topicId` / `subjectId` / `chapterId` | one of | scope |
-| `questionTypes`         | yes      | non-empty subset of the three types |
-| `count`                 | yes      | 1–200 (per `difficultyDistribution`, split into per-bucket quotas) |
-| `difficultyDistribution`| no       | weights that sum to 1; defaults to EASY .33 / MEDIUM .34 / HARD .33 |
+| Field                                 | Required | Notes                                                               |
+| ------------------------------------- | -------- | ------------------------------------------------------------------- |
+| `topicId` / `subjectId` / `chapterId` | one of   | scope                                                               |
+| `questionTypes`                       | yes      | non-empty subset of the three types                                 |
+| `count`                               | yes      | 1–200 (per `difficultyDistribution`, split into per-bucket quotas)  |
+| `difficultyDistribution`              | no       | weights that sum to 1; defaults to EASY .33 / MEDIUM .34 / HARD .33 |
 
 Per-bucket quota = rounded proportion of `count`. Response is the queued
 `generation` object (jobId/operation/sourceType/sourceId/status).
@@ -495,11 +495,11 @@ Body:
 }
 ```
 
-| Field     | Required | Values |
-|-----------|----------|--------|
-| scope     | one of `subjectId`/`chapterId`/`topicId` | uuid |
-| `buckets` | yes      | 1–20 entries, per-bucket `count` 1–100, totals ≤ 200 |
-| `dryRun`  | no       | boolean; `true` reports the deficit without queueing |
+| Field     | Required                                 | Values                                               |
+| --------- | ---------------------------------------- | ---------------------------------------------------- |
+| scope     | one of `subjectId`/`chapterId`/`topicId` | uuid                                                 |
+| `buckets` | yes                                      | 1–20 entries, per-bucket `count` 1–100, totals ≤ 200 |
+| `dryRun`  | no                                       | boolean; `true` reports the deficit without queueing |
 
 `dryRun: true` response (`200`):
 

@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
 export function EmptyState({
   icon,
@@ -17,7 +17,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-5 rounded-xl border border-dashed bg-muted/20 px-6 py-14 text-center",
+        'flex flex-col items-center justify-center gap-5 rounded-xl border border-dashed bg-muted/20 px-6 py-14 text-center',
         className,
       )}
     >
@@ -32,7 +32,9 @@ export function EmptyState({
           <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
         )}
       </div>
-      {children && <div className="flex flex-wrap items-center justify-center gap-2">{children}</div>}
+      {children && (
+        <div className="flex flex-wrap items-center justify-center gap-2">{children}</div>
+      )}
     </div>
   );
 }

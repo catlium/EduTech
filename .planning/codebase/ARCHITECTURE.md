@@ -1,4 +1,5 @@
 <!-- refreshed: 2026-09-01 -->
+
 # Architecture
 
 **Analysis Date:** 2026-09-01
@@ -38,25 +39,26 @@
 
 ## Component Responsibilities
 
-| Component | Responsibility | File |
-|-----------|----------------|------|
-| `AppModule` | Root module; global config, throttling, exception filter, RabbitMQ | `apps/api/src/app/app.module.ts` |
-| `DatabaseModule` | Provides global `DATABASE_TOKEN` DB client (Drizzle) | `apps/api/src/database/database.module.ts` |
-| `HealthController` | Liveness probe `GET /api/v1/health` | `apps/api/src/health/health.controller.ts` |
-| `AuthService` | Register/login/refresh/logout, session rotation, bcrypt | `apps/api/src/identity/auth.service.ts` |
-| `TenancyService` | Membership + role resolution for institute isolation | `apps/api/src/tenancy/tenancy.service.ts` |
-| `JobsService` | Job CRUD + RabbitMQ routing by job type | `apps/api/src/jobs/jobs.service.ts` |
-| `AcademicService` | Subjects/chapters/topics CRUD (tenant-scoped) | `apps/api/src/academic/academic.service.ts` |
-| `ContentService` | Content items + versioned payloads (JSONB) | `apps/api/src/content/content.service.ts` |
-| `GenerationService` | Enqueues AI note generation jobs | `apps/api/src/content/generation.service.ts` |
-| `MaterialsService` | Text/file materials, storage, processing state machine | `apps/api/src/materials/materials.service.ts` |
-| `RabbitMQService` | amqplib channel, publish/consume abstraction | `apps/api/src/common/services/rabbitmq.service.ts` |
+| Component           | Responsibility                                                     | File                                               |
+| ------------------- | ------------------------------------------------------------------ | -------------------------------------------------- |
+| `AppModule`         | Root module; global config, throttling, exception filter, RabbitMQ | `apps/api/src/app/app.module.ts`                   |
+| `DatabaseModule`    | Provides global `DATABASE_TOKEN` DB client (Drizzle)               | `apps/api/src/database/database.module.ts`         |
+| `HealthController`  | Liveness probe `GET /api/v1/health`                                | `apps/api/src/health/health.controller.ts`         |
+| `AuthService`       | Register/login/refresh/logout, session rotation, bcrypt            | `apps/api/src/identity/auth.service.ts`            |
+| `TenancyService`    | Membership + role resolution for institute isolation               | `apps/api/src/tenancy/tenancy.service.ts`          |
+| `JobsService`       | Job CRUD + RabbitMQ routing by job type                            | `apps/api/src/jobs/jobs.service.ts`                |
+| `AcademicService`   | Subjects/chapters/topics CRUD (tenant-scoped)                      | `apps/api/src/academic/academic.service.ts`        |
+| `ContentService`    | Content items + versioned payloads (JSONB)                         | `apps/api/src/content/content.service.ts`          |
+| `GenerationService` | Enqueues AI note generation jobs                                   | `apps/api/src/content/generation.service.ts`       |
+| `MaterialsService`  | Text/file materials, storage, processing state machine             | `apps/api/src/materials/materials.service.ts`      |
+| `RabbitMQService`   | amqplib channel, publish/consume abstraction                       | `apps/api/src/common/services/rabbitmq.service.ts` |
 
 ## Pattern Overview
 
 **Overall:** Modular monolith (NestJS) with separate deployable async workers and OCR service. Monorepo managed by pnpm workspaces + Turborepo.
 
 **Key Characteristics:**
+
 - One NestJS module per business domain directory under `apps/api/src/`
 - Controllers, services, DTOs live in separate files within each module directory; DTOs under a `dto/` subfolder
 - Shared contracts (Zod schemas + TS types) centralized in `packages/contracts`
@@ -67,6 +69,7 @@
 ## Layers
 
 **HTTP / Controller Layer:**
+
 - Purpose: Define routes, HTTP semantics, guard composition, and DTO intake
 - Location: `apps/api/src/<module>/*.controller.ts`
 - Contains: `@Controller`, `@Get/@Post/@Patch`, `@UseGuards`, `@Tenant`/`@CurrentUser` params, throttling decorators
@@ -74,6 +77,7 @@
 - Used by: HTTP clients
 
 **Service Layer (API):**
+
 - Purpose: Business logic, DB access, state transitions
 - Location: `apps/api/src/<module>/*.service.ts`
 - Contains: `@Injectable` classes injected with `@Inject(DATABASE_TOKEN) db: Database`
@@ -81,6 +85,7 @@
 - Used by: Controllers and other services
 
 **Common Infrastructure Layer:**
+
 - Purpose: Reusable guards, decorators, filters, utils
 - Location: `apps/api/src/common/{guards,decorators,filters,services,utils}`
 - Guards: `AccessTokenGuard`, `TenantGuard`, `RolesGuard`, `CsrfGuard`
@@ -90,6 +95,7 @@
 - Used by: All module controllers
 
 **Shared Contracts Layer:**
+
 - Purpose: Single source of truth for request/response schemas, payload validation
 - Location: `packages/contracts/src/index.ts`
 - Contains: Zod schemas (`RoleEnum`, `InstituteUserSchema`, `CreateInstituteUserRequestSchema`, `ContentPayloadSchemas`, `MaterialResponseSchema`, etc.) and inferred TS types
@@ -97,6 +103,7 @@
 - Used by: API services (`ContentService.validatePayload`), and mirrored in the AI worker (`apps/workers/worker/ai/schemas.py`)
 
 **Data Access Layer:**
+
 - Purpose: Drizzle schema, migrations, DB client factory
 - Location: `packages/database/src/{index.ts,schema/*.ts}`
 - Contains: `createDatabase(url)`, all `pgTable` definitions, re-exports per table
@@ -130,6 +137,7 @@
 4. Job marked `completed` with `contentId` in the result
 
 **State Management:**
+
 - Stateless API; identity via JWT access token + DB-backed refresh session (`authSessions` table)
 - Job/material processing state persisted in PostgreSQL (`jobs`, `materials` tables)
 - Concurrency controlled via `SELECT ... FOR UPDATE` row locks inside transactions (e.g. `materials.service.ts:229`, `content.service.ts:139`)
@@ -137,37 +145,44 @@
 ## Key Abstractions
 
 **`Database` (`@catlium/database`):**
+
 - Purpose: Typed Drizzle client shared across API services and package consumers
 - Examples: `packages/database/src/index.ts`, injected everywhere via `DATABASE_TOKEN`
 - Pattern: Provider injected via constructor `@Inject(DATABASE_TOKEN)`; type `Database = ReturnType<typeof drizzle<typeof schema>>`
 
 **`StorageProvider` interface (`apps/api/src/materials/storage/storage-provider.interface.ts`):**
+
 - Purpose: Abstraction over file storage to allow swapping local FS for S3 later
 - Contract: `save(input)`, `delete(key)`, `resolve(key)`
 - Implementation: `LocalStorageProvider` (`apps/api/src/materials/storage/local-storage.provider.js`) with path-traversal guard
 - Pattern: NestJS provider bound to the `STORAGE_PROVIDER` token via `useClass`
 
 **`Job` model + queue routing (`apps/api/src/jobs/jobs.service.ts`):**
+
 - Purpose: Generic async job record backed by `jobs` table, routed to specific RabbitMQ queues per type
 - Routing map: `JOB_QUEUE_BY_TYPE` (`AI_GENERATE_NOTE → ai_generation`, default `jobs`)
 - Pattern: JSON job message `{jobId, instituteId, type, payload}` consumed by distinct Python workers
 
 **`ContentPayloadSchemas` (`packages/contracts/src/index.ts`):**
+
 - Purpose: Canonical structured payload definitions for NOTE/FLASHCARD_SET/CORNELL_NOTE stored in `content_versions.payload` JSONB
 - Pattern: `Record<ContentType, ZodSchema>`; validated in `ContentService.validatePayload` and mirrored as Pydantic in the worker
 
 ## Entry Points
 
 **API bootstrap (`apps/api/src/main.ts`):**
+
 - Location: `apps/api/src/main.ts`
 - Triggers: `pnpm dev:api` → `nest start --watch`; `start:prod` → `node dist/main`
 - Responsibilities: Creates Nest app, sets global prefix `api/v1`, cookie-parser, CORS, global `ValidationPipe`, shutdown hooks
 
 **`DocumentRoot`/`AppModule` (`apps/api/src/app/app.module.ts`):**
+
 - Location: `apps/api/src/app/app.module.ts`
 - Responsibilities: Wires global ConfigModule, ThrottlerModule, DatabaseModule, all business modules, `GlobalExceptionFilter` (APP_FILTER), `ThrottlerGuard` (APP_GUARD), `RabbitMQService`
 
 **Worker entrypoints (`apps/workers/worker/app.py`):**
+
 - Location: `apps/workers/worker/app.py`
 - Triggers: `python -m worker.app` with `WORKER_ROLE`/`WORKER_QUEUE`
 - Responsibilities: Selects material consumer (`start_consumer`) vs AI consumer (`start_ai_consumer`) based on `settings.role`
@@ -206,6 +221,7 @@
 **Strategy:** NestJS exception-based; `GlobalExceptionFilter` catches all thrown errors and returns a consistent `{statusCode, message, error}` JSON envelope (`apps/api/src/common/filters/global-exception.filter.ts`).
 
 **Patterns:**
+
 - Services throw `NotFoundException`, `ConflictException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException` directly
 - Unique-violation mapping: `AcademicService.throwIfUniqueViolation` and `GenerationService.isUniqueViolation` map Postgres code `23505` to `ConflictException`
 - Non-`HttpException`s fall back to `500 Internal server error` in the filter
@@ -221,4 +237,4 @@
 
 ---
 
-*Architecture analysis: 2026-09-01*
+_Architecture analysis: 2026-09-01_

@@ -91,12 +91,12 @@ Body:
 }
 ```
 
-| Field        | Required | Values |
-| ------------ | -------- | ------ |
-| `title`      | yes      | string 1–255 |
-| `subjectId`  | yes      | `uuid` (a subject in the active institute) |
-| `description`| no       | string or `null` |
-| `structure`  | no       | structure object (see §Entities) |
+| Field         | Required | Values                                     |
+| ------------- | -------- | ------------------------------------------ |
+| `title`       | yes      | string 1–255                               |
+| `subjectId`   | yes      | `uuid` (a subject in the active institute) |
+| `description` | no       | string or `null`                           |
+| `structure`   | no       | structure object (see §Entities)           |
 
 `404` if the `subjectId` is not in the active institute.
 
@@ -184,7 +184,8 @@ Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `202 Accepted`.
 
 Enqueues an `AI_GENERATE_BLUEPRINT` job. The worker reads the source material,
 produces a blueprint structure, and writes it back to the pattern (`structure`
-+ `sourceMaterialId` + `status → REVIEW`).
+
+- `sourceMaterialId` + `status → REVIEW`).
 
 Body:
 
@@ -197,11 +198,11 @@ Body:
 }
 ```
 
-| Field        | Required | Values |
-| ------------ | -------- | ------ |
-| `source.type`| yes      | `TEXT \| MATERIAL \| PREVIOUS_YEAR_PAPER` |
-| `source.text`| yes if TEXT | string (free-form text describing the paper structure) |
-| `source.materialId` | yes if MATERIAL/PREVIOUS_YEAR_PAPER | `uuid` of an existing ACTIVE+READY text material |
+| Field               | Required                            | Values                                                 |
+| ------------------- | ----------------------------------- | ------------------------------------------------------ |
+| `source.type`       | yes                                 | `TEXT \| MATERIAL \| PREVIOUS_YEAR_PAPER`              |
+| `source.text`       | yes if TEXT                         | string (free-form text describing the paper structure) |
+| `source.materialId` | yes if MATERIAL/PREVIOUS_YEAR_PAPER | `uuid` of an existing ACTIVE+READY text material       |
 
 `409` if the pattern is APPROVED or a generation job for this pattern is already
 active. `404` if the material reference (when applicable) is missing or not

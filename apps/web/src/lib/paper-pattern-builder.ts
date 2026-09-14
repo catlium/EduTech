@@ -1,4 +1,3 @@
-
 /* ── Paper Pattern Builder model ─────────────────────────────────────────────
    The backend stores a flat sections[] each with ONE question type. The
    builder presents sections that group multiple question-type rules, then
@@ -6,14 +5,14 @@
    "${sectionName} — ${TYPE}" (a " · N" suffix dedupes repeated rules). */
 
 export interface Difficulty {
-  EASY: number | "";
-  MEDIUM: number | "";
-  HARD: number | "";
+  EASY: number | '';
+  MEDIUM: number | '';
+  HARD: number | '';
 }
 
 export interface TopicRow {
   name: string;
-  percentage: number | "";
+  percentage: number | '';
 }
 
 export interface Rule {
@@ -46,11 +45,11 @@ export interface BackendSection {
   topicDistribution?: { name: string; percentage?: number | null }[] | null;
 }
 
-export const TYPE_OPTIONS: string[] = ["", "MCQ", "TRUE_FALSE", "FILL_IN_BLANK"];
+export const TYPE_OPTIONS: string[] = ['', 'MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'];
 export const TYPE_LABELS: Record<string, string> = {
-  MCQ: "MCQ",
-  TRUE_FALSE: "True/False",
-  FILL_IN_BLANK: "Fill in the Blank",
+  MCQ: 'MCQ',
+  TRUE_FALSE: 'True/False',
+  FILL_IN_BLANK: 'Fill in the Blank',
 };
 
 export const STEM_RE = /^(.*) — (.+?)(?: · \d+)?$/;
@@ -58,10 +57,10 @@ export const STEM_RE = /^(.*) — (.+?)(?: · \d+)?$/;
 export function emptyRule(): Rule {
   return {
     id: crypto.randomUUID(),
-    questionType: "",
+    questionType: '',
     count: null,
     marksPerQuestion: null,
-    difficulty: { EASY: "", MEDIUM: "", HARD: "" },
+    difficulty: { EASY: '', MEDIUM: '', HARD: '' },
     topics: [],
   };
 }
@@ -69,7 +68,7 @@ export function emptyRule(): Rule {
 export function emptySection(): Section {
   return {
     id: crypto.randomUUID(),
-    name: "",
+    name: '',
     compulsory: true,
     attemptCount: null,
     rules: [emptyRule()],
@@ -78,7 +77,7 @@ export function emptySection(): Section {
 
 export function buildInstructions(text: string): string[] {
   return text
-    .split("\n")
+    .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
 }
@@ -96,7 +95,7 @@ export function computeTotals(sections: Section[]) {
   for (const s of sections) {
     let hasRule = false;
     for (const r of s.rules) {
-      const configured = r.questionType !== "" || r.count != null || r.marksPerQuestion != null;
+      const configured = r.questionType !== '' || r.count != null || r.marksPerQuestion != null;
       if (!configured) continue;
       hasRule = true;
       if (r.count == null || r.marksPerQuestion == null) uncertain = true;
@@ -110,13 +109,13 @@ export function computeTotals(sections: Section[]) {
 
 export function difficultySum(d: Difficulty): number {
   let sum = 0;
-  for (const v of [d.EASY, d.MEDIUM, d.HARD]) sum += v === "" ? 0 : v;
+  for (const v of [d.EASY, d.MEDIUM, d.HARD]) sum += v === '' ? 0 : v;
   return sum;
 }
 
 export function topicPercentSum(topics: TopicRow[]): number {
   let sum = 0;
-  for (const t of topics) sum += t.percentage === "" ? 0 : t.percentage;
+  for (const t of topics) sum += t.percentage === '' ? 0 : t.percentage;
   return sum;
 }
 
@@ -142,15 +141,15 @@ export function flattenSections(sections: Section[]): BackendSection[] {
     const sectionName = s.name.trim();
     if (!sectionName) continue;
     for (const r of s.rules) {
-      const configured = r.questionType !== "" || r.count != null || r.marksPerQuestion != null;
+      const configured = r.questionType !== '' || r.count != null || r.marksPerQuestion != null;
       if (!configured) continue;
       const difficultyDone =
-        r.difficulty.EASY !== "" && r.difficulty.MEDIUM !== "" && r.difficulty.HARD !== "";
+        r.difficulty.EASY !== '' && r.difficulty.MEDIUM !== '' && r.difficulty.HARD !== '';
       const topics = r.topics
         .filter((t) => t.name.trim())
         .map((t) => ({
           name: t.name.trim(),
-          percentage: t.percentage === "" ? null : t.percentage,
+          percentage: t.percentage === '' ? null : t.percentage,
         }));
       out.push({
         id: crypto.randomUUID(),
@@ -202,17 +201,17 @@ export function parseBackendSections(secs: BackendSection[]): Section[] {
         const m = STEM_RE.exec(sec.name);
         return {
           id: crypto.randomUUID(),
-          questionType: (sec.questionType || (m ? m[2] : "")) as Rule["questionType"],
+          questionType: (sec.questionType || (m ? m[2] : '')) as Rule['questionType'],
           count: sec.count ?? null,
           marksPerQuestion: sec.marksPerQuestion ?? null,
           difficulty: {
-            EASY: sec.difficultyDistribution?.EASY ?? "",
-            MEDIUM: sec.difficultyDistribution?.MEDIUM ?? "",
-            HARD: sec.difficultyDistribution?.HARD ?? "",
+            EASY: sec.difficultyDistribution?.EASY ?? '',
+            MEDIUM: sec.difficultyDistribution?.MEDIUM ?? '',
+            HARD: sec.difficultyDistribution?.HARD ?? '',
           },
           topics: (sec.topicDistribution ?? []).map((t) => ({
             name: t.name,
-            percentage: t.percentage ?? "",
+            percentage: t.percentage ?? '',
           })),
         };
       }),
@@ -223,10 +222,10 @@ export function parseBackendSections(secs: BackendSection[]): Section[] {
 export function collectIssues(sections: Section[]): string[] {
   const issues: string[] = [];
   for (const s of sections) {
-    const name = s.name.trim() || "(untitled section)";
+    const name = s.name.trim() || '(untitled section)';
     s.rules.forEach((r) => {
-      const ruleLabel = `${name} · ${r.questionType ? TYPE_LABELS[r.questionType] : "Mixed"}`;
-      if (r.count == null && r.marksPerQuestion == null && r.questionType === "") return;
+      const ruleLabel = `${name} · ${r.questionType ? TYPE_LABELS[r.questionType] : 'Mixed'}`;
+      if (r.count == null && r.marksPerQuestion == null && r.questionType === '') return;
       if (r.count != null && r.marksPerQuestion == null) {
         issues.push(`${ruleLabel}: marks per question not set`);
       }
@@ -238,7 +237,7 @@ export function collectIssues(sections: Section[]): string[] {
         issues.push(`${ruleLabel}: difficulty must total 100% (got ${diffSum}%)`);
       }
       const topicCount = r.topics.filter((t) => t.name.trim()).length;
-      const hasPercent = r.topics.some((t) => t.percentage !== "");
+      const hasPercent = r.topics.some((t) => t.percentage !== '');
       if (topicCount > 0 && hasPercent && topicPercentSum(r.topics) !== 100) {
         issues.push(
           `${ruleLabel}: topic distribution must total 100% (got ${topicPercentSum(r.topics)}%)`,

@@ -1,11 +1,4 @@
-import {
-  IsString,
-  IsOptional,
-  IsObject,
-  IsIn,
-  MaxLength,
-  IsUUID,
-} from 'class-validator';
+import { IsString, IsOptional, IsObject, IsIn, MaxLength, IsUUID } from 'class-validator';
 
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 type QuestionSource = 'MANUAL' | 'AI_GENERATED';

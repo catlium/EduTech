@@ -1,36 +1,45 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ClipboardList, ListOrdered, Plus, Trash2, Pencil, Sparkles, Download } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ClipboardList,
+  ListOrdered,
+  Plus,
+  Trash2,
+  Pencil,
+  Sparkles,
+  Download,
+} from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
 
-import { api, ApiError, downloadFile } from "@/lib/api";
-import { formatDate, formatDuration } from "@/lib/utils";
-import { useTenant, canManage } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { ErrorState } from "@/components/app/error-state";
-import { StatusBadge } from "@/components/app/status-badge";
-import { ConfirmDialog } from "@/components/app/confirm-dialog";
-import { PageLoader } from "@/components/app/loading";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { api, ApiError, downloadFile } from '@/lib/api';
+import { formatDate, formatDuration } from '@/lib/utils';
+import { useTenant, canManage } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { ErrorState } from '@/components/app/error-state';
+import { StatusBadge } from '@/components/app/status-badge';
+import { ConfirmDialog } from '@/components/app/confirm-dialog';
+import { PageLoader } from '@/components/app/loading';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -38,25 +47,27 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import type {
   AssessmentResponse,
   AssessmentQuestion,
   CreateAssessmentRequest,
   UpdateAssessmentRequest,
   QuestionListItem,
-} from "@catlium/contracts";
-import {
-  CreateAssessmentRequestSchema,
-  UpdateAssessmentRequestSchema,
-} from "@catlium/contracts";
+} from '@catlium/contracts';
+import { CreateAssessmentRequestSchema, UpdateAssessmentRequestSchema } from '@catlium/contracts';
 
-const QUESTION_TYPES = ["ALL", "MCQ", "TRUE_FALSE", "FILL_IN_BLANK"] as const;
+const QUESTION_TYPES = ['ALL', 'MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'] as const;
 
 function scheduleRange(startsAt?: string | null, endsAt?: string | null): string | null {
   if (!startsAt && !endsAt) return null;
   const fmt = (v: string) =>
-    new Date(v).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    new Date(v).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   if (startsAt && endsAt) return `${fmt(startsAt)} – ${fmt(endsAt)}`;
   if (startsAt) return `From ${fmt(startsAt)}`;
   return `Until ${endsAt!}`;
@@ -65,16 +76,20 @@ function scheduleRange(startsAt?: string | null, endsAt?: string | null): string
 function toLocalInput(dt?: string | null): string | undefined {
   if (!dt) return undefined;
   const d = new Date(dt);
-  const pad = (n: number) => String(n).padStart(2, "0");
+  const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function workflowHint(status: AssessmentResponse["status"]): string | null {
+function workflowHint(status: AssessmentResponse['status']): string | null {
   switch (status) {
-    case "DRAFT": return "Add questions, then Publish.";
-    case "PUBLISHED": return "Activate when ready for the attempt window.";
-    case "ACTIVE": return "Complete once the attempt window closes.";
-    case "COMPLETED": return null;
+    case 'DRAFT':
+      return 'Add questions, then Publish.';
+    case 'PUBLISHED':
+      return 'Activate when ready for the attempt window.';
+    case 'ACTIVE':
+      return 'Complete once the attempt window closes.';
+    case 'COMPLETED':
+      return null;
   }
 }
 
@@ -92,7 +107,7 @@ export default function AssessmentDetailPage() {
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
-  const [editInstructions, setEditInstructions] = useState("");
+  const [editInstructions, setEditInstructions] = useState('');
   const editForm = useForm<UpdateAssessmentRequest>({
     resolver: zodResolver(UpdateAssessmentRequestSchema),
   });
@@ -101,7 +116,9 @@ export default function AssessmentDetailPage() {
   const [working, setWorking] = useState(false);
 
   // Confirm dialogs
-  const [confirmAction, setConfirmAction] = useState<"publish" | "activate" | "unpublish" | "complete" | "delete" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<
+    'publish' | 'activate' | 'unpublish' | 'complete' | 'delete' | null
+  >(null);
   const [removingQuestionId, setRemovingQuestionId] = useState<string | null>(null);
 
   // Add questions dialog
@@ -109,9 +126,9 @@ export default function AssessmentDetailPage() {
   const [bankQuestions, setBankQuestions] = useState<QuestionListItem[]>([]);
   const [bankLoading, setBankLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [marksMap, setMarksMap] = useState<Record<string, number | "">>({});
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string>("ALL");
+  const [marksMap, setMarksMap] = useState<Record<string, number | ''>>({});
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [adding, setAdding] = useState(false);
 
   const linkedIds = useRef(new Set(questions.map((q) => q.questionId)));
@@ -125,8 +142,12 @@ export default function AssessmentDetailPage() {
     setError(null);
     const ctrl = new AbortController();
     void Promise.all([
-      api<{ assessment: AssessmentResponse }>(`/assessments/${params.assessmentId}`, { signal: ctrl.signal }),
-      api<{ questions: AssessmentQuestion[] }>(`/assessments/${params.assessmentId}/questions`, { signal: ctrl.signal }),
+      api<{ assessment: AssessmentResponse }>(`/assessments/${params.assessmentId}`, {
+        signal: ctrl.signal,
+      }),
+      api<{ questions: AssessmentQuestion[] }>(`/assessments/${params.assessmentId}/questions`, {
+        signal: ctrl.signal,
+      }),
     ])
       .then(([a, q]) => {
         if (!inFlight.current) return;
@@ -138,8 +159,8 @@ export default function AssessmentDetailPage() {
         if (!inFlight.current) return;
         if (err instanceof ApiError && err.status === 404) {
           setAssessment(null);
-        } else if (!(err instanceof DOMException && err.name === "AbortError")) {
-          setError(err instanceof ApiError ? err.message : "Failed to load assessment");
+        } else if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setError(err instanceof ApiError ? err.message : 'Failed to load assessment');
         }
       })
       .finally(() => {
@@ -165,7 +186,7 @@ export default function AssessmentDetailPage() {
       startsAt: toLocalInput(assessment.startsAt),
       endsAt: toLocalInput(assessment.endsAt),
     });
-    setEditInstructions((assessment.instructions as { text?: string } | null)?.text ?? "");
+    setEditInstructions((assessment.instructions as { text?: string } | null)?.text ?? '');
     setEditOpen(true);
   }
 
@@ -173,11 +194,9 @@ export default function AssessmentDetailPage() {
     if (!assessment) return;
     setEditSubmitting(true);
     try {
-      const instructions = editInstructions.trim()
-        ? { text: editInstructions.trim() }
-        : null;
+      const instructions = editInstructions.trim() ? { text: editInstructions.trim() } : null;
       const res = await api<{ assessment: AssessmentResponse }>(`/assessments/${assessment.id}`, {
-        method: "PATCH",
+        method: 'PATCH',
         body: {
           ...values,
           durationMinutes: values.durationMinutes ?? null,
@@ -188,10 +207,10 @@ export default function AssessmentDetailPage() {
         },
       });
       setAssessment(res.assessment);
-      toast.success("Assessment updated");
+      toast.success('Assessment updated');
       setEditOpen(false);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to update assessment");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to update assessment');
     } finally {
       setEditSubmitting(false);
     }
@@ -201,9 +220,14 @@ export default function AssessmentDetailPage() {
     if (!assessment) return;
     setWorking(true);
     try {
-      const res = await api<{ assessment: AssessmentResponse }>(`/assessments/${assessment.id}/${action}`, { method: "POST" });
+      const res = await api<{ assessment: AssessmentResponse }>(
+        `/assessments/${assessment.id}/${action}`,
+        { method: 'POST' },
+      );
       setAssessment(res.assessment);
-      toast.success(`Assessment ${action === "publish" ? "published" : action === "activate" ? "activated" : action === "unpublish" ? "unpublished" : "completed"}`);
+      toast.success(
+        `Assessment ${action === 'publish' ? 'published' : action === 'activate' ? 'activated' : action === 'unpublish' ? 'unpublished' : 'completed'}`,
+      );
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : `Failed to ${action} assessment`);
     } finally {
@@ -216,11 +240,11 @@ export default function AssessmentDetailPage() {
     if (!assessment) return;
     setWorking(true);
     try {
-      await api(`/assessments/${assessment.id}`, { method: "DELETE" });
-      toast.success("Assessment deleted");
-      router.push("/assessments");
+      await api(`/assessments/${assessment.id}`, { method: 'DELETE' });
+      toast.success('Assessment deleted');
+      router.push('/assessments');
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to delete assessment");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete assessment');
     } finally {
       setWorking(false);
       setConfirmAction(null);
@@ -233,12 +257,14 @@ export default function AssessmentDetailPage() {
     setBankLoading(true);
     setSelectedIds(new Set());
     setMarksMap({});
-    setSearch("");
-    setTypeFilter("ALL");
+    setSearch('');
+    setTypeFilter('ALL');
     setAddOpen(true);
-    api<{ questions: QuestionListItem[] }>("/questions")
+    api<{ questions: QuestionListItem[] }>('/questions')
       .then(({ questions: qs }) => setBankQuestions(qs))
-      .catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed to load questions"))
+      .catch((err) =>
+        toast.error(err instanceof ApiError ? err.message : 'Failed to load questions'),
+      )
       .finally(() => setBankLoading(false));
   }
 
@@ -247,7 +273,11 @@ export default function AssessmentDetailPage() {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
-        setMarksMap((m) => { const n = { ...m }; delete n[id]; return n; });
+        setMarksMap((m) => {
+          const n = { ...m };
+          delete n[id];
+          return n;
+        });
       } else {
         next.add(id);
       }
@@ -280,8 +310,8 @@ export default function AssessmentDetailPage() {
 
   const filteredBank = bankQuestions.filter((q) => {
     if (linkedIds.current.has(q.id)) return false;
-    if (q.approvalStatus !== "APPROVED") return false;
-    if (typeFilter !== "ALL" && q.questionType !== typeFilter) return false;
+    if (q.approvalStatus !== 'APPROVED') return false;
+    if (typeFilter !== 'ALL' && q.questionType !== typeFilter) return false;
     if (search && !q.stem.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -296,17 +326,17 @@ export default function AssessmentDetailPage() {
       const marks: Record<string, number> = {};
       ids.forEach((id) => {
         const v = marksMap[id];
-        if (v !== undefined && v !== "" && v > 0) marks[id] = Number(v);
+        if (v !== undefined && v !== '' && v > 0) marks[id] = Number(v);
       });
       await api(`/assessments/${params.assessmentId}/questions`, {
-        method: "POST",
+        method: 'POST',
         body: { questionIds: ids, ...(Object.keys(marks).length > 0 ? { marks } : {}) },
       });
-      toast.success(`Added ${ids.length} question${ids.length !== 1 ? "s" : ""}`);
+      toast.success(`Added ${ids.length} question${ids.length !== 1 ? 's' : ''}`);
       setAddOpen(false);
       fetchData();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to add questions");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to add questions');
     } finally {
       setAdding(false);
     }
@@ -315,11 +345,13 @@ export default function AssessmentDetailPage() {
   async function onRemoveQuestion(questionId: string) {
     setWorking(true);
     try {
-      await api(`/assessments/${params.assessmentId}/questions/${questionId}`, { method: "DELETE" });
-      toast.success("Question removed");
+      await api(`/assessments/${params.assessmentId}/questions/${questionId}`, {
+        method: 'DELETE',
+      });
+      toast.success('Question removed');
       fetchData();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to remove question");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to remove question');
     } finally {
       setWorking(false);
     }
@@ -333,7 +365,9 @@ export default function AssessmentDetailPage() {
     return (
       <div>
         <Button variant="ghost" size="sm" asChild className="mb-4">
-          <Link href="/assessments"><ArrowLeft className="mr-1 size-4" /> Back</Link>
+          <Link href="/assessments">
+            <ArrowLeft className="mr-1 size-4" /> Back
+          </Link>
         </Button>
         <ErrorState description={error} onRetry={() => fetchData()} />
       </div>
@@ -344,39 +378,45 @@ export default function AssessmentDetailPage() {
     return (
       <div>
         <Button variant="ghost" size="sm" asChild className="mb-4">
-          <Link href="/assessments"><ArrowLeft className="mr-1 size-4" /> Back</Link>
+          <Link href="/assessments">
+            <ArrowLeft className="mr-1 size-4" /> Back
+          </Link>
         </Button>
         <EmptyState
           icon={<ClipboardList className="size-8" />}
           title="Assessment not found"
           description="This assessment may have been deleted."
         >
-          <Button size="sm" asChild><Link href="/assessments">Back to Assessments</Link></Button>
+          <Button size="sm" asChild>
+            <Link href="/assessments">Back to Assessments</Link>
+          </Button>
         </EmptyState>
       </div>
     );
   }
 
-  const editable = assessment.status === "DRAFT" || assessment.status === "PUBLISHED";
+  const editable = assessment.status === 'DRAFT' || assessment.status === 'PUBLISHED';
   const assessmentId = assessment.id;
   const assessmentTitle = assessment.title;
 
-  async function exportAssessment(format: "pdf" | "docx") {
+  async function exportAssessment(format: 'pdf' | 'docx') {
     try {
       await downloadFile(
         `/export/assessment/${assessmentId}?format=${format}`,
-        `${assessmentTitle.replace(/[^a-z0-9]+/gi, "-")}.${format}`,
+        `${assessmentTitle.replace(/[^a-z0-9]+/gi, '-')}.${format}`,
       );
       toast.success(`Assessment exported as ${format.toUpperCase()}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Export failed");
+      toast.error(err instanceof ApiError ? err.message : 'Export failed');
     }
   }
 
   return (
     <div>
       <Button variant="ghost" size="sm" asChild className="mb-4">
-        <Link href="/assessments"><ArrowLeft className="mr-1 size-4" /> Back</Link>
+        <Link href="/assessments">
+          <ArrowLeft className="mr-1 size-4" /> Back
+        </Link>
       </Button>
 
       <PageHeader
@@ -390,31 +430,50 @@ export default function AssessmentDetailPage() {
                   <Pencil className="mr-1 size-3.5" /> Edit
                 </Button>
               )}
-              {assessment.status === "DRAFT" && (
+              {assessment.status === 'DRAFT' && (
                 <>
-                  <Button size="sm" onClick={() => setConfirmAction("publish")} disabled={working || questions.length === 0}>
+                  <Button
+                    size="sm"
+                    onClick={() => setConfirmAction('publish')}
+                    disabled={working || questions.length === 0}
+                  >
                     Publish
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setConfirmAction("delete")} disabled={working}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmAction('delete')}
+                    disabled={working}
+                  >
                     <Trash2 className="mr-1 size-3.5" /> Delete
                   </Button>
                 </>
               )}
-              {assessment.status === "PUBLISHED" && (
+              {assessment.status === 'PUBLISHED' && (
                 <>
-                  <Button size="sm" onClick={() => setConfirmAction("activate")} disabled={working}>
+                  <Button size="sm" onClick={() => setConfirmAction('activate')} disabled={working}>
                     Activate
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setConfirmAction("unpublish")} disabled={working}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmAction('unpublish')}
+                    disabled={working}
+                  >
                     Unpublish
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setConfirmAction("delete")} disabled={working}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmAction('delete')}
+                    disabled={working}
+                  >
                     <Trash2 className="mr-1 size-3.5" /> Delete
                   </Button>
                 </>
               )}
-              {assessment.status === "ACTIVE" && (
-                <Button size="sm" onClick={() => setConfirmAction("complete")} disabled={working}>
+              {assessment.status === 'ACTIVE' && (
+                <Button size="sm" onClick={() => setConfirmAction('complete')} disabled={working}>
                   Complete
                 </Button>
               )}
@@ -426,7 +485,7 @@ export default function AssessmentDetailPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void exportAssessment("pdf")}
+                onClick={() => void exportAssessment('pdf')}
                 disabled={working}
               >
                 <Download className="mr-1 size-3.5" /> PDF
@@ -434,7 +493,7 @@ export default function AssessmentDetailPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void exportAssessment("docx")}
+                onClick={() => void exportAssessment('docx')}
                 disabled={working}
               >
                 <Download className="mr-1 size-3.5" /> DOCX
@@ -449,15 +508,27 @@ export default function AssessmentDetailPage() {
         <CardContent className="pt-6 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={assessment.status} />
-            {assessment.durationMinutes && <span className="text-muted-foreground">Duration: {formatDuration(assessment.durationMinutes)}</span>}
-            {assessment.maxMarks && <span className="text-muted-foreground">Max Marks: {assessment.maxMarks}</span>}
-            <span className="text-muted-foreground">Created: {formatDate(assessment.createdAt)}</span>
+            {assessment.durationMinutes && (
+              <span className="text-muted-foreground">
+                Duration: {formatDuration(assessment.durationMinutes)}
+              </span>
+            )}
+            {assessment.maxMarks && (
+              <span className="text-muted-foreground">Max Marks: {assessment.maxMarks}</span>
+            )}
+            <span className="text-muted-foreground">
+              Created: {formatDate(assessment.createdAt)}
+            </span>
           </div>
           {scheduleRange(assessment.startsAt, assessment.endsAt) && (
-            <p className="mt-1 text-muted-foreground">{scheduleRange(assessment.startsAt, assessment.endsAt)}</p>
+            <p className="mt-1 text-muted-foreground">
+              {scheduleRange(assessment.startsAt, assessment.endsAt)}
+            </p>
           )}
           {assessment.description && (
-            <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{assessment.description}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+              {assessment.description}
+            </p>
           )}
           {(assessment.instructions as { text?: string } | null)?.text && (
             <div className="mt-3 rounded-md bg-muted p-3 text-sm">
@@ -475,7 +546,9 @@ export default function AssessmentDetailPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
             <CardTitle className="text-base">Questions</CardTitle>
-            <CardDescription>{questions.length} question{questions.length !== 1 ? "s" : ""}</CardDescription>
+            <CardDescription>
+              {questions.length} question{questions.length !== 1 ? 's' : ''}
+            </CardDescription>
           </div>
           {isTeacher && editable && (
             <Button size="sm" variant="outline" onClick={openAddDialog}>
@@ -535,7 +608,13 @@ export default function AssessmentDetailPage() {
       )}
 
       {/* ── Edit dialog ── */}
-      <Dialog open={editOpen} onOpenChange={(o) => { setEditOpen(o); if (!o) editForm.reset(); }}>
+      <Dialog
+        open={editOpen}
+        onOpenChange={(o) => {
+          setEditOpen(o);
+          if (!o) editForm.reset();
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Assessment</DialogTitle>
@@ -544,23 +623,43 @@ export default function AssessmentDetailPage() {
           <form onSubmit={editForm.handleSubmit(onEdit)} className="space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="edit-title">Title</Label>
-              <Input id="edit-title" {...editForm.register("title")} />
+              <Input id="edit-title" {...editForm.register('title')} />
               {editForm.formState.errors.title && (
-                <p className="text-sm text-destructive">{editForm.formState.errors.title.message}</p>
+                <p className="text-sm text-destructive">
+                  {editForm.formState.errors.title.message}
+                </p>
               )}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="edit-description">Description</Label>
-              <Textarea id="edit-description" className="resize-none" {...editForm.register("description")} />
+              <Textarea
+                id="edit-description"
+                className="resize-none"
+                {...editForm.register('description')}
+              />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="edit-duration">Duration (minutes)</Label>
-                <Input id="edit-duration" type="number" min={1} max={600} placeholder="Optional" {...editForm.register("durationMinutes", { valueAsNumber: true })} />
+                <Input
+                  id="edit-duration"
+                  type="number"
+                  min={1}
+                  max={600}
+                  placeholder="Optional"
+                  {...editForm.register('durationMinutes', { valueAsNumber: true })}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="edit-maxMarks">Max Marks</Label>
-                <Input id="edit-maxMarks" type="number" min={1} max={10000} placeholder="Optional" {...editForm.register("maxMarks", { valueAsNumber: true })} />
+                <Input
+                  id="edit-maxMarks"
+                  type="number"
+                  min={1}
+                  max={10000}
+                  placeholder="Optional"
+                  {...editForm.register('maxMarks', { valueAsNumber: true })}
+                />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -569,7 +668,7 @@ export default function AssessmentDetailPage() {
                 <Input
                   id="edit-startsAt"
                   type="datetime-local"
-                  {...editForm.register("startsAt", {
+                  {...editForm.register('startsAt', {
                     setValueAs: (v: string) => (v ? new Date(v).toISOString() : undefined),
                   })}
                 />
@@ -579,7 +678,7 @@ export default function AssessmentDetailPage() {
                 <Input
                   id="edit-endsAt"
                   type="datetime-local"
-                  {...editForm.register("endsAt", {
+                  {...editForm.register('endsAt', {
                     setValueAs: (v: string) => (v ? new Date(v).toISOString() : undefined),
                   })}
                 />
@@ -597,14 +696,20 @@ export default function AssessmentDetailPage() {
               />
             </div>
             {editForm.formState.errors.startsAt?.message && (
-              <p className="text-sm text-destructive">{editForm.formState.errors.startsAt.message}</p>
+              <p className="text-sm text-destructive">
+                {editForm.formState.errors.startsAt.message}
+              </p>
             )}
             {editForm.formState.errors.root?.message && (
               <p className="text-sm text-destructive">{editForm.formState.errors.root.message}</p>
             )}
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={editSubmitting}>{editSubmitting ? "Saving..." : "Save Changes"}</Button>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={editSubmitting}>
+                {editSubmitting ? 'Saving...' : 'Save Changes'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -615,7 +720,9 @@ export default function AssessmentDetailPage() {
         <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Add Questions</DialogTitle>
-            <DialogDescription>Select approved questions from the bank to add to this assessment.</DialogDescription>
+            <DialogDescription>
+              Select approved questions from the bank to add to this assessment.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-wrap items-center gap-3 py-2">
@@ -631,13 +738,13 @@ export default function AssessmentDetailPage() {
               </SelectTrigger>
               <SelectContent>
                 {QUESTION_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{t === "ALL" ? "All types" : t}</SelectItem>
+                  <SelectItem key={t} value={t}>
+                    {t === 'ALL' ? 'All types' : t}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <span className="text-sm text-muted-foreground ml-auto">
-              {selectedCount} selected
-            </span>
+            <span className="text-sm text-muted-foreground ml-auto">{selectedCount} selected</span>
           </div>
 
           <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-1">
@@ -647,8 +754,8 @@ export default function AssessmentDetailPage() {
               <div className="py-8 text-center">
                 <p className="text-sm text-muted-foreground">
                   {bankQuestions.length === 0
-                    ? "No approved questions in the bank for this scope."
-                    : "No matching questions."}
+                    ? 'No approved questions in the bank for this scope.'
+                    : 'No matching questions.'}
                 </p>
                 {bankQuestions.length === 0 && (
                   <Button size="sm" variant="outline" className="mt-3" asChild>
@@ -662,35 +769,45 @@ export default function AssessmentDetailPage() {
               <>
                 <label className="flex items-center gap-3 rounded border px-3 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:bg-muted/50">
                   <Checkbox
-                    checked={filteredBank.length > 0 && filteredBank.every((q) => selectedIds.has(q.id))}
+                    checked={
+                      filteredBank.length > 0 && filteredBank.every((q) => selectedIds.has(q.id))
+                    }
                     onCheckedChange={() => toggleSelectAll(filteredBank)}
                   />
                   Select all ({filteredBank.length})
                 </label>
                 {filteredBank.map((q) => (
-                  <label key={q.id} className="flex items-center gap-3 rounded border px-3 py-2 text-sm hover:bg-muted/50 cursor-pointer">
+                  <label
+                    key={q.id}
+                    className="flex items-center gap-3 rounded border px-3 py-2 text-sm hover:bg-muted/50 cursor-pointer"
+                  >
                     <Checkbox
                       checked={selectedIds.has(q.id)}
                       onCheckedChange={() => toggleSelect(q.id)}
                     />
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">{q.questionType}</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          {q.questionType}
+                        </Badge>
                       </div>
                       <p className="line-clamp-2 text-muted-foreground">{q.stem}</p>
                     </div>
                     {selectedIds.has(q.id) && (
-                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div
+                        className="flex items-center gap-1 shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Input
                           type="number"
                           min={1}
                           placeholder="Marks"
                           className="w-20"
-                          value={marksMap[q.id] ?? ""}
+                          value={marksMap[q.id] ?? ''}
                           onChange={(e) =>
                             setMarksMap((m) => ({
                               ...m,
-                              [q.id]: e.target.value === "" ? "" : Number(e.target.value),
+                              [q.id]: e.target.value === '' ? '' : Number(e.target.value),
                             }))
                           }
                         />
@@ -703,9 +820,13 @@ export default function AssessmentDetailPage() {
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={onAddQuestions} disabled={adding || selectedCount === 0}>
-              {adding ? "Adding..." : `Add ${selectedCount || ""} Question${selectedCount !== 1 ? "s" : ""}`}
+              {adding
+                ? 'Adding...'
+                : `Add ${selectedCount || ''} Question${selectedCount !== 1 ? 's' : ''}`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -713,47 +834,47 @@ export default function AssessmentDetailPage() {
 
       {/* ── Confirm dialogs ── */}
       <ConfirmDialog
-        open={confirmAction === "publish"}
+        open={confirmAction === 'publish'}
         onOpenChange={(o) => !o && setConfirmAction(null)}
         title="Publish Assessment"
         description={
           questions.length === 0
-            ? "This assessment has no questions. Students will see an empty assessment. Publish anyway?"
-            : "Students will be able to see this assessment once activated."
+            ? 'This assessment has no questions. Students will see an empty assessment. Publish anyway?'
+            : 'Students will be able to see this assessment once activated.'
         }
         confirmLabel="Publish"
         loading={working}
-        onConfirm={() => onStatusAction("publish")}
+        onConfirm={() => onStatusAction('publish')}
       />
       <ConfirmDialog
-        open={confirmAction === "activate"}
+        open={confirmAction === 'activate'}
         onOpenChange={(o) => !o && setConfirmAction(null)}
         title="Activate Assessment"
         description="Students will be able to start attempts within the schedule window."
         confirmLabel="Activate"
         loading={working}
-        onConfirm={() => onStatusAction("activate")}
+        onConfirm={() => onStatusAction('activate')}
       />
       <ConfirmDialog
-        open={confirmAction === "unpublish"}
+        open={confirmAction === 'unpublish'}
         onOpenChange={(o) => !o && setConfirmAction(null)}
         title="Unpublish Assessment"
         description="This will move the assessment back to Draft."
         confirmLabel="Unpublish"
         loading={working}
-        onConfirm={() => onStatusAction("unpublish")}
+        onConfirm={() => onStatusAction('unpublish')}
       />
       <ConfirmDialog
-        open={confirmAction === "complete"}
+        open={confirmAction === 'complete'}
         onOpenChange={(o) => !o && setConfirmAction(null)}
         title="Complete Assessment"
         description="This will end the assessment. No new attempts will be allowed."
         confirmLabel="Complete"
         loading={working}
-        onConfirm={() => onStatusAction("complete")}
+        onConfirm={() => onStatusAction('complete')}
       />
       <ConfirmDialog
-        open={confirmAction === "delete"}
+        open={confirmAction === 'delete'}
         onOpenChange={(o) => !o && setConfirmAction(null)}
         title="Delete Assessment"
         description="This action cannot be undone."

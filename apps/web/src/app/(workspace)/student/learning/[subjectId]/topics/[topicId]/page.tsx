@@ -1,26 +1,21 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { ArrowLeft, BookOpen } from "lucide-react";
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { ArrowLeft, BookOpen } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { ErrorState } from "@/components/app/error-state";
-import { SkeletonCards } from "@/components/app/loading";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { api, ApiError } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { ErrorState } from '@/components/app/error-state';
+import { SkeletonCards } from '@/components/app/loading';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type {
   SubjectResponse,
   TopicResponse,
@@ -28,8 +23,8 @@ import type {
   ContentListItem,
   NoteBlock,
   FurtherLearningResource,
-} from "@catlium/contracts";
-import { NoteBlocks, FurtherLearning } from "@/components/content/note-blocks";
+} from '@catlium/contracts';
+import { NoteBlocks, FurtherLearning } from '@/components/content/note-blocks';
 
 type Payload = Record<string, unknown>;
 
@@ -43,11 +38,11 @@ type ReadyContent = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  NOTE: "Note",
-  SUMMARY: "Summary",
-  FLASHCARD_SET: "Flashcards",
-  CORNELL_NOTE: "Cornell Notes",
-  IMPORTANT_CONCEPTS: "Important Concepts",
+  NOTE: 'Note',
+  SUMMARY: 'Summary',
+  FLASHCARD_SET: 'Flashcards',
+  CORNELL_NOTE: 'Cornell Notes',
+  IMPORTANT_CONCEPTS: 'Important Concepts',
 };
 
 export default function TopicReadingPage() {
@@ -56,7 +51,7 @@ export default function TopicReadingPage() {
   const [topic, setTopic] = useState<TopicResponse | null>(null);
   const [subject, setSubject] = useState<SubjectResponse | null>(null);
   const [contents, setContents] = useState<ReadyContent[]>([]);
-  const [activeType, setActiveType] = useState<string>("all");
+  const [activeType, setActiveType] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,10 +64,9 @@ export default function TopicReadingPage() {
         const [t, s, list] = await Promise.all([
           api<{ topic: TopicResponse }>(`/academic/topics/${topicId}`, { signal }),
           api<{ subject: SubjectResponse }>(`/academic/subjects/${subjectId}`, { signal }),
-          api<{ contents: ContentListItem[] }>(
-            `/content?topicId=${topicId}&status=ACTIVE`,
-            { signal },
-          ),
+          api<{ contents: ContentListItem[] }>(`/content?topicId=${topicId}&status=ACTIVE`, {
+            signal,
+          }),
         ]);
         setTopic(t.topic);
         setSubject(s.subject);
@@ -87,7 +81,7 @@ export default function TopicReadingPage() {
         for (const cId of list.contents.map((c) => c.id)) {
           const i = list.contents.findIndex((c) => c.id === cId);
           const res = settled[i];
-          if (res.status === "fulfilled") {
+          if (res.status === 'fulfilled') {
             const { content } = res.value;
             items.push({
               id: content.id,
@@ -106,8 +100,8 @@ export default function TopicReadingPage() {
           toast.warning(`${failed.length} content item(s) could not be loaded.`);
         }
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof ApiError ? err.message : "Failed to load topic. Please try again.");
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError(err instanceof ApiError ? err.message : 'Failed to load topic. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -128,13 +122,11 @@ export default function TopicReadingPage() {
   }
 
   if (error || !topic || !subject) {
-    return (
-      <ErrorState description={error ?? "Topic not found."} onRetry={() => void load()} />
-    );
+    return <ErrorState description={error ?? 'Topic not found.'} onRetry={() => void load()} />;
   }
 
-  const types = ["all", ...Array.from(new Set(contents.map((c) => c.type)))];
-  const visible = activeType === "all" ? contents : contents.filter((c) => c.type === activeType);
+  const types = ['all', ...Array.from(new Set(contents.map((c) => c.type)))];
+  const visible = activeType === 'all' ? contents : contents.filter((c) => c.type === activeType);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -160,10 +152,10 @@ export default function TopicReadingPage() {
               <Button
                 key={type}
                 size="sm"
-                variant={activeType === type ? "default" : "outline"}
+                variant={activeType === type ? 'default' : 'outline'}
                 onClick={() => setActiveType(type)}
               >
-                {type === "all" ? "All" : TYPE_LABELS[type] ?? type}
+                {type === 'all' ? 'All' : (TYPE_LABELS[type] ?? type)}
               </Button>
             ))}
           </div>
@@ -180,9 +172,7 @@ export default function TopicReadingPage() {
 }
 
 function ContentCard({ content }: { content: ReadyContent }) {
-  const materialIds = Array.isArray(content.source?.materialIds)
-    ? content.source.materialIds
-    : [];
+  const materialIds = Array.isArray(content.source?.materialIds) ? content.source.materialIds : [];
   return (
     <Card>
       <CardHeader className="grid-cols-[auto_1fr_auto] items-center gap-2">
@@ -196,7 +186,7 @@ function ContentCard({ content }: { content: ReadyContent }) {
         <PayloadView type={content.type} payload={content.payload} />
         {materialIds.length > 0 && (
           <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
-            Prepared from {materialIds.length} source material{materialIds.length !== 1 ? "s" : ""}
+            Prepared from {materialIds.length} source material{materialIds.length !== 1 ? 's' : ''}
           </p>
         )}
       </CardContent>
@@ -206,15 +196,15 @@ function ContentCard({ content }: { content: ReadyContent }) {
 
 function PayloadView({ type, payload }: { type: string; payload: Payload }) {
   switch (type) {
-    case "NOTE":
+    case 'NOTE':
       return <NotePayloadView payload={payload} />;
-    case "SUMMARY":
+    case 'SUMMARY':
       return <SummaryPayloadView payload={payload} />;
-    case "IMPORTANT_CONCEPTS":
+    case 'IMPORTANT_CONCEPTS':
       return <ConceptsPayloadView payload={payload} />;
-    case "FLASHCARD_SET":
+    case 'FLASHCARD_SET':
       return <FlashcardPayloadView payload={payload} />;
-    case "CORNELL_NOTE":
+    case 'CORNELL_NOTE':
       return <CornellPayloadView payload={payload} />;
     default:
       return <UnavailableNote />;
@@ -241,7 +231,7 @@ function NotePayloadView({ payload }: { payload: Payload }) {
 }
 
 function SummaryPayloadView({ payload }: { payload: Payload }) {
-  const summary = typeof payload.summary === "string" ? payload.summary : null;
+  const summary = typeof payload.summary === 'string' ? payload.summary : null;
   const keyConcepts = Array.isArray(payload.keyConcepts) ? payload.keyConcepts : [];
   const importantPoints = Array.isArray(payload.importantPoints) ? payload.importantPoints : [];
   if (!summary && keyConcepts.length === 0 && importantPoints.length === 0)
@@ -278,7 +268,9 @@ function SummaryPayloadView({ payload }: { payload: Payload }) {
             return (
               <div key={i} className="rounded-lg border-l-4 border-primary bg-muted/20 p-3">
                 {e.topic && (
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">{e.topic}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                    {e.topic}
+                  </p>
                 )}
                 {e.content && <p className="mt-1 whitespace-pre-wrap text-sm">{e.content}</p>}
               </div>
@@ -298,9 +290,14 @@ function ConceptsPayloadView({ payload }: { payload: Payload }) {
   return (
     <div className="space-y-2">
       {concepts.map((raw, i) => {
-        const c = raw as { title?: string; definition?: string; name?: string; description?: string };
-        const title = c.title ?? c.name ?? "";
-        const definition = c.definition ?? c.description ?? "";
+        const c = raw as {
+          title?: string;
+          definition?: string;
+          name?: string;
+          description?: string;
+        };
+        const title = c.title ?? c.name ?? '';
+        const definition = c.definition ?? c.description ?? '';
         return (
           <div key={i} className="rounded-lg bg-muted/30 p-3">
             {title && <p className="text-sm font-medium">{title}</p>}
@@ -323,7 +320,9 @@ function FlashcardPayloadView({ payload }: { payload: Payload }) {
 
   return (
     <div className="flex flex-col gap-2">
-      {cards.map((card) => <FlipCard key={card.id} card={card} />)}
+      {cards.map((card) => (
+        <FlipCard key={card.id} card={card} />
+      ))}
     </div>
   );
 }
@@ -333,13 +332,13 @@ function FlipCard({ card }: { card: { id: string; front: string; back: string } 
   return (
     <div
       className={cn(
-        "rounded-lg border px-4 py-3 transition-colors",
-        flipped ? "bg-muted/30" : "bg-card",
+        'rounded-lg border px-4 py-3 transition-colors',
+        flipped ? 'bg-muted/30' : 'bg-card',
       )}
     >
       <p>{flipped ? card.back : card.front}</p>
       <Button size="sm" variant="ghost" className="mt-2" onClick={() => setFlipped((f) => !f)}>
-        {flipped ? "Hide answer" : "Show answer"}
+        {flipped ? 'Hide answer' : 'Show answer'}
       </Button>
     </div>
   );
@@ -348,19 +347,17 @@ function FlipCard({ card }: { card: { id: string; front: string; back: string } 
 function CornellPayloadView({ payload }: { payload: Payload }) {
   const sections = Array.isArray(payload.sections) ? payload.sections : null;
   const cueColumn = Array.isArray(payload.cueColumn) ? payload.cueColumn : null;
-  const notesRaw = typeof payload.notes === "string" ? payload.notes : null;
-  const summary = typeof payload.summary === "string" ? payload.summary : null;
+  const notesRaw = typeof payload.notes === 'string' ? payload.notes : null;
+  const summary = typeof payload.summary === 'string' ? payload.summary : null;
 
   const cues = sections
-    ? sections
-        .map((s) => (s as { cue?: string }).cue ?? "")
-        .filter(Boolean)
-    : cueColumn?.map(String) ?? [];
+    ? sections.map((s) => (s as { cue?: string }).cue ?? '').filter(Boolean)
+    : (cueColumn?.map(String) ?? []);
   const notes = sections
     ? sections
-        .map((s) => (s as { notes?: string }).notes ?? "")
+        .map((s) => (s as { notes?: string }).notes ?? '')
         .filter(Boolean)
-        .join("\n\n")
+        .join('\n\n')
     : notesRaw;
 
   if (cues.length === 0 && !notes && !summary) return <UnavailableNote />;

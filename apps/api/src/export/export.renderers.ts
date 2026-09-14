@@ -1,7 +1,21 @@
 import { Response } from 'express';
 import { existsSync } from 'node:fs';
 
-import { Document, Packer, Paragraph, HeadingLevel, TextRun, TableRow, TableCell, Table, Header, Footer, AlignmentType, SimpleField, PageBreak } from 'docx';
+import {
+  Document,
+  Packer,
+  Paragraph,
+  HeadingLevel,
+  TextRun,
+  TableRow,
+  TableCell,
+  Table,
+  Header,
+  Footer,
+  AlignmentType,
+  SimpleField,
+  PageBreak,
+} from 'docx';
 import PDFDocument from 'pdfkit';
 
 import type { DocumentModel, DocBlock } from './export.content-blocks.js';
@@ -41,7 +55,12 @@ function fontFor(text: string): string {
   return DEVANAGARI_RANGE.test(text) ? FONT_DEVANAGARI : 'Helvetica';
 }
 
-function pdfText(doc: PDFKit.PDFDocument, s: string, size = 11, opts?: Record<string, unknown>): void {
+function pdfText(
+  doc: PDFKit.PDFDocument,
+  s: string,
+  size = 11,
+  opts?: Record<string, unknown>,
+): void {
   const t = sanitizePdfText(s);
   doc.font(fontFor(t)).fontSize(size).text(t, opts);
 }
@@ -106,7 +125,11 @@ function renderPdfBlock(doc: PDFKit.PDFDocument, block: DocBlock): void {
       const tag = `Q: ${block.stem} (${block.type}${block.difficulty ? `, ${block.difficulty}` : ''}${block.marks != null ? ` — ${block.marks} mark${block.marks === 1 ? '' : 's'}` : ''})`;
       pdfText(doc, tag, 11);
       block.choices?.forEach((c, i) => {
-        pdfText(doc, `  ${String.fromCharCode(65 + i)}. ${c.text}${block.showAnswer && c.correct ? ' ✓' : ''}`, 10);
+        pdfText(
+          doc,
+          `  ${String.fromCharCode(65 + i)}. ${c.text}${block.showAnswer && c.correct ? ' ✓' : ''}`,
+          10,
+        );
       });
       if (block.answerNote) pdfText(doc, `Answer: ${block.answerNote}`, 10);
       if (block.explanation) pdfText(doc, `Explanation: ${block.explanation}`, 9);
@@ -141,7 +164,9 @@ function renderPdfBlock(doc: PDFKit.PDFDocument, block: DocBlock): void {
       break;
     case 'timeline':
       if (block.caption) pdfText(doc, block.caption, 11);
-      block.events.forEach((e) => pdfText(doc, `${e.period}: ${e.title}${e.description ? ` — ${e.description}` : ''}`, 10));
+      block.events.forEach((e) =>
+        pdfText(doc, `${e.period}: ${e.title}${e.description ? ` — ${e.description}` : ''}`, 10),
+      );
       doc.moveDown(0.5);
       break;
     case 'diagram': {
@@ -149,7 +174,10 @@ function renderPdfBlock(doc: PDFKit.PDFDocument, block: DocBlock): void {
       const labels = block.nodes.map((n) => n.label);
       pdfText(doc, `Nodes: ${labels.join(', ')}`, 10);
       if (block.edges.length > 0) {
-        const edges = block.edges.map((e) => `${block.nodes.find((n) => n.id === e.from)?.label ?? e.from} → ${block.nodes.find((n) => n.id === e.to)?.label ?? e.to}${e.label ? ` (${e.label})` : ''}`);
+        const edges = block.edges.map(
+          (e) =>
+            `${block.nodes.find((n) => n.id === e.from)?.label ?? e.from} → ${block.nodes.find((n) => n.id === e.to)?.label ?? e.to}${e.label ? ` (${e.label})` : ''}`,
+        );
         edges.forEach((e) => pdfText(doc, `  ${e}`, 10));
       }
       doc.moveDown(0.5);
@@ -162,7 +190,9 @@ function renderPdfBlock(doc: PDFKit.PDFDocument, block: DocBlock): void {
       break;
     case 'further-learning':
       pdfText(doc, 'Further Learning:', 10);
-      block.resources.forEach((r) => pdfText(doc, `• ${r.title} (${r.kind}) — ${r.url}${r.note ? ` — ${r.note}` : ''}`, 9));
+      block.resources.forEach((r) =>
+        pdfText(doc, `• ${r.title} (${r.kind}) — ${r.url}${r.note ? ` — ${r.note}` : ''}`, 9),
+      );
       doc.moveDown(0.5);
       break;
   }
@@ -210,7 +240,10 @@ async function sendDocx(res: Response, model: DocumentModel, filename: string): 
     ],
   });
   const buffer = await Packer.toBuffer(doc);
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  );
   res.setHeader('Content-Disposition', `attachment; filename="${filename}.docx"`);
   res.send(buffer);
 }
@@ -228,61 +261,114 @@ function docxBlock(block: DocBlock): (Paragraph | Table)[] {
       out.push(...block.items.map((item) => new Paragraph({ text: item, bullet: { level: 0 } })));
       break;
     case 'steps':
-      if (block.title) out.push(new Paragraph({ children: [new TextRun({ text: block.title, bold: true })] }));
+      if (block.title)
+        out.push(new Paragraph({ children: [new TextRun({ text: block.title, bold: true })] }));
       out.push(...block.items.map((item, n) => new Paragraph({ text: `${n + 1}. ${item}` })));
       break;
     case 'flashcard':
-      out.push(new Paragraph({ text: `Front: ${block.front}\nBack: ${block.back}`, spacing: { after: 120 } }));
+      out.push(
+        new Paragraph({
+          text: `Front: ${block.front}\nBack: ${block.back}`,
+          spacing: { after: 120 },
+        }),
+      );
       break;
     case 'question': {
-      out.push(new Paragraph({ children: [
-        new TextRun({ text: `Q: ${block.stem}`, bold: true }),
-        new TextRun({ text: ` (${block.type}${block.difficulty ? `, ${block.difficulty}` : ''}${block.marks != null ? ` — ${block.marks} mark${block.marks === 1 ? '' : 's'}` : ''})` }),
-      ] }));
+      out.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `Q: ${block.stem}`, bold: true }),
+            new TextRun({
+              text: ` (${block.type}${block.difficulty ? `, ${block.difficulty}` : ''}${block.marks != null ? ` — ${block.marks} mark${block.marks === 1 ? '' : 's'}` : ''})`,
+            }),
+          ],
+        }),
+      );
       block.choices?.forEach((c, i) => {
-        out.push(new Paragraph({ text: `  ${String.fromCharCode(65 + i)}. ${c.text}${block.showAnswer && c.correct ? ' ✓' : ''}` }));
+        out.push(
+          new Paragraph({
+            text: `  ${String.fromCharCode(65 + i)}. ${c.text}${block.showAnswer && c.correct ? ' ✓' : ''}`,
+          }),
+        );
       });
-      if (block.answerNote) out.push(new Paragraph({ children: [new TextRun({ text: `Answer: ${block.answerNote}`, italics: true })] }));
+      if (block.answerNote)
+        out.push(
+          new Paragraph({
+            children: [new TextRun({ text: `Answer: ${block.answerNote}`, italics: true })],
+          }),
+        );
       if (block.explanation) out.push(new Paragraph({ text: `Explanation: ${block.explanation}` }));
       break;
     }
     case 'table': {
       const rows: TableRow[] = [];
       if (block.headers) {
-        rows.push(new TableRow({
-          children: block.headers.map((h) => new TableCell({
-            children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })],
-          })),
-        }));
+        rows.push(
+          new TableRow({
+            children: block.headers.map(
+              (h) =>
+                new TableCell({
+                  children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })],
+                }),
+            ),
+          }),
+        );
       }
       for (const row of block.rows) {
-        rows.push(new TableRow({
-          children: row.map((cell) => new TableCell({
-            children: [new Paragraph({ text: cell })],
-          })),
-        }));
+        rows.push(
+          new TableRow({
+            children: row.map(
+              (cell) =>
+                new TableCell({
+                  children: [new Paragraph({ text: cell })],
+                }),
+            ),
+          }),
+        );
       }
       out.push(new Table({ rows }));
       break;
     }
     case 'formula': {
-      if (block.title) out.push(new Paragraph({ children: [new TextRun({ text: block.title, bold: true })] }));
-      out.push(new Paragraph({ children: [new TextRun({ text: block.content, font: 'Courier New', size: 20 })] }));
-      block.variables?.forEach((v) => out.push(new Paragraph({ text: `${v.symbol} = ${v.meaning}` })));
+      if (block.title)
+        out.push(new Paragraph({ children: [new TextRun({ text: block.title, bold: true })] }));
+      out.push(
+        new Paragraph({
+          children: [new TextRun({ text: block.content, font: 'Courier New', size: 20 })],
+        }),
+      );
+      block.variables?.forEach((v) =>
+        out.push(new Paragraph({ text: `${v.symbol} = ${v.meaning}` })),
+      );
       if (block.explanation) out.push(new Paragraph({ text: block.explanation }));
       if (block.example) out.push(new Paragraph({ text: `Example: ${block.example}` }));
-      if (block.note) out.push(new Paragraph({ children: [new TextRun({ text: `Note: ${block.note}`, italics: true })] }));
+      if (block.note)
+        out.push(
+          new Paragraph({
+            children: [new TextRun({ text: `Note: ${block.note}`, italics: true })],
+          }),
+        );
       break;
     }
     case 'example':
-      out.push(new Paragraph({ text: `Example${block.title ? ` — ${block.title}` : ''}: ${block.content}` }));
+      out.push(
+        new Paragraph({
+          text: `Example${block.title ? ` — ${block.title}` : ''}: ${block.content}`,
+        }),
+      );
       break;
     case 'callout':
       out.push(new Paragraph({ text: `[${block.variant.toUpperCase()}] ${block.content}` }));
       break;
     case 'timeline':
       if (block.caption) out.push(new Paragraph({ text: block.caption }));
-      block.events.forEach((e) => out.push(new Paragraph({ text: `${e.period}: ${e.title}${e.description ? ` — ${e.description}` : ''}` })));
+      block.events.forEach((e) =>
+        out.push(
+          new Paragraph({
+            text: `${e.period}: ${e.title}${e.description ? ` — ${e.description}` : ''}`,
+          }),
+        ),
+      );
       break;
     case 'diagram': {
       if (block.caption) out.push(new Paragraph({ text: block.caption }));
@@ -300,8 +386,16 @@ function docxBlock(block: DocBlock): (Paragraph | Table)[] {
       block.data.forEach((d) => out.push(new Paragraph({ text: `${d.label}: ${d.value}` })));
       break;
     case 'further-learning':
-      out.push(new Paragraph({ children: [new TextRun({ text: 'Further Learning:', bold: true })] }));
-      block.resources.forEach((r) => out.push(new Paragraph({ text: `• ${r.title} (${r.kind}) — ${r.url}${r.note ? ` — ${r.note}` : ''}` })));
+      out.push(
+        new Paragraph({ children: [new TextRun({ text: 'Further Learning:', bold: true })] }),
+      );
+      block.resources.forEach((r) =>
+        out.push(
+          new Paragraph({
+            text: `• ${r.title} (${r.kind}) — ${r.url}${r.note ? ` — ${r.note}` : ''}`,
+          }),
+        ),
+      );
       break;
   }
   return out;

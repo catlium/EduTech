@@ -185,7 +185,8 @@ export function buildAnalytics(
     .sort(
       (a, b) =>
         (DIFFICULTY_ORDER.indexOf(a[0] as (typeof DIFFICULTY_ORDER)[number]) ?? 3) -
-          (DIFFICULTY_ORDER.indexOf(b[0] as (typeof DIFFICULTY_ORDER)[number]) ?? 3) || a[0].localeCompare(b[0]),
+          (DIFFICULTY_ORDER.indexOf(b[0] as (typeof DIFFICULTY_ORDER)[number]) ?? 3) ||
+        a[0].localeCompare(b[0]),
     )
     .map(([difficulty, d]) => ({
       difficulty,

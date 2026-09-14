@@ -81,7 +81,7 @@ Questions → Papers) is the backbone, not a parallel concern.
 
 - **DB migration**: drop the three `*_exactly_one_scope` CHECKs; replace with a
   chain-consistency CHECK (`topic IS NULL OR chapter IS NOT NULL AND subject IS
-  NOT NULL`, `chapter IS NULL OR subject IS NOT NULL`) so partial chains
+NOT NULL`, `chapter IS NULL OR subject IS NOT NULL`) so partial chains
   (subject-only, subject+chapter, full) are legal but orphan topics are not.
 - **API semantics**: filters are DESCENDANT-aware — `subjectId` matches
   subject-scoped rows + rows whose chapter/topic resolves under the subject;

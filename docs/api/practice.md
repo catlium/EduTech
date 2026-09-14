@@ -41,7 +41,7 @@ DTO):
 - 201 `{ session: PracticeSessionDetail }`. Item question decks expose only
   MCQ `choices`; answer keys are never serialized before answering.
 - 409 if an `IN_PROGRESS` session already exists for the same
-  (mode, source-key). 
+  (mode, source-key).
 
 ### `GET /api/v1/practice/sessions` — history
 

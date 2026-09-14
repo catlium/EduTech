@@ -91,15 +91,19 @@ Each task was committed atomically:
 **Impact on plan:** None on the functional goal; all were operational or plan-text interpretation. The exact fails_when gate (PASS=86 FAIL=0) is met and all verification queries are 0/1-exact.
 
 ## Issues Encountered
+
 - API global throttle ~100 req/60s per route causes 429s on back-to-back full-suite runs; stability runs spaced >=75s apart. Intentional, no code change.
 
 ## User Setup Required
+
 None - no external service configuration. E2E stack via infrastructure/compose.
 
 ## Next Phase Readiness
+
 - Phase 8 gap-closure fully landed: WR-01..WR-05 resolved, WR-06 (answer-key exposure) deferred to Phase 9 with one-line reason. Suite green at PASS=86 FAIL=0; typecheck + lint green; schema stable (packages/database diff = resync SQL only).
 - Recommended next task: `/gsd-verify-phase 08` (phase verification gate), then plan Phase 9 (student examination attempts).
 
 ---
-*Phase: 08-quiz-examination-management*
-*Completed: 2026-09-07*
+
+_Phase: 08-quiz-examination-management_
+_Completed: 2026-09-07_

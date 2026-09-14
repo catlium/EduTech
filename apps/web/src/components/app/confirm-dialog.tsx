@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -11,14 +11,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 
 export function ConfirmDialog({
   open,
   onOpenChange,
   title,
   description,
-  confirmLabel = "Confirm",
+  confirmLabel = 'Confirm',
   destructive,
   loading,
   onConfirm,
@@ -57,7 +57,7 @@ export function ConfirmDialog({
             Cancel
           </Button>
           <Button
-            variant={destructive ? "destructive" : "default"}
+            variant={destructive ? 'destructive' : 'default'}
             onClick={handleConfirm}
             disabled={isBusy}
           >

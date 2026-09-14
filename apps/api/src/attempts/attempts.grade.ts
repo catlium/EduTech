@@ -30,7 +30,8 @@ export function gradeAnswer(
     const correctChoiceId = (payload as { correctChoiceId?: string })['correctChoiceId'];
     const choiceId = a['choiceId'];
     return {
-      isCorrect: typeof choiceId === 'string' && choiceId.length > 0 && choiceId === correctChoiceId,
+      isCorrect:
+        typeof choiceId === 'string' && choiceId.length > 0 && choiceId === correctChoiceId,
       correctAnswer: { choiceId: correctChoiceId },
     };
   }
@@ -42,10 +43,13 @@ export function gradeAnswer(
     };
   }
   if (fmt === 'FILL_IN_BLANK') {
-    const acceptable = ((payload as { acceptableAnswers?: unknown })['acceptableAnswers'] ?? []) as unknown[];
+    const acceptable = ((payload as { acceptableAnswers?: unknown })['acceptableAnswers'] ??
+      []) as unknown[];
     const correctValue = acceptable.length > 0 ? acceptable[0] : '';
     return {
-      isCorrect: normalizeBlank(a['value']) !== '' && acceptable.some((x) => normalizeBlank(x) === normalizeBlank(a['value'])),
+      isCorrect:
+        normalizeBlank(a['value']) !== '' &&
+        acceptable.some((x) => normalizeBlank(x) === normalizeBlank(a['value'])),
       correctAnswer: { value: correctValue },
     };
   }

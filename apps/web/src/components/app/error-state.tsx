@@ -1,9 +1,9 @@
-import { AlertTriangle, RefreshCw } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 
 export function ErrorState({
-  title = "Something went wrong",
+  title = 'Something went wrong',
   description = "We couldn't load this content. Please try again.",
   onRetry,
 }: {

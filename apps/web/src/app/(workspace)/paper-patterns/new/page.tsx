@@ -1,61 +1,59 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
-import { toast } from "sonner";
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 
-import { api, ApiError } from "@/lib/api";
-import { useTenant } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { SubjectResponse } from "@catlium/contracts";
+import { api, ApiError } from '@/lib/api';
+import { useTenant } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
+import type { SubjectResponse } from '@catlium/contracts';
 
 export default function NewPaperPatternPage() {
   const router = useRouter();
   const { institute } = useTenant();
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
-  const [subjectId, setSubjectId] = useState("");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [subjectIds, setSubjectIds] = useState<string[]>([]);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!institute) return;
     const ctrl = new AbortController();
-    api<{ subjects: SubjectResponse[] }>("/academic/subjects", { signal: ctrl.signal })
+    api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal: ctrl.signal })
       .then(({ subjects }) => setSubjects(subjects))
       .catch(() => {});
     return () => ctrl.abort();
   }, [institute]);
 
+  function toggleSubject(id: string) {
+    setSubjectIds((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!institute || !subjectId || !title.trim()) return;
+    if (!institute || !title.trim()) return;
     setSubmitting(true);
     try {
-      const body: Record<string, unknown> = { subjectId, title: title.trim() };
+      const body: Record<string, unknown> = { subjectIds, title: title.trim() };
       if (description.trim()) body.description = description.trim();
-      const { pattern } = await api<{ pattern: { id: string } }>("/paper-patterns", {
-        method: "POST",
+      const { pattern } = await api<{ pattern: { id: string } }>('/paper-patterns', {
+        method: 'POST',
         body,
       });
-      toast.success("Pattern created");
+      toast.success('Pattern created');
       router.push(`/paper-patterns/${pattern.id}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to create pattern");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to create pattern');
     } finally {
       setSubmitting(false);
     }
@@ -75,19 +73,28 @@ export default function NewPaperPatternPage() {
         <CardContent className="pt-6">
           <form onSubmit={onSubmit} className="space-y-6">
             <div className="grid gap-2">
-              <Label>Subject *</Label>
-              <Select value={subjectId} onValueChange={setSubjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a subject" />
-                </SelectTrigger>
-                <SelectContent>
+              <span className="text-sm font-medium">
+                Subjects {subjectIds.length > 0 ? `(${subjectIds.length})` : ''}
+              </span>
+              <p className="text-xs text-muted-foreground">
+                Leave empty for a General pattern (reusable across any subject).
+              </p>
+              {subjects.length > 0 && (
+                <div className="grid max-h-48 gap-1 overflow-y-auto rounded-md border p-2">
                   {subjects.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
+                    <label
+                      key={s.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted/50"
+                    >
+                      <Checkbox
+                        checked={subjectIds.includes(s.id)}
+                        onCheckedChange={() => toggleSubject(s.id)}
+                      />
                       {s.name}
-                    </SelectItem>
+                    </label>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="title">Title *</Label>
@@ -113,8 +120,8 @@ export default function NewPaperPatternPage() {
               <Button type="button" variant="ghost" onClick={() => router.back()}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || !subjectId || !title.trim()}>
-                {submitting ? "Creating..." : "Create Pattern"}
+              <Button type="submit" disabled={submitting || !title.trim()}>
+                {submitting ? 'Creating...' : 'Create Pattern'}
               </Button>
             </div>
           </form>

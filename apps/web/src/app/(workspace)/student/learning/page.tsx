@@ -1,22 +1,17 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, BookOpen } from "lucide-react";
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowRight, BookOpen } from 'lucide-react';
 
-import { api } from "@/lib/api";
-import { useTenant } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { ErrorState } from "@/components/app/error-state";
-import { SkeletonCards } from "@/components/app/loading";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import type { SubjectResponse } from "@catlium/contracts";
+import { api } from '@/lib/api';
+import { useTenant } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { ErrorState } from '@/components/app/error-state';
+import { SkeletonCards } from '@/components/app/loading';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { SubjectResponse } from '@catlium/contracts';
 
 export default function StudentLearningPage() {
   const { institute } = useTenant();
@@ -29,11 +24,11 @@ export default function StudentLearningPage() {
       if (!institute) return;
       setLoading(true);
       setError(null);
-      api<{ subjects: SubjectResponse[] }>("/academic/subjects", { signal })
+      api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal })
         .then(({ subjects }) => setSubjects(subjects))
         .catch((err) => {
-          if (!(err instanceof DOMException && err.name === "AbortError")) {
-            setError("Failed to load subjects. Please try again.");
+          if (!(err instanceof DOMException && err.name === 'AbortError')) {
+            setError('Failed to load subjects. Please try again.');
           }
         })
         .finally(() => setLoading(false));

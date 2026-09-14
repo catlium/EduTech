@@ -323,12 +323,12 @@ metadata: { "pages": N, "sources": { "pymupdf": N, "paddleocr": M } }
 
 ### Supported extraction formats (this checkpoint)
 
-| Content type                                 | Behavior                                                            |
-| -------------------------------------------- | ------------------------------------------------------------------- |
+| Content type                                 | Behavior                                                                                                          |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `application/pdf`                            | PyMuPDF embedded text first; per-page PaddleOCR fallback for scanned/sparse pages (`metadata.pages` = page count) |
-| `text/plain`, `text/markdown`                | File bytes decoded as UTF-8 with replacement for invalid bytes      |
-| `image/png`, `image/jpeg`, `image/webp`      | Rasterize → PaddleOCR (handwriting included; accuracy varies)       |
-| Office documents (`doc`/`docx`/`xls`/`xlsx`) | **Unsupported** — `422` → material `FAILED` (`.rtf`, `.gif` same)   |
+| `text/plain`, `text/markdown`                | File bytes decoded as UTF-8 with replacement for invalid bytes                                                    |
+| `image/png`, `image/jpeg`, `image/webp`      | Rasterize → PaddleOCR (handwriting included; accuracy varies)                                                     |
+| Office documents (`doc`/`docx`/`xls`/`xlsx`) | **Unsupported** — `422` → material `FAILED` (`.rtf`, `.gif` same)                                                 |
 
 Known limitation: the API's `ALLOWED_FILE_TYPES` still lists the office/gif
 types, so such uploads pass the API then fail extraction. Tightening the API
@@ -348,6 +348,7 @@ normalized text
          ├─ ≤ chunk size  → single chunk (unchanged fast path, "" notes)
          └─ otherwise     → N overlapping chunks
 ```
+
 The existing `ai_context.sourceText` is still stored once (the full
 normalized text) so regenerations read the whole source; the chunker is what
 feeds each AI call. Chunk labels include `(part i of N)` so aggregations can

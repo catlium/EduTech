@@ -34,18 +34,12 @@ export class AttemptsController {
   constructor(private readonly attemptsService: AttemptsService) {}
 
   @Get('attempts/available')
-  async listAvailable(
-    @Tenant() tenant: TenantContext,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  async listAvailable(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser) {
     return this.attemptsService.listAvailable(tenant.instituteId, user.userId);
   }
 
   @Get('attempts')
-  async history(
-    @Tenant() tenant: TenantContext,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  async history(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser) {
     return this.attemptsService.listMine(tenant.instituteId, user.userId);
   }
 

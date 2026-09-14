@@ -113,10 +113,10 @@ Resource against the schema/API/worker/web.
 ## Architecture Decisions (Phase 28)
 
 1. **Material revision, not a new table.** `materials.revision` (int, default
-   1) is the source version. Bumped only by content-affecting changes:
-   TEXT source replacement and academic-scope change. Title/description edits
-   do NOT bump (kills the P3.7 stale noise). Old revisions of derived content
-   remain historical rows in `content_versions`; nothing is overwritten.
+   1. is the source version. Bumped only by content-affecting changes:
+      TEXT source replacement and academic-scope change. Title/description edits
+      do NOT bump (kills the P3.7 stale noise). Old revisions of derived content
+      remain historical rows in `content_versions`; nothing is overwritten.
 2. **Source version recorded in provenance.** Worker writes
    `source_reference.revision` (single MATERIAL source) or
    `source_reference.revisions` (multi-material topic/chapter/subject sources).

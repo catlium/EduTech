@@ -1,4 +1,13 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, integer, unique } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  jsonb,
+  timestamp,
+  integer,
+  unique,
+} from 'drizzle-orm/pg-core';
 
 import { institutes } from './institutes.js';
 import { users } from './users.js';
@@ -44,7 +53,5 @@ export const assessmentQuestions = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     marks: integer('marks').notNull().default(1),
   },
-  (table) => [
-    unique('assessment_questions_unique').on(table.assessmentId, table.questionId),
-  ],
+  (table) => [unique('assessment_questions_unique').on(table.assessmentId, table.questionId)],
 );

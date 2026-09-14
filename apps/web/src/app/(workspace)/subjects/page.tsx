@@ -1,18 +1,18 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { BookOpen, Plus } from "lucide-react";
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { BookOpen, Plus } from 'lucide-react';
 
-import { api } from "@/lib/api";
-import { useTenant, canManage } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { SubjectCard } from "@/components/app/subject-card";
-import { EmptyState } from "@/components/app/empty-state";
-import { SkeletonCards } from "@/components/app/loading";
-import { ErrorState } from "@/components/app/error-state";
-import { Button } from "@/components/ui/button";
-import type { SubjectResponse } from "@catlium/contracts";
+import { api } from '@/lib/api';
+import { useTenant, canManage } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { SubjectCard } from '@/components/app/subject-card';
+import { EmptyState } from '@/components/app/empty-state';
+import { SkeletonCards } from '@/components/app/loading';
+import { ErrorState } from '@/components/app/error-state';
+import { Button } from '@/components/ui/button';
+import type { SubjectResponse } from '@catlium/contracts';
 
 export default function SubjectsListPage() {
   const { institute } = useTenant();
@@ -26,11 +26,11 @@ export default function SubjectsListPage() {
     setLoading(true);
     setError(null);
     const ctrl = new AbortController();
-    api<{ subjects: SubjectResponse[] }>("/academic/subjects", { signal: ctrl.signal })
+    api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal: ctrl.signal })
       .then(({ subjects }) => setSubjects(subjects))
       .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError("Failed to load subjects. Please try again.");
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError('Failed to load subjects. Please try again.');
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
@@ -47,8 +47,8 @@ export default function SubjectsListPage() {
       ? subjects
           .slice(0, 3)
           .map((s) => s.name)
-          .join(", ")
-      : "";
+          .join(', ')
+      : '';
 
   return (
     <div>
@@ -56,7 +56,7 @@ export default function SubjectsListPage() {
         title="Subjects"
         description={
           subjects.length > 0
-            ? `${subjects.length} subject${subjects.length !== 1 ? "s" : ""} \u00b7 ${subjectExamples}`
+            ? `${subjects.length} subject${subjects.length !== 1 ? 's' : ''} \u00b7 ${subjectExamples}`
             : undefined
         }
         actions={

@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
 export function ResourceCard({
   icon,
@@ -26,17 +26,17 @@ export function ResourceCard({
     <div
       id={id}
       className={cn(
-        "group flex items-start gap-3 rounded-lg border bg-card p-4 shadow-sm transition-shadow hover:shadow-md",
-        onClick && "cursor-pointer",
+        'group flex items-start gap-3 rounded-lg border bg-card p-4 shadow-sm transition-shadow hover:shadow-md',
+        onClick && 'cursor-pointer',
         className,
       )}
       onClick={onClick}
-      role={onClick ? "button" : undefined}
+      role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={
         onClick
           ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 onClick();
               }
@@ -51,9 +51,7 @@ export function ResourceCard({
       )}
       <div className="min-w-0 flex-1 space-y-1">
         <p className="truncate text-sm font-medium">{title}</p>
-        {subtitle && (
-          <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
-        )}
+        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
         {badges && <div className="flex flex-wrap items-center gap-1.5 pt-0.5">{badges}</div>}
       </div>
       {actions && (

@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsInt,
   IsObject,
@@ -18,8 +20,17 @@ export class CreatePaperPatternDto {
   @MaxLength(255)
   title!: string;
 
+  // Many-to-many subject associations. Empty array = General pattern.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  subjectIds?: string[];
+
+  // Legacy single-subject alias: mapped onto subjectIds by the service.
+  @IsOptional()
   @IsUUID()
-  subjectId!: string;
+  subjectId?: string;
 
   @IsOptional()
   @IsString()
@@ -42,6 +53,13 @@ export class UpdatePaperPatternDto {
   @IsString()
   @MaxLength(1000)
   description?: string;
+
+  // Replaces the full association set; an empty array converts to General.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  subjectIds?: string[];
 
   @IsOptional()
   @IsObject()

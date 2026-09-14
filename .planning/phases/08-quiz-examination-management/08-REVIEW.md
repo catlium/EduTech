@@ -59,8 +59,8 @@ Verified against the new code:
   transaction's `max(sortOrder)` select is scoped by an already-verified
   assessmentId. No new oracle introduced.
 - **WR-01 fixed** — `create-assessment.dto.ts` now `@IsString() @IsDefined()
-  @MinLength(1) @MaxLength(255)`; `add-questions.dto.ts` now `@IsDefined()
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(1000) @IsUUID(undefined,{each:true})`.
+@MinLength(1) @MaxLength(255)`; `add-questions.dto.ts` now `@IsDefined()
+@IsArray() @ArrayMinSize(1) @ArrayMaxSize(1000) @IsUUID(undefined,{each:true})`.
 - **WR-02 fixed** — merged-schedule validation (existing overlaid with
   patch) via the shared `validateSchedule` helper; future-startsAt fires
   when the patch touches startsAt; both call sites verified.
@@ -96,17 +96,18 @@ original review. No Critical findings in the new code.
 `AddQuestionsDto.questionIds` nor `CreateAssessmentDto.title` declares one, so:
 
 - `POST /assessments` with `{}` passes the pipe → `insert` sends `title:
-  undefined` → PostgreSQL NOT NULL violation → 500 (contract/docs promise 400
+undefined` → PostgreSQL NOT NULL violation → 500 (contract/docs promise 400
   for validation violations).
 - `POST /assessments/:id/questions` without `questionIds` passes the pipe →
   `for (const id of questionIds)` throws `TypeError: questionIds is not
-  iterable` → 500.
+iterable` → 500.
 - `title: ""` passes (`@MaxLength(255)` only, no `@MinLength(1)`) → empty
   titled assessments are persisted; the Zod contract
   (`CreateAssessmentRequestSchema`, `contracts/src/index.ts:619`) requires
   `min(1)` — DTO and contract disagree.
 
 **Fix:**
+
 ```typescript
 // add-questions.dto.ts
 import { ArrayMinSize, IsArray, IsDefined, IsUUID } from 'class-validator';
@@ -144,17 +145,26 @@ If only `endsAt` is patched (e.g. to `2025-01-01`) while the stored
 `startsAt` is `2030-01-01`, the check is skipped and an inverted schedule is
 persisted. Same for patching only `startsAt` past the stored `endsAt`. The
 comment at line 95 claims "re-validate the schedule when either end changes",
-but the code validates only when *both* change. Additionally, the create path
+but the code validates only when _both_ change. Additionally, the create path
 (line 50-53) enforces that `startsAt` is in the future; the update path has no
 such check, so a DRAFT assessment can be scheduled in the past.
 
 **Fix:** Validate the merged schedule (existing values overlaid with patch
 values), not just the patch in isolation:
+
 ```typescript
 const mergedStartsAt =
-  patch.startsAt === undefined ? existing.startsAt : patch.startsAt === null ? null : new Date(patch.startsAt);
+  patch.startsAt === undefined
+    ? existing.startsAt
+    : patch.startsAt === null
+      ? null
+      : new Date(patch.startsAt);
 const mergedEndsAt =
-  patch.endsAt === undefined ? existing.endsAt : patch.endsAt === null ? null : new Date(patch.endsAt);
+  patch.endsAt === undefined
+    ? existing.endsAt
+    : patch.endsAt === null
+      ? null
+      : new Date(patch.endsAt);
 
 if (mergedStartsAt !== null && mergedEndsAt !== null && mergedStartsAt >= mergedEndsAt) {
   throw new BadRequestException('Schedule start must be before end');
@@ -180,6 +190,7 @@ assessment. This directly contradicts `docs/api/assessments.md:268-269`
 validation") and rule EXAM-08.
 
 **Fix:**
+
 ```typescript
 const unapproved = linked.filter(
   (q) => q.question.approvalStatus !== 'APPROVED' || q.question.status !== 'ACTIVE',
@@ -203,6 +214,7 @@ against the existing rows. `listQuestions` orders by `sortOrder` ascending
 ordering becomes unstable/non-deterministic for equal keys.
 
 **Fix:** Compute the offset once before inserting:
+
 ```typescript
 const [maxRow] = await tx
   .select({ max: max(assessmentQuestions.sortOrder) })
@@ -232,6 +244,7 @@ live/completed exam destroys attempt records without any confirmation guard.
 Inconsistent with the DRAFT-only protection applied everywhere else.
 
 **Fix:**
+
 ```typescript
 const existing = await this.getAssessment(instituteId, assessmentId);
 if (existing.status !== 'DRAFT') {
@@ -264,6 +277,7 @@ Phase 9 student attempts ship.
 
 **Fix:** Restrict to `WRITE_ROLES`, or return a sanitized projection
 (no `payload` answer fields) for non-teacher roles:
+
 ```typescript
 @Get(':assessmentId/questions')
 @RequiredRoles(...WRITE_ROLES)
@@ -277,7 +291,7 @@ async listQuestions(/* ... */) { /* ... */ }
 **File:** `apps/api/src/examinations/examinations.service.ts:326-352`
 
 **Issue:** The transaction reads `max(sortOrder)` once (line 333) and offsets
-from it (line 345), which fixes the *sequential* duplicate case (WR-04). But
+from it (line 345), which fixes the _sequential_ duplicate case (WR-04). But
 under Postgres READ COMMITTED, two concurrent `addQuestions` calls on the
 same assessment each see `max = N` in their own snapshot and both insert rows
 with `sortOrder = N+1`. The schema's only unique constraint is
@@ -288,13 +302,14 @@ written to repair. The T-08-28 "sequential per request" comment assumes
 service-level serialization that NestJS async handlers do not provide (each
 `await` interleaves concurrent requests). The data-integrity comment claims
 "no duplicate sortOrder from stale/racing max computations" — the racing case
-is explicitly *not* prevented.
+is explicitly _not_ prevented.
 
 **Fix:** Make the base computation race-proof with a per-assessment advisory
 lock or row lock taken inside the transaction (cheapest: `SELECT ... FOR
 UPDATE` on the assessment row before reading max), or add a deferred unique
 index on `(assessment_id, sort_order)` so a race surfaces as a 409 instead of
 silent corruption:
+
 ```typescript
 return await this.db.transaction(async (tx) => {
   // Serialize append-ers per assessment; blocks WR-04-class races.
@@ -329,6 +344,7 @@ atomic. One-line hardening closes the window entirely.
 
 **Fix:** Move the status requirement into the DELETE predicate — the guard
 becomes atomic and still yields the same 400/404 semantics:
+
 ```typescript
 const [assessment] = await this.db
   .delete(assessments)
@@ -357,6 +373,7 @@ file was outside the 08-06/08-07 changed set, but the gap-closure fix is
 incomplete without it.
 
 **Fix:**
+
 ```typescript
 export class UpdateAssessmentDto {
   @ValidateIf((_o, v) => v !== undefined)
@@ -429,6 +446,7 @@ callers of the service, not a current HTTP-path bug — but the helper is the
 shared single source of truth and should be NaN-proof.
 
 **Fix:** Reject unparseable dates inside the helper:
+
 ```typescript
 private validateSchedule(
   startsAt: Date | null | undefined,

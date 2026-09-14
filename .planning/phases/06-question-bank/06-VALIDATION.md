@@ -1,12 +1,12 @@
 ---
-phase: "06"
-slug: "question-bank"
+phase: '06'
+slug: 'question-bank'
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
 status: draft
 nyquist_compliant: false
 wave_0_complete: false
-created: "2026-09-02"
+created: '2026-09-02'
 ---
 
 # Phase 6 — Validation Strategy
@@ -17,12 +17,12 @@ created: "2026-09-02"
 
 ## Test Infrastructure
 
-| Property | Value |
-|----------|-------|
-| **Framework** | none (repo validated via `docs/user-validation.md` E2E curl checklist — Phase 5 precedent, 20/20 passed 2026-09-02; Jest devDependency present but unconfigured) |
-| **Config file** | none |
-| **Quick run command** | `pnpm typecheck` |
-| **Full suite command** | `pnpm typecheck && pnpm lint` |
+| Property               | Value                                                                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Framework**          | none (repo validated via `docs/user-validation.md` E2E curl checklist — Phase 5 precedent, 20/20 passed 2026-09-02; Jest devDependency present but unconfigured) |
+| **Config file**        | none                                                                                                                                                             |
+| **Quick run command**  | `pnpm typecheck`                                                                                                                                                 |
+| **Full suite command** | `pnpm typecheck && pnpm lint`                                                                                                                                    |
 
 ---
 
@@ -37,16 +37,16 @@ created: "2026-09-02"
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 06-01-01 | 01 | 1 | QBN-01, 03, 04, 06, 07 | T-06-01 / T-06-02 / T-06-04 | Create/get/list with server-computed approval (MANUAL→APPROVED, AI_GENERATED→PENDING); tenant-scoped 404; payload superRefine | E2E (curl) | `pnpm typecheck` + manual checklist POST/GET `/questions` | ❌ W0 (docs/user-validation.md section) | ⬜ pending |
-| 06-01-02 | 01 | 1 | QBN-04 | — | Contract-first `docs/api/questions.md` matches DTO enums | source assertion | `grep` enum parity (contract ↔ contracts pkg) | ❌ W0 (docs/api/questions.md) | ⬜ pending |
-| 06-02-01 | 02 | 2 | QBN-01 | T-06-06 / T-06-08 | PATCH field-limited; first `@Delete` 204, institute-scoped 404-on-miss | E2E (curl) | `pnpm typecheck` + manual checklist PATCH/DELETE | ✅ (endpoints after 06-01) | ⬜ pending |
-| 06-02-02 | 02 | 2 | QBN-02 | — | List filters (difficulty/type/subject/chapter/topic) via ParseEnumPipe/ParseUUIDPipe | E2E (curl) | `pnpm typecheck` + manual checklist query params | ✅ | ⬜ pending |
-| 06-02-03 | 02 | 2 | QBN-05 | T-06-07 / T-06-09 | approve/reject/archive/activate role-gated, tenant-scoped; PENDING/REJECTED reachable | E2E (curl) | `pnpm typecheck` + manual checklist actions | ✅ | ⬜ pending |
-| 06-03-01 | 03 | 3 | QBN-01..07 | — | Full E2E checklist all `[x]`; docs/tasks + project-status updated per AGENTS.md | E2E (curl) | `pnpm typecheck && pnpm lint` | ✅ | ⬜ pending |
+| Task ID  | Plan | Wave | Requirement            | Threat Ref                  | Secure Behavior                                                                                                               | Test Type        | Automated Command                                         | File Exists                             | Status     |
+| -------- | ---- | ---- | ---------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------- | --------------------------------------- | ---------- |
+| 06-01-01 | 01   | 1    | QBN-01, 03, 04, 06, 07 | T-06-01 / T-06-02 / T-06-04 | Create/get/list with server-computed approval (MANUAL→APPROVED, AI_GENERATED→PENDING); tenant-scoped 404; payload superRefine | E2E (curl)       | `pnpm typecheck` + manual checklist POST/GET `/questions` | ❌ W0 (docs/user-validation.md section) | ⬜ pending |
+| 06-01-02 | 01   | 1    | QBN-04                 | —                           | Contract-first `docs/api/questions.md` matches DTO enums                                                                      | source assertion | `grep` enum parity (contract ↔ contracts pkg)             | ❌ W0 (docs/api/questions.md)           | ⬜ pending |
+| 06-02-01 | 02   | 2    | QBN-01                 | T-06-06 / T-06-08           | PATCH field-limited; first `@Delete` 204, institute-scoped 404-on-miss                                                        | E2E (curl)       | `pnpm typecheck` + manual checklist PATCH/DELETE          | ✅ (endpoints after 06-01)              | ⬜ pending |
+| 06-02-02 | 02   | 2    | QBN-02                 | —                           | List filters (difficulty/type/subject/chapter/topic) via ParseEnumPipe/ParseUUIDPipe                                          | E2E (curl)       | `pnpm typecheck` + manual checklist query params          | ✅                                      | ⬜ pending |
+| 06-02-03 | 02   | 2    | QBN-05                 | T-06-07 / T-06-09           | approve/reject/archive/activate role-gated, tenant-scoped; PENDING/REJECTED reachable                                         | E2E (curl)       | `pnpm typecheck` + manual checklist actions               | ✅                                      | ⬜ pending |
+| 06-03-01 | 03   | 3    | QBN-01..07             | —                           | Full E2E checklist all `[x]`; docs/tasks + project-status updated per AGENTS.md                                               | E2E (curl)       | `pnpm typecheck && pnpm lint`                             | ✅                                      | ⬜ pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+_Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
 ---
 

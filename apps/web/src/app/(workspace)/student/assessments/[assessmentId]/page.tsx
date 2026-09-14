@@ -1,21 +1,21 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { ArrowLeft, Clock, Gauge, ListChecks, Play } from "lucide-react";
-import { toast } from "sonner";
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Clock, Gauge, ListChecks, Play } from 'lucide-react';
+import { toast } from 'sonner';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
-import { EmptyState } from "@/components/app/empty-state";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
-import type { AvailableAssessment, AttemptDetail } from "@catlium/contracts";
+import { api, ApiError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
+import { EmptyState } from '@/components/app/empty-state';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
+import type { AvailableAssessment, AttemptDetail } from '@catlium/contracts';
 
 export default function AssessmentIntroPage() {
   const router = useRouter();
@@ -28,7 +28,7 @@ export default function AssessmentIntroPage() {
   useEffect(() => {
     if (!institute || !params.assessmentId) return;
     const ctrl = new AbortController();
-    api<{ assessments: AvailableAssessment[] }>("/attempts/available", { signal: ctrl.signal })
+    api<{ assessments: AvailableAssessment[] }>('/attempts/available', { signal: ctrl.signal })
       .then(({ assessments }) => {
         const found = assessments.find((a) => a.id === params.assessmentId);
         setAssessment(found ?? null);
@@ -44,15 +44,17 @@ export default function AssessmentIntroPage() {
     if (!institute || !params.assessmentId) return;
     setStarting(true);
     try {
-      const res = await api<{ attempt: AttemptDetail }>("/attempts", {
-        method: "POST",
+      const res = await api<{ attempt: AttemptDetail }>('/attempts', {
+        method: 'POST',
         body: { assessmentId: params.assessmentId },
       });
       router.push(`/student/attempts/${res.attempt.id}`);
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : "Failed to start";
+      const message = error instanceof ApiError ? error.message : 'Failed to start';
       if (error instanceof ApiError && error.status === 409) {
-        toast.warning(message, { description: "Resume from the attempt page if you still have it open." });
+        toast.warning(message, {
+          description: 'Resume from the attempt page if you still have it open.',
+        });
       } else {
         toast.error(message);
       }
@@ -105,15 +107,16 @@ export default function AssessmentIntroPage() {
               <ListChecks className="size-4" /> {assessment.questionCount} questions
             </span>
             <span className="inline-flex items-center gap-1">
-              <Clock className="size-4" /> {assessment.durationMinutes ?? "—"} minutes
+              <Clock className="size-4" /> {assessment.durationMinutes ?? '—'} minutes
             </span>
             <span className="inline-flex items-center gap-1">
-              <Gauge className="size-4" /> {assessment.maxMarks ?? "—"} marks
+              <Gauge className="size-4" /> {assessment.maxMarks ?? '—'} marks
             </span>
           </div>
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">
-              Opens {formatDateTime(assessment.startsAt)} · Closes {formatDateTime(assessment.endsAt)}
+              Opens {formatDateTime(assessment.startsAt)} · Closes{' '}
+              {formatDateTime(assessment.endsAt)}
             </p>
           </div>
 
@@ -122,7 +125,9 @@ export default function AssessmentIntroPage() {
               <Separator />
               <div>
                 <h2 className="mb-1 text-sm font-medium">Instructions</h2>
-                <p className="whitespace-pre-wrap text-sm text-muted-foreground">{instructions.text}</p>
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                  {instructions.text}
+                </p>
               </div>
             </>
           ) : null}
@@ -130,8 +135,8 @@ export default function AssessmentIntroPage() {
           <Alert>
             <AlertTitle>Before you start</AlertTitle>
             <AlertDescription>
-              The clock starts when you begin and the deadline is enforced by the server. Your answers are
-              saved automatically as you go.
+              The clock starts when you begin and the deadline is enforced by the server. Your
+              answers are saved automatically as you go.
             </AlertDescription>
           </Alert>
 
@@ -150,10 +155,10 @@ export default function AssessmentIntroPage() {
             >
               <Play className="mr-1 size-4" />
               {assessment.questionCount === 0
-                ? "No questions yet"
+                ? 'No questions yet'
                 : starting
-                  ? "Starting…"
-                  : "Start attempt"}
+                  ? 'Starting…'
+                  : 'Start attempt'}
             </Button>
           )}
         </CardContent>

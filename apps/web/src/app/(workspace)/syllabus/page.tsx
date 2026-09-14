@@ -1,21 +1,21 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { FileText, Upload, Library } from "lucide-react";
+import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { FileText, Upload, Library } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { useTenant, canManage } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { SkeletonCards } from "@/components/app/loading";
-import { ErrorState } from "@/components/app/error-state";
-import { StatusBadge } from "@/components/app/status-badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { api, ApiError } from '@/lib/api';
+import { useTenant, canManage } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { SkeletonCards } from '@/components/app/loading';
+import { ErrorState } from '@/components/app/error-state';
+import { StatusBadge } from '@/components/app/status-badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -23,20 +23,20 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import type { SubjectResponse, SyllabusResponse } from "@catlium/contracts";
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import type { SubjectResponse, SyllabusResponse } from '@catlium/contracts';
 
-type DialogMode = null | "text" | "upload";
+type DialogMode = null | 'text' | 'upload';
 
 export default function SyllabusListPage() {
   const router = useRouter();
@@ -48,10 +48,10 @@ export default function SyllabusListPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
-  const [subjectId, setSubjectId] = useState("");
-  const [textTitle, setTextTitle] = useState("");
-  const [textBody, setTextBody] = useState("");
-  const [uploadTitle, setUploadTitle] = useState("");
+  const [subjectId, setSubjectId] = useState('');
+  const [textTitle, setTextTitle] = useState('');
+  const [textBody, setTextBody] = useState('');
+  const [uploadTitle, setUploadTitle] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const uploadFileRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -61,16 +61,16 @@ export default function SyllabusListPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      api<{ syllabi: SyllabusResponse[] }>("/syllabus"),
-      api<{ subjects: SubjectResponse[] }>("/academic/subjects"),
+      api<{ syllabi: SyllabusResponse[] }>('/syllabus'),
+      api<{ subjects: SubjectResponse[] }>('/academic/subjects'),
     ])
       .then(([{ syllabi }, { subjects }]) => {
         setSyllabi(syllabi);
         setSubjects(subjects);
       })
       .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError("Failed to load syllabi. Please try again.");
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError('Failed to load syllabi. Please try again.');
       })
       .finally(() => setLoading(false));
   };
@@ -84,18 +84,18 @@ export default function SyllabusListPage() {
     if (submitting || !subjectId || !textTitle.trim() || !textBody.trim()) return;
     setSubmitting(true);
     try {
-      const { syllabus } = await api<{ syllabus: SyllabusResponse }>("/syllabus/text", {
-        method: "POST",
+      const { syllabus } = await api<{ syllabus: SyllabusResponse }>('/syllabus/text', {
+        method: 'POST',
         body: { subjectId, title: textTitle.trim(), text: textBody },
       });
-      toast.success("Text syllabus created");
+      toast.success('Text syllabus created');
       setDialogMode(null);
-      setTextTitle("");
-      setTextBody("");
-      setSubjectId("");
+      setTextTitle('');
+      setTextBody('');
+      setSubjectId('');
       router.push(`/syllabus/${syllabus.id}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to create syllabus");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to create syllabus');
     } finally {
       setSubmitting(false);
     }
@@ -105,29 +105,29 @@ export default function SyllabusListPage() {
     e.preventDefault();
     if (!uploadFile) return;
     if (uploadFile.size > 20 * 1024 * 1024) {
-      toast.error("File exceeds 20 MB limit");
+      toast.error('File exceeds 20 MB limit');
       return;
     }
     if (!subjectId || !uploadTitle.trim()) return;
     setSubmitting(true);
     try {
       const form = new FormData();
-      form.append("file", uploadFile);
-      form.append("subjectId", subjectId);
-      form.append("title", uploadTitle.trim());
-      const { syllabus } = await api<{ syllabus: SyllabusResponse }>("/syllabus/upload", {
-        method: "POST",
+      form.append('file', uploadFile);
+      form.append('subjectId', subjectId);
+      form.append('title', uploadTitle.trim());
+      const { syllabus } = await api<{ syllabus: SyllabusResponse }>('/syllabus/upload', {
+        method: 'POST',
         body: form,
       });
-      toast.success("File uploaded");
+      toast.success('File uploaded');
       setDialogMode(null);
       setUploadFile(null);
-      setUploadTitle("");
-      if (uploadFileRef.current) uploadFileRef.current.value = "";
-      setSubjectId("");
+      setUploadTitle('');
+      if (uploadFileRef.current) uploadFileRef.current.value = '';
+      setSubjectId('');
       router.push(`/syllabus/${syllabus.id}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to upload file");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to upload file');
     } finally {
       setSubmitting(false);
     }
@@ -153,16 +153,17 @@ export default function SyllabusListPage() {
         title="Syllabi"
         description={
           syllabi.length > 0
-            ? `${syllabi.length} subject${syllabi.length !== 1 ? "s" : ""} with a syllabus`
-            : "A subject never generates a syllabus — paste its text or upload the official document, extract the text, AI deep-analyzes it, and you confirm the structure."
+            ? `${syllabi.length} subject${syllabi.length !== 1 ? 's' : ''} with a syllabus`
+            : 'A subject never generates a syllabus — paste its text or upload the official document, extract the text, AI deep-analyzes it, and you confirm the structure.'
         }
         actions={
-          isTeacher && subjects.length > 0 && (
+          isTeacher &&
+          subjects.length > 0 && (
             <>
-              <Button size="sm" variant="outline" onClick={() => setDialogMode("text")}>
+              <Button size="sm" variant="outline" onClick={() => setDialogMode('text')}>
                 <FileText className="mr-1 size-3.5" /> Text syllabus
               </Button>
-              <Button size="sm" onClick={() => setDialogMode("upload")}>
+              <Button size="sm" onClick={() => setDialogMode('upload')}>
                 <Upload className="mr-1 size-3.5" /> Upload file
               </Button>
             </>
@@ -177,7 +178,7 @@ export default function SyllabusListPage() {
           description="Paste the syllabus text or upload the official document. The file is processed to extract its text, then analyzed into a chapter structure you confirm."
         >
           {isTeacher && subjects.length > 0 && (
-            <Button size="sm" onClick={() => setDialogMode("text")}>
+            <Button size="sm" onClick={() => setDialogMode('text')}>
               Create Syllabus
             </Button>
           )}
@@ -198,11 +199,11 @@ export default function SyllabusListPage() {
                 <div>
                   <p className="text-sm font-medium">{syllabus.subjectName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {syllabus.sourceType === "IMPORTED"
-                      ? "imported"
-                      : syllabus.sourceType === "UPLOAD"
-                        ? syllabus.fileName ?? "file"
-                        : "text"}
+                    {syllabus.sourceType === 'IMPORTED'
+                      ? 'imported'
+                      : syllabus.sourceType === 'UPLOAD'
+                        ? (syllabus.fileName ?? 'file')
+                        : 'text'}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -237,7 +238,7 @@ export default function SyllabusListPage() {
                       className="w-full"
                       onClick={() => {
                         setSubjectId(subject.id);
-                        setDialogMode("text");
+                        setDialogMode('text');
                       }}
                     >
                       <FileText className="mr-1 size-3.5" /> Add syllabus
@@ -248,7 +249,7 @@ export default function SyllabusListPage() {
         </div>
       )}
 
-      <Dialog open={dialogMode === "text"} onOpenChange={(o) => !o && setDialogMode(null)}>
+      <Dialog open={dialogMode === 'text'} onOpenChange={(o) => !o && setDialogMode(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Text Syllabus</DialogTitle>
@@ -300,19 +301,20 @@ export default function SyllabusListPage() {
                 disabled={submitting || !subjectId || !textTitle.trim() || !textBody.trim()}
                 onClick={() => void onCreateText()}
               >
-                {submitting ? "Creating…" : "Create"}
+                {submitting ? 'Creating…' : 'Create'}
               </Button>
             </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogMode === "upload"} onOpenChange={(o) => !o && setDialogMode(null)}>
+      <Dialog open={dialogMode === 'upload'} onOpenChange={(o) => !o && setDialogMode(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Upload File</DialogTitle>
             <DialogDescription>
-              PDF, image, or document. Max 20 MB. Text is extracted from the file in the process step.
+              PDF, image, or document. Max 20 MB. Text is extracted from the file in the process
+              step.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => void onUpload(e)} className="space-y-4">
@@ -361,7 +363,7 @@ export default function SyllabusListPage() {
                 type="submit"
                 disabled={submitting || !uploadFile || !subjectId || !uploadTitle.trim()}
               >
-                {submitting ? "Uploading…" : "Upload"}
+                {submitting ? 'Uploading…' : 'Upload'}
               </Button>
             </DialogFooter>
           </form>

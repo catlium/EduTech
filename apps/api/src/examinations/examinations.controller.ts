@@ -184,10 +184,6 @@ export class ExaminationsController {
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
-    await this.examinationsService.removeQuestion(
-      tenant.instituteId,
-      assessmentId,
-      questionId,
-    );
+    await this.examinationsService.removeQuestion(tenant.instituteId, assessmentId, questionId);
   }
 }

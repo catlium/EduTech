@@ -409,7 +409,7 @@ Worker → AI gateway reliability, in `apps/workers/worker/ai/provider.py` and
 `consumer.py`.
 
 - **Timeouts**: httpx tuple `(connect=_WORKER_AI_CONNECT_TIMEOUT_SECONDS_,
-  read=_WORKER_AI_READ_TIMEOUT_SECONDS_, pool=10s, write=30s)`. The generous
+read=_WORKER_AI_READ_TIMEOUT_SECONDS_, pool=10s, write=30s)`. The generous
   read timeout (default **300s**) covers the long generation phase; connect
   (default **10s**) fails fast when the gateway is down. A read timeout is a
   **transient** error → retried.
@@ -418,7 +418,7 @@ Worker → AI gateway reliability, in `apps/workers/worker/ai/provider.py` and
   (`base*2^(attempt-2)`, capped at `_WORKER_AI_RETRY_BACKOFF_MAX_SECONDS_`,
   default 60s) plus ±10% jitter. Transient = read/connect/pool timeouts, any
   httpx transport error except redirects, and HTTP status `408 409 425 429
-  500 502 503 504`. Permanent = other 4xx + invalid response payload → fails
+500 502 503 504`. Permanent = other 4xx + invalid response payload → fails
   the job immediately, no retry. A job is marked `FAILED` only after retries
   are exhausted.
 - **Consumer reconnect**: each worker thread runs a reconnect loop — on
@@ -433,7 +433,7 @@ Worker → AI gateway reliability, in `apps/workers/worker/ai/provider.py` and
   guarded reset leaves it alone.
 - **Question retry idempotency**: `insert_generated_questions` issues
   `DELETE FROM questions WHERE status='ACTIVE' AND approval_status='PENDING'
-  AND provenance->>'jobId' = <jobId>` in the same transaction before
+AND provenance->>'jobId' = <jobId>` in the same transaction before
   inserting. API `retryJob` reuses the same `jobId`, so a retried job can
   never accumulate duplicate questions.
 - **Config**: all knobs in `.env`/`.env.example`

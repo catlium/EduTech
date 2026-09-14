@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Archive, CheckCircle2, ChevronLeft, ChevronRight, Pencil, ExternalLink, Download } from 'lucide-react';
+import {
+  ArrowLeft,
+  Archive,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  ExternalLink,
+  Download,
+} from 'lucide-react';
 
 import { api, ApiError, downloadFile } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -25,9 +34,20 @@ import { ContentPayloadEditor, type ContentType } from '@/components/app/content
 import { NoteBlocks, FurtherLearning } from '@/components/content/note-blocks';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export default function ContentDetailPage() {
   const { contentId } = useParams<{ contentId: string }>();
@@ -143,34 +163,44 @@ export default function ContentDetailPage() {
             <div className="flex gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <span title={content.status !== 'ACTIVE' ? 'Export is available once this content is activated' : undefined}>
-                <Button size="sm" variant="outline" disabled={content.status !== 'ACTIVE'}>
-                  <Download className="mr-1 size-3.5" /> Export
-                </Button>
-              </span>
+                  <span
+                    title={
+                      content.status !== 'ACTIVE'
+                        ? 'Export is available once this content is activated'
+                        : undefined
+                    }
+                  >
+                    <Button size="sm" variant="outline" disabled={content.status !== 'ACTIVE'}>
+                      <Download className="mr-1 size-3.5" /> Export
+                    </Button>
+                  </span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => exportContent('pdf', content.title)}>PDF</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => exportContent('docx', content.title)}>DOCX</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportContent('pdf', content.title)}>
+                    PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportContent('docx', content.title)}>
+                    DOCX
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               {isTeacher && (
                 <>
-                <Button size="sm" variant="outline" onClick={() => setEditDraft(payload)}>
+                  <Button size="sm" variant="outline" onClick={() => setEditDraft(payload)}>
                     <Pencil className="mr-1 size-3.5" /> Edit
-                </Button>
-                {(content.status === 'DRAFT' || content.status === 'ARCHIVED') && (
-                  <Button size="sm" onClick={() => setConfirmAction('activate')}>
-                    <CheckCircle2 className="mr-1 size-3.5" /> Activate
                   </Button>
-                )}
-                {content.status === 'ACTIVE' && (
-                  <Button size="sm" variant="outline" onClick={() => setConfirmAction('archive')}>
-                    <Archive className="mr-1 size-3.5" /> Archive
-                  </Button>
-                )}
+                  {(content.status === 'DRAFT' || content.status === 'ARCHIVED') && (
+                    <Button size="sm" onClick={() => setConfirmAction('activate')}>
+                      <CheckCircle2 className="mr-1 size-3.5" /> Activate
+                    </Button>
+                  )}
+                  {content.status === 'ACTIVE' && (
+                    <Button size="sm" variant="outline" onClick={() => setConfirmAction('archive')}>
+                      <Archive className="mr-1 size-3.5" /> Archive
+                    </Button>
+                  )}
                 </>
-            )}
+              )}
             </div>
           }
         />
@@ -287,7 +317,11 @@ function SummaryView({ payload }: { payload: SummaryPayload }) {
           <h3 className="text-sm font-semibold">Examples</h3>
           {payload.examples.map((ex, i) => (
             <div key={i} className="rounded-lg border-l-4 border-primary bg-muted/20 p-3">
-              {ex.topic && <p className="text-xs font-semibold uppercase tracking-wide text-primary">{ex.topic}</p>}
+              {ex.topic && (
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                  {ex.topic}
+                </p>
+              )}
               <p className="mt-1 whitespace-pre-wrap text-sm">{ex.content}</p>
             </div>
           ))}
@@ -409,7 +443,10 @@ function CornellView({ payload }: { payload: CornellNotePayload }) {
 function ProvenanceCard({ content }: { content: ContentResponse }) {
   const ai = content.current.aiContext as Record<string, unknown> | null;
   const ref = content.current.sourceReference as Record<string, unknown> | null;
-  const materialId = ref?.type === 'MATERIAL' ? (ref.materialId as string | undefined) ?? String(ref.id ?? '') : undefined;
+  const materialId =
+    ref?.type === 'MATERIAL'
+      ? ((ref.materialId as string | undefined) ?? String(ref.id ?? ''))
+      : undefined;
   const materialIds = ref?.materialIds as string[] | undefined;
   const firstMaterial = materialId ?? materialIds?.[0];
   const isAiGenerated = content.source === 'AI_GENERATED' || ai?.operation != null;
@@ -418,11 +455,16 @@ function ProvenanceCard({ content }: { content: ContentResponse }) {
 
   const rows: { label: string; value: string }[] = [];
   if (isAiGenerated) {
-    const op = ai?.operation ? String(ai.operation) : content.source.replace('AI_', '').toLowerCase();
+    const op = ai?.operation
+      ? String(ai.operation)
+      : content.source.replace('AI_', '').toLowerCase();
     const model = String(ai?.model ?? '');
     const provider = String(ai?.provider ?? '');
     const generatedAt = String(ai?.generatedAt ?? '');
-    rows.push({ label: 'Generated by', value: [op, model, provider].filter(Boolean).join(' · ') || content.source });
+    rows.push({
+      label: 'Generated by',
+      value: [op, model, provider].filter(Boolean).join(' · ') || content.source,
+    });
     if (generatedAt) {
       rows.push({ label: 'Generated on', value: formatDateTime(generatedAt) });
     }

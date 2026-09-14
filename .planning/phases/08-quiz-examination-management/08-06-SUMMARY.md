@@ -92,15 +92,19 @@ Each task was committed atomically:
 **Impact on plan:** None on the functional goal; both were harness/operational (fixture staleness + echo trace). The exact fails_when gate (PASS=81 FAIL=0) is met.
 
 ## Issues Encountered
+
 - API global throttle ~100 req/60s per route causes 429s on back-to-back full-suite runs; E2E stability runs were spaced >=75s apart. Intentional throttling, no code change.
 
 ## User Setup Required
+
 None - no external service configuration. E2E stack via infrastructure/compose.
 
 ## Next Phase Readiness
+
 - WR-01 and WR-02 closed; PASS=81 suite and truthful docs. 08-07 (WR-02 sortOrder append-ordering, WR-05 delete-guard, WR-06 deferred) can start directly from the green PASS=81 baseline.
 - The plan's count re-baseline is recorded in STATE.md Session Continuity and commit d0ca10c.
 
 ---
-*Phase: 08-quiz-examination-management*
-*Completed: 2026-09-07*
+
+_Phase: 08-quiz-examination-management_
+_Completed: 2026-09-07_

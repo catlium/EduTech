@@ -139,18 +139,30 @@ export class ExaminationsService {
     // and null-clear remains allowed.
     this.validateSchedule(
       patch.startsAt !== undefined
-        ? (patch.startsAt === null ? null : new Date(patch.startsAt))
+        ? patch.startsAt === null
+          ? null
+          : new Date(patch.startsAt)
         : existing.startsAt,
       patch.endsAt !== undefined
-        ? (patch.endsAt === null ? null : new Date(patch.endsAt))
+        ? patch.endsAt === null
+          ? null
+          : new Date(patch.endsAt)
         : existing.endsAt,
       patch.startsAt !== undefined && patch.startsAt !== null,
     );
 
     const startsAt =
-      patch.startsAt === undefined ? undefined : patch.startsAt === null ? null : new Date(patch.startsAt);
+      patch.startsAt === undefined
+        ? undefined
+        : patch.startsAt === null
+          ? null
+          : new Date(patch.startsAt);
     const endsAt =
-      patch.endsAt === undefined ? undefined : patch.endsAt === null ? null : new Date(patch.endsAt);
+      patch.endsAt === undefined
+        ? undefined
+        : patch.endsAt === null
+          ? null
+          : new Date(patch.endsAt);
 
     const [assessment] = await this.db
       .update(assessments)
@@ -176,17 +188,11 @@ export class ExaminationsService {
   private assertValidTransition(current: string, next: AssessmentStatus): void {
     const allowed = VALID_TRANSITIONS[current as AssessmentStatus];
     if (!allowed || !allowed.includes(next)) {
-      throw new BadRequestException(
-        `Cannot transition assessment from ${current} to ${next}`,
-      );
+      throw new BadRequestException(`Cannot transition assessment from ${current} to ${next}`);
     }
   }
 
-  private async setStatus(
-    instituteId: string,
-    assessmentId: string,
-    status: AssessmentStatus,
-  ) {
+  private async setStatus(instituteId: string, assessmentId: string, status: AssessmentStatus) {
     const [assessment] = await this.db
       .update(assessments)
       .set({ status, updatedAt: new Date() })
@@ -296,7 +302,10 @@ export class ExaminationsService {
       .from(assessmentQuestions)
       .innerJoin(
         questions,
-        and(eq(assessmentQuestions.questionId, questions.id), eq(questions.instituteId, instituteId)),
+        and(
+          eq(assessmentQuestions.questionId, questions.id),
+          eq(questions.instituteId, instituteId),
+        ),
       )
       .where(eq(assessmentQuestions.assessmentId, assessmentId))
       .orderBy(asc(assessmentQuestions.sortOrder));
@@ -341,7 +350,7 @@ export class ExaminationsService {
       }
       // T-08-21 — an ARCHIVED (non-ACTIVE) question cannot be linked at all;
       // defense in depth with the publish gate (WR-03/EXAM-08).
-if (question.status !== 'ACTIVE') {
+      if (question.status !== 'ACTIVE') {
         throw new BadRequestException(`Question ${id} is not ACTIVE`);
       }
     }

@@ -1,19 +1,19 @@
-"use client";
+'use client';
 
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from 'lucide-react';
 
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import type {
   NotePayload,
   NoteBlock,
@@ -22,39 +22,35 @@ import type {
   ImportantConceptsPayload,
   CornellNotePayload,
   FurtherLearningResource,
-} from "@catlium/contracts";
+} from '@catlium/contracts';
 
-const DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
+const DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD'] as const;
 
 const FURTHER_LEARNING_KINDS = [
-  "documentation",
-  "video",
-  "course",
-  "website",
-  "reference",
+  'documentation',
+  'video',
+  'course',
+  'website',
+  'reference',
 ] as const;
 
 const RICH_BLOCK_LABEL: Record<string, string> = {
-  steps: "Steps",
-  table: "Table",
-  formula: "Formula",
-  example: "Example",
-  callout: "Callout",
-  timeline: "Timeline",
-  diagram: "Diagram",
-  chart: "Chart",
+  steps: 'Steps',
+  table: 'Table',
+  formula: 'Formula',
+  example: 'Example',
+  callout: 'Callout',
+  timeline: 'Timeline',
+  diagram: 'Diagram',
+  chart: 'Chart',
 };
 
 type BlockEditorDraft =
-  | { kind: "text"; id: string; type: "heading" | "paragraph" | "list"; text: string }
-  | { kind: "rich"; id: string; block: NoteBlock };
+  | { kind: 'text'; id: string; type: 'heading' | 'paragraph' | 'list'; text: string }
+  | { kind: 'rich'; id: string; block: NoteBlock };
 
 export type ContentType =
-  | "NOTE"
-  | "SUMMARY"
-  | "FLASHCARD_SET"
-  | "IMPORTANT_CONCEPTS"
-  | "CORNELL_NOTE";
+  'NOTE' | 'SUMMARY' | 'FLASHCARD_SET' | 'IMPORTANT_CONCEPTS' | 'CORNELL_NOTE';
 
 function StringListEditor({
   values,
@@ -89,7 +85,7 @@ function StringListEditor({
           </Button>
         </div>
       ))}
-      <Button type="button" variant="outline" size="sm" onClick={() => onChange([...values, ""])}>
+      <Button type="button" variant="outline" size="sm" onClick={() => onChange([...values, ''])}>
         <Plus className="mr-1 size-3.5" /> {addLabel}
       </Button>
     </div>
@@ -106,10 +102,12 @@ function NoteEditor({
   return (
     <div className="space-y-3">
       {draft.map((block, i) =>
-        block.kind === "rich" ? (
+        block.kind === 'rich' ? (
           <div key={block.id} className="grid gap-2 rounded-lg border border-dashed p-3">
             <div className="flex items-center gap-2">
-              <Badge variant="secondary">{RICH_BLOCK_LABEL[block.block.type] ?? block.block.type}</Badge>
+              <Badge variant="secondary">
+                {RICH_BLOCK_LABEL[block.block.type] ?? block.block.type}
+              </Badge>
               <span className="text-xs text-muted-foreground">
                 Read-only block — remove to replace
               </span>
@@ -131,7 +129,7 @@ function NoteEditor({
                 value={block.type}
                 onValueChange={(v) => {
                   const next = [...draft];
-                  next[i] = { ...block, type: v as "heading" | "paragraph" | "list" };
+                  next[i] = { ...block, type: v as 'heading' | 'paragraph' | 'list' };
                   setDraft(next);
                 }}
               >
@@ -156,7 +154,7 @@ function NoteEditor({
             </div>
             <Textarea
               value={block.text}
-              placeholder={block.type === "list" ? "One list item per line" : "Block text"}
+              placeholder={block.type === 'list' ? 'One list item per line' : 'Block text'}
               className="min-h-20"
               onChange={(e) => {
                 const next = [...draft];
@@ -172,7 +170,10 @@ function NoteEditor({
         variant="outline"
         size="sm"
         onClick={() =>
-          setDraft([...draft, { kind: "text", id: crypto.randomUUID(), type: "paragraph", text: "" }])
+          setDraft([
+            ...draft,
+            { kind: 'text', id: crypto.randomUUID(), type: 'paragraph', text: '' },
+          ])
         }
       >
         <Plus className="mr-1 size-3.5" /> Add block
@@ -196,7 +197,7 @@ function FurtherLearningEditor({
           <div key={i} className="grid gap-2 rounded-lg border p-3">
             <div className="flex items-center gap-2">
               <Input
-                value={r.title ?? ""}
+                value={r.title ?? ''}
                 placeholder="Title"
                 onChange={(e) => {
                   const next = [...resources];
@@ -234,7 +235,7 @@ function FurtherLearningEditor({
               </Button>
             </div>
             <Input
-              value={r.url ?? ""}
+              value={r.url ?? ''}
               placeholder="https://…"
               onChange={(e) => {
                 const next = [...resources];
@@ -249,9 +250,7 @@ function FurtherLearningEditor({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() =>
-          onChange([...resources, { title: "", url: "", kind: "website" }])
-        }
+        onClick={() => onChange([...resources, { title: '', url: '', kind: 'website' }])}
       >
         <Plus className="mr-1 size-3.5" /> Add resource
       </Button>
@@ -274,7 +273,7 @@ function SummaryExamplesEditor({
           <div key={i} className="grid gap-2 rounded-lg border p-3">
             <div className="flex items-center gap-2">
               <Input
-                value={ex.topic ?? ""}
+                value={ex.topic ?? ''}
                 placeholder="Topic"
                 onChange={(e) => {
                   const next = [...examples];
@@ -293,7 +292,7 @@ function SummaryExamplesEditor({
               </Button>
             </div>
             <Textarea
-              value={ex.content ?? ""}
+              value={ex.content ?? ''}
               placeholder="Example content"
               className="min-h-20"
               onChange={(e) => {
@@ -309,7 +308,7 @@ function SummaryExamplesEditor({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => onChange([...examples, { content: "" }])}
+        onClick={() => onChange([...examples, { content: '' }])}
       >
         <Plus className="mr-1 size-3.5" /> Add example
       </Button>
@@ -329,7 +328,7 @@ function FlashcardEditor({
       <div className="grid gap-2">
         <Label>Description</Label>
         <Textarea
-          value={payload.description ?? ""}
+          value={payload.description ?? ''}
           onChange={(e) => onChange({ ...payload, description: e.target.value })}
           className="min-h-16"
         />
@@ -340,7 +339,7 @@ function FlashcardEditor({
             <span className="text-sm font-medium">Card {i + 1}</span>
             <div className="ml-auto flex items-center gap-2">
               <Select
-                value={card.difficulty ?? "MEDIUM"}
+                value={card.difficulty ?? 'MEDIUM'}
                 onValueChange={(v) => {
                   const next = { ...payload, cards: [...payload.cards] };
                   next.cards[i] = { ...card, difficulty: v as (typeof DIFFICULTIES)[number] };
@@ -408,7 +407,7 @@ function FlashcardEditor({
             ...payload,
             cards: [
               ...payload.cards,
-              { id: crypto.randomUUID(), front: "", back: "", difficulty: "MEDIUM" },
+              { id: crypto.randomUUID(), front: '', back: '', difficulty: 'MEDIUM' },
             ],
           })
         }
@@ -428,18 +427,18 @@ export function ContentPayloadEditor({
   payload: Record<string, unknown>;
   onChange: (payload: Record<string, unknown>) => void;
 }) {
-  if (type === "NOTE") {
+  if (type === 'NOTE') {
     const note = payload as unknown as NotePayload;
     const raw = note.blocks ?? [];
     const draft: BlockEditorDraft[] =
       raw.length === 0
-        ? [{ kind: "text", id: crypto.randomUUID(), type: "paragraph", text: "" }]
+        ? [{ kind: 'text', id: crypto.randomUUID(), type: 'paragraph', text: '' }]
         : raw.map((b) =>
-            b.type === "heading" || b.type === "paragraph" || b.type === "list"
-              ? b.type === "list"
-                ? { kind: "text", id: b.id, type: b.type, text: b.items.join("\n") }
-                : { kind: "text", id: b.id, type: b.type, text: b.content }
-              : { kind: "rich", id: b.id, block: b },
+            b.type === 'heading' || b.type === 'paragraph' || b.type === 'list'
+              ? b.type === 'list'
+                ? { kind: 'text', id: b.id, type: b.type, text: b.items.join('\n') }
+                : { kind: 'text', id: b.id, type: b.type, text: b.content }
+              : { kind: 'rich', id: b.id, block: b },
           );
 
     return (
@@ -447,12 +446,21 @@ export function ContentPayloadEditor({
         <NoteEditor
           draft={draft}
           setDraft={(next) => {
-            const cleaned: NotePayload["blocks"] = next.flatMap((b) =>
-              b.kind === "rich"
+            const cleaned: NotePayload['blocks'] = next.flatMap((b) =>
+              b.kind === 'rich'
                 ? [b.block]
                 : b.text.trim()
-                  ? b.type === "list"
-                    ? [{ id: b.id, type: "list" as const, items: b.text.split("\n").map((t) => t.trim()).filter(Boolean) }]
+                  ? b.type === 'list'
+                    ? [
+                        {
+                          id: b.id,
+                          type: 'list' as const,
+                          items: b.text
+                            .split('\n')
+                            .map((t) => t.trim())
+                            .filter(Boolean),
+                        },
+                      ]
                     : [{ id: b.id, type: b.type, content: b.text }]
                   : [],
             );
@@ -467,14 +475,14 @@ export function ContentPayloadEditor({
     );
   }
 
-  if (type === "SUMMARY") {
+  if (type === 'SUMMARY') {
     const p = payload as unknown as SummaryPayload;
     return (
       <div className="space-y-4">
         <div className="grid gap-2">
           <Label>Summary</Label>
           <Textarea
-            value={p.summary ?? ""}
+            value={p.summary ?? ''}
             className="min-h-32"
             onChange={(e) => onChange({ ...payload, summary: e.target.value })}
           />
@@ -507,7 +515,7 @@ export function ContentPayloadEditor({
     );
   }
 
-  if (type === "FLASHCARD_SET") {
+  if (type === 'FLASHCARD_SET') {
     const p = payload as unknown as FlashcardSetPayload;
     return (
       <FlashcardEditor
@@ -517,7 +525,7 @@ export function ContentPayloadEditor({
     );
   }
 
-  if (type === "IMPORTANT_CONCEPTS") {
+  if (type === 'IMPORTANT_CONCEPTS') {
     const p = payload as unknown as ImportantConceptsPayload;
     return (
       <div className="space-y-3">
@@ -538,7 +546,7 @@ export function ContentPayloadEditor({
               </Button>
             </div>
             <Input
-              value={c.name ?? ""}
+              value={c.name ?? ''}
               placeholder="Concept name"
               onChange={(e) => {
                 const next = [...p.concepts];
@@ -547,7 +555,7 @@ export function ContentPayloadEditor({
               }}
             />
             <Textarea
-              value={c.description ?? ""}
+              value={c.description ?? ''}
               placeholder="Concept description"
               className="min-h-20"
               onChange={(e) => {
@@ -563,7 +571,7 @@ export function ContentPayloadEditor({
           variant="outline"
           size="sm"
           onClick={() =>
-            onChange({ ...payload, concepts: [...p.concepts, { name: "", description: "" }] })
+            onChange({ ...payload, concepts: [...p.concepts, { name: '', description: '' }] })
           }
         >
           <Plus className="mr-1 size-3.5" /> Add concept
@@ -592,7 +600,7 @@ export function ContentPayloadEditor({
             </Button>
           </div>
           <Input
-            value={s.cue ?? ""}
+            value={s.cue ?? ''}
             placeholder="Cue / question"
             onChange={(e) => {
               const next = [...p.sections];
@@ -601,7 +609,7 @@ export function ContentPayloadEditor({
             }}
           />
           <Textarea
-            value={s.notes ?? ""}
+            value={s.notes ?? ''}
             placeholder="Notes"
             className="min-h-24"
             onChange={(e) => {
@@ -617,7 +625,10 @@ export function ContentPayloadEditor({
         variant="outline"
         size="sm"
         onClick={() =>
-          onChange({ ...payload, sections: [...p.sections, { id: crypto.randomUUID(), cue: "", notes: "" }] })
+          onChange({
+            ...payload,
+            sections: [...p.sections, { id: crypto.randomUUID(), cue: '', notes: '' }],
+          })
         }
       >
         <Plus className="mr-1 size-3.5" /> Add section
@@ -625,7 +636,7 @@ export function ContentPayloadEditor({
       <div className="grid gap-2">
         <Label>Summary</Label>
         <Textarea
-          value={p.summary ?? ""}
+          value={p.summary ?? ''}
           className="min-h-24"
           onChange={(e) => onChange({ ...payload, summary: e.target.value })}
         />

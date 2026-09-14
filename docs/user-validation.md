@@ -85,7 +85,7 @@ Setup: dev stack with real OmniRoute AI running.
   already has a live AI_GENERATED NOTE: batch `mode` omitted (default `missing`)
   → response `skipped` for NOTE (`reason: 'exists'`), other types still queued
 - `[x]` B-U5 Regenerate forces re-generation — same topic, `mode:
-  "regenerate"` → NOTE is re-generated (in-place version bump), `skipped` empty
+"regenerate"` → NOTE is re-generated (in-place version bump), `skipped` empty
 - `[x]` B-U6 starter failure blocks dependents — worker/provider failure while
   generating the starter: starter job `failed`, NO dependent job is ever
   enqueued; batch shows only the failed starter

@@ -32,9 +32,7 @@ function fakePort(overrides: Partial<PlanPort> = {}): PlanPort & {
   const port = {
     enqueueCalls,
     hasUsableMaterial: overrides.hasUsableMaterial ?? (async () => true),
-    dedupTopicId:
-      overrides.dedupTopicId ??
-      (async (src) => (src.type === 'TOPIC' ? src.id : null)),
+    dedupTopicId: overrides.dedupTopicId ?? (async (src) => (src.type === 'TOPIC' ? src.id : null)),
     hasExistingDerived: overrides.hasExistingDerived ?? (async () => false),
     enqueueJob:
       overrides.enqueueJob ??
@@ -244,8 +242,8 @@ test('chapter source → starter for material-less topic, derived for others', a
     port,
     input({
       sources: [
-        { type: 'TOPIC', id: TOPIC_ID },    // no material → starter
-        { type: 'TOPIC', id: TOPIC_ID_2 },  // has material → derived
+        { type: 'TOPIC', id: TOPIC_ID }, // no material → starter
+        { type: 'TOPIC', id: TOPIC_ID_2 }, // has material → derived
       ],
       productTypes: ['NOTE'],
     }),

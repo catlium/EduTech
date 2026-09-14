@@ -49,8 +49,7 @@ API/database data only.
       endpoints (was missing; questions already had it) — uncommitted work in
       the tree, typecheck PASS.
 - [ ] Web content page: no scope cascade, no search, no chips, no URL sync —
-      filter bar needed (subject/chapter/topic + type tabs + debounced search
-      + chips + clear-all + URL params).
+      filter bar needed (subject/chapter/topic + type tabs + debounced search + chips + clear-all + URL params).
 - [ ] Web materials page: scope filter can only be cleared via URL (no UI to
       set it); text search missing; URL write-back missing.
 - [x] Web content detail: no academic scope breadcrumb/display — added

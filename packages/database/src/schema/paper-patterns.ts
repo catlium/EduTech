@@ -1,11 +1,4 @@
-import {
-  pgTable,
-  uuid,
-  varchar,
-  integer,
-  jsonb,
-  timestamp,
-} from 'drizzle-orm/pg-core';
+import { pgTable, primaryKey, uuid, varchar, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
 
 import { institutes } from './institutes.js';
 import { subjects } from './academic.js';
@@ -23,9 +16,6 @@ export const paperPatterns = pgTable('paper_patterns', {
   instituteId: uuid('institute_id')
     .notNull()
     .references(() => institutes.id, { onDelete: 'cascade' }),
-  subjectId: uuid('subject_id')
-    .notNull()
-    .references(() => subjects.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 255 }).notNull(),
   description: varchar('description', { length: 1000 }),
   status: varchar('status', { length: 20 }).notNull().default('DRAFT'),
@@ -44,3 +34,21 @@ export const paperPatterns = pgTable('paper_patterns', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Many-to-many Paper Pattern ↔ Subject. Zero rows = General pattern (reusable
+// across any subject); multiple rows = a pattern associated with several
+// subjects. The composite key prevents duplicate associations, and cascades
+// keep the junction clean when either side is deleted (a deleted subject only
+// drops the association, never the pattern).
+export const paperPatternSubjects = pgTable(
+  'paper_pattern_subjects',
+  {
+    patternId: uuid('pattern_id')
+      .notNull()
+      .references(() => paperPatterns.id, { onDelete: 'cascade' }),
+    subjectId: uuid('subject_id')
+      .notNull()
+      .references(() => subjects.id, { onDelete: 'cascade' }),
+  },
+  (table) => [primaryKey({ columns: [table.patternId, table.subjectId] })],
+);

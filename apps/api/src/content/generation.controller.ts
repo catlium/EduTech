@@ -1,4 +1,15 @@
-import { Controller, Post, Get, Body, Query, Param, UseGuards, HttpCode, HttpStatus, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 
 import { GenerationService } from './generation.service.js';
 import { GenerateContentDto } from './dto/generate-content.dto.js';
@@ -122,10 +133,7 @@ export class GenerationController {
     @Tenant() tenant: TenantContext,
     @Param('batchId', ParseUUIDPipe) batchId: string,
   ) {
-    const batch = await this.generationService.cancelGenerationBatch(
-      batchId,
-      tenant.instituteId,
-    );
+    const batch = await this.generationService.cancelGenerationBatch(batchId, tenant.instituteId);
     return { batch };
   }
 }

@@ -6,15 +6,15 @@
 
 **7 AI operations** dispatched to workers via RabbitMQ `ai_generation` queue:
 
-| Operation | Entry Point | Persists To | Scope |
-|---|---|---|---|
-| `AI_GENERATE_NOTE` | `POST /content/generate` | `content_items` + `content_versions` | MATERIAL or TOPIC |
-| `AI_GENERATE_SUMMARY` | `POST /content/generate` | same | same |
-| `AI_GENERATE_FLASHCARDS` | `POST /content/generate` | same | same |
-| `AI_GENERATE_CONCEPTS` | `POST /content/generate` | same | same |
-| `AI_GENERATE_QUESTIONS` | `POST /questions/generate` | `questions` | TOPIC only |
-| `AI_GENERATE_SYLLABUS` | `POST /syllabus/:id/generate` | `syllabus_proposals` | SUBJECT |
-| `AI_GENERATE_BLUEPRINT` | `POST /paper-patterns/:id/analyze` | `paper_patterns` | PATTERN |
+| Operation                | Entry Point                        | Persists To                          | Scope             |
+| ------------------------ | ---------------------------------- | ------------------------------------ | ----------------- |
+| `AI_GENERATE_NOTE`       | `POST /content/generate`           | `content_items` + `content_versions` | MATERIAL or TOPIC |
+| `AI_GENERATE_SUMMARY`    | `POST /content/generate`           | same                                 | same              |
+| `AI_GENERATE_FLASHCARDS` | `POST /content/generate`           | same                                 | same              |
+| `AI_GENERATE_CONCEPTS`   | `POST /content/generate`           | same                                 | same              |
+| `AI_GENERATE_QUESTIONS`  | `POST /questions/generate`         | `questions`                          | TOPIC only        |
+| `AI_GENERATE_SYLLABUS`   | `POST /syllabus/:id/generate`      | `syllabus_proposals`                 | SUBJECT           |
+| `AI_GENERATE_BLUEPRINT`  | `POST /paper-patterns/:id/analyze` | `paper_patterns`                     | PATTERN           |
 
 **Content versioning:** append-only `content_versions` with integer `currentVersion` pointer on `content_items`. Provenance via `aiContext` (operation, jobId, provider, model, generatedAt) and `sourceReference` (type, id, materialIds).
 
@@ -252,6 +252,7 @@ Completed above.
 ## Files Changed (estimated)
 
 ### Backend (new)
+
 - `apps/api/src/content/batch-generation.service.ts`
 - `apps/api/src/content/batch-generation.controller.ts`
 - `apps/api/src/questions/bank-stats.service.ts`
@@ -263,12 +264,14 @@ Completed above.
 - Migration for `question_bank_generations`
 
 ### Backend (modified)
+
 - `apps/api/src/content/content.module.ts` — register batch generation
 - `apps/api/src/questions/questions.module.ts` — register bank stats
 - `apps/api/src/app/app.module.ts` — register export module
 - `packages/contracts/src/index.ts` — new schemas
 
 ### Frontend (new/modified)
+
 - `apps/web/src/app/(workspace)/materials/[materialId]/page.tsx` — batch generation UI
 - `apps/web/src/app/(workspace)/questions/page.tsx` — bank stats + config dialog
 - `apps/web/src/app/(workspace)/assessments/[assessmentId]/page.tsx` — bank-aware question picker
@@ -279,6 +282,7 @@ Completed above.
 - New component: `export-button.tsx`
 
 ### Worker (no changes)
+
 - Existing operations handle the batch-dispatched jobs as-is
 
 ---

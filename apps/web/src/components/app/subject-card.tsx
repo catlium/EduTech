@@ -1,9 +1,9 @@
-import Link from "next/link";
-import { BookOpen, ArrowRight } from "lucide-react";
+import Link from 'next/link';
+import { BookOpen, ArrowRight } from 'lucide-react';
 
-import { Card, CardContent } from "@/components/ui/card";
-import { StatusBadge } from "./status-badge";
-import type { SubjectResponse } from "@catlium/contracts";
+import { Card, CardContent } from '@/components/ui/card';
+import { StatusBadge } from './status-badge';
+import type { SubjectResponse } from '@catlium/contracts';
 
 export function SubjectCard({ subject }: { subject: SubjectResponse }) {
   return (

@@ -17,6 +17,7 @@ added for review convenience.
 ## What was built
 
 ### Worker (`apps/workers`)
+
 - `worker/ai/schemas.py` — added `McqChoice`, `McqQuestionPayload`,
   `TrueFalseQuestionPayload`, `FillInBlankQuestionPayload`, `GeneratedQuestion`
   (Pydantic, with an MCQ `model_validator` normalizing choice ids to UUIDs via
@@ -35,12 +36,14 @@ added for review convenience.
   questions into `questions`, returning their ids.
 
 ### Contracts (`packages/contracts`)
+
 - `GenerateQuestionsRequestSchema` (`topicId`, `questionType`, `count` 1..50,
   optional `difficulty`), `GenerateQuestionsResponseSchema` (operation literal
   `AI_GENERATE_QUESTIONS`, `sourceType: TOPIC`), `BatchQuestionActionRequestSchema`,
   plus derived types.
 
 ### API (`apps/api`)
+
 - `jobs.service.ts` — `JOB_QUEUE_BY_TYPE` maps `AI_GENERATE_QUESTIONS` →
   `ai_generation` queue.
 - `questions/dto/question-generation.dto.ts` — NEW `GenerateQuestionsDto`,

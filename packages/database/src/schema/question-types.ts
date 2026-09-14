@@ -23,8 +23,7 @@ export const questionTypes = pgTable(
   'question_types',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    instituteId: uuid('institute_id')
-      .references(() => institutes.id, { onDelete: 'cascade' }),
+    instituteId: uuid('institute_id').references(() => institutes.id, { onDelete: 'cascade' }),
     code: varchar('code', { length: 64 }).notNull(),
     name: varchar('name', { length: 100 }).notNull(),
     description: varchar('description', { length: 500 }),

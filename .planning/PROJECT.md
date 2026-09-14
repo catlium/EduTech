@@ -114,28 +114,29 @@ derived from it.
 
 ## Key Decisions
 
-| Decision | Rationale | Outcome |
-|----------|-----------|---------|
-| Modular monolith + separate workers/OCR | Avoid premature microservices; heavy work off the API | ✓ Good |
-| Full-stack monorepo (backend + frontend), demo-first vertical-slice | Frontend NOT deferred; working demo with polished UI ASAP | ✓ Good |
-| API contract (`docs/api/`) is authoritative (contract between BE and FE) | Prevents silent contract drift | ✓ Good |
-| Deterministic objective evaluation (no AI) | Required for reproducibility | ✓ Good |
-| AI-generated questions → PENDING, never auto-approve | Prevents unvalidated questions reaching official exams | ✓ Good |
-| RabbitMQ async + direct pika workers + JSON payloads | API never blocks; plain-JSON contract (per earlier decisions) | ✓ Good |
-| Content payloads canonical in JSONB | Drag-free structured content | ✓ Good |
-| Local storage behind `StorageProvider` | Replaceable with S3 later | ✓ Good |
-| Frontend: `apps/web` (Next.js 15 + shadcn/ui) | Polished SaaS/EdTech appearance; shadcn primitives + CatLium components | ✓ Good |
-| AI syllabus generation → PENDING_REVIEW proposal only | Teacher confirmation is the only path that mutates academic hierarchy | ✓ Good |
+| Decision                                                                 | Rationale                                                               | Outcome |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------- | ------- |
+| Modular monolith + separate workers/OCR                                  | Avoid premature microservices; heavy work off the API                   | ✓ Good  |
+| Full-stack monorepo (backend + frontend), demo-first vertical-slice      | Frontend NOT deferred; working demo with polished UI ASAP               | ✓ Good  |
+| API contract (`docs/api/`) is authoritative (contract between BE and FE) | Prevents silent contract drift                                          | ✓ Good  |
+| Deterministic objective evaluation (no AI)                               | Required for reproducibility                                            | ✓ Good  |
+| AI-generated questions → PENDING, never auto-approve                     | Prevents unvalidated questions reaching official exams                  | ✓ Good  |
+| RabbitMQ async + direct pika workers + JSON payloads                     | API never blocks; plain-JSON contract (per earlier decisions)           | ✓ Good  |
+| Content payloads canonical in JSONB                                      | Drag-free structured content                                            | ✓ Good  |
+| Local storage behind `StorageProvider`                                   | Replaceable with S3 later                                               | ✓ Good  |
+| Frontend: `apps/web` (Next.js 15 + shadcn/ui)                            | Polished SaaS/EdTech appearance; shadcn primitives + CatLium components | ✓ Good  |
+| AI syllabus generation → PENDING_REVIEW proposal only                    | Teacher confirmation is the only path that mutates academic hierarchy   | ✓ Good  |
 
 ---
 
-*Last updated: 2026-09-08 after demo-first vertical-slice strategy confirmed by user*
+_Last updated: 2026-09-08 after demo-first vertical-slice strategy confirmed by user_
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
 **After each phase transition** (via `/gsd-transition`):
+
 1. Requirements invalidated? → Move to Out of Scope with reason
 2. Requirements validated? → Move to Validated with phase reference
 3. New requirements emerged? → Add to Active
@@ -143,6 +144,7 @@ This document evolves at phase transitions and milestone boundaries.
 5. "What This Is" still accurate? → Update if drifted
 
 **After each milestone** (via `/gsd-complete-milestone`):
+
 1. Full review of all sections
 2. Core Value check — still the right priority?
 3. Audit Out of Scope — reasons still valid?

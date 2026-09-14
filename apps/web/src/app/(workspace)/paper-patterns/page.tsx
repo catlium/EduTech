@@ -61,7 +61,19 @@ export default function PaperPatternsListPage() {
 
   const subjectMap = Object.fromEntries(subjects.map((s) => [s.id, s.name]));
   const filtered =
-    subjectFilter === 'all' ? patterns : patterns.filter((p) => p.subjectId === subjectFilter);
+    subjectFilter === 'all'
+      ? patterns
+      : patterns.filter((p) => p.subjectIds.includes(subjectFilter));
+
+  function patternSubjects(pattern: PaperPattern) {
+    if (pattern.subjectIds.length === 0)
+      return <span className="text-muted-foreground">General</span>;
+    return (
+      <span className="text-muted-foreground">
+        {pattern.subjectIds.map((id) => subjectMap[id] ?? 'Unknown subject').join(', ')}
+      </span>
+    );
+  }
 
   return (
     <div>
@@ -139,9 +151,7 @@ export default function PaperPatternsListPage() {
                   <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium">
                     {pattern.sourceType}
                   </span>
-                  <span className="text-muted-foreground">
-                    {subjectMap[pattern.subjectId] ?? 'Unknown subject'}
-                  </span>
+                  {patternSubjects(pattern)}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>Updated {formatDate(pattern.updatedAt)}</span>

@@ -6,19 +6,17 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
-import { materials, paperPatterns, subjects } from '@catlium/database';
-import {
-  PaperPatternStructureSchema,
-  type PaperPatternStructure,
-} from '@catlium/contracts';
+import { materials, paperPatterns, paperPatternSubjects, subjects } from '@catlium/database';
+import { PaperPatternStructureSchema, type PaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { MaterialsService } from '../materials/materials.service.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { validatePaperPatternStructure } from './paper-patterns.validation.js';
+import { buildSubjectIds, foreignSubjectIds } from './paper-pattern-subjects.js';
 
 const OPERATION = 'AI_GENERATE_BLUEPRINT';
 
@@ -44,18 +42,18 @@ export class PaperPatternsService {
     userId: string,
     input: {
       title: string;
-      subjectId: string;
+      subjectIds?: string[];
+      subjectId?: string;
       description?: string;
       structure?: unknown;
     },
   ) {
-    const subject = await this.assertSubjectInInstitute(instituteId, input.subjectId);
+    const subjectIds = await this.resolveSubjectIds(instituteId, input);
 
     const [created] = await this.db
       .insert(paperPatterns)
       .values({
         instituteId,
-        subjectId: subject.id,
         title: input.title,
         description: input.description ?? null,
         sourceType: 'MANUAL',
@@ -65,19 +63,26 @@ export class PaperPatternsService {
       })
       .returning();
 
-    return created!;
+    if (!created) throw new InternalServerErrorException('Failed to create paper pattern');
+    if (subjectIds.length > 0) {
+      await this.replaceSubjectAssociations(created.id, subjectIds);
+    }
+
+    return (await this.attachSubjectIds([created]))[0]!;
   }
 
   async listPatterns(instituteId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(paperPatterns)
       .where(eq(paperPatterns.instituteId, instituteId))
       .orderBy(desc(paperPatterns.createdAt));
+    return this.attachSubjectIds(rows);
   }
 
   async getPattern(instituteId: string, patternId: string) {
-    return this.requirePattern(instituteId, patternId);
+    const row = await this.requirePattern(instituteId, patternId);
+    return (await this.attachSubjectIds([row]))[0]!;
   }
 
   async updatePattern(
@@ -88,6 +93,7 @@ export class PaperPatternsService {
       title?: string;
       description?: string;
       structure?: unknown;
+      subjectIds?: string[];
       version?: number;
     },
   ) {
@@ -117,33 +123,45 @@ export class PaperPatternsService {
       }
     }
 
-    const [updated] = await this.db
-      .update(paperPatterns)
-      .set(updates)
-      .where(and(eq(paperPatterns.id, patternId), eq(paperPatterns.instituteId, instituteId)))
-      .returning();
+    const subjectIdsToSet =
+      input.subjectIds !== undefined
+        ? await this.assertSubjectsInInstitute(instituteId, input.subjectIds)
+        : undefined;
 
-    return updated!;
+    const updated = await this.db.transaction(async (tx) => {
+      const [patched] = await tx
+        .update(paperPatterns)
+        .set(updates)
+        .where(and(eq(paperPatterns.id, patternId), eq(paperPatterns.instituteId, instituteId)))
+        .returning();
+      if (patched && subjectIdsToSet !== undefined) {
+        await tx.delete(paperPatternSubjects).where(eq(paperPatternSubjects.patternId, patternId));
+        if (subjectIdsToSet.length > 0) {
+          await tx
+            .insert(paperPatternSubjects)
+            .values(subjectIdsToSet.map((subjectId) => ({ patternId, subjectId })));
+        }
+      }
+      return patched;
+    });
+
+    return (await this.attachSubjectIds([updated!]))[0]!;
   }
 
   // ── AI analysis ───────────────────────────
 
-  async analyze(
-    instituteId: string,
-    userId: string,
-    patternId: string,
-    source: AnalyzeSource,
-  ) {
+  async analyze(instituteId: string, userId: string, patternId: string, source: AnalyzeSource) {
     const row = await this.requirePattern(instituteId, patternId);
     if (row.status === 'APPROVED') {
       throw new ConflictException('Approved paper patterns cannot be re-analyzed');
     }
+    const subjectIds = (await this.attachSubjectIds([row]))[0]!.subjectIds;
 
     const sourceMaterialId = await this.resolveSourceMaterial(
       instituteId,
       userId,
       row.title,
-      row.subjectId,
+      subjectIds,
       source,
       row.sourceMaterialId,
     );
@@ -152,7 +170,6 @@ export class PaperPatternsService {
       operation: OPERATION,
       source: { type: 'MATERIAL', id: sourceMaterialId },
       patternId: row.id,
-      subjectId: row.subjectId,
       requestedBy: userId,
     };
 
@@ -280,16 +297,66 @@ export class PaperPatternsService {
     return row;
   }
 
-  private async assertSubjectInInstitute(instituteId: string, subjectId: string) {
-    const [subject] = await this.db
+  /** Merge the legacy single subjectId into the subjectIds set and reject any
+   * association that is not tenant-owned (cross-institute isolation). */
+  private async resolveSubjectIds(
+    instituteId: string,
+    input: { subjectIds?: string[]; subjectId?: string },
+  ): Promise<string[]> {
+    const subjectIds = buildSubjectIds(input.subjectIds, input.subjectId);
+    return this.assertSubjectsInInstitute(instituteId, subjectIds);
+  }
+
+  // Rejects cross-institute subject associations up front. Empty sets (a
+  // General pattern) are always valid.
+  private async assertSubjectsInInstitute(instituteId: string, subjectIds: string[]) {
+    if (subjectIds.length === 0) return subjectIds;
+    const ids = await this.db
       .select({ id: subjects.id })
       .from(subjects)
-      .where(and(eq(subjects.id, subjectId), eq(subjects.instituteId, instituteId)))
-      .limit(1);
-    if (!subject) {
-      throw new NotFoundException('Subject not found in this institute');
+      .where(and(eq(subjects.instituteId, instituteId), inArray(subjects.id, subjectIds)));
+    const ownedIds = new Set(ids.map((s) => s.id));
+    const foreign = foreignSubjectIds(subjectIds, ownedIds);
+    if (foreign.length > 0) {
+      throw new BadRequestException(`Subject(s) ${foreign.join(', ')} not found in this institute`);
     }
-    return subject;
+    return subjectIds;
+  }
+
+  /** Replace the full association set for a pattern (empty set = General). */
+  private async replaceSubjectAssociations(patternId: string, subjectIds: string[]) {
+    await this.db.transaction(async (tx) => {
+      await tx.delete(paperPatternSubjects).where(eq(paperPatternSubjects.patternId, patternId));
+      if (subjectIds.length > 0) {
+        await tx
+          .insert(paperPatternSubjects)
+          .values(subjectIds.map((subjectId) => ({ patternId, subjectId })));
+      }
+    });
+  }
+
+  /** Batch-load association rows and attach `subjectIds` to each pattern. */
+  private async attachSubjectIds<T extends { id: string }>(patterns: T[]) {
+    if (patterns.length === 0) return patterns as (T & { subjectIds: string[] })[];
+    const links = await this.db
+      .select({
+        patternId: paperPatternSubjects.patternId,
+        subjectId: paperPatternSubjects.subjectId,
+      })
+      .from(paperPatternSubjects)
+      .where(
+        inArray(
+          paperPatternSubjects.patternId,
+          patterns.map((p) => p.id),
+        ),
+      );
+    const byPattern = new Map<string, string[]>();
+    for (const link of links) {
+      const list = byPattern.get(link.patternId) ?? [];
+      list.push(link.subjectId);
+      byPattern.set(link.patternId, list);
+    }
+    return patterns.map((p) => ({ ...p, subjectIds: byPattern.get(p.id) ?? [] }));
   }
 
   /**
@@ -304,15 +371,13 @@ export class PaperPatternsService {
     instituteId: string,
     userId: string,
     patternTitle: string,
-    subjectId: string,
+    subjectIds: string[],
     source: AnalyzeSource,
     existingSourceMaterialId: string | null,
   ): Promise<string> {
     if (source.type === 'MATERIAL' || source.type === 'PREVIOUS_YEAR_PAPER') {
       if (!source.id) {
-        throw new BadRequestException(
-          `${source.type} source requires an existing material id`,
-        );
+        throw new BadRequestException(`${source.type} source requires an existing material id`);
       }
       const [material] = await this.db
         .select()
@@ -322,7 +387,11 @@ export class PaperPatternsService {
       if (!material) {
         throw new NotFoundException('Source material not found in this institute');
       }
-      if (material.status !== 'ACTIVE' || material.processingStatus !== 'READY' || !material.textContent) {
+      if (
+        material.status !== 'ACTIVE' ||
+        material.processingStatus !== 'READY' ||
+        !material.textContent
+      ) {
         throw new BadRequestException('Source material has no processed text yet');
       }
       return material.id;
@@ -330,6 +399,16 @@ export class PaperPatternsService {
 
     if (!source.text) {
       throw new BadRequestException('TEXT source requires the text to analyze');
+    }
+
+    // A pasted-text source material is scoped to a subject (the materials
+    // table requires it). A General pattern has no subject to scope to, so
+    // the teacher must analyze it from an existing subject-scoped material.
+    const scopeSubjectId = subjectIds[0];
+    if (!scopeSubjectId) {
+      throw new BadRequestException(
+        'Pasted-text analysis needs a subject — assign at least one subject to the pattern or analyze from an existing material',
+      );
     }
 
     if (existingSourceMaterialId) {
@@ -352,7 +431,7 @@ export class PaperPatternsService {
     const created = await this.materials.createTextMaterial(instituteId, userId, {
       title: `${patternTitle} — Source text`,
       text: source.text,
-      subjectId,
+      subjectId: scopeSubjectId,
     });
     return created.id;
   }

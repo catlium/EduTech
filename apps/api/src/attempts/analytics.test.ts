@@ -7,10 +7,7 @@ import assert from 'node:assert/strict';
 import { buildAnalytics } from './analytics.ts';
 import type { AnalyticsAttempt, AnalyticsQuestion } from './analytics.ts';
 
-function q(
-  id: string,
-  overrides: Partial<AnalyticsQuestion> = {},
-): AnalyticsQuestion {
+function q(id: string, overrides: Partial<AnalyticsQuestion> = {}): AnalyticsQuestion {
   return {
     questionId: id,
     stem: `stem ${id}`,
@@ -46,9 +43,7 @@ test('empty analytics: no evaluated attempts, no questions', () => {
 });
 
 test('no evaluated attempts: questions may still arrive with all-zero stats', () => {
-  const a = buildAnalytics([], [
-    q('q1', { difficulty: 'EASY' }),
-  ]);
+  const a = buildAnalytics([], [q('q1', { difficulty: 'EASY' })]);
   assert.equal(a.summary.evaluatedAttempts, 0);
   const entry = a.questionAccuracy.find((x) => x.questionId === 'q1');
   assert.ok(entry);
@@ -69,11 +64,14 @@ test('no evaluated attempts: questions may still arrive with all-zero stats', ()
 });
 
 test('one evaluated attempt: score, per-question accuracy, unanswered not correct', () => {
-  const a = buildAnalytics([attempt(2, 3)], [
-    q('q1', { responses: 1, correct: 1, marksAwarded: 1 }),
-    q('q2', { responses: 0, correct: 0 }),
-    q('q3', { responses: 1, correct: 1, questionType: 'TRUE_FALSE', marksAwarded: 1 }),
-  ]);
+  const a = buildAnalytics(
+    [attempt(2, 3)],
+    [
+      q('q1', { responses: 1, correct: 1, marksAwarded: 1 }),
+      q('q2', { responses: 0, correct: 0 }),
+      q('q3', { responses: 1, correct: 1, questionType: 'TRUE_FALSE', marksAwarded: 1 }),
+    ],
+  );
   assert.equal(a.summary.evaluatedAttempts, 1);
   assert.equal(a.summary.averageScore, 2);
   assert.equal(a.summary.highestScore, 2);
@@ -86,17 +84,41 @@ test('one evaluated attempt: score, per-question accuracy, unanswered not correc
   assert.equal(q2.correctCount, 0);
   assert.equal(q2.unansweredCount, 1);
   assert.equal(q2.accuracy, null);
-  assert.equal(a.questionAccuracy.reduce((s, x) => s + x.marksAwarded, 0), 2);
+  assert.equal(
+    a.questionAccuracy.reduce((s, x) => s + x.marksAwarded, 0),
+    2,
+  );
 });
 
 test('multiple evaluated attempts: averages, distribution, mixed question types, unanswered', () => {
   // Matches attempts_e2e.sh fixture: SUBMITTED 3/4 (1 MCQ wrong-picked saved as
   // correct answer MC1B, TF + FIB correct, one MCQ unanswered) + EXPIRED 0/4.
   const questions = [
-    q('q1', { stem: 'Which set includes fractions and repeating decimals?', questionType: 'MCQ', difficulty: 'EASY', responses: 1, correct: 1, marksAwarded: 1 }),
+    q('q1', {
+      stem: 'Which set includes fractions and repeating decimals?',
+      questionType: 'MCQ',
+      difficulty: 'EASY',
+      responses: 1,
+      correct: 1,
+      marksAwarded: 1,
+    }),
     q('q2', { stem: 'q2 mcq', questionType: 'MCQ', difficulty: 'EASY', responses: 0, correct: 0 }),
-    q('q3', { stem: 'tf q', questionType: 'TRUE_FALSE', difficulty: 'MEDIUM', responses: 1, correct: 1, marksAwarded: 1 }),
-    q('q4', { stem: 'fib q', questionType: 'FILL_IN_BLANK', difficulty: 'EASY', responses: 1, correct: 1, marksAwarded: 1 }),
+    q('q3', {
+      stem: 'tf q',
+      questionType: 'TRUE_FALSE',
+      difficulty: 'MEDIUM',
+      responses: 1,
+      correct: 1,
+      marksAwarded: 1,
+    }),
+    q('q4', {
+      stem: 'fib q',
+      questionType: 'FILL_IN_BLANK',
+      difficulty: 'EASY',
+      responses: 1,
+      correct: 1,
+      marksAwarded: 1,
+    }),
   ];
   const a = buildAnalytics([attempt(3), attempt(0)], questions);
 
@@ -124,9 +146,10 @@ test('multiple evaluated attempts: averages, distribution, mixed question types,
 });
 
 test('per-question accuracy with correct AND incorrect responses', () => {
-  const a = buildAnalytics([attempt(1), attempt(0), attempt(1)], [
-    q('q1', { responses: 3, correct: 2, incorrect: 1, marksAwarded: 2 }),
-  ]);
+  const a = buildAnalytics(
+    [attempt(1), attempt(0), attempt(1)],
+    [q('q1', { responses: 3, correct: 2, incorrect: 1, marksAwarded: 2 })],
+  );
   const q1 = a.questionAccuracy.find((x) => x.questionId === 'q1');
   assert.ok(q1);
   assert.equal(q1.correctCount, 2);
@@ -138,12 +161,15 @@ test('per-question accuracy with correct AND incorrect responses', () => {
 });
 
 test('topic aggregation: multiple topics, null-topic questions excluded', () => {
-  const a = buildAnalytics([attempt(2, 3)], [
-    q('t1q1', { topicId: 't1', topicName: 'Alpha', responses: 1, correct: 1, marksAwarded: 1 }),
-    q('t1q2', { topicId: 't1', topicName: 'Alpha', responses: 1, correct: 0, incorrect: 1 }),
-    q('t2q1', { topicId: 't2', topicName: 'Beta', responses: 1, correct: 1, marksAwarded: 1 }),
-    q('nul', { topicId: null, topicName: null }),
-  ]);
+  const a = buildAnalytics(
+    [attempt(2, 3)],
+    [
+      q('t1q1', { topicId: 't1', topicName: 'Alpha', responses: 1, correct: 1, marksAwarded: 1 }),
+      q('t1q2', { topicId: 't1', topicName: 'Alpha', responses: 1, correct: 0, incorrect: 1 }),
+      q('t2q1', { topicId: 't2', topicName: 'Beta', responses: 1, correct: 1, marksAwarded: 1 }),
+      q('nul', { topicId: null, topicName: null }),
+    ],
+  );
   assert.equal(a.topicPerformance.length, 2);
   const alpha = a.topicPerformance.find((t) => t.topicId === 't1');
   const beta = a.topicPerformance.find((t) => t.topicId === 't2');
@@ -159,11 +185,14 @@ test('topic aggregation: multiple topics, null-topic questions excluded', () => 
 });
 
 test('difficulty aggregation: EASY/MEDIUM/HARD ordering and metrics', () => {
-  const a = buildAnalytics([attempt(2, 3)], [
-    q('e1', { difficulty: 'EASY', responses: 1, correct: 1, marksAwarded: 1 }),
-    q('e2', { difficulty: 'EASY', responses: 1, correct: 0, incorrect: 1 }),
-    q('h1', { difficulty: 'HARD', responses: 1, correct: 1, marksAwarded: 1 }),
-  ]);
+  const a = buildAnalytics(
+    [attempt(2, 3)],
+    [
+      q('e1', { difficulty: 'EASY', responses: 1, correct: 1, marksAwarded: 1 }),
+      q('e2', { difficulty: 'EASY', responses: 1, correct: 0, incorrect: 1 }),
+      q('h1', { difficulty: 'HARD', responses: 1, correct: 1, marksAwarded: 1 }),
+    ],
+  );
   assert.deepEqual(
     a.difficultyPerformance.map((d) => d.difficulty),
     ['EASY', 'HARD'],
@@ -179,9 +208,10 @@ test('difficulty aggregation: EASY/MEDIUM/HARD ordering and metrics', () => {
 });
 
 test('zero available marks: no division-by-zero, valid response', () => {
-  const a = buildAnalytics([attempt(0, 0), attempt(0, 0)], [
-    q('q1', { marks: 0, responses: 0, correct: 0 }),
-  ]);
+  const a = buildAnalytics(
+    [attempt(0, 0), attempt(0, 0)],
+    [q('q1', { marks: 0, responses: 0, correct: 0 })],
+  );
   assert.equal(a.summary.totalMarks, 0);
   assert.equal(a.summary.averageScore, 0);
   assert.equal(a.questionAccuracy[0].accuracy, null);
@@ -208,9 +238,10 @@ test('consistency invariant: per-question correct+incorrect === responses and re
 });
 
 test('score distribution: repeated scores grouped with count>1, ordered ascending', () => {
-  const a = buildAnalytics([attempt(3), attempt(3), attempt(0), attempt(1)], [
-    q('x', { marks: 3, responses: 2, correct: 2, marksAwarded: 2 }),
-  ]);
+  const a = buildAnalytics(
+    [attempt(3), attempt(3), attempt(0), attempt(1)],
+    [q('x', { marks: 3, responses: 2, correct: 2, marksAwarded: 2 })],
+  );
   assert.deepEqual(a.scoreDistribution, [
     { score: 0, count: 1 },
     { score: 1, count: 1 },
@@ -228,11 +259,14 @@ test('average rounding to 2 decimals for repeating results', () => {
 });
 
 test('privacy: analytics expose no answer keys or per-student identifiers', () => {
-  const a = buildAnalytics([attempt(3)], [
-    q('q1', { questionType: 'MCQ', responses: 1, correct: 1, marksAwarded: 1 }),
-    q('q2', { questionType: 'TRUE_FALSE', responses: 0, correct: 0 }),
-    q('q3', { questionType: 'FILL_IN_BLANK', responses: 1, correct: 1, marksAwarded: 1 }),
-  ]);
+  const a = buildAnalytics(
+    [attempt(3)],
+    [
+      q('q1', { questionType: 'MCQ', responses: 1, correct: 1, marksAwarded: 1 }),
+      q('q2', { questionType: 'TRUE_FALSE', responses: 0, correct: 0 }),
+      q('q3', { questionType: 'FILL_IN_BLANK', responses: 1, correct: 1, marksAwarded: 1 }),
+    ],
+  );
   const blob = JSON.stringify(a);
   assert.ok(!blob.includes('correctChoiceId'));
   assert.ok(!blob.includes('correctAnswer'));

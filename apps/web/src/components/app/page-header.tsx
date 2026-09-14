@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
 export function PageHeader({
   title,
@@ -17,7 +17,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between",
+        'mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between',
         className,
       )}
     >
@@ -28,9 +28,7 @@ export function PageHeader({
         )}
         {children}
       </div>
-      {actions && (
-        <div className="flex flex-wrap items-center gap-2 md:shrink-0">{actions}</div>
-      )}
+      {actions && <div className="flex flex-wrap items-center gap-2 md:shrink-0">{actions}</div>}
     </div>
   );
 }

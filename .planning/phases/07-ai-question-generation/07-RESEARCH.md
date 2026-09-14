@@ -7,16 +7,16 @@ questions.
 
 ## Requirements (AIGQ-01..08)
 
-| Req | Description | Notes |
-|-----|-------------|-------|
-| AIGQ-01 | Teacher specifies subject/chapter/topic, question type, count, difficulty distribution | Request payload carries these params |
-| AIGQ-02 | AI generates questions with required question-bank fields | stem, questionType, difficulty, payload (per QuestionPayloadSchemas) |
-| AIGQ-03 | Track generation job | Reuse existing `jobs` table + AI worker |
-| AIGQ-04 | Retrieve generated results | Query generated questions by source scope / job |
-| AIGQ-05 | Edit generated questions | Reuse Phase 6 PATCH |
-| AIGQ-06 | Approve/reject generated questions | Reuse Phase 6 approve/reject |
-| AIGQ-07 | Batch approval/rejection where defined | Add batch endpoints |
-| AIGQ-08 | AI questions never auto-become official | Phase 6 already lands AI_GENERATED on PENDING |
+| Req     | Description                                                                            | Notes                                                                |
+| ------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| AIGQ-01 | Teacher specifies subject/chapter/topic, question type, count, difficulty distribution | Request payload carries these params                                 |
+| AIGQ-02 | AI generates questions with required question-bank fields                              | stem, questionType, difficulty, payload (per QuestionPayloadSchemas) |
+| AIGQ-03 | Track generation job                                                                   | Reuse existing `jobs` table + AI worker                              |
+| AIGQ-04 | Retrieve generated results                                                             | Query generated questions by source scope / job                      |
+| AIGQ-05 | Edit generated questions                                                               | Reuse Phase 6 PATCH                                                  |
+| AIGQ-06 | Approve/reject generated questions                                                     | Reuse Phase 6 approve/reject                                         |
+| AIGQ-07 | Batch approval/rejection where defined                                                 | Add batch endpoints                                                  |
+| AIGQ-08 | AI questions never auto-become official                                                | Phase 6 already lands AI_GENERATED on PENDING                        |
 
 ## Design decisions
 

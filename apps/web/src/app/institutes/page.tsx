@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowRight, Building2, UserRound } from "lucide-react";
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Building2, UserRound } from 'lucide-react';
 
-import { useAuth } from "@/lib/auth";
-import { useTenant } from "@/lib/tenant";
-import { BrandMark } from "@/components/app/brand-logo";
-import { PageLoader } from "@/components/app/loading";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useAuth } from '@/lib/auth';
+import { useTenant } from '@/lib/tenant';
+import { BrandMark } from '@/components/app/brand-logo';
+import { PageLoader } from '@/components/app/loading';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 export default function InstitutesPage() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function InstitutesPage() {
   const { selectInstitute } = useTenant();
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace('/login');
   }, [loading, router, user]);
 
   if (loading) return <PageLoader />;
@@ -54,7 +54,11 @@ export default function InstitutesPage() {
               key={membership.instituteId}
               className="group cursor-pointer transition-shadow hover:border-primary/40 hover:shadow-md"
             >
-              <button type="button" className="w-full text-left" onClick={() => selectInstitute(membership)}>
+              <button
+                type="button"
+                className="w-full text-left"
+                onClick={() => selectInstitute(membership)}
+              >
                 <CardHeader className="flex flex-row items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -64,7 +68,7 @@ export default function InstitutesPage() {
                     <CardDescription className="mt-1.5 flex flex-wrap gap-1.5">
                       {membership.roles.map((r) => (
                         <Badge key={r} variant="secondary" className="font-medium">
-                          {r.replace(/_/g, " ")}
+                          {r.replace(/_/g, ' ')}
                         </Badge>
                       ))}
                     </CardDescription>

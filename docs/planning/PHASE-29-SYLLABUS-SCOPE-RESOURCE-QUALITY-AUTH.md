@@ -77,7 +77,7 @@ in the sections below so a fresh session can resume without re-litigating.
 - Guard rails: PATCH/confirm only from `PENDING_REVIEW`; regeneration blocked
   while `PROCESSING` (dedup index rejects concurrent active jobs) and forever
   after `CONFIRMED`.
-- Known accepted edge: a manually cancelled *queued* job leaves a `PROCESSING`
+- Known accepted edge: a manually cancelled _queued_ job leaves a `PROCESSING`
   row; regenerating (unlimited for non-CONFIRMED subjects) overwrites it.
 
 ### AD-29-03 Starter Material: generation carried on materials.source_type
@@ -88,7 +88,7 @@ in the sections below so a fresh session can resume without re-litigating.
 - The result is written as a `TEXT` material with
   `source_type = 'GENERATED'`, scope = the topic chain, status ACTIVE, and
   provenance in `metadata` (`{ origin: 'syllabus-topic', topicId, chapterId,
-  subjectId, jobId, model, generatedAt }`).
+subjectId, jobId, model, generatedAt }`).
 - Regeneration updates the starter material's text in place and bumps
   `revision` (derived resources become stale — correct semantics).
 - No generic textbook expansion: the prompt is bounded to the topic name +

@@ -233,44 +233,44 @@
 
 ## Out of Scope
 
-| Feature | Reason |
-|---------|--------|
-| Institute CRUD / onboarding / invitations / billing / subscriptions | SaaS management deferred |
-| External product/platform requirements | Only this roadmap is authoritative |
-| AI for objective-question evaluation | Must be deterministic/reproducible |
-| Material download endpoint | Not in roadmap scope (tracked as deferred) |
+| Feature                                                             | Reason                                     |
+| ------------------------------------------------------------------- | ------------------------------------------ |
+| Institute CRUD / onboarding / invitations / billing / subscriptions | SaaS management deferred                   |
+| External product/platform requirements                              | Only this roadmap is authoritative         |
+| AI for objective-question evaluation                                | Must be deterministic/reproducible         |
+| Material download endpoint                                          | Not in roadmap scope (tracked as deferred) |
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| AUTH-01..07 | 1 | ✓ complete |
-| ACAD-01..07 | 2 | ✓ complete |
-| MAT-01..05 | 3 | ✓ complete |
-| PROC-01..07 | 4 | ✓ complete (image OCR via PaddleOCR; HTTP never blocks) |
-| AI-01..02 | 5 | ✓ complete |
-| AI-05..09 | 5 | ✓ complete |
-| QBN-01..07 | 6 | ✓ complete |
-| AIGQ-01..08 | 7 | ✓ complete |
-| EXAM-01..08 | 8 | ✓ complete |
-| ATMPT-01..08 | 9 | ✓ complete |
-| EVAL-01..04 | 10 | ✓ complete |
-| RES-01..06 | 11 | ✓ complete |
-| ANL-01..03 | 12 | ✓ complete |
-| PRAC-01..03 | 13 | ✓ complete |
-| SEC-01..05 | 14 | ✓ complete |
-| CON-01..03 | 15 | ✓ complete |
-| TST-01..07 | 16 | ✓ complete |
-| DONE-01..15 | 17 | ✓ complete (backend-complete gate passed 2026-09-09) |
-| PP-01..08 | 18 | ✓ complete |
-| FE-01..02 | 19 | [ ] gated (after backend complete) |
-| FE-03..05 | 20 | [ ] gated |
-| FE-06..07 | 21 | [ ] gated |
-| FE-08..09 | 22 | [ ] gated |
-| FE-10..11 | 23 | [ ] gated |
-| FE-12..13 | 24 | [ ] gated |
-| FE-14..15 | 25 | [ ] gated |
-| FE-16 | 26 | [ ] gated |
+| Requirement  | Phase | Status                                                  |
+| ------------ | ----- | ------------------------------------------------------- |
+| AUTH-01..07  | 1     | ✓ complete                                              |
+| ACAD-01..07  | 2     | ✓ complete                                              |
+| MAT-01..05   | 3     | ✓ complete                                              |
+| PROC-01..07  | 4     | ✓ complete (image OCR via PaddleOCR; HTTP never blocks) |
+| AI-01..02    | 5     | ✓ complete                                              |
+| AI-05..09    | 5     | ✓ complete                                              |
+| QBN-01..07   | 6     | ✓ complete                                              |
+| AIGQ-01..08  | 7     | ✓ complete                                              |
+| EXAM-01..08  | 8     | ✓ complete                                              |
+| ATMPT-01..08 | 9     | ✓ complete                                              |
+| EVAL-01..04  | 10    | ✓ complete                                              |
+| RES-01..06   | 11    | ✓ complete                                              |
+| ANL-01..03   | 12    | ✓ complete                                              |
+| PRAC-01..03  | 13    | ✓ complete                                              |
+| SEC-01..05   | 14    | ✓ complete                                              |
+| CON-01..03   | 15    | ✓ complete                                              |
+| TST-01..07   | 16    | ✓ complete                                              |
+| DONE-01..15  | 17    | ✓ complete (backend-complete gate passed 2026-09-09)    |
+| PP-01..08    | 18    | ✓ complete                                              |
+| FE-01..02    | 19    | [ ] gated (after backend complete)                      |
+| FE-03..05    | 20    | [ ] gated                                               |
+| FE-06..07    | 21    | [ ] gated                                               |
+| FE-08..09    | 22    | [ ] gated                                               |
+| FE-10..11    | 23    | [ ] gated                                               |
+| FE-12..13    | 24    | [ ] gated                                               |
+| FE-14..15    | 25    | [ ] gated                                               |
+| FE-16        | 26    | [ ] gated                                               |
 
 **Coverage:**
 
@@ -279,5 +279,6 @@
 - Frontend is part of the master roadmap (full-stack monorepo), NOT out of scope
 
 ---
-*Requirements defined: 2026-09-01*
-*Last updated: 2026-09-09 — Phase 18 (Paper Pattern / Blueprint) backend complete*
+
+_Requirements defined: 2026-09-01_
+_Last updated: 2026-09-09 — Phase 18 (Paper Pattern / Blueprint) backend complete_

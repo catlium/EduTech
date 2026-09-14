@@ -1,4 +1,11 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDefined, IsOptional, IsUUID } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsDefined,
+  IsOptional,
+  IsUUID,
+} from 'class-validator';
 import { IsObject } from 'class-validator';
 
 export class AddQuestionsDto {

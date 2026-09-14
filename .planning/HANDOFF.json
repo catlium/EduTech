@@ -6,35 +6,72 @@
   "phase_dir": ".planning",
   "status": "active",
   "completed_waves": [
-    {"id": 0, "name": "Bootstrap (seed + memberships)", "status": "done", "commit": "5929170"},
-    {"id": 1, "name": "Phase 8 gap closures (08-06, 08-07, WR-01..WR-05)", "status": "done", "commit": "ca5519c"}
+    { "id": 0, "name": "Bootstrap (seed + memberships)", "status": "done", "commit": "5929170" },
+    {
+      "id": 1,
+      "name": "Phase 8 gap closures (08-06, 08-07, WR-01..WR-05)",
+      "status": "done",
+      "commit": "ca5519c"
+    }
   ],
   "remaining_waves": [
-    {"id": 1, "name": "Wave 1 — Syllabus backend (migration 0009, AI_GENERATE_SYLLABUS, syllabus API)", "status": "not_started"},
-    {"id": 2, "name": "Wave 2 — Attempts backend (migration 0010, attempts API, grading)", "status": "not_started"},
-    {"id": 3, "name": "Wave 3 — Frontend apps/web (Next.js + shadcn/ui, teacher + student UI)", "status": "not_started"},
-    {"id": 4, "name": "Wave 4 — Full integration & demo validation", "status": "not_started"}
+    {
+      "id": 1,
+      "name": "Wave 1 — Syllabus backend (migration 0009, AI_GENERATE_SYLLABUS, syllabus API)",
+      "status": "not_started"
+    },
+    {
+      "id": 2,
+      "name": "Wave 2 — Attempts backend (migration 0010, attempts API, grading)",
+      "status": "not_started"
+    },
+    {
+      "id": 3,
+      "name": "Wave 3 — Frontend apps/web (Next.js + shadcn/ui, teacher + student UI)",
+      "status": "not_started"
+    },
+    { "id": 4, "name": "Wave 4 — Full integration & demo validation", "status": "not_started" }
   ],
   "later_backend_phases": [
-    {"id": 9, "name": "Student Examination Attempts", "status": "deferred"},
-    {"id": 10, "name": "Automatic Evaluation", "status": "deferred"},
-    {"id": 11, "name": "Results", "status": "deferred"},
-    {"id": 12, "name": "Examination Analytics", "status": "deferred"},
-    {"id": 13, "name": "Practice System", "status": "deferred"},
-    {"id": 14, "name": "Cross-Module Validation & Security", "status": "deferred"},
-    {"id": 15, "name": "API Contract Verification", "status": "deferred"},
-    {"id": 16, "name": "Testing & Demonstration Readiness", "status": "deferred"},
-    {"id": 17, "name": "Backend-Complete Checkpoint", "status": "deferred"}
+    { "id": 9, "name": "Student Examination Attempts", "status": "deferred" },
+    { "id": 10, "name": "Automatic Evaluation", "status": "deferred" },
+    { "id": 11, "name": "Results", "status": "deferred" },
+    { "id": 12, "name": "Examination Analytics", "status": "deferred" },
+    { "id": 13, "name": "Practice System", "status": "deferred" },
+    { "id": 14, "name": "Cross-Module Validation & Security", "status": "deferred" },
+    { "id": 15, "name": "API Contract Verification", "status": "deferred" },
+    { "id": 16, "name": "Testing & Demonstration Readiness", "status": "deferred" },
+    { "id": 17, "name": "Backend-Complete Checkpoint", "status": "deferred" }
   ],
   "blockers": [],
   "async_jobs": [],
   "human_actions_pending": [],
   "decisions": [
-    {"decision": "Demo-first vertical-slice (user-directed override)", "rationale": "Working end-to-end model with real polished UI ASAP; frontend is NOT optional or deferred", "phase": "demo"},
-    {"decision": "Frontend first-class (apps/web, Next.js 15 + shadcn/ui)", "rationale": "Modern SaaS/EdTech appearance; shadcn primitives + CatLium-specific components on top", "phase": "demo"},
-    {"decision": "Wave 3a (teacher UI) parallelizable with Wave 1-2 backend", "rationale": "Frontend can develop against already-stable APIs while backend work continues", "phase": "demo"},
-    {"decision": "Later backend phases (9-17) deferred", "rationale": "Mark non-essential work as later/deferred rather than implementing before demo-critical vertical slice", "phase": "demo"},
-    {"decision": "Frontend communicates ONLY with the NestJS API", "rationale": "Never directly calls PostgreSQL, RabbitMQ, OCR, AI worker, or internal worker APIs", "phase": "demo"}
+    {
+      "decision": "Demo-first vertical-slice (user-directed override)",
+      "rationale": "Working end-to-end model with real polished UI ASAP; frontend is NOT optional or deferred",
+      "phase": "demo"
+    },
+    {
+      "decision": "Frontend first-class (apps/web, Next.js 15 + shadcn/ui)",
+      "rationale": "Modern SaaS/EdTech appearance; shadcn primitives + CatLium-specific components on top",
+      "phase": "demo"
+    },
+    {
+      "decision": "Wave 3a (teacher UI) parallelizable with Wave 1-2 backend",
+      "rationale": "Frontend can develop against already-stable APIs while backend work continues",
+      "phase": "demo"
+    },
+    {
+      "decision": "Later backend phases (9-17) deferred",
+      "rationale": "Mark non-essential work as later/deferred rather than implementing before demo-critical vertical slice",
+      "phase": "demo"
+    },
+    {
+      "decision": "Frontend communicates ONLY with the NestJS API",
+      "rationale": "Never directly calls PostgreSQL, RabbitMQ, OCR, AI worker, or internal worker APIs",
+      "phase": "demo"
+    }
   ],
   "next_action": "Implement Wave 1 (Syllabus backend: migration 0009, AI_GENERATE_SYLLABUS worker, syllabus API module) and Wave 3 (Frontend apps/web) in parallel. After syllabus backend, implement Wave 2 (Attempts backend). Then Wave 3b (student UI) after attempt APIs. Integrate and validate in Wave 4.",
   "context_notes": "CRITICAL PRIORITY: Get a working end-to-end model with a real, polished UI as soon as possible. Do NOT interpret the roadmap as requiring us to finish every backend phase before building the UI. Use a demo-first vertical-slice strategy. The entire flow must use the actual NestJS backend and database. No fake data or hardcoded success states except intentional demo seed data."

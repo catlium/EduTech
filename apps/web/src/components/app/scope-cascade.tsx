@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { X, ChevronRight } from "lucide-react";
-import { api } from "@/lib/api";
+} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { X, ChevronRight } from 'lucide-react';
+import { api } from '@/lib/api';
 
 export interface ScopeCascade {
   subjectId: string;
@@ -19,7 +19,7 @@ export interface ScopeCascade {
 }
 
 export function emptyCascade(): ScopeCascade {
-  return { subjectId: "", chapterId: "", topicId: "" };
+  return { subjectId: '', chapterId: '', topicId: '' };
 }
 
 export function ScopeBreadcrumb({
@@ -35,16 +35,16 @@ export function ScopeBreadcrumb({
 
   useEffect(() => {
     let cancelled = false;
-    const fetchName = (kind: "subject" | "chapter" | "topic", id?: string | null) => {
+    const fetchName = (kind: 'subject' | 'chapter' | 'topic', id?: string | null) => {
       if (!id) return Promise.resolve(undefined);
       return api<Record<string, { name: string }>>(`/academic/${kind}s/${id}`)
         .then((r) => r[kind]?.name)
         .catch(() => undefined);
     };
     Promise.all([
-      fetchName("subject", subjectId),
-      fetchName("chapter", chapterId),
-      fetchName("topic", topicId),
+      fetchName('subject', subjectId),
+      fetchName('chapter', chapterId),
+      fetchName('topic', topicId),
     ]).then(([subject, chapter, topic]) => {
       if (!cancelled) setNames({ subject, chapter, topic });
     });
@@ -108,7 +108,7 @@ export function ScopeCascade({
         <Label>Subject</Label>
         <Select
           value={cascade.subjectId}
-          onValueChange={(v) => onChange({ subjectId: v, chapterId: "", topicId: "" })}
+          onValueChange={(v) => onChange({ subjectId: v, chapterId: '', topicId: '' })}
           disabled={disabled}
         >
           <SelectTrigger>
@@ -128,7 +128,7 @@ export function ScopeCascade({
         <Label>Chapter</Label>
         <Select
           value={cascade.chapterId}
-          onValueChange={(v) => onChange({ ...cascade, chapterId: v, topicId: "" })}
+          onValueChange={(v) => onChange({ ...cascade, chapterId: v, topicId: '' })}
           disabled={disabled || !cascade.subjectId}
         >
           <SelectTrigger>

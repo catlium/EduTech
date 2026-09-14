@@ -1799,7 +1799,8 @@ export type PaperPatternStructure = z.infer<typeof PaperPatternStructureSchema>;
 export const PaperPatternSchema = z.object({
   id: z.string().uuid(),
   instituteId: z.string().uuid(),
-  subjectId: z.string().uuid(),
+  // Empty array = General pattern (reusable across any subject).
+  subjectIds: z.array(z.string().uuid()),
   title: z.string().min(1).max(255),
   description: z.string().max(1000).nullable(),
   status: PaperPatternStatusEnum,

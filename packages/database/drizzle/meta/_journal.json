@@ -183,6 +183,13 @@
       "when": 1789460000000,
       "tag": "0025_question_bank_batches",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789560000000,
+      "tag": "0026_paper_pattern_subjects",
+      "breakpoints": true
     }
   ]
 }

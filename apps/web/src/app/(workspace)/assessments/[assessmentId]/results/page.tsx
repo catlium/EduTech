@@ -1,25 +1,25 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
-import { toast } from "sonner";
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { SkeletonCards } from "@/components/app/loading";
-import { StatusBadge } from "@/components/app/status-badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import type { AssessmentAnalytics, AttemptListItem } from "@catlium/contracts";
+import { api, ApiError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { SkeletonCards } from '@/components/app/loading';
+import { StatusBadge } from '@/components/app/status-badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import type { AssessmentAnalytics, AttemptListItem } from '@catlium/contracts';
 
 function formatAccuracy(accuracy: number | null | undefined): string {
-  return accuracy === null || accuracy === undefined ? "—" : `${Math.round(accuracy * 100)}%`;
+  return accuracy === null || accuracy === undefined ? '—' : `${Math.round(accuracy * 100)}%`;
 }
 
 export default function AssessmentResultsPage() {
@@ -46,7 +46,7 @@ export default function AssessmentResultsPage() {
       })
       .catch((error) => {
         if (error instanceof ApiError) toast.error(error.message);
-        else if (error.name !== "AbortError") toast.error("Failed to load results");
+        else if (error.name !== 'AbortError') toast.error('Failed to load results');
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
@@ -93,7 +93,9 @@ export default function AssessmentResultsPage() {
                         <tr key={attempt.id} className="border-b last:border-0">
                           <td className="py-2 pr-4">
                             <div className="font-medium">{attempt.studentName}</div>
-                            <div className="text-xs text-muted-foreground">{attempt.studentEmail}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {attempt.studentEmail}
+                            </div>
                           </td>
                           <td className="py-2 pr-4">
                             <StatusBadge status={attempt.status} />
@@ -106,7 +108,7 @@ export default function AssessmentResultsPage() {
                             )}
                           </td>
                           <td className="py-2 pr-4 text-muted-foreground">
-                            {attempt.submittedAt ? formatDateTime(attempt.submittedAt) : "—"}
+                            {attempt.submittedAt ? formatDateTime(attempt.submittedAt) : '—'}
                           </td>
                         </tr>
                       ))}
@@ -155,12 +157,17 @@ export default function AssessmentResultsPage() {
                           <div className="w-16 text-sm tabular-nums">{bucket.score}</div>
                           <Progress
                             value={Math.round(
-                              (bucket.count / analytics.scoreDistribution.reduce((m, b) => Math.max(m, b.count), 0)) * 100,
+                              (bucket.count /
+                                analytics.scoreDistribution.reduce(
+                                  (m, b) => Math.max(m, b.count),
+                                  0,
+                                )) *
+                                100,
                             )}
                             className="h-2"
                           />
                           <div className="w-24 text-sm tabular-nums text-muted-foreground">
-                            {bucket.count} {bucket.count === 1 ? "student" : "students"}
+                            {bucket.count} {bucket.count === 1 ? 'student' : 'students'}
                           </div>
                         </div>
                       ))}
@@ -192,14 +199,22 @@ export default function AssessmentResultsPage() {
                           <tr key={q.questionId} className="border-b last:border-0">
                             <td className="py-2 pr-4 text-muted-foreground">{q.sortOrder}</td>
                             <td className="py-2 pr-4 max-w-56 truncate">{q.stem}</td>
-                            <td className="py-2 pr-4 text-muted-foreground">{q.questionType.replaceAll("_", " ")}</td>
+                            <td className="py-2 pr-4 text-muted-foreground">
+                              {q.questionType.replaceAll('_', ' ')}
+                            </td>
                             <td className="py-2 pr-4">
                               <Badge variant="outline">{q.difficulty}</Badge>
                             </td>
                             <td className="py-2 pr-4 text-right tabular-nums">{q.correctCount}</td>
-                            <td className="py-2 pr-4 text-right tabular-nums">{q.incorrectCount}</td>
-                            <td className="py-2 pr-4 text-right tabular-nums">{q.unansweredCount}</td>
-                            <td className="py-2 pr-4 text-right tabular-nums">{formatAccuracy(q.accuracy)}</td>
+                            <td className="py-2 pr-4 text-right tabular-nums">
+                              {q.incorrectCount}
+                            </td>
+                            <td className="py-2 pr-4 text-right tabular-nums">
+                              {q.unansweredCount}
+                            </td>
+                            <td className="py-2 pr-4 text-right tabular-nums">
+                              {formatAccuracy(q.accuracy)}
+                            </td>
                             <td className="py-2 pr-4 text-right tabular-nums">
                               {q.marksAwarded} / {q.marksAvailable}
                             </td>
@@ -237,10 +252,16 @@ export default function AssessmentResultsPage() {
                           analytics.topicPerformance.map((t) => (
                             <tr key={t.topicId} className="border-b last:border-0">
                               <td className="py-2 pr-4 font-medium">{t.topicName}</td>
-                              <td className="py-2 pr-4 text-right tabular-nums">{t.questionCount}</td>
+                              <td className="py-2 pr-4 text-right tabular-nums">
+                                {t.questionCount}
+                              </td>
                               <td className="py-2 pr-4 text-right tabular-nums">{t.responses}</td>
-                              <td className="py-2 pr-4 text-right tabular-nums">{t.correctResponses}</td>
-                              <td className="py-2 pr-4 text-right tabular-nums">{formatAccuracy(t.accuracy)}</td>
+                              <td className="py-2 pr-4 text-right tabular-nums">
+                                {t.correctResponses}
+                              </td>
+                              <td className="py-2 pr-4 text-right tabular-nums">
+                                {formatAccuracy(t.accuracy)}
+                              </td>
                               <td className="py-2 pr-4 text-right tabular-nums">
                                 {t.marksEarned} / {t.marksAvailable}
                               </td>
@@ -279,10 +300,16 @@ export default function AssessmentResultsPage() {
                           analytics.difficultyPerformance.map((d) => (
                             <tr key={d.difficulty} className="border-b last:border-0">
                               <td className="py-2 pr-4 font-medium">{d.difficulty}</td>
-                              <td className="py-2 pr-4 text-right tabular-nums">{d.questionCount}</td>
+                              <td className="py-2 pr-4 text-right tabular-nums">
+                                {d.questionCount}
+                              </td>
                               <td className="py-2 pr-4 text-right tabular-nums">{d.responses}</td>
-                              <td className="py-2 pr-4 text-right tabular-nums">{d.correctResponses}</td>
-                              <td className="py-2 pr-4 text-right tabular-nums">{formatAccuracy(d.accuracy)}</td>
+                              <td className="py-2 pr-4 text-right tabular-nums">
+                                {d.correctResponses}
+                              </td>
+                              <td className="py-2 pr-4 text-right tabular-nums">
+                                {formatAccuracy(d.accuracy)}
+                              </td>
                               <td className="py-2 pr-4 text-right tabular-nums">
                                 {d.marksEarned} / {d.marksAvailable}
                               </td>

@@ -83,15 +83,15 @@ Body:
 }
 ```
 
-| Field             | Required | Values                                   |
-| ----------------- | -------- | ---------------------------------------- |
-| `title`           | yes      | string 1–255 (required, must be non-empty) |
-| `description`     | no       | string ≤5000                             |
-| `durationMinutes` | no       | integer 1–600                            |
-| `maxMarks`        | no       | integer 1–10000                          |
-| `instructions`    | no       | object (JSONB)                           |
-| `startsAt`        | no       | ISO 8601 datetime                       |
-| `endsAt`          | no       | ISO 8601 datetime                       |
+| Field             | Required | Values                                                                                                     |
+| ----------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `title`           | yes      | string 1–255 (required, must be non-empty)                                                                 |
+| `description`     | no       | string ≤5000                                                                                               |
+| `durationMinutes` | no       | integer 1–600                                                                                              |
+| `maxMarks`        | no       | integer 1–10000                                                                                            |
+| `instructions`    | no       | object (JSONB)                                                                                             |
+| `startsAt`        | no       | ISO 8601 datetime                                                                                          |
+| `endsAt`          | no       | ISO 8601 datetime                                                                                          |
 | `blueprintId`     | no       | `uuid` (APPROVED paper pattern; pre-fills `durationMinutes`/`maxMarks` from the pattern when not supplied) |
 
 `status` defaults to `DRAFT` and is **always** server-computed on create — it

@@ -47,9 +47,7 @@ export function validatePaperPatternStructure(structure: PaperPatternStructure):
     }
 
     if (section.attemptCount != null && count != null && section.attemptCount > count) {
-      errors.push(
-        `"${label}": cannot attempt ${section.attemptCount} of ${count} questions`,
-      );
+      errors.push(`"${label}": cannot attempt ${section.attemptCount} of ${count} questions`);
     }
     if (
       section.compulsory &&

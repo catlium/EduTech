@@ -18,11 +18,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { SyllabusService } from './syllabus.service.js';
-import {
-  CreateTextSyllabusDto,
-  UpdateSyllabusDto,
-  UploadSyllabusDto,
-} from './dto/syllabus.dto.js';
+import { CreateTextSyllabusDto, UpdateSyllabusDto, UploadSyllabusDto } from './dto/syllabus.dto.js';
 import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from '../materials/materials.constants.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
@@ -100,19 +96,13 @@ export class SyllabusController {
   }
 
   @Get(':id')
-  async get(
-    @Tenant() tenant: TenantContext,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  async get(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     const syllabus = await this.syllabusService.getSyllabus(tenant.instituteId, id);
     return { syllabus };
   }
 
   @Get(':id/versions')
-  async versions(
-    @Tenant() tenant: TenantContext,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  async versions(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     const versions = await this.syllabusService.getVersions(tenant.instituteId, id);
     return { versions };
   }
@@ -137,20 +127,14 @@ export class SyllabusController {
   @Post(':id/process')
   @HttpCode(HttpStatus.ACCEPTED)
   @RequiredRoles(...WRITE_ROLES)
-  async process(
-    @Tenant() tenant: TenantContext,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  async process(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.syllabusService.processSyllabus(tenant.instituteId, id);
   }
 
   @Post(':id/retry')
   @HttpCode(HttpStatus.ACCEPTED)
   @RequiredRoles(...WRITE_ROLES)
-  async retry(
-    @Tenant() tenant: TenantContext,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  async retry(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.syllabusService.retryProcessing(tenant.instituteId, id);
   }
 
@@ -193,10 +177,7 @@ export class SyllabusController {
 
   @Delete(':id')
   @RequiredRoles(...WRITE_ROLES)
-  async remove(
-    @Tenant() tenant: TenantContext,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  async remove(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.syllabusService.deleteSyllabus(tenant.instituteId, id);
   }
 }

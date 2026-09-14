@@ -87,7 +87,13 @@ second CONFIRMED row.
 `POST /api/v1/syllabus/text` — Role: write. Returns `201`.
 
 ```json
-{ "subjectId": "uuid", "title": "string", "program": "string?", "academicYear": "string?", "text": "..." }
+{
+  "subjectId": "uuid",
+  "title": "string",
+  "program": "string?",
+  "academicYear": "string?",
+  "text": "..."
+}
 ```
 
 Created directly with `processingStatus: "READY"` (fast-path, no OCR). `400`

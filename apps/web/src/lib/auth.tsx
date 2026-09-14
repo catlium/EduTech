@@ -1,17 +1,10 @@
-"use client";
+'use client';
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
-import { useRouter } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 
-import { api, setActiveInstituteId } from "./api";
-import type { MembershipListItem, UserResponse } from "@catlium/contracts";
+import { api, setActiveInstituteId } from './api';
+import type { MembershipListItem, UserResponse } from '@catlium/contracts';
 
 interface AuthState {
   user: UserResponse | null;
@@ -32,8 +25,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const [{ user }, membershipsResult] = await Promise.all([
-        api<{ user: UserResponse }>("/auth/me"),
-        api<{ memberships: MembershipListItem[] }>("/memberships"),
+        api<{ user: UserResponse }>('/auth/me'),
+        api<{ memberships: MembershipListItem[] }>('/memberships'),
       ]);
       setUser(user);
       setMemberships(membershipsResult.memberships ?? []);
@@ -47,14 +40,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await api("/auth/logout", { method: "POST" });
+      await api('/auth/logout', { method: 'POST' });
     } catch {
       // session may already be invalid
     }
     setUser(null);
     setMemberships([]);
     setActiveInstituteId(null);
-    router.replace("/login");
+    router.replace('/login');
   }, [router]);
 
   useEffect(() => {
@@ -62,10 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setMemberships([]);
       setActiveInstituteId(null);
-      router.replace("/login");
+      router.replace('/login');
     };
-    window.addEventListener("catlium:unauthorized", onUnauthorized);
-    return () => window.removeEventListener("catlium:unauthorized", onUnauthorized);
+    window.addEventListener('catlium:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('catlium:unauthorized', onUnauthorized);
   }, [router]);
 
   useEffect(() => {
@@ -81,6 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthState {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 }

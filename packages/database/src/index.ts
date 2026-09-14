@@ -25,7 +25,7 @@ export { materials } from './schema/materials.js';
 export { questions } from './schema/questions.js';
 export { questionTypes } from './schema/question-types.js';
 export { assessments, assessmentQuestions } from './schema/examinations.js';
-export { paperPatterns } from './schema/paper-patterns.js';
+export { paperPatterns, paperPatternSubjects } from './schema/paper-patterns.js';
 export { syllabi } from './schema/syllabus.js';
 export { attempts, attemptQuestions, attemptResponses } from './schema/attempts.js';
 export {

@@ -1,14 +1,14 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { BookOpen, ListChecks, Play } from "lucide-react";
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { BookOpen, ListChecks, Play } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
+import { api, ApiError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
 import type {
   ChapterResponse,
   ContentListItem,
@@ -16,24 +16,24 @@ import type {
   PracticeSessionListItem,
   SubjectResponse,
   TopicResponse,
-} from "@catlium/contracts";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { ErrorState } from "@/components/app/error-state";
-import { StatusBadge } from "@/components/app/status-badge";
-import { SkeletonCards, SkeletonRows } from "@/components/app/loading";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+} from '@catlium/contracts';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { ErrorState } from '@/components/app/error-state';
+import { StatusBadge } from '@/components/app/status-badge';
+import { SkeletonCards, SkeletonRows } from '@/components/app/loading';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 
 export default function PracticeHubPage() {
   const { institute } = useTenant();
@@ -47,12 +47,12 @@ export default function PracticeHubPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [contentId, setContentId] = useState("");
-  const [subjectId, setSubjectId] = useState("");
-  const [chapterId, setChapterId] = useState("");
-  const [topicId, setTopicId] = useState("");
+  const [contentId, setContentId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [chapterId, setChapterId] = useState('');
+  const [topicId, setTopicId] = useState('');
   const [wholeBank, setWholeBank] = useState(false);
-  const [starting, setStarting] = useState<"FLASHCARD" | "QUESTION" | null>(null);
+  const [starting, setStarting] = useState<'FLASHCARD' | 'QUESTION' | null>(null);
 
   const refresh = useCallback(() => {
     if (!institute) return;
@@ -60,11 +60,11 @@ export default function PracticeHubPage() {
     setError(null);
     const ctrl = new AbortController();
     Promise.all([
-      api<{ contents: ContentListItem[] }>("/content?type=FLASHCARD_SET&status=ACTIVE", {
+      api<{ contents: ContentListItem[] }>('/content?type=FLASHCARD_SET&status=ACTIVE', {
         signal: ctrl.signal,
       }),
-      api<{ subjects: SubjectResponse[] }>("/academic/subjects", { signal: ctrl.signal }),
-      api<{ sessions: PracticeSessionListItem[] }>("/practice/sessions", { signal: ctrl.signal }),
+      api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal: ctrl.signal }),
+      api<{ sessions: PracticeSessionListItem[] }>('/practice/sessions', { signal: ctrl.signal }),
     ])
       .then(([{ contents }, { subjects }, { sessions }]) => {
         setSets(contents);
@@ -72,8 +72,8 @@ export default function PracticeHubPage() {
         setHistory(sessions);
       })
       .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof ApiError ? err.message : "Failed to load practice");
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError(err instanceof ApiError ? err.message : 'Failed to load practice');
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
@@ -85,56 +85,55 @@ export default function PracticeHubPage() {
 
   const cascadeCtrl = useRef<AbortController | null>(null);
 
-  const loadCascade = useCallback((config: { type: "subject"; id: string } | { type: "chapter"; id: string }) => {
-    cascadeCtrl.current?.abort();
-    const ctrl = new AbortController();
-    cascadeCtrl.current = ctrl;
-    if (config.type === "subject") {
-      setChapters([]);
-      setTopics([]);
-      setChapterId("");
-      setTopicId("");
-      if (!config.id) return;
-      api<{ chapters: ChapterResponse[] }>(`/academic/subjects/${config.id}/chapters`, {
-        signal: ctrl.signal,
-      })
-        .then(({ chapters }) => setChapters(chapters))
-        .catch(() => setChapters([]));
-    } else {
-      setTopics([]);
-      setTopicId("");
-      if (!config.id) return;
-      api<{ topics: TopicResponse[] }>(`/academic/chapters/${config.id}/topics`, {
-        signal: ctrl.signal,
-      })
-        .then(({ topics }) => setTopics(topics))
-        .catch(() => setTopics([]));
-    }
-  }, []);
+  const loadCascade = useCallback(
+    (config: { type: 'subject'; id: string } | { type: 'chapter'; id: string }) => {
+      cascadeCtrl.current?.abort();
+      const ctrl = new AbortController();
+      cascadeCtrl.current = ctrl;
+      if (config.type === 'subject') {
+        setChapters([]);
+        setTopics([]);
+        setChapterId('');
+        setTopicId('');
+        if (!config.id) return;
+        api<{ chapters: ChapterResponse[] }>(`/academic/subjects/${config.id}/chapters`, {
+          signal: ctrl.signal,
+        })
+          .then(({ chapters }) => setChapters(chapters))
+          .catch(() => setChapters([]));
+      } else {
+        setTopics([]);
+        setTopicId('');
+        if (!config.id) return;
+        api<{ topics: TopicResponse[] }>(`/academic/chapters/${config.id}/topics`, {
+          signal: ctrl.signal,
+        })
+          .then(({ topics }) => setTopics(topics))
+          .catch(() => setTopics([]));
+      }
+    },
+    [],
+  );
 
-  async function start(mode: "FLASHCARD" | "QUESTION") {
+  async function start(mode: 'FLASHCARD' | 'QUESTION') {
     if (!institute) return;
     setStarting(mode);
     try {
       const body =
-        mode === "FLASHCARD"
-          ? { mode, contentId }
-          : wholeBank
-            ? { mode }
-            : { mode, topicId };
-      const { session } = await api<{ session: PracticeSessionDetail }>("/practice/sessions", {
-        method: "POST",
+        mode === 'FLASHCARD' ? { mode, contentId } : wholeBank ? { mode } : { mode, topicId };
+      const { session } = await api<{ session: PracticeSessionDetail }>('/practice/sessions', {
+        method: 'POST',
         body,
       });
       router.push(`/practice/sessions/${session.id}`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        toast.warning("You already have an open session for this source");
-        api<{ sessions: PracticeSessionListItem[] }>("/practice/sessions")
+        toast.warning('You already have an open session for this source');
+        api<{ sessions: PracticeSessionListItem[] }>('/practice/sessions')
           .then(({ sessions }) => setHistory(sessions))
           .catch(() => {});
       } else {
-        toast.error(err instanceof ApiError ? err.message : "Failed to start practice");
+        toast.error(err instanceof ApiError ? err.message : 'Failed to start practice');
       }
     } finally {
       setStarting(null);
@@ -199,11 +198,11 @@ export default function PracticeHubPage() {
                     </Select>
                   </div>
                   <Button
-                    onClick={() => void start("FLASHCARD")}
+                    onClick={() => void start('FLASHCARD')}
                     disabled={!flashcardReady || starting !== null}
                   >
                     <Play className="mr-1 size-3.5" />
-                    {starting === "FLASHCARD" ? "Starting…" : "Start"}
+                    {starting === 'FLASHCARD' ? 'Starting…' : 'Start'}
                   </Button>
                 </div>
               )}
@@ -227,9 +226,9 @@ export default function PracticeHubPage() {
                     const on = !!c;
                     setWholeBank(on);
                     if (on) {
-                      setSubjectId("");
-                      setChapterId("");
-                      setTopicId("");
+                      setSubjectId('');
+                      setChapterId('');
+                      setTopicId('');
                     }
                   }}
                 />
@@ -244,7 +243,7 @@ export default function PracticeHubPage() {
                     disabled={wholeBank}
                     onValueChange={(v) => {
                       setSubjectId(v);
-                      loadCascade({ type: "subject", id: v });
+                      loadCascade({ type: 'subject', id: v });
                     }}
                   >
                     <SelectTrigger className="w-full">
@@ -266,7 +265,7 @@ export default function PracticeHubPage() {
                     disabled={wholeBank || !subjectId}
                     onValueChange={(v) => {
                       setChapterId(v);
-                      loadCascade({ type: "chapter", id: v });
+                      loadCascade({ type: 'chapter', id: v });
                     }}
                   >
                     <SelectTrigger className="w-full">
@@ -283,7 +282,11 @@ export default function PracticeHubPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Topic</Label>
-                  <Select value={topicId} disabled={wholeBank || !chapterId} onValueChange={setTopicId}>
+                  <Select
+                    value={topicId}
+                    disabled={wholeBank || !chapterId}
+                    onValueChange={setTopicId}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select topic" />
                     </SelectTrigger>
@@ -299,11 +302,11 @@ export default function PracticeHubPage() {
               </div>
 
               <Button
-                onClick={() => void start("QUESTION")}
+                onClick={() => void start('QUESTION')}
                 disabled={!questionReady || starting !== null}
               >
                 <Play className="mr-1 size-3.5" />
-                {starting === "QUESTION" ? "Starting…" : "Start"}
+                {starting === 'QUESTION' ? 'Starting…' : 'Start'}
               </Button>
             </CardContent>
           </Card>
@@ -314,7 +317,7 @@ export default function PracticeHubPage() {
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">History</h2>
           <span className="text-sm text-muted-foreground">
-            {history.length} session{history.length !== 1 ? "s" : ""}
+            {history.length} session{history.length !== 1 ? 's' : ''}
           </span>
         </div>
         {loading ? (
@@ -332,7 +335,9 @@ export default function PracticeHubPage() {
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary">{s.mode === "FLASHCARD" ? "Flashcards" : "Questions"}</Badge>
+                      <Badge variant="secondary">
+                        {s.mode === 'FLASHCARD' ? 'Flashcards' : 'Questions'}
+                      </Badge>
                       <StatusBadge status={s.status} />
                     </div>
                     <p className="text-sm text-muted-foreground">
@@ -340,12 +345,12 @@ export default function PracticeHubPage() {
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Started {formatDateTime(s.startedAt)}
-                      {s.completedAt ? ` · Completed ${formatDateTime(s.completedAt)}` : ""}
+                      {s.completedAt ? ` · Completed ${formatDateTime(s.completedAt)}` : ''}
                     </p>
                   </div>
                   <Button size="sm" asChild>
                     <Link href={`/practice/sessions/${s.id}`}>
-                      {s.status === "IN_PROGRESS" ? "Continue" : "View"}
+                      {s.status === 'IN_PROGRESS' ? 'Continue' : 'View'}
                     </Link>
                   </Button>
                 </CardContent>

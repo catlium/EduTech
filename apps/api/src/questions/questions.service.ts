@@ -2,7 +2,11 @@ import { Injectable, NotFoundException, BadRequestException, Inject } from '@nes
 import { eq, and, desc, ilike, inArray, type SQL } from 'drizzle-orm';
 import { questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
-import { FormatPayloadSchemas, QuestionPayloadSchemas, type QuestionTypeDefinition } from '@catlium/contracts';
+import {
+  FormatPayloadSchemas,
+  QuestionPayloadSchemas,
+  type QuestionTypeDefinition,
+} from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { QuestionTypesService } from './question-types.service.js';
@@ -216,9 +220,7 @@ export class QuestionsService {
     const result = await this.db
       .update(questions)
       .set({ approvalStatus, updatedAt: new Date() })
-      .where(
-        and(eq(questions.instituteId, instituteId), inArray(questions.id, questionIds)),
-      )
+      .where(and(eq(questions.instituteId, instituteId), inArray(questions.id, questionIds)))
       .returning({ id: questions.id });
 
     return result.map((row) => row.id);
@@ -226,10 +228,7 @@ export class QuestionsService {
 
   // ── Helpers ───────────────────────────────
 
-  private validatePayload(
-    type: QuestionTypeDefinition,
-    payload: Record<string, unknown>,
-  ): void {
+  private validatePayload(type: QuestionTypeDefinition, payload: Record<string, unknown>): void {
     /* Per-format payload schema (a custom type reusing a known answer format
      * is validated like the predefined one). Legacy payloads keyed by the old
      * built-in codes are still validated via QuestionPayloadSchemas. */
@@ -255,16 +254,8 @@ export class QuestionsService {
   }
 
   private checkRecordPayload(questionType: string, payload: Record<string, unknown>): void {
-    if (
-      typeof payload !== 'object' ||
-      payload === null ||
-      Array.isArray(payload)
-    ) {
-      throw new BadRequestException(
-        `Invalid ${questionType} payload: expected an object`,
-      );
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+      throw new BadRequestException(`Invalid ${questionType} payload: expected an object`);
     }
   }
-
-
 }

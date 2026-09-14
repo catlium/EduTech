@@ -1,19 +1,19 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ClipboardList, Clock, Gauge, ListChecks } from "lucide-react";
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { ClipboardList, Clock, Gauge, ListChecks } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "sonner";
-import type { AvailableAssessment } from "@catlium/contracts";
+import { api, ApiError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
+import type { AvailableAssessment } from '@catlium/contracts';
 
 export default function StudentDashboardPage() {
   const { institute } = useTenant();
@@ -23,7 +23,7 @@ export default function StudentDashboardPage() {
   useEffect(() => {
     if (!institute) return;
     const ctrl = new AbortController();
-    api<{ assessments: AvailableAssessment[] }>("/attempts/available", { signal: ctrl.signal })
+    api<{ assessments: AvailableAssessment[] }>('/attempts/available', { signal: ctrl.signal })
       .then(({ assessments }) => setAssessments(assessments))
       .catch((error) => {
         if (error instanceof ApiError) toast.error(error.message);
@@ -77,7 +77,9 @@ export default function StudentDashboardPage() {
                 </div>
                 {a.inProgressAttemptId ? (
                   <Button size="sm" asChild>
-                    <Link href={`/student/attempts/${a.inProgressAttemptId}`}>Continue attempt</Link>
+                    <Link href={`/student/attempts/${a.inProgressAttemptId}`}>
+                      Continue attempt
+                    </Link>
                   </Button>
                 ) : (
                   <Button size="sm" asChild>

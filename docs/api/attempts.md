@@ -15,16 +15,16 @@ session cookie + `x-institute-id` header. The CSRF double-submit check
 
 ## Endpoints
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| GET | `/attempts/available` | any member | Assessments currently in the open window (PUBLISHED/ACTIVE) |
-| POST | `/attempts` | any member | Start an attempt (201) on an available assessment |
-| GET | `/attempts/:attemptId` | own attempt | Student's own attempt detail (sanitized, with saved answers) |
-| PUT | `/attempts/:attemptId/questions/:attemptQuestionId` | own attempt | Save/overwrite answer (200); validated per question type |
-| POST | `/attempts/:attemptId/submit` | own attempt | Idempotent submit (200); grades saved answers, sets `score` |
-| GET | `/attempts/:attemptId/result` | own attempt | Graded result review (correct answers revealed) — SUBMITTED/EXPIRED only, else 400 |
-| GET | `/assessments/:assessmentId/attempts` | INSTITUTE_ADMIN / TEACHER | Attempt ledger for an assessment (scores populated once evaluated) |
-| GET | `/assessments/:assessmentId/analytics` | INSTITUTE_ADMIN / TEACHER | Phase 12 on-demand examination analytics (evaluated attempts only) |
+| Method | Path                                                | Auth                      | Description                                                                        |
+| ------ | --------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
+| GET    | `/attempts/available`                               | any member                | Assessments currently in the open window (PUBLISHED/ACTIVE)                        |
+| POST   | `/attempts`                                         | any member                | Start an attempt (201) on an available assessment                                  |
+| GET    | `/attempts/:attemptId`                              | own attempt               | Student's own attempt detail (sanitized, with saved answers)                       |
+| PUT    | `/attempts/:attemptId/questions/:attemptQuestionId` | own attempt               | Save/overwrite answer (200); validated per question type                           |
+| POST   | `/attempts/:attemptId/submit`                       | own attempt               | Idempotent submit (200); grades saved answers, sets `score`                        |
+| GET    | `/attempts/:attemptId/result`                       | own attempt               | Graded result review (correct answers revealed) — SUBMITTED/EXPIRED only, else 400 |
+| GET    | `/assessments/:assessmentId/attempts`               | INSTITUTE_ADMIN / TEACHER | Attempt ledger for an assessment (scores populated once evaluated)                 |
+| GET    | `/assessments/:assessmentId/analytics`              | INSTITUTE_ADMIN / TEACHER | Phase 12 on-demand examination analytics (evaluated attempts only)                 |
 
 ## POST /attempts
 
@@ -35,6 +35,7 @@ Request:
 ```
 
 Behavior:
+
 - Assessment must be in `PUBLISHED` or `ACTIVE` and inside its
   `startsAt`/`endsAt` window (else 400).
 - A concurrent duplicate start (existing `IN_PROGRESS` attempt for the same
@@ -48,13 +49,25 @@ Response `201` (abridged; questions sanitized):
 ```json
 {
   "attempt": {
-    "id": "…", "assessmentId": "…", "status": "IN_PROGRESS",
-    "startedAt": "2026-09-08T…", "deadline": "2026-09-08T…",
-    "submittedAt": null, "score": null, "totalMarks": 100,
+    "id": "…",
+    "assessmentId": "…",
+    "status": "IN_PROGRESS",
+    "startedAt": "2026-09-08T…",
+    "deadline": "2026-09-08T…",
+    "submittedAt": null,
+    "score": null,
+    "totalMarks": 100,
     "questions": [
-      { "attemptQuestionId": "…", "questionId": "…", "questionType": "MCQ",
-        "stem": "…", "payload": { "choices": [ { "id": "…", "text": "…" } ] },
-        "sortOrder": 1, "marks": 1, "answer": null }
+      {
+        "attemptQuestionId": "…",
+        "questionId": "…",
+        "questionType": "MCQ",
+        "stem": "…",
+        "payload": { "choices": [{ "id": "…", "text": "…" }] },
+        "sortOrder": 1,
+        "marks": 1,
+        "answer": null
+      }
     ]
   }
 }
@@ -64,11 +77,11 @@ Response `201` (abridged; questions sanitized):
 
 Answer shape is type-bound (else 400):
 
-| questionType | answer |
-|---|---|
-| `MCQ` | `{ "choiceId": "<uuid>" }` — must be a choice id from the snapshot |
-| `TRUE_FALSE` | `{ "value": true \| false }` |
-| `FILL_IN_BLANK` | `{ "value": "<string, ≤500 chars>" }` |
+| questionType    | answer                                                             |
+| --------------- | ------------------------------------------------------------------ |
+| `MCQ`           | `{ "choiceId": "<uuid>" }` — must be a choice id from the snapshot |
+| `TRUE_FALSE`    | `{ "value": true \| false }`                                       |
+| `FILL_IN_BLANK` | `{ "value": "<string, ≤500 chars>" }`                              |
 
 Writes are duplicate-safe (upsert on `(attemptId, attemptQuestionId)`).
 Rejected with 400 once the attempt is `SUBMITTED`/`EXPIRED`; a past-deadline
@@ -86,10 +99,11 @@ Unanswered questions score 0. An attempt whose deadline passes while
 whatever was saved.
 
 Grading rules:
-| questionType | correct |
-|---|---|
-| `MCQ` | answer `choiceId` === snapshot `correctChoiceId` |
-| `TRUE_FALSE` | answer `value` === snapshot `correctAnswer` |
+
+| questionType    | correct                                                                    |
+| --------------- | -------------------------------------------------------------------------- |
+| `MCQ`           | answer `choiceId` === snapshot `correctChoiceId`                           |
+| `TRUE_FALSE`    | answer `value` === snapshot `correctAnswer`                                |
 | `FILL_IN_BLANK` | answer `value` matches any `acceptableAnswers` (trimmed, case-insensitive) |
 
 ## GET /attempts/:attemptId/result
@@ -149,7 +163,7 @@ and null summary fields. Zod contracts: `AssessmentAnalyticsSchema` et al. in
 - Student endpoints have **no** answer-key data: `sanitizePayload` is the single
   serialization point and `attempts_e2e.sh` asserts farewell to
   correctChoiceId / correctAnswer / acceptableAnswers / explanation in every
-  student payload — including `detail` *after* submit. Answer keys are revealed
+  student payload — including `detail` _after_ submit. Answer keys are revealed
   only by `GET /attempts/:attemptId/result`, which is the student's own
   terminal attempt (and the student's answer is theirs anyway).
 - The frontend timer is UX-only; deadlines are enforced server-side.

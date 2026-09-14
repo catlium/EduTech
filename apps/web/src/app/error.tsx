@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
-import { AlertTriangle } from "lucide-react";
-import Link from "next/link";
+import { useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
 
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/app/empty-state";
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/app/empty-state';
 
 export default function GlobalError({
   error,

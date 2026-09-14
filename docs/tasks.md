@@ -144,18 +144,47 @@ update docs; commit + push; checkpoint report; STOP.
       generation; pattern export button + `GET /export/paper-pattern/:patternId`
       rendering the pattern structure — no broad export redesign
 
+### Goal: FG Many-to-many paper patterns ↔ subjects
+
+Normalize the one-to-one `subject_id` column into a junction table so a pattern
+can be General (no subjects), single-subject, or multi-subject — with per-
+subject institute validation on the API and an editable subject chips editor in
+the web detail page.
+
+- [x] FG1 Migration `0026_paper_pattern_subjects.sql`: junction table
+      `paper_pattern_subjects` (composite PK, cascade both ways), backfill
+      from legacy `subject_id`, drop the column + FK
+- [x] FG2 Schema + contracts: `paperPatterns.subjectId` removed;
+      `paperPatternSubjects` table; `PaperPatternSchema.subjectId` →
+      `subjectIds: string[]`
+- [x] FG3 Pure module `paper-pattern-subjects.ts` (build/dedupe/match/
+      cross-institute helpers) + 10-test node:test suite
+- [x] FG4 API service/controller: create accepts general/single/multi (legacy
+      `subjectId` alias kept), update replaces associations (empty → General),
+      cross-institute subjects rejected 400, list/get attach `subjectIds`
+- [x] FG5 Question-generation: approved patterns joined through the junction,
+      signal 2 + blueprint subject-match honor the subject set, General matches
+      any scope
+- [x] FG6 Seed-demo junction-aware upsert + phased-out cleanup
+- [x] FG7 Web: list shows General or subject names; new page multi-subject
+      checkbox list; detail page subject chips editor (add/remove, Make
+      General) for non-approved patterns + footer subjects display;
+      `question-bank-panel` pattern filter uses `subjectIds`
+- [x] FG8 Validation: turbo typecheck 10/10, api+contracts lint clean, web
+      build green, node:test 10 PASS
+- [x] FG9 Docs: tasks.md + project-status.md updated; prettier; graphify
+      update; commit + push + checkpoint report + STOP
+
 ### Goal: H Validation + docs + checkpoint
 
 - [ ] H1 Tests — material prerequisite, idempotency (missing vs regenerate),
       question bank actions, paper pattern config, job monitor prerequisite,
       AI reliability regression
-- [ ] H2 Docs: project-status, tasks.md, docs/api/jobs.md + ai.md + questions.md
-      + paper-patterns.md, user-validation (J1–J7 browser journeys = user)
+- [ ] H2 Docs: project-status, tasks.md, docs/api/jobs.md + ai.md + questions.md + paper-patterns.md, user-validation (J1–J7 browser journeys = user)
 - [ ] H3 Full validation: worker pytest/ruff/mypy, turbo typecheck + lint,
       `resource_ownership_e2e.sh` + `syllabus_e2e.sh` stay green, rebuild +
       --force-recreate affected images
-- [ ] H4 Commits (coherent, one per workstream) + push origin/main + clean tree
-      + checkpoint report + STOP
+- [ ] H4 Commits (coherent, one per workstream) + push origin/main + clean tree + checkpoint report + STOP
 
 ## Phase 30 — Syllabus-First: `syllabi` table + top-level /syllabus (2026-09-13)
 
@@ -836,7 +865,7 @@ Full detail: `.planning/PHASE-ACADEMIC-SCOPE.md`
       (questionType/difficulty/count); one provider call per chunk covering all
       requested quotas; grouping + dedup + slice per bucket
 - [x] P2 API: `GET /questions/bank/stats` (scope-selectable), `POST
-    /questions/generate-more` (deficit vs APPROVED+ACTIVE existing; dryRun
+  /questions/generate-more` (deficit vs APPROVED+ACTIVE existing; dryRun
       returns requested/existing/deficit without queueing; non-dry queues only
       deficits)
 - [x] P2 mock provider: `CONTENT_PACKAGE` + `BANK_QUESTIONS` canned responses +
@@ -1038,7 +1067,7 @@ Make the dockerized app fully verifiable + demo-able from the repo root.
       user-validation.md, architecture/infrastructure.md, development.md,
       AGENTS.md (compose paths + public boundary)
 - [x] Commit `feat(infra): complete testing and docker demonstration
-    readiness` + push + report
+  readiness` + push + report
 
 ## Phase 15 — API Contract Verification (started/closed 2026-09-09)
 
@@ -1218,7 +1247,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       endpoint, teacher ledger, graded result UI, demo E2E)
 - [x] Phase 12 — Examination Analytics (delivered 2026-09-08,
       `feat(analytics): add examination analytics`: `GET
-    /assessments/:assessmentId/analytics`, on-demand summary / score
+  /assessments/:assessmentId/analytics`, on-demand summary / score
       distribution / question accuracy / topic + difficulty performance;
       node:test 12/12, `attempts_e2e.sh` PASS=96, teacher results UI)
 - [x] Phase 13 — Practice System (delivered 2026-09-08, `feat(practice)`:
@@ -1244,7 +1273,7 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
       RabbitMQ publish failure, syllabus extra 400s, content/materials
       archive/activate 201, AGENTS.md health route `GET /api/v1/health`;
       code fixes: removed dead 20MB check in `materials.service.ts
-    validateFile` (multer 413 fires first; unused `MAX_FILE_SIZE` import
+  validateFile` (multer 413 fires first; unused `MAX_FILE_SIZE` import
       dropped), deleted unused `examinations/dto/assessment-query.dto.ts`;
       new `api_contract_e2e.sh` PASS=49 FAIL=0 (CT-01..10),
       regressions attempts 96 / practice 73 / demo 52 / syllabus 39 / p8 86 /

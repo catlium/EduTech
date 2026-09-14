@@ -59,10 +59,7 @@ export class PaperPatternsController {
 
   @Get(':patternId')
   @RequiredRoles(...WRITE_ROLES)
-  async get(
-    @Tenant() tenant: TenantContext,
-    @Param('patternId', ParseUUIDPipe) patternId: string,
-  ) {
+  async get(@Tenant() tenant: TenantContext, @Param('patternId', ParseUUIDPipe) patternId: string) {
     const pattern = await this.paperPatternsService.getPattern(tenant.instituteId, patternId);
     return { pattern };
   }

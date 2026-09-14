@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
 
 import {
   Breadcrumb,
@@ -8,7 +8,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+} from '@/components/ui/breadcrumb';
 
 export function AppBreadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
   return (

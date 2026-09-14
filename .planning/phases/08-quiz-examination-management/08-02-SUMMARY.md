@@ -174,6 +174,7 @@ None - no external service configuration required.
 ## Self-Check: PASSED
 
 Verified before metadata commit:
+
 - FOUND: `apps/api/src/examinations/dto/update-assessment.dto.ts`
 - FOUND: `apps/api/src/examinations/dto/add-questions.dto.ts`
 - FOUND: `apps/api/src/examinations/examinations.service.ts` (updateAssessment, deleteAssessment, addQuestions, listQuestions, removeQuestion)
@@ -183,11 +184,13 @@ Verified before metadata commit:
 - PASS: pnpm typecheck && pnpm lint after all tasks
 
 ---
-*Phase: 08-quiz-examination-management — Plan 02*
-*Completed: 2026-09-05*
+
+_Phase: 08-quiz-examination-management — Plan 02_
+_Completed: 2026-09-05_
 
 ## Self-Check: PASSED (append)
 
 Verified after metadata commits:
+
 - FOUND: commit `4e05f3d` (STATE/ROADMAP/REQUIREMENTS update)
 - FOUND: STATE.md progress advanced (completed_plans 6, percent 75), ROADMAP 08-02 marked ✓, REQUIREMENTS EXAM-02 + phase-8 section IN PROGRESS

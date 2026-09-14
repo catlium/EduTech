@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  HttpCode,
-  HttpStatus,
-  Body,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, HttpCode, HttpStatus, Body, UseGuards } from '@nestjs/common';
 
 import { QuestionTypesService } from './question-types.service.js';
 import { CreateQuestionTypeDto } from './dto/create-question-type.dto.js';

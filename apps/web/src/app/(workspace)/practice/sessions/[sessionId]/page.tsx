@@ -1,26 +1,26 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, Eye, Pencil, RotateCcw, X } from "lucide-react";
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { ArrowLeft, ArrowRight, Check, Eye, Pencil, RotateCcw, X } from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { useTenant } from "@/lib/tenant";
-import type { PracticeSessionDetail, PracticeSessionItem } from "@catlium/contracts";
-import { PageHeader } from "@/components/app/page-header";
-import { EmptyState } from "@/components/app/empty-state";
-import { ErrorState } from "@/components/app/error-state";
-import { ConfirmDialog } from "@/components/app/confirm-dialog";
-import { SkeletonRows } from "@/components/app/loading";
-import { StatusBadge } from "@/components/app/status-badge";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { api, ApiError } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { useTenant } from '@/lib/tenant';
+import type { PracticeSessionDetail, PracticeSessionItem } from '@catlium/contracts';
+import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
+import { ErrorState } from '@/components/app/error-state';
+import { ConfirmDialog } from '@/components/app/confirm-dialog';
+import { SkeletonRows } from '@/components/app/loading';
+import { StatusBadge } from '@/components/app/status-badge';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 type Item = PracticeSessionItem & {
   payload?: { choices?: Array<{ id: string; text: string }>; [key: string]: unknown };
@@ -32,40 +32,41 @@ function choiceList(item: Item): Array<{ id: string; text: string }> {
   const choices = item.payload?.choices;
   return Array.isArray(choices)
     ? choices.filter(
-        (c): c is { id: string; text: string } => typeof c?.id === "string" && typeof c?.text === "string",
+        (c): c is { id: string; text: string } =>
+          typeof c?.id === 'string' && typeof c?.text === 'string',
       )
     : [];
 }
 
 function answerText(item: Item): string {
   const a = item.answer as Answer | undefined;
-  if (!a) return "Not answered";
-  if (item.questionType === "MCQ") {
+  if (!a) return 'Not answered';
+  if (item.questionType === 'MCQ') {
     const label = choiceList(item).find((c) => c.id === a.choiceId);
-    return label ? label.text : "Selected option";
+    return label ? label.text : 'Selected option';
   }
-  if (item.questionType === "TRUE_FALSE") {
-    return typeof a.value === "boolean" ? (a.value ? "True" : "False") : "Not answered";
+  if (item.questionType === 'TRUE_FALSE') {
+    return typeof a.value === 'boolean' ? (a.value ? 'True' : 'False') : 'Not answered';
   }
-  return typeof a.value === "string" && a.value ? a.value : "Not answered";
+  return typeof a.value === 'string' && a.value ? a.value : 'Not answered';
 }
 
 function revealText(item: Item): string {
-  if (!item.reveal) return "—";
+  if (!item.reveal) return '—';
   let parsed: Answer;
   try {
     parsed = JSON.parse(item.reveal) as Answer;
   } catch {
     return item.reveal;
   }
-  if (item.questionType === "MCQ") {
+  if (item.questionType === 'MCQ') {
     const label = choiceList(item).find((c) => c.id === parsed.choiceId);
-    return label ? label.text : "Selected option";
+    return label ? label.text : 'Selected option';
   }
-  if (item.questionType === "TRUE_FALSE") {
-    return typeof parsed.value === "boolean" ? (parsed.value ? "True" : "False") : "—";
+  if (item.questionType === 'TRUE_FALSE') {
+    return typeof parsed.value === 'boolean' ? (parsed.value ? 'True' : 'False') : '—';
   }
-  return typeof parsed.value === "string" ? parsed.value : "—";
+  return typeof parsed.value === 'string' ? parsed.value : '—';
 }
 
 function AnsweredFeedback({ item }: { item: Item }) {
@@ -104,18 +105,18 @@ function ReviewCard({ item, index }: { item: Item; index: number }) {
             item.isCorrect !== undefined ? (
               <span
                 className={cn(
-                  "flex items-center gap-1 text-xs font-medium",
-                  item.isCorrect ? "text-emerald-600" : "text-destructive",
+                  'flex items-center gap-1 text-xs font-medium',
+                  item.isCorrect ? 'text-emerald-600' : 'text-destructive',
                 )}
               >
                 {item.isCorrect ? <Check className="size-3.5" /> : <X className="size-3.5" />}
-                {item.isCorrect ? "Correct" : "Incorrect"}
+                {item.isCorrect ? 'Correct' : 'Incorrect'}
               </span>
             ) : (
               <span className="text-xs font-medium text-muted-foreground">Not answered</span>
             )
           ) : item.rating ? (
-            <Badge variant={item.rating === "GOOD" ? "default" : "secondary"}>{item.rating}</Badge>
+            <Badge variant={item.rating === 'GOOD' ? 'default' : 'secondary'}>{item.rating}</Badge>
           ) : null}
         </div>
         <p className="text-sm leading-relaxed">{item.prompt}</p>
@@ -144,17 +145,17 @@ function FlashcardItem({
   flipped: boolean;
   saving: boolean;
   onFlip: () => void;
-  onRate: (rating: "AGAIN" | "GOOD") => void;
+  onRate: (rating: 'AGAIN' | 'GOOD') => void;
 }) {
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-2">
           <span className="text-xs uppercase tracking-wide text-muted-foreground">
-            {flipped ? "Back" : "Front"}
+            {flipped ? 'Back' : 'Front'}
           </span>
           {item.rating && (
-            <Badge variant={item.rating === "GOOD" ? "default" : "secondary"}>{item.rating}</Badge>
+            <Badge variant={item.rating === 'GOOD' ? 'default' : 'secondary'}>{item.rating}</Badge>
           )}
         </div>
         <p className="text-sm leading-relaxed">{flipped ? item.reveal : item.prompt}</p>
@@ -164,10 +165,10 @@ function FlashcardItem({
           </Button>
         ) : (
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={saving} onClick={() => onRate("AGAIN")}>
+            <Button size="sm" variant="outline" disabled={saving} onClick={() => onRate('AGAIN')}>
               <RotateCcw className="mr-1 size-3.5" /> Again
             </Button>
-            <Button size="sm" disabled={saving} onClick={() => onRate("GOOD")}>
+            <Button size="sm" disabled={saving} onClick={() => onRate('GOOD')}>
               <Check className="mr-1 size-3.5" /> Good
             </Button>
           </div>
@@ -186,7 +187,7 @@ function McqChoices({
   answering: boolean;
   onAnswer: (a: Answer) => void;
 }) {
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState('');
   return (
     <div className="space-y-3">
       <div className="space-y-2">
@@ -197,9 +198,9 @@ function McqChoices({
             disabled={answering}
             onClick={() => setSelected(c.id)}
             className={cn(
-              "w-full rounded-md border p-3 text-left text-sm",
-              selected === c.id && "border-primary bg-primary/5",
-              answering && "opacity-60",
+              'w-full rounded-md border p-3 text-left text-sm',
+              selected === c.id && 'border-primary bg-primary/5',
+              answering && 'opacity-60',
             )}
           >
             <span className="mr-1 text-muted-foreground">{String.fromCharCode(65 + i)}.</span>
@@ -207,8 +208,12 @@ function McqChoices({
           </button>
         ))}
       </div>
-      <Button size="sm" disabled={!selected || answering} onClick={() => onAnswer({ choiceId: selected })}>
-        {answering ? "Saving…" : "Answer"}
+      <Button
+        size="sm"
+        disabled={!selected || answering}
+        onClick={() => onAnswer({ choiceId: selected })}
+      >
+        {answering ? 'Saving…' : 'Answer'}
       </Button>
     </div>
   );
@@ -230,9 +235,9 @@ function TrueFalseChoices({
           disabled={answering}
           onClick={() => setValue(true)}
           className={cn(
-            "rounded-md border p-3 text-sm",
-            value === true && "border-primary bg-primary/5",
-            answering && "opacity-60",
+            'rounded-md border p-3 text-sm',
+            value === true && 'border-primary bg-primary/5',
+            answering && 'opacity-60',
           )}
         >
           True
@@ -242,9 +247,9 @@ function TrueFalseChoices({
           disabled={answering}
           onClick={() => setValue(false)}
           className={cn(
-            "rounded-md border p-3 text-sm",
-            value === false && "border-primary bg-primary/5",
-            answering && "opacity-60",
+            'rounded-md border p-3 text-sm',
+            value === false && 'border-primary bg-primary/5',
+            answering && 'opacity-60',
           )}
         >
           False
@@ -255,7 +260,7 @@ function TrueFalseChoices({
         disabled={value === null || answering}
         onClick={() => value !== null && onAnswer({ value })}
       >
-        {answering ? "Saving…" : "Answer"}
+        {answering ? 'Saving…' : 'Answer'}
       </Button>
     </div>
   );
@@ -268,7 +273,7 @@ function FillBlankInput({
   answering: boolean;
   onAnswer: (a: Answer) => void;
 }) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState('');
   return (
     <div className="space-y-3">
       <div className="grid gap-2">
@@ -278,7 +283,7 @@ function FillBlankInput({
           placeholder="Type your answer…"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && draft && !answering) onAnswer({ value: draft });
+            if (e.key === 'Enter' && draft && !answering) onAnswer({ value: draft });
           }}
         />
       </div>
@@ -287,7 +292,7 @@ function FillBlankInput({
         disabled={!draft.trim() || answering}
         onClick={() => onAnswer({ value: draft })}
       >
-        {answering ? "Saving…" : "Save"}
+        {answering ? 'Saving…' : 'Save'}
       </Button>
     </div>
   );
@@ -302,8 +307,9 @@ function QuestionAnswerer({
   answering: boolean;
   onAnswer: (a: Answer) => void;
 }) {
-  if (item.questionType === "MCQ") return <McqChoices item={item} answering={answering} onAnswer={onAnswer} />;
-  if (item.questionType === "TRUE_FALSE")
+  if (item.questionType === 'MCQ')
+    return <McqChoices item={item} answering={answering} onAnswer={onAnswer} />;
+  if (item.questionType === 'TRUE_FALSE')
     return <TrueFalseChoices answering={answering} onAnswer={onAnswer} />;
   return <FillBlankInput answering={answering} onAnswer={onAnswer} />;
 }
@@ -332,11 +338,11 @@ export default function PracticeSessionPage() {
     })
       .then(({ session }) => setSession(session))
       .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         if (err instanceof ApiError && err.status === 404) {
-          setError("notfound");
+          setError('notfound');
         } else {
-          setError(err instanceof ApiError ? err.message : "Failed to load session");
+          setError(err instanceof ApiError ? err.message : 'Failed to load session');
         }
       })
       .finally(() => setLoading(false));
@@ -348,10 +354,12 @@ export default function PracticeSessionPage() {
   }, [load]);
 
   const items = session?.items ?? [];
-  const answeredCount = items.filter((i) => i.rating !== undefined || i.answer !== undefined).length;
+  const answeredCount = items.filter(
+    (i) => i.rating !== undefined || i.answer !== undefined,
+  ).length;
   const correctCount = items.filter((i) => i.isCorrect === true).length;
   const current = items[index];
-  const isFlashcard = session?.mode === "FLASHCARD";
+  const isFlashcard = session?.mode === 'FLASHCARD';
 
   function replaceItem(updated: Item) {
     setSession((prev) =>
@@ -359,18 +367,18 @@ export default function PracticeSessionPage() {
     );
   }
 
-  async function rate(itemId: string, rating: "AGAIN" | "GOOD", advance: () => void) {
+  async function rate(itemId: string, rating: 'AGAIN' | 'GOOD', advance: () => void) {
     setSaving(itemId);
     try {
       const { item } = await api<{ item: Item }>(
         `/practice/sessions/${params.sessionId}/items/${itemId}`,
-        { method: "PUT", body: { rating } },
+        { method: 'PUT', body: { rating } },
       );
       replaceItem(item);
       setCardFlipped(false);
       advance();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to save rating");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to save rating');
     } finally {
       setSaving(null);
     }
@@ -381,12 +389,12 @@ export default function PracticeSessionPage() {
     try {
       const { item } = await api<{ item: Item }>(
         `/practice/sessions/${params.sessionId}/items/${itemId}`,
-        { method: "PUT", body: { answer } },
+        { method: 'PUT', body: { answer } },
       );
       replaceItem(item);
       setEditingId(null);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to save answer");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to save answer');
     } finally {
       setSaving(null);
     }
@@ -395,12 +403,12 @@ export default function PracticeSessionPage() {
   async function completeSession() {
     setCompleting(true);
     try {
-      await api(`/practice/sessions/${params.sessionId}/complete`, { method: "POST" });
+      await api(`/practice/sessions/${params.sessionId}/complete`, { method: 'POST' });
       setConfirmOpen(false);
       setSession(null);
       await load();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to complete session");
+      toast.error(err instanceof ApiError ? err.message : 'Failed to complete session');
     } finally {
       setCompleting(false);
     }
@@ -421,7 +429,7 @@ export default function PracticeSessionPage() {
     );
   }
 
-  if (error === "notfound") {
+  if (error === 'notfound') {
     return (
       <div>
         <PageHeader title="Practice" />
@@ -442,18 +450,18 @@ export default function PracticeSessionPage() {
     return (
       <div>
         <PageHeader title="Practice" />
-        <ErrorState description={error ?? "Failed to load session"} onRetry={load} />
+        <ErrorState description={error ?? 'Failed to load session'} onRetry={load} />
       </div>
     );
   }
 
   const allAnswered = answeredCount === items.length && items.length > 0;
-  const completed = session.status === "COMPLETED";
+  const completed = session.status === 'COMPLETED';
 
   return (
     <div>
       <PageHeader
-        title={isFlashcard ? "Flashcard practice" : "Question practice"}
+        title={isFlashcard ? 'Flashcard practice' : 'Question practice'}
         description={
           session.completedAt
             ? `Completed on ${new Date(session.completedAt).toLocaleString()}`
@@ -612,12 +620,12 @@ export default function PracticeSessionPage() {
                         type="button"
                         onClick={() => setIndex(i)}
                         className={cn(
-                          "flex h-9 items-center justify-center rounded-md border text-sm",
+                          'flex h-9 items-center justify-center rounded-md border text-sm',
                           i === index
-                            ? "border-primary bg-primary text-primary-foreground"
+                            ? 'border-primary bg-primary text-primary-foreground'
                             : answered
-                              ? "border-primary/40 text-primary"
-                              : "text-muted-foreground",
+                              ? 'border-primary/40 text-primary'
+                              : 'text-muted-foreground',
                         )}
                       >
                         {i + 1}
@@ -656,10 +664,10 @@ export default function PracticeSessionPage() {
         title="Complete this session?"
         description={
           allAnswered
-            ? "All items are answered. Completing closes the session and shows your review."
+            ? 'All items are answered. Completing closes the session and shows your review.'
             : `${items.length - answeredCount} item(s) unanswered. You can complete now or keep practicing — completed sessions are read-only.`
         }
-        confirmLabel={completing ? "Completing…" : "Complete"}
+        confirmLabel={completing ? 'Completing…' : 'Complete'}
         loading={completing}
         onConfirm={() => void completeSession()}
       />

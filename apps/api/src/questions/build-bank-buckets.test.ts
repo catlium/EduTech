@@ -32,7 +32,10 @@ test('no type or difficulty is ever dropped when count is small', () => {
     difficultyDistribution: { EASY: 30, MEDIUM: 40, HARD: 30 },
   });
   assert.ok(buckets.length >= 3);
-  assert.equal(buckets.reduce((s, b) => s + b.count, 0), 3);
+  assert.equal(
+    buckets.reduce((s, b) => s + b.count, 0),
+    3,
+  );
 });
 
 test('defaults: no distribution -> MCQs at MEDIUM', () => {
@@ -63,6 +66,9 @@ test('blueprint sections become quota buckets and unmet sections are skipped', (
   assert.equal(byKey.get('MCQ|EASY'), 2);
   assert.equal(byKey.get('MCQ|MEDIUM'), 2);
   assert.equal(byKey.get('TRUE_FALSE|MEDIUM'), 2);
-  assert.equal(buckets.reduce((s, b) => s + b.count, 0), 6);
+  assert.equal(
+    buckets.reduce((s, b) => s + b.count, 0),
+    6,
+  );
   assert.ok([...byKey.keys()].every((k) => !k.startsWith('MCQ|HARD')));
 });

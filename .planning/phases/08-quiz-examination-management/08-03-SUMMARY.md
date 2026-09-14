@@ -24,9 +24,9 @@ affects:
 
 # Actuals (#2632) — pairs with the plan's `estimate` (52000 tokens) to calibrate future estimates.
 actuals:
-  tokens: 2376  # chars/4 over realized diff (9,503 diff chars across the two feat commits + docs commit)
-  tasks: 3      # tasks completed (Task 3 = verification sweep, no code diff beyond a docs gap fix)
-  commits: 4    # commits made (2 task feat + 1 docs + 1 metadata)
+  tokens: 2376 # chars/4 over realized diff (9,503 diff chars across the two feat commits + docs commit)
+  tasks: 3 # tasks completed (Task 3 = verification sweep, no code diff beyond a docs gap fix)
+  commits: 4 # commits made (2 task feat + 1 docs + 1 metadata)
 
 # Tech tracking
 tech-stack:
@@ -46,17 +46,17 @@ key-files:
 
 key-decisions:
   - "Re-publish on an already-PUBLISHED assessment is rejected with 400 (Cannot transition PUBLISHED to PUBLISHED) — chosen over no-op re-validation per plan truth 'choose rejected (400) for clarity'"
-  - "complete accepts from ACTIVE only (400 from DRAFT/PUBLISHED) — no implicit ACTIVE intermediate step, per plan truth; ACTIVE is reachable only via the manual activate endpoint"
-  - "activate is manual (no cron) — schedule remains advisory and read-time checked (research A1); auto-activation deferred to Phase 9 if ever needed"
-  - "Publish gate reads approvalStatus via the existing listQuestions internal query (INNER JOIN scoped by instituteId) — no new query shape needed, Pitfall 1 satisfied"
-  - "Docs gap found in Task 3: docs/api/assessments.md documented publish/complete (written ahead in 08-01) but not activate/unpublish — added both sections in a separate docs commit"
+  - 'complete accepts from ACTIVE only (400 from DRAFT/PUBLISHED) — no implicit ACTIVE intermediate step, per plan truth; ACTIVE is reachable only via the manual activate endpoint'
+  - 'activate is manual (no cron) — schedule remains advisory and read-time checked (research A1); auto-activation deferred to Phase 9 if ever needed'
+  - 'Publish gate reads approvalStatus via the existing listQuestions internal query (INNER JOIN scoped by instituteId) — no new query shape needed, Pitfall 1 satisfied'
+  - 'Docs gap found in Task 3: docs/api/assessments.md documented publish/complete (written ahead in 08-01) but not activate/unpublish — added both sections in a separate docs commit'
 
 requirements-completed: [EXAM-05, EXAM-06, EXAM-07, EXAM-08]
 
 # Coverage metadata (#1602) — one entry per shipped deliverable.
 coverage:
   - id: D1
-    description: "POST /api/v1/assessments/:assessmentId/publish transitions DRAFT→PUBLISHED only when the gate passes: ≥1 linked question, every linked question currently APPROVED (re-checked at publish, Pitfall 1), durationMinutes > 0, maxMarks > 0, startsAt < endsAt when both set; every failure and any non-DRAFT source stays 400"
+    description: 'POST /api/v1/assessments/:assessmentId/publish transitions DRAFT→PUBLISHED only when the gate passes: ≥1 linked question, every linked question currently APPROVED (re-checked at publish, Pitfall 1), durationMinutes > 0, maxMarks > 0, startsAt < endsAt when both set; every failure and any non-DRAFT source stays 400'
     requirement: EXAM-08
     verification:
       - kind: e2e
@@ -68,11 +68,11 @@ coverage:
     requirement: EXAM-06
     verification:
       - kind: e2e
-        ref: "curl: activate PUBLISHED → 200 ACTIVE; complete ACTIVE → 200 COMPLETED; complete again → 400 (terminal); publish on COMPLETED → 400; activate from DRAFT → 400; complete from DRAFT → 400; unpublish from ACTIVE → 400; unpublish PUBLISHED → 200 DRAFT then PATCH works and re-publish → PUBLISHED (round-trip)"
+        ref: 'curl: activate PUBLISHED → 200 ACTIVE; complete ACTIVE → 200 COMPLETED; complete again → 400 (terminal); publish on COMPLETED → 400; activate from DRAFT → 400; complete from DRAFT → 400; unpublish from ACTIVE → 400; unpublish PUBLISHED → 200 DRAFT then PATCH works and re-publish → PUBLISHED (round-trip)'
         status: pass
     human_judgment: false
   - id: D3
-    description: "Server-side transition enforcement via the VALID_TRANSITIONS lookup table (EXAM-07) — no client-driven status, one assertValidTransition guard on every lifecycle endpoint; non-DRAFT question-set/config mutation blocked (addQuestions/removeQuestion/PATCH on PUBLISHED → 400 each)"
+    description: 'Server-side transition enforcement via the VALID_TRANSITIONS lookup table (EXAM-07) — no client-driven status, one assertValidTransition guard on every lifecycle endpoint; non-DRAFT question-set/config mutation blocked (addQuestions/removeQuestion/PATCH on PUBLISHED → 400 each)'
     requirement: EXAM-07
     verification:
       - kind: e2e
@@ -80,7 +80,7 @@ coverage:
         status: pass
     human_judgment: false
   - id: D4
-    description: "Security sweep — student transitions → 403 with reads 200; institute-B teacher transitions on institute-A assessment → 404 each (anti-IDOR on every transition endpoint incl. random uuids); error shape {statusCode, message, error} on all non-2xx"
+    description: 'Security sweep — student transitions → 403 with reads 200; institute-B teacher transitions on institute-A assessment → 404 each (anti-IDOR on every transition endpoint incl. random uuids); error shape {statusCode, message, error} on all non-2xx'
     requirement: EXAM-05
     verification:
       - kind: e2e
@@ -145,6 +145,7 @@ Each task was committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 2 - Docs gap] activate/unpublish endpoints missing from docs/api/assessments.md**
+
 - **Found during:** Task 3
 - **Issue:** 08-01 documented publish/complete ahead of implementation but the plan's two other new endpoints (activate, unpublish) were absent — the docs-driven contract was incomplete for the shipped surface.
 - **Fix:** added `## Activate assessment` and `## Unpublish assessment` sections (roles, transition, manual-no-cron note, 400 conditions).
@@ -172,6 +173,7 @@ None - no external service configuration required.
 ## Self-Check: PASSED
 
 Verified before metadata commit:
+
 - FOUND: `apps/api/src/examinations/examinations.service.ts` (VALID_TRANSITIONS, assertValidTransition, setStatus, publishAssessment, activateAssessment, completeAssessment, unpublishAssessment, DRAFT guards)
 - FOUND: `apps/api/src/examinations/examinations.controller.ts` (POST publish/activate/complete/unpublish)
 - FOUND: `docs/api/assessments.md` (activate + unpublish sections)
@@ -179,11 +181,13 @@ Verified before metadata commit:
 - PASS: pnpm typecheck && pnpm lint after all tasks
 
 ---
-*Phase: 08-quiz-examination-management — Plan 03*
-*Completed: 2026-09-05*
+
+_Phase: 08-quiz-examination-management — Plan 03_
+_Completed: 2026-09-05_
 
 ## Self-Check: PASSED (append)
 
 Verified after metadata commits:
+
 - FOUND: commit `8742a77` (STATE/ROADMAP/REQUIREMENTS update)
 - FOUND: STATE.md progress advanced (completed_plans 7, percent 87), ROADMAP 08-03 marked ✓, REQUIREMENTS EXAM-01..08 complete (EXAM-05..08 via 08-03)

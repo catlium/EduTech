@@ -16,6 +16,7 @@ import {
   materials,
   questions,
   paperPatterns,
+  paperPatternSubjects,
   assessments,
   assessmentQuestions,
   attempts,
@@ -503,7 +504,8 @@ const DEMO_SUBJECTS: DemoSubject[] = [
         stem: 'Partitioning inputs into classes that should be handled equivalently is called',
         type: 'MCQ',
         difficulty: 'MEDIUM',
-        explanation: 'Equivalence partitioning reduces the input space into representative classes.',
+        explanation:
+          'Equivalence partitioning reduces the input space into representative classes.',
         payload: {
           choices: [
             { id: 'st1', text: 'equivalence partitioning' },
@@ -600,8 +602,13 @@ async function scopeChainFromTopic(
 ): Promise<{ chapterId: string; subjectId: string }> {
   const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
   if (!topic) throw new Error(`failed to resolve scope chain: topic ${topicId} not found`);
-  const [chapter] = await db.select().from(chapters).where(eq(chapters.id, topic.chapterId)).limit(1);
-  if (!chapter) throw new Error(`failed to resolve scope chain: chapter ${topic.chapterId} not found`);
+  const [chapter] = await db
+    .select()
+    .from(chapters)
+    .where(eq(chapters.id, topic.chapterId))
+    .limit(1);
+  if (!chapter)
+    throw new Error(`failed to resolve scope chain: chapter ${topic.chapterId} not found`);
   return { chapterId: chapter.id, subjectId: chapter.subjectId };
 }
 
@@ -767,15 +774,23 @@ async function upsertPattern(
   const existing = await db
     .select()
     .from(paperPatterns)
-    .where(and(eq(paperPatterns.subjectId, args.subjectId), eq(paperPatterns.title, args.title)))
+    .where(
+      and(eq(paperPatterns.instituteId, args.instituteId), eq(paperPatterns.title, args.title)),
+    )
     .limit(1);
-  if (existing.length > 0) return existing[0]!;
+  if (existing.length > 0) {
+    // Idempotency: make sure the subject association exists.
+    await db
+      .insert(paperPatternSubjects)
+      .values({ patternId: existing[0]!.id, subjectId: args.subjectId })
+      .onConflictDoNothing();
+    return existing[0]!;
+  }
   const now = new Date();
   const [row] = await db
     .insert(paperPatterns)
     .values({
       instituteId: args.instituteId,
-      subjectId: args.subjectId,
       title: args.title,
       description: args.description,
       status: 'APPROVED',
@@ -789,6 +804,10 @@ async function upsertPattern(
     })
     .returning();
   if (!row) throw new Error(`failed to create pattern ${args.title}`);
+  await db
+    .insert(paperPatternSubjects)
+    .values({ patternId: row.id, subjectId: args.subjectId })
+    .onConflictDoNothing();
   return row;
 }
 
@@ -933,20 +952,30 @@ async function cleanupPhasedOutDemoData(db: ReturnType<typeof createDatabase>) {
   const subjectIds = subjectRows.map((r) => r.id);
 
   const [patternRows, contentRows, topicRows] = await Promise.all([
-    db.select({ id: paperPatterns.id }).from(paperPatterns).where(inArray(paperPatterns.subjectId, subjectIds)),
-    db.select({ id: contentItems.id }).from(contentItems).where(inArray(contentItems.subjectId, subjectIds)),
+    db
+      .select({ patternId: paperPatternSubjects.patternId })
+      .from(paperPatternSubjects)
+      .innerJoin(paperPatterns, eq(paperPatterns.id, paperPatternSubjects.patternId))
+      .where(inArray(paperPatternSubjects.subjectId, subjectIds)),
+    db
+      .select({ id: contentItems.id })
+      .from(contentItems)
+      .where(inArray(contentItems.subjectId, subjectIds)),
     db
       .select({ id: topics.id })
       .from(topics)
       .innerJoin(chapters, eq(topics.chapterId, chapters.id))
       .where(inArray(chapters.subjectId, subjectIds)),
   ]);
-  const patternIds = patternRows.map((r) => r.id);
+  const patternIds = patternRows.map((r) => r.patternId);
   const contentIds = contentRows.map((r) => r.id);
   const topicIds = topicRows.map((r) => r.id);
 
   const assessmentRows = patternIds.length
-    ? await db.select({ id: assessments.id }).from(assessments).where(inArray(assessments.blueprintId, patternIds))
+    ? await db
+        .select({ id: assessments.id })
+        .from(assessments)
+        .where(inArray(assessments.blueprintId, patternIds))
     : [];
   const assessmentIds = assessmentRows.map((r) => r.id);
 
@@ -954,19 +983,27 @@ async function cleanupPhasedOutDemoData(db: ReturnType<typeof createDatabase>) {
   // cascade fails on the restrict FKs (content_id / topic_id).
   const sessionIds = [
     ...(contentIds.length
-      ? await db.select({ id: practiceSessions.id }).from(practiceSessions).where(inArray(practiceSessions.contentId, contentIds))
+      ? await db
+          .select({ id: practiceSessions.id })
+          .from(practiceSessions)
+          .where(inArray(practiceSessions.contentId, contentIds))
       : []),
     ...(topicIds.length
-      ? await db.select({ id: practiceSessions.id }).from(practiceSessions).where(inArray(practiceSessions.topicId, topicIds))
+      ? await db
+          .select({ id: practiceSessions.id })
+          .from(practiceSessions)
+          .where(inArray(practiceSessions.topicId, topicIds))
       : []),
   ].map((r) => r.id);
 
-  if (sessionIds.length) await db.delete(practiceSessions).where(inArray(practiceSessions.id, sessionIds));
+  if (sessionIds.length)
+    await db.delete(practiceSessions).where(inArray(practiceSessions.id, sessionIds));
   if (assessmentIds.length) {
     await db.delete(attempts).where(inArray(attempts.assessmentId, assessmentIds));
     await db.delete(assessments).where(inArray(assessments.id, assessmentIds));
   }
-  if (patternIds.length) await db.delete(paperPatterns).where(inArray(paperPatterns.id, patternIds));
+  if (patternIds.length)
+    await db.delete(paperPatterns).where(inArray(paperPatterns.id, patternIds));
   await db.delete(subjects).where(inArray(subjects.id, subjectIds));
 }
 

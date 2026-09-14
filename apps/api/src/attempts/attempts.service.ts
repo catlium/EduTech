@@ -77,7 +77,8 @@ export class AttemptsService {
       if (typeof choiceId !== 'string' || choiceId.length === 0) {
         throw new BadRequestException('MCQ answer must include a choiceId');
       }
-      const choices = ((payload as { choices?: Array<{ id?: string }> })['choices'] ?? []) as Array<{
+      const choices = ((payload as { choices?: Array<{ id?: string }> })['choices'] ??
+        []) as Array<{
         id?: string;
       }>;
       if (!choices.some((c) => c.id === choiceId)) {
@@ -89,20 +90,28 @@ export class AttemptsService {
       }
     } else if (fmt === 'FILL_IN_BLANK') {
       if (typeof a['value'] !== 'string' || a['value'].length === 0 || a['value'].length > 500) {
-        throw new BadRequestException('FILL_IN_BLANK answer must be a non-empty string (max 500 chars)');
+        throw new BadRequestException(
+          'FILL_IN_BLANK answer must be a non-empty string (max 500 chars)',
+        );
       }
     } else if (fmt === 'MATCHING') {
       const attempted = (a['matches'] ?? {}) as Record<string, string>;
       if (typeof attempted !== 'object' || Array.isArray(attempted)) {
         throw new BadRequestException('MATCHING answer must include a matches map');
       }
-      const left = ((payload as { left?: Array<{ id?: string }> })['left'] ?? []) as Array<{ id?: string }>;
-      const right = ((payload as { right?: Array<{ id?: string }> })['right'] ?? []) as Array<{ id?: string }>;
+      const left = ((payload as { left?: Array<{ id?: string }> })['left'] ?? []) as Array<{
+        id?: string;
+      }>;
+      const right = ((payload as { right?: Array<{ id?: string }> })['right'] ?? []) as Array<{
+        id?: string;
+      }>;
       const leftIds = new Set(left.map((x) => x.id));
       const rightIds = new Set(right.map((x) => x.id));
       for (const [leftId, rightId] of Object.entries(attempted)) {
-        if (!leftIds.has(leftId)) throw new BadRequestException('matches contains an unknown left item');
-        if (!rightIds.has(rightId)) throw new BadRequestException('matches contains an unknown right item');
+        if (!leftIds.has(leftId))
+          throw new BadRequestException('matches contains an unknown left item');
+        if (!rightIds.has(rightId))
+          throw new BadRequestException('matches contains an unknown right item');
       }
     } else if (fmt === 'NUMERICAL') {
       const num = typeof a['value'] === 'number' ? a['value'] : parseFloat(String(a['value']));
@@ -124,12 +133,20 @@ export class AttemptsService {
     return row;
   }
 
-  private async loadOwn(instituteId: string, attemptId: string, studentId: string): Promise<AttemptRow> {
+  private async loadOwn(
+    instituteId: string,
+    attemptId: string,
+    studentId: string,
+  ): Promise<AttemptRow> {
     const [row] = await this.db
       .select()
       .from(attempts)
       .where(
-        and(eq(attempts.id, attemptId), eq(attempts.instituteId, instituteId), eq(attempts.studentId, studentId)),
+        and(
+          eq(attempts.id, attemptId),
+          eq(attempts.instituteId, instituteId),
+          eq(attempts.studentId, studentId),
+        ),
       )
       .limit(1);
     if (!row) throw new NotFoundException('Attempt not found');
@@ -193,7 +210,10 @@ export class AttemptsService {
         .where(eq(attemptResponses.attemptQuestionId, g.attemptQuestionId));
     }
     const score = graded.reduce((sum, g) => sum + g.marksAwarded, 0);
-    await exec.update(attempts).set({ score, updatedAt: new Date() }).where(eq(attempts.id, attemptId));
+    await exec
+      .update(attempts)
+      .set({ score, updatedAt: new Date() })
+      .where(eq(attempts.id, attemptId));
   }
 
   // ── Student endpoints ──────────────────────
@@ -203,7 +223,12 @@ export class AttemptsService {
     const rows = await this.db
       .select()
       .from(assessments)
-      .where(and(eq(assessments.instituteId, instituteId), inArray(assessments.status, [...ATTEMPTABLE_STATUSES])));
+      .where(
+        and(
+          eq(assessments.instituteId, instituteId),
+          inArray(assessments.status, [...ATTEMPTABLE_STATUSES]),
+        ),
+      );
 
     const countsRows = await this.db
       .select({
@@ -217,8 +242,16 @@ export class AttemptsService {
     const inProgressRows = await this.db
       .select({ assessmentId: attempts.assessmentId, attemptId: attempts.id })
       .from(attempts)
-      .where(and(eq(attempts.instituteId, instituteId), eq(attempts.studentId, studentId), eq(attempts.status, 'IN_PROGRESS')));
-    const inProgressByAssessment = new Map(inProgressRows.map((r) => [r.assessmentId, r.attemptId]));
+      .where(
+        and(
+          eq(attempts.instituteId, instituteId),
+          eq(attempts.studentId, studentId),
+          eq(attempts.status, 'IN_PROGRESS'),
+        ),
+      );
+    const inProgressByAssessment = new Map(
+      inProgressRows.map((r) => [r.assessmentId, r.attemptId]),
+    );
 
     const assessmentsOut = rows
       .filter((a) => (a.startsAt ? a.startsAt <= now : true) && (a.endsAt ? a.endsAt >= now : true))
@@ -263,7 +296,12 @@ export class AttemptsService {
         count: sql<number>`count(*)::int`,
       })
       .from(attemptQuestions)
-      .where(inArray(attemptQuestions.attemptId, rows.map((r) => r.id)))
+      .where(
+        inArray(
+          attemptQuestions.attemptId,
+          rows.map((r) => r.id),
+        ),
+      )
       .groupBy(attemptQuestions.attemptId);
     const counts = new Map(countRows.map((r) => [r.attemptId, r.count]));
 
@@ -281,7 +319,9 @@ export class AttemptsService {
     const assessment = await this.getAssessment(instituteId, assessmentId);
 
     const now = new Date();
-    if (!ATTEMPTABLE_STATUSES.includes(assessment.status as (typeof ATTEMPTABLE_STATUSES)[number])) {
+    if (
+      !ATTEMPTABLE_STATUSES.includes(assessment.status as (typeof ATTEMPTABLE_STATUSES)[number])
+    ) {
       throw new BadRequestException('Assessment is not available');
     }
     if (assessment.endsAt && now > assessment.endsAt) {
@@ -330,7 +370,7 @@ export class AttemptsService {
     const totalMarks = links.reduce((sum, l) => sum + l.marks, 0);
     const deadline = assessment.durationMinutes
       ? new Date(now.getTime() + assessment.durationMinutes * 60_000)
-      : assessment.endsAt ?? null;
+      : (assessment.endsAt ?? null);
 
     let attempt: AttemptRow;
     try {
@@ -375,12 +415,20 @@ export class AttemptsService {
 
   /** Student's own attempt detail (sanitized, with their saved answers). */
   async detail(instituteId: string, attemptId: string, studentId: string) {
-    const attempt = await this.refreshAndExpire(await this.loadOwn(instituteId, attemptId, studentId));
+    const attempt = await this.refreshAndExpire(
+      await this.loadOwn(instituteId, attemptId, studentId),
+    );
     return { attempt: await this.serializeDetail(attempt, true) };
   }
 
   /** Save/overwrite a student's answer for one snapshotted question. */
-  async saveResponse(instituteId: string, attemptId: string, studentId: string, attemptQuestionId: string, answer: unknown) {
+  async saveResponse(
+    instituteId: string,
+    attemptId: string,
+    studentId: string,
+    attemptQuestionId: string,
+    answer: unknown,
+  ) {
     const aq = await this.db.transaction(async (tx) => {
       const [locked] = await tx
         .select()
@@ -414,7 +462,12 @@ export class AttemptsService {
       const [aq] = await tx
         .select()
         .from(attemptQuestions)
-        .where(and(eq(attemptQuestions.id, attemptQuestionId), eq(attemptQuestions.attemptId, attemptId)))
+        .where(
+          and(
+            eq(attemptQuestions.id, attemptQuestionId),
+            eq(attemptQuestions.attemptId, attemptId),
+          ),
+        )
         .limit(1);
       if (!aq) throw new NotFoundException('Question not found in this attempt');
 
@@ -437,7 +490,9 @@ export class AttemptsService {
 
   /** Explicit, idempotent submit. Once submitted (or expired) returns unchanged. */
   async submit(instituteId: string, attemptId: string, studentId: string) {
-    let attempt = await this.refreshAndExpire(await this.loadOwn(instituteId, attemptId, studentId));
+    let attempt = await this.refreshAndExpire(
+      await this.loadOwn(instituteId, attemptId, studentId),
+    );
 
     if (attempt.status === 'IN_PROGRESS') {
       attempt = await this.db.transaction(async (tx) => {
@@ -466,7 +521,9 @@ export class AttemptsService {
    * correct answer for post-submission review.
    */
   async result(instituteId: string, attemptId: string, studentId: string) {
-    const attempt = await this.refreshAndExpire(await this.loadOwn(instituteId, attemptId, studentId));
+    const attempt = await this.refreshAndExpire(
+      await this.loadOwn(instituteId, attemptId, studentId),
+    );
     if (attempt.status === 'IN_PROGRESS') {
       throw new BadRequestException('Attempt has not been submitted yet');
     }
@@ -619,7 +676,9 @@ export class AttemptsService {
         .select()
         .from(attemptResponses)
         .where(eq(attemptResponses.attemptId, attempt.id));
-      answerMap = new Map(responses.map((r) => [r.attemptQuestionId, r.answer as Record<string, unknown>]));
+      answerMap = new Map(
+        responses.map((r) => [r.attemptQuestionId, r.answer as Record<string, unknown>]),
+      );
     }
 
     const questionsOut = aqRows.map((aq) => ({

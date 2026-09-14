@@ -15,7 +15,16 @@ function section(
   name: string,
   overrides: Partial<PaperPatternSection> = {},
 ): PaperPatternSection {
-  return { id, name, questionType: 'MCQ', count: 10, marksPerQuestion: 1, totalMarks: 10, compulsory: true, ...overrides };
+  return {
+    id,
+    name,
+    questionType: 'MCQ',
+    count: 10,
+    marksPerQuestion: 1,
+    totalMarks: 10,
+    compulsory: true,
+    ...overrides,
+  };
 }
 
 function structure(overrides: Partial<PaperPatternStructure> = {}): PaperPatternStructure {
@@ -41,7 +50,9 @@ test('valid blueprint passes with no errors', () => {
 });
 
 test('section total that does not match count x marks is rejected', () => {
-  const s = structure({ sections: [section(`${UUID}1`, 'A', { count: 10, marksPerQuestion: 1, totalMarks: 99 })] });
+  const s = structure({
+    sections: [section(`${UUID}1`, 'A', { count: 10, marksPerQuestion: 1, totalMarks: 99 })],
+  });
   const errors = validatePaperPatternStructure(s);
   assert.ok(errors.length > 0, 'expected an error');
   assert.match(errors[0]!, /99 does not match 10/);

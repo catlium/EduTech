@@ -174,18 +174,18 @@ export default function PatternBuilderPage() {
     setStructureLoaded(true);
   }
 
-  /* ── subject name ── */
-  const [subjectName, setSubjectName] = useState('');
+  /* ── subject scope ── */
+  const [allSubjects, setAllSubjects] = useState<SubjectResponse[]>([]);
   useEffect(() => {
-    if (!institute || !pattern) return;
+    if (!institute) return;
     const ctrl = new AbortController();
     api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal: ctrl.signal })
-      .then(({ subjects }) => {
-        setSubjectName(subjects.find((s) => s.id === pattern.subjectId)?.name ?? '');
-      })
+      .then(({ subjects }) => setAllSubjects(subjects))
       .catch(() => {});
     return () => ctrl.abort();
-  }, [institute, pattern?.subjectId]);
+  }, [institute]);
+  const subjectName = (id: string) =>
+    allSubjects.find((s) => s.id === id)?.name ?? 'Unknown subject';
 
   /* ── materials for analyze dialog ── */
   useEffect(() => {
@@ -288,6 +288,30 @@ export default function PatternBuilderPage() {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  /* ── subject associations (multi-select / General) ── */
+  const [savingSubjects, setSavingSubjects] = useState(false);
+  async function onSaveSubjects(subjectIds: string[]) {
+    if (!pattern) return;
+    setSavingSubjects(true);
+    try {
+      const { pattern: updated } = await api<{ pattern: PaperPattern }>(
+        `/paper-patterns/${pattern.id}`,
+        { method: 'PATCH', body: { subjectIds, version: pattern.version } },
+      );
+      setPattern(updated);
+      toast.success(subjectIds.length === 0 ? 'Pattern is now General' : 'Subjects updated');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        toast.error('Changed by someone else — reloaded');
+        void loadPattern();
+      } else {
+        toast.error(err instanceof ApiError ? err.message : 'Failed to update subjects');
+      }
+    } finally {
+      setSavingSubjects(false);
     }
   }
 
@@ -594,6 +618,74 @@ export default function PatternBuilderPage() {
           />
           <StatCard icon={Clock} label="Duration" value={durationLabel} />
         </div>
+
+        {/* subject scope */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Subjects</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {pattern.subjectIds.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                General pattern — reusable across any subject.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {pattern.subjectIds.map((id) => (
+                  <Badge key={id} variant="secondary">
+                    {subjectName(id)}
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        className="ml-1 cursor-pointer text-muted-foreground hover:text-foreground"
+                        disabled={savingSubjects}
+                        onClick={() => onSaveSubjects(pattern.subjectIds.filter((s) => s !== id))}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {!readOnly && allSubjects.length > 0 && (
+              <Select
+                value=""
+                onValueChange={(id) => {
+                  if (id && !pattern.subjectIds.includes(id)) {
+                    void onSaveSubjects([...pattern.subjectIds, id]);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Add subject…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allSubjects.map((s) => (
+                    <SelectItem
+                      key={s.id}
+                      value={s.id}
+                      disabled={pattern.subjectIds.includes(s.id)}
+                    >
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {!readOnly && pattern.subjectIds.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={savingSubjects}
+                onClick={() => onSaveSubjects([])}
+              >
+                Make General
+              </Button>
+            )}
+          </CardContent>
+        </Card>
 
         {/* blueprint editor */}
         <Card>
@@ -1022,7 +1114,11 @@ export default function PatternBuilderPage() {
           <Badge variant="secondary">v{pattern.version}</Badge>
           <span>Created {formatDate(pattern.createdAt)}</span>
           <span>Updated {formatDate(pattern.updatedAt)}</span>
-          {subjectName && <span>{subjectName}</span>}
+          {pattern.subjectIds.length === 0 ? (
+            <span>General</span>
+          ) : (
+            <span>{pattern.subjectIds.map(subjectName).join(', ')}</span>
+          )}
         </div>
 
         {/* ── Review & Save dialog ── */}

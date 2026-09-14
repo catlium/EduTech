@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import Link from 'next/link';
+import { useEffect, useState, useCallback } from 'react';
 import {
   BookOpen,
   FileText,
@@ -12,31 +12,31 @@ import {
   Sparkles,
   FileCheck,
   ChevronRight,
-} from "lucide-react";
+} from 'lucide-react';
 
-import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import { canManage, useTenant } from "@/lib/tenant";
-import { formatDateTime } from "@/lib/utils";
-import { PageHeader } from "@/components/app/page-header";
-import { SubjectCard } from "@/components/app/subject-card";
-import { EmptyState } from "@/components/app/empty-state";
-import { SectionHeader } from "@/components/app/section-header";
-import { StatCard } from "@/components/app/stat-card";
-import { StatusBadge } from "@/components/app/status-badge";
-import { SkeletonCards, SkeletonRows } from "@/components/app/loading";
-import { ErrorState } from "@/components/app/error-state";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { canManage, useTenant } from '@/lib/tenant';
+import { formatDateTime } from '@/lib/utils';
+import { PageHeader } from '@/components/app/page-header';
+import { SubjectCard } from '@/components/app/subject-card';
+import { EmptyState } from '@/components/app/empty-state';
+import { SectionHeader } from '@/components/app/section-header';
+import { StatCard } from '@/components/app/stat-card';
+import { StatusBadge } from '@/components/app/status-badge';
+import { SkeletonCards, SkeletonRows } from '@/components/app/loading';
+import { ErrorState } from '@/components/app/error-state';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import type {
   SubjectResponse,
   MaterialResponse,
   QuestionListItem,
   AssessmentListItem,
-} from "@catlium/contracts";
+} from '@catlium/contracts';
 
-const PROCESSING_STATUSES = new Set(["UPLOADED", "QUEUED", "PROCESSING"]);
+const PROCESSING_STATUSES = new Set(['UPLOADED', 'QUEUED', 'PROCESSING']);
 
 export default function DashboardPage() {
   const { institute } = useTenant();
@@ -50,7 +50,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const firstName = user?.name?.split(" ")[0] ?? "there";
+  const firstName = user?.name?.split(' ')[0] ?? 'there';
 
   const fetchData = useCallback(
     (signal?: AbortSignal) => {
@@ -58,10 +58,10 @@ export default function DashboardPage() {
       setLoading(true);
       setError(false);
       void Promise.all([
-        api<{ subjects: SubjectResponse[] }>("/academic/subjects", { signal }),
-        api<{ materials: MaterialResponse[] }>("/materials", { signal }),
-        api<{ questions: QuestionListItem[] }>("/questions", { signal }),
-        api<{ assessments: AssessmentListItem[] }>("/assessments", { signal }),
+        api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal }),
+        api<{ materials: MaterialResponse[] }>('/materials', { signal }),
+        api<{ questions: QuestionListItem[] }>('/questions', { signal }),
+        api<{ assessments: AssessmentListItem[] }>('/assessments', { signal }),
       ])
         .then(([s, m, q, a]) => {
           setSubjects(s.subjects);
@@ -71,7 +71,7 @@ export default function DashboardPage() {
           setLoading(false);
         })
         .catch((err: unknown) => {
-          if (err instanceof DOMException && err.name === "AbortError") return;
+          if (err instanceof DOMException && err.name === 'AbortError') return;
           setError(true);
           setLoading(false);
         });
@@ -106,12 +106,10 @@ export default function DashboardPage() {
     );
   }
 
-  const processingMaterials = materials.filter((m) =>
-    PROCESSING_STATUSES.has(m.processingStatus),
-  );
+  const processingMaterials = materials.filter((m) => PROCESSING_STATUSES.has(m.processingStatus));
   const hasProcessing = processingMaterials.length > 0;
 
-const pendingQuestions = questions.filter((q) => q.approvalStatus === "PENDING");
+  const pendingQuestions = questions.filter((q) => q.approvalStatus === 'PENDING');
 
   return (
     <div className="space-y-8">
@@ -128,18 +126,8 @@ const pendingQuestions = questions.filter((q) => q.approvalStatus === "PENDING")
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          icon={BookOpen}
-          label="Subjects"
-          value={subjects.length}
-          href="/subjects"
-        />
-        <StatCard
-          icon={FileText}
-          label="Materials"
-          value={materials.length}
-          href="/materials"
-        />
+        <StatCard icon={BookOpen} label="Subjects" value={subjects.length} href="/subjects" />
+        <StatCard icon={FileText} label="Materials" value={materials.length} href="/materials" />
         <StatCard
           icon={HelpCircle}
           label="Questions"
@@ -237,9 +225,7 @@ const pendingQuestions = questions.filter((q) => q.approvalStatus === "PENDING")
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            No materials currently processing
-          </p>
+          <p className="text-sm text-muted-foreground">No materials currently processing</p>
         )}
       </section>
 
@@ -266,7 +252,7 @@ const pendingQuestions = questions.filter((q) => q.approvalStatus === "PENDING")
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{assessment.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {assessment.questionCount} question{assessment.questionCount !== 1 ? "s" : ""}
+                      {assessment.questionCount} question{assessment.questionCount !== 1 ? 's' : ''}
                     </p>
                   </div>
                   <StatusBadge status={assessment.status} />

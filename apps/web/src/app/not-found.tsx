@@ -1,8 +1,8 @@
-import { Compass } from "lucide-react";
-import Link from "next/link";
+import { Compass } from 'lucide-react';
+import Link from 'next/link';
 
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/app/empty-state";
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/app/empty-state';
 
 export default function NotFound() {
   return (

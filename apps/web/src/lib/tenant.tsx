@@ -1,18 +1,11 @@
-"use client";
+'use client';
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
-import { useRouter } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 
-import { setActiveInstituteId } from "./api";
-import { useAuth } from "./auth";
-import type { MembershipListItem } from "@catlium/contracts";
+import { setActiveInstituteId } from './api';
+import { useAuth } from './auth';
+import type { MembershipListItem } from '@catlium/contracts';
 
 interface TenantState {
   instituteId: string | null;
@@ -21,13 +14,13 @@ interface TenantState {
 }
 
 const TenantContext = createContext<TenantState | null>(null);
-const STORAGE_KEY = "catlium:instituteId";
+const STORAGE_KEY = 'catlium:instituteId';
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const { memberships, loading, user } = useAuth();
   const router = useRouter();
   const [instituteId, setInstituteId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
+    if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(STORAGE_KEY);
   });
 
@@ -46,7 +39,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(STORAGE_KEY, effective.instituteId);
       setInstituteId(effective.instituteId);
     } else if (!instituteId) {
-      router.replace("/institutes");
+      router.replace('/institutes');
     }
   }, [effective, instituteId, loading, router, user]);
 
@@ -55,7 +48,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(STORAGE_KEY, institute.instituteId);
       setActiveInstituteId(institute.instituteId);
       setInstituteId(institute.instituteId);
-      router.replace("/dashboard");
+      router.replace('/dashboard');
     },
     [router],
   );
@@ -69,16 +62,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
 export function useTenant(): TenantState {
   const ctx = useContext(TenantContext);
-  if (!ctx) throw new Error("useTenant must be used within TenantProvider");
+  if (!ctx) throw new Error('useTenant must be used within TenantProvider');
   return ctx;
 }
 
 export function isInstituteAdmin(institute: MembershipListItem | null): boolean {
-  return institute?.roles.includes("INSTITUTE_ADMIN") ?? false;
+  return institute?.roles.includes('INSTITUTE_ADMIN') ?? false;
 }
 
 export function isTeacher(institute: MembershipListItem | null): boolean {
-  return institute?.roles.includes("TEACHER") ?? false;
+  return institute?.roles.includes('TEACHER') ?? false;
 }
 
 export function canManage(institute: MembershipListItem | null): boolean {
@@ -86,7 +79,7 @@ export function canManage(institute: MembershipListItem | null): boolean {
 }
 
 export function cleanupInstituteStorage() {
-  if (typeof window !== "undefined") {
+  if (typeof window !== 'undefined') {
     window.localStorage.removeItem(STORAGE_KEY);
     setActiveInstituteId(null);
   }

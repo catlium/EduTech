@@ -131,7 +131,11 @@ export class SyllabusService {
     const rows = await this.db
       .select()
       .from(syllabi)
-      .where(subjectId ? and(eq(syllabi.instituteId, instituteId), eq(syllabi.subjectId, subjectId)) : eq(syllabi.instituteId, instituteId))
+      .where(
+        subjectId
+          ? and(eq(syllabi.instituteId, instituteId), eq(syllabi.subjectId, subjectId))
+          : eq(syllabi.instituteId, instituteId),
+      )
       .orderBy(desc(syllabi.createdAt));
 
     const latestBySubject = new Map<string, (typeof rows)[number]>();
@@ -199,7 +203,9 @@ export class SyllabusService {
     this.assertUnconfirmed(row, 'Syllabus');
 
     if (row.processingStatus === 'PROCESSING' || row.analysisStatus === 'PROCESSING') {
-      throw new ConflictException('Syllabus is being processed — edits are unavailable while a job runs');
+      throw new ConflictException(
+        'Syllabus is being processed — edits are unavailable while a job runs',
+      );
     }
 
     const updates: Record<string, unknown> = {
@@ -324,7 +330,9 @@ export class SyllabusService {
       throw new ConflictException('Syllabus analysis is already in progress');
     }
     if (row.analysisStatus === 'READY') {
-      throw new ConflictException('Syllabus is already analyzed — create a new version to analyze again');
+      throw new ConflictException(
+        'Syllabus is already analyzed — create a new version to analyze again',
+      );
     }
 
     const payload = {
@@ -351,7 +359,11 @@ export class SyllabusService {
     } catch (error) {
       await this.db
         .update(syllabi)
-        .set({ analysisStatus: 'FAILED', analysisError: 'Failed to enqueue the analysis job', updatedAt: new Date() })
+        .set({
+          analysisStatus: 'FAILED',
+          analysisError: 'Failed to enqueue the analysis job',
+          updatedAt: new Date(),
+        })
         .where(eq(syllabi.id, syllabusId));
       throw error;
     }
@@ -416,16 +428,21 @@ export class SyllabusService {
     structure: SyllabusStructure,
     userId: string,
   ): Promise<ConfirmReport> {
-    const existingChapters: typeof chapters.$inferSelect[] = await tx
+    const existingChapters: (typeof chapters.$inferSelect)[] = await tx
       .select()
       .from(chapters)
       .where(and(eq(chapters.subjectId, syllabusRow.subjectId), eq(chapters.status, 'active')));
 
-    const existingTopics: typeof topics.$inferSelect[] = existingChapters.length
+    const existingTopics: (typeof topics.$inferSelect)[] = existingChapters.length
       ? await tx
           .select()
           .from(topics)
-          .where(inArray(topics.chapterId, existingChapters.map((c) => c.id)))
+          .where(
+            inArray(
+              topics.chapterId,
+              existingChapters.map((c) => c.id),
+            ),
+          )
       : [];
 
     const chapterTopics = new Map<string, typeof existingTopics>();
@@ -469,7 +486,10 @@ export class SyllabusService {
           .values({
             subjectId: syllabusRow.subjectId,
             name: chapter.name,
-            slug: this.uniqueSlug(this.slugify(chapter.name), new Set(existingChapters.map((c) => c.slug))),
+            slug: this.uniqueSlug(
+              this.slugify(chapter.name),
+              new Set(existingChapters.map((c) => c.slug)),
+            ),
             description: chapter.description ?? null,
             sortOrder: chapterSort,
             status: 'active',
@@ -505,7 +525,10 @@ export class SyllabusService {
             .values({
               chapterId,
               name: topic.name,
-              slug: this.uniqueSlug(this.slugify(topic.name), new Set(activeChapterTopics.map((t) => t.slug))),
+              slug: this.uniqueSlug(
+                this.slugify(topic.name),
+                new Set(activeChapterTopics.map((t) => t.slug)),
+              ),
               description: topic.description ?? null,
               sortOrder: topicSort,
               status: 'active',
@@ -522,7 +545,12 @@ export class SyllabusService {
         await tx
           .update(topics)
           .set({ status: 'archived', updatedAt: new Date() })
-          .where(inArray(topics.id, removedTopics.map((t) => t.id)));
+          .where(
+            inArray(
+              topics.id,
+              removedTopics.map((t) => t.id),
+            ),
+          );
         report.removedTopics.push(...removedTopics.map((t) => t.id));
       }
 
@@ -534,13 +562,23 @@ export class SyllabusService {
       await tx
         .update(chapters)
         .set({ status: 'archived', updatedAt: new Date() })
-        .where(inArray(chapters.id, removedChapters.map((c) => c.id)));
+        .where(
+          inArray(
+            chapters.id,
+            removedChapters.map((c) => c.id),
+          ),
+        );
       report.removedChapters.push(...removedChapters.map((c) => c.id));
     }
 
     await tx
       .update(syllabi)
-      .set({ status: 'CONFIRMED', confirmedAt: new Date(), updatedBy: userId, updatedAt: new Date() })
+      .set({
+        status: 'CONFIRMED',
+        confirmedAt: new Date(),
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
       .where(eq(syllabi.id, syllabusRow.id));
 
     return report;
@@ -551,7 +589,9 @@ export class SyllabusService {
   async archiveSyllabus(instituteId: string, userId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
     if (row.status === 'CONFIRMED') {
-      throw new ConflictException('Confirmed syllabi are immutable history — they cannot be archived');
+      throw new ConflictException(
+        'Confirmed syllabi are immutable history — they cannot be archived',
+      );
     }
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Syllabus is already archived');
@@ -569,7 +609,9 @@ export class SyllabusService {
   async deleteSyllabus(instituteId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
     if (row.status === 'CONFIRMED') {
-      throw new ConflictException('Confirmed syllabi are immutable history — they cannot be deleted');
+      throw new ConflictException(
+        'Confirmed syllabi are immutable history — they cannot be deleted',
+      );
     }
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Archived syllabi must be restored before deletion');
@@ -624,7 +666,13 @@ export class SyllabusService {
   private async markAnalysisInProgress(syllabusId: string, userId: string, jobId: string) {
     await this.db
       .update(syllabi)
-      .set({ analysisStatus: 'PROCESSING', analysisJobId: jobId, analysisError: null, updatedBy: userId, updatedAt: new Date() })
+      .set({
+        analysisStatus: 'PROCESSING',
+        analysisJobId: jobId,
+        analysisError: null,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
       .where(eq(syllabi.id, syllabusId));
   }
 
@@ -636,7 +684,7 @@ export class SyllabusService {
 
   private matchChapter(
     name: string,
-    candidates: typeof chapters.$inferSelect[],
+    candidates: (typeof chapters.$inferSelect)[],
     usedIds: Set<string>,
   ) {
     const available = candidates.filter((c) => !usedIds.has(c.id));
@@ -657,7 +705,7 @@ export class SyllabusService {
 
   private matchTopic(
     name: string,
-    candidates: typeof topics.$inferSelect[],
+    candidates: (typeof topics.$inferSelect)[],
     usedIds: Set<string>,
   ) {
     const available = candidates.filter((t) => !usedIds.has(t.id));
@@ -677,7 +725,10 @@ export class SyllabusService {
   }
 
   private normalizedKey(name: string) {
-    return name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
   }
 
   private tokensOverlap(a: string, b: string) {

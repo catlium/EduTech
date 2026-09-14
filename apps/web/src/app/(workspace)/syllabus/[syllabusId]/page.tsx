@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useCallback, useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import {
   ArrowLeft,
   Play,
@@ -14,27 +14,27 @@ import {
   Trash2,
   Loader2,
   AlertTriangle,
-} from "lucide-react";
+} from 'lucide-react';
 
-import { api, ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
-import { useTenant, canManage } from "@/lib/tenant";
+import { api, ApiError } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
+import { useTenant, canManage } from '@/lib/tenant';
 import type {
   SyllabusResponse,
   SyllabusVersion,
   SyllabusConfirmReport,
   SyllabusContext,
   SyllabusStructure,
-} from "@catlium/contracts";
-import { PageHeader } from "@/components/app/page-header";
-import { StatusBadge } from "@/components/app/status-badge";
-import { SectionHeader } from "@/components/app/section-header";
-import { ErrorState } from "@/components/app/error-state";
-import { ConfirmDialog } from "@/components/app/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@catlium/contracts';
+import { PageHeader } from '@/components/app/page-header';
+import { StatusBadge } from '@/components/app/status-badge';
+import { SectionHeader } from '@/components/app/section-header';
+import { ErrorState } from '@/components/app/error-state';
+import { ConfirmDialog } from '@/components/app/confirm-dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -42,10 +42,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 
 function formatBytes(bytes: number | null | undefined): string {
-  if (!bytes) return "—";
+  if (!bytes) return '—';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -110,9 +110,7 @@ function ContextBlock({ context }: { context: SyllabusContext }) {
               {context.units.map((unit, i) => (
                 <li key={i}>
                   <p className="font-medium">{unit.title}</p>
-                  {unit.description && (
-                    <p className="text-muted-foreground">{unit.description}</p>
-                  )}
+                  {unit.description && <p className="text-muted-foreground">{unit.description}</p>}
                 </li>
               ))}
             </ul>
@@ -170,9 +168,9 @@ export default function SyllabusDetailPage() {
   const [report, setReport] = useState<SyllabusConfirmReport | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
-  const [editTitle, setEditTitle] = useState("");
-  const [editProgram, setEditProgram] = useState("");
-  const [editAcademicYear, setEditAcademicYear] = useState("");
+  const [editTitle, setEditTitle] = useState('');
+  const [editProgram, setEditProgram] = useState('');
+  const [editAcademicYear, setEditAcademicYear] = useState('');
 
   const load = useCallback(async () => {
     if (!institute) return;
@@ -186,8 +184,8 @@ export default function SyllabusDetailPage() {
       setSyllabus(syllabus);
       setVersions(versions);
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError("Failed to load syllabus. Please try again.");
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setError('Failed to load syllabus. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -198,8 +196,8 @@ export default function SyllabusDetailPage() {
   }, [load]);
 
   const processing =
-    syllabus?.processingStatus === "QUEUED" || syllabus?.processingStatus === "PROCESSING";
-  const analyzing = syllabus?.analysisStatus === "PROCESSING";
+    syllabus?.processingStatus === 'QUEUED' || syllabus?.processingStatus === 'PROCESSING';
+  const analyzing = syllabus?.analysisStatus === 'PROCESSING';
 
   useEffect(() => {
     if (!processing && !analyzing) return;
@@ -214,7 +212,7 @@ export default function SyllabusDetailPage() {
       await fn();
       toast.success(success);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Action failed");
+      toast.error(err instanceof ApiError ? err.message : 'Action failed');
     } finally {
       setBusy(null);
       await load();
@@ -222,42 +220,57 @@ export default function SyllabusDetailPage() {
   }
 
   async function processSyllabus() {
-    await run("process", () => api(`/syllabus/${syllabusId}/process`, { method: "POST" }), "Processing started");
+    await run(
+      'process',
+      () => api(`/syllabus/${syllabusId}/process`, { method: 'POST' }),
+      'Processing started',
+    );
   }
 
   async function retrySyllabus() {
-    await run("retry", () => api(`/syllabus/${syllabusId}/retry`, { method: "POST" }), "Retry started");
+    await run(
+      'retry',
+      () => api(`/syllabus/${syllabusId}/retry`, { method: 'POST' }),
+      'Retry started',
+    );
   }
 
   async function analyzeSyllabus() {
-    await run("analyze", () => api(`/syllabus/${syllabusId}/analyze`, { method: "POST" }), "Analysis started");
+    await run(
+      'analyze',
+      () => api(`/syllabus/${syllabusId}/analyze`, { method: 'POST' }),
+      'Analysis started',
+    );
   }
 
   async function confirmSyllabus() {
     try {
-      const { report } = await api<{ report: SyllabusConfirmReport }>(`/syllabus/${syllabusId}/confirm`, {
-        method: "POST",
-      });
+      const { report } = await api<{ report: SyllabusConfirmReport }>(
+        `/syllabus/${syllabusId}/confirm`,
+        {
+          method: 'POST',
+        },
+      );
       setReport(report);
       setConfirmOpen(false);
-      toast.success("Structure confirmed");
+      toast.success('Structure confirmed');
       await load();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Confirmation failed");
+      toast.error(err instanceof ApiError ? err.message : 'Confirmation failed');
     }
   }
 
   function openEdit() {
     if (!syllabus) return;
     setEditTitle(syllabus.title);
-    setEditProgram(syllabus.program ?? "");
-    setEditAcademicYear(syllabus.academicYear ?? "");
+    setEditProgram(syllabus.program ?? '');
+    setEditAcademicYear(syllabus.academicYear ?? '');
     setEditOpen(true);
   }
 
   async function saveEdit() {
     if (busy || !editTitle.trim()) return;
-    setBusy("edit");
+    setBusy('edit');
     try {
       const body: Record<string, string | null> = {
         title: editTitle.trim(),
@@ -266,30 +279,34 @@ export default function SyllabusDetailPage() {
           ? { academicYear: editAcademicYear.trim() }
           : { academicYear: null }),
       };
-      await api(`/syllabus/${syllabusId}`, { method: "PATCH", body });
+      await api(`/syllabus/${syllabusId}`, { method: 'PATCH', body });
       setEditOpen(false);
-      toast.success("Syllabus updated");
+      toast.success('Syllabus updated');
       await load();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Update failed");
+      toast.error(err instanceof ApiError ? err.message : 'Update failed');
     } finally {
       setBusy(null);
     }
   }
 
   async function archiveSyllabus() {
-    await run("archive", () => api(`/syllabus/${syllabusId}/archive`, { method: "POST" }), "Syllabus archived");
+    await run(
+      'archive',
+      () => api(`/syllabus/${syllabusId}/archive`, { method: 'POST' }),
+      'Syllabus archived',
+    );
   }
 
   async function deleteSyllabus() {
     if (busy) return;
-    setBusy("delete");
+    setBusy('delete');
     try {
-      await api(`/syllabus/${syllabusId}`, { method: "DELETE" });
-      toast.success("Syllabus deleted");
-      router.replace("/syllabus");
+      await api(`/syllabus/${syllabusId}`, { method: 'DELETE' });
+      toast.success('Syllabus deleted');
+      router.replace('/syllabus');
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Delete failed");
+      toast.error(err instanceof ApiError ? err.message : 'Delete failed');
       setBusy(null);
     }
   }
@@ -305,38 +322,32 @@ export default function SyllabusDetailPage() {
     );
   }
   if (error || !syllabus) {
-    return <ErrorState description={error ?? "Syllabus not found."} onRetry={() => void load()} />;
+    return <ErrorState description={error ?? 'Syllabus not found.'} onRetry={() => void load()} />;
   }
 
-  const actionable = isTeacher && syllabus.status !== "CONFIRMED";
+  const actionable = isTeacher && syllabus.status !== 'CONFIRMED';
 
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
-      {syllabus.status === "PROPOSED" &&
-        syllabus.processingStatus === "UPLOADED" && (
-          <Button
-            size="sm"
-            onClick={() => void processSyllabus()}
-            disabled={busy !== null}
-          >
-            {busy === "process" ? (
-              <Loader2 className="mr-1 size-3.5 animate-spin" />
-            ) : (
-              <Play className="mr-1 size-3.5" />
-            )}
-            Process
-          </Button>
-        )}
-      {syllabus.status === "PROPOSED" &&
-        (syllabus.processingStatus === "FAILED" ||
-          syllabus.processingStatus === "QUEUED") && (
+      {syllabus.status === 'PROPOSED' && syllabus.processingStatus === 'UPLOADED' && (
+        <Button size="sm" onClick={() => void processSyllabus()} disabled={busy !== null}>
+          {busy === 'process' ? (
+            <Loader2 className="mr-1 size-3.5 animate-spin" />
+          ) : (
+            <Play className="mr-1 size-3.5" />
+          )}
+          Process
+        </Button>
+      )}
+      {syllabus.status === 'PROPOSED' &&
+        (syllabus.processingStatus === 'FAILED' || syllabus.processingStatus === 'QUEUED') && (
           <Button
             size="sm"
             variant="outline"
             onClick={() => void retrySyllabus()}
             disabled={busy !== null}
           >
-            {busy === "retry" ? (
+            {busy === 'retry' ? (
               <Loader2 className="mr-1 size-3.5 animate-spin" />
             ) : (
               <RefreshCw className="mr-1 size-3.5" />
@@ -345,14 +356,10 @@ export default function SyllabusDetailPage() {
           </Button>
         )}
       {actionable &&
-        syllabus.processingStatus === "READY" &&
-        (syllabus.analysisStatus === "PENDING" || syllabus.analysisStatus === "FAILED") && (
-          <Button
-            size="sm"
-            onClick={() => void analyzeSyllabus()}
-            disabled={busy !== null}
-          >
-            {busy === "analyze" ? (
+        syllabus.processingStatus === 'READY' &&
+        (syllabus.analysisStatus === 'PENDING' || syllabus.analysisStatus === 'FAILED') && (
+          <Button size="sm" onClick={() => void analyzeSyllabus()} disabled={busy !== null}>
+            {busy === 'analyze' ? (
               <Loader2 className="mr-1 size-3.5 animate-spin" />
             ) : (
               <Sparkles className="mr-1 size-3.5" />
@@ -360,14 +367,12 @@ export default function SyllabusDetailPage() {
             Analyze
           </Button>
         )}
-      {actionable &&
-        syllabus.analysisStatus === "READY" &&
-        syllabus.structure && (
-          <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)}>
-            <CheckCircle2 className="mr-1 size-3.5" /> Confirm structure
-          </Button>
-        )}
-      {actionable && syllabus.processingStatus === "READY" && (
+      {actionable && syllabus.analysisStatus === 'READY' && syllabus.structure && (
+        <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)}>
+          <CheckCircle2 className="mr-1 size-3.5" /> Confirm structure
+        </Button>
+      )}
+      {actionable && syllabus.processingStatus === 'READY' && (
         <Button size="sm" variant="outline" onClick={openEdit}>
           <Pencil className="mr-1 size-3.5" /> Edit
         </Button>
@@ -403,7 +408,7 @@ export default function SyllabusDetailPage() {
         description={syllabus.subjectName}
         actions={
           <div className="flex items-center gap-2">
-            <Button size="icon" variant="ghost" onClick={() => router.push("/syllabus")}>
+            <Button size="icon" variant="ghost" onClick={() => router.push('/syllabus')}>
               <ArrowLeft className="size-4" />
             </Button>
             {actions}
@@ -418,29 +423,29 @@ export default function SyllabusDetailPage() {
         </div>
       </PageHeader>
 
-      {syllabus.analysisStatus === "PROCESSING" && (
+      {syllabus.analysisStatus === 'PROCESSING' && (
         <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
           Deep-analyzing the syllabus… this runs asynchronously.
         </div>
       )}
-      {syllabus.analysisStatus === "FAILED" && (
+      {syllabus.analysisStatus === 'FAILED' && (
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400">
           <AlertTriangle className="size-4 shrink-0" />
-          {syllabus.analysisError ?? "Analysis failed"}
+          {syllabus.analysisError ?? 'Analysis failed'}
         </div>
       )}
-      {syllabus.processingStatus === "FAILED" && (
+      {syllabus.processingStatus === 'FAILED' && (
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400">
           <AlertTriangle className="size-4 shrink-0" />
-          {syllabus.processingError ?? "Processing failed"}
+          {syllabus.processingError ?? 'Processing failed'}
         </div>
       )}
-      {syllabus.status === "CONFIRMED" && (
+      {syllabus.status === 'CONFIRMED' && (
         <div className="flex items-center gap-2 rounded-lg border bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
           <CheckCircle2 className="size-4 shrink-0" />
-          Confirmed{syllabus.confirmedAt ? ` on ${formatDateTime(syllabus.confirmedAt)}` : ""} —
-          the chapters and topics are live in the subject hierarchy.
+          Confirmed{syllabus.confirmedAt ? ` on ${formatDateTime(syllabus.confirmedAt)}` : ''} — the
+          chapters and topics are live in the subject hierarchy.
         </div>
       )}
 
@@ -473,10 +478,12 @@ export default function SyllabusDetailPage() {
               </div>
             )}
             <div>
-              <span className="text-muted-foreground">Created:</span> {formatDateTime(syllabus.createdAt)}
+              <span className="text-muted-foreground">Created:</span>{' '}
+              {formatDateTime(syllabus.createdAt)}
             </div>
             <div>
-              <span className="text-muted-foreground">Updated:</span> {formatDateTime(syllabus.updatedAt)}
+              <span className="text-muted-foreground">Updated:</span>{' '}
+              {formatDateTime(syllabus.updatedAt)}
             </div>
           </CardContent>
         </Card>
@@ -495,7 +502,7 @@ export default function SyllabusDetailPage() {
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {formatDateTime(v.createdAt)}
-                  {v.isCurrent ? " · current" : ""}
+                  {v.isCurrent ? ' · current' : ''}
                 </span>
               </div>
             ))}
@@ -514,9 +521,9 @@ export default function SyllabusDetailPage() {
             </pre>
           ) : (
             <p className="text-sm text-muted-foreground">
-              {syllabus.processingStatus === "UPLOADED"
-                ? "File uploaded. Run Process to extract the text."
-                : "No text extracted yet."}
+              {syllabus.processingStatus === 'UPLOADED'
+                ? 'File uploaded. Run Process to extract the text.'
+                : 'No text extracted yet.'}
             </p>
           )}
         </CardContent>
@@ -590,8 +597,11 @@ export default function SyllabusDetailPage() {
               <Button variant="ghost" onClick={() => setEditOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => void saveEdit()} disabled={busy === "edit" || !editTitle.trim()}>
-                {busy === "edit" ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : null}
+              <Button
+                onClick={() => void saveEdit()}
+                disabled={busy === 'edit' || !editTitle.trim()}
+              >
+                {busy === 'edit' ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : null}
                 Save
               </Button>
             </DialogFooter>
@@ -609,11 +619,17 @@ export default function SyllabusDetailPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 text-sm">
-              <div>Chapters: {report.createdChapters.length} created, {report.reusedChapters.length} reused, {report.removedChapters.length} removed</div>
-              <div>Topics: {report.createdTopics.length} created, {report.reusedTopics.length} reused, {report.removedTopics.length} removed</div>
+              <div>
+                Chapters: {report.createdChapters.length} created, {report.reusedChapters.length}{' '}
+                reused, {report.removedChapters.length} removed
+              </div>
+              <div>
+                Topics: {report.createdTopics.length} created, {report.reusedTopics.length} reused,{' '}
+                {report.removedTopics.length} removed
+              </div>
               {report.uncertain.length > 0 && (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-amber-700 dark:text-amber-400">
-                  Uncertain matches: {report.uncertain.join(", ")}
+                  Uncertain matches: {report.uncertain.join(', ')}
                 </div>
               )}
             </div>

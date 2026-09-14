@@ -126,7 +126,7 @@ workflow.
   and the `waitForJob`/batch-poll machinery in the Material page (~360 lines
   removed); the batch progress panel on the Topic page remains.
 - **Validation**: `pnpm typecheck` 10/10 green; `pnpm --filter @catlium/web
-  build` succeeds; web tsc clean (no web lint script configured in the repo).
+build` succeeds; web tsc clean (no web lint script configured in the repo).
 
 **Status: COMPLETE** — committed + pushed in this checkpoint.
 
@@ -168,7 +168,7 @@ web panel drives it with three explicit actions and an in-dialog progress grid.
   valid questions fail the job for retry (never silent zero-complete).
 - **Web**: page `Ask AI` dialog + poll machinery removed (−~218 lines); filter
   and manual-create dialogs now use dynamic `questionTypes` (`GET
-  /question-types`); non-FIB preview payloads hidden; panel dialog now has
+/question-types`); non-FIB preview payloads hidden; panel dialog now has
   **Check bank** (dry run) / **Create new set** (full count via explicit
   buckets, or blueprint) / **Generate missing** (deficit-only, keeps dialog
   open) plus a batch-progress grid that polls
@@ -264,6 +264,52 @@ deferred to the user.
   demo seed no longer contains an "Algebra" chapter; Phase 31 pages render
   correctly per pageTail confirmation). Browser verification of Phase 31 UI is
   on the user's side.
+
+### Sub-goal: FG Paper patterns ↔ subjects many-to-many — COMPLETE (fifth checkpoint)
+
+`paper_patterns.subject_id` (one-to-one) was replaced by a junction table so a
+pattern can be **General** (no subjects, reusable across any scope),
+single-subject, or multi-subject — while keeping per-subject institute
+validation on every write path.
+
+- **Migration `0026_paper_pattern_subjects.sql`**: creates
+  `paper_pattern_subjects` (composite PK `(pattern_id, subject_id)`, both FKs
+  `ON DELETE CASCADE`), backfills rows from each pattern's legacy `subject_id`,
+  then drops the column and its FK. Registered in `_journal.json` idx 26.
+- **Schema + contracts**: `paperPatterns` no longer carries `subjectId`;
+  `paperPatternSubjects` exported; `PaperPatternSchema.subjectId` →
+  `subjectIds: z.array(z.string().uuid())`.
+- **API** (`paper-patterns.service.ts`): create accepts an array (empty array
+  → General; legacy single `subjectId` alias still maps onto the set), update
+  replaces the associations transactionally (empty array → General),
+  `assertSubjectsInInstitute` rejects cross-institute subjects with 400, and
+  list/get attach `subjectIds` in one batched query.
+- **Question generation** (`question-generation.service.ts`): approved-pattern
+  resolution now joins through the junction; signal 2 and the blueprint
+  `subjectId` match honor the subject _set_ — General patterns match any
+  scope, scoped patterns require the scope subject to be among their subjects.
+- **Web**: list page filters via `subjectIds` and labels "General"; new-pattern
+  page has an optional multi-subject checkbox list (empty = General); the
+  detail page gained an editable subject-chips editor (add/remove/Make General,
+  PATCH with `version`, only for non-APPROVED patterns; APPROVED stays read-only
+  per the lifecycle) plus a footer subjects display. `question-bank-panel`
+  pattern filter uses `subjectIds`.
+- **Worker**: `get_paper_pattern` uses `SELECT *` and never reads `subject_id`
+  — no worker changes required.
+- **Note**: General patterns analyzing from pasted TEXT cannot create
+  subject-scoped materials (DB `materials_scope_chain` CHECK); the API rejects
+  with a clear message ("assign at least one subject or analyze from an
+  existing material"). Deleting a subject now only removes junction rows (the
+  pattern survives, possibly becoming General).
+
+### Validation
+
+- `pnpm typecheck` turbo 10/10 PASS (database rebuilt with the new export).
+- `pnpm lint` 9/9 PASS. Web `pnpm build` green.
+- `node --test apps/api/src/paper-patterns/paper-pattern-subjects.test.ts`
+  **10 PASS** (general/single/multi, dedupe, legacy alias, shared patterns,
+  remove-all → General, match logic, cross-institute).
+- Worker untouched (pytest suite unaffected).
 
 ### Known Issues / Deferred
 

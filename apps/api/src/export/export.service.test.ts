@@ -76,11 +76,7 @@ test('FLASHCARD_SET maps cards and drops malformed entries', () => {
   const blocks = contentBlocks('FLASHCARD_SET', {
     title: 'FC',
     description: 'desc',
-    cards: [
-      { front: 'f1', back: 'b1' },
-      { front: 'f2' },
-      'garbage',
-    ],
+    cards: [{ front: 'f1', back: 'b1' }, { front: 'f2' }, 'garbage'],
   });
   assert.deepEqual(blocks, [
     { kind: 'heading', text: 'FC' },
@@ -91,10 +87,7 @@ test('FLASHCARD_SET maps cards and drops malformed entries', () => {
 
 test('IMPORTANT_CONCEPTS maps concepts with optional description', () => {
   const blocks = contentBlocks('IMPORTANT_CONCEPTS', {
-    concepts: [
-      { name: 'N1', description: 'D1' },
-      { name: 'N2' },
-    ],
+    concepts: [{ name: 'N1', description: 'D1' }, { name: 'N2' }],
   });
   assert.deepEqual(blocks, [
     { kind: 'paragraph', text: 'N1 — D1' },

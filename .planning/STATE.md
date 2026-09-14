@@ -67,35 +67,35 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 
 ## Phase Plans
 
-| Phase | Name | Status |
-|-------|------|--------|
-| 1 | Backend Foundation & Authentication | ✓ completed |
-| 2 | Academic Structure | ✓ completed |
-| 3 | Learning Materials | ✓ completed |
-| 4 | Async Processing & Text Extraction | ✓ completed |
-| 5 | AI Learning Content Generation | ✓ completed (E2E validated 2026-09-02) |
-| 6 | Question Bank | ✓ completed (E2E validated 2026-09-02) |
-| 7 | AI Question Generation & Review | ✓ completed (E2E validated 2026-09-03) |
-| 8 | Quiz & Examination Management | ✓ completed (E2E validated 2026-09-07) |
-| Demo Wave 0 | Bootstrap (seed + memberships) | ✓ completed |
-| Demo Wave 1 | Syllabus backend | ✓ completed (E2E 2026-09-08, syllabus_e2e.sh PASS=39) |
-| Demo Wave 2 | Attempts backend | ✓ completed (E2E 2026-09-08, attempts_e2e.sh PASS=60→76) |
-| Demo Wave 3 | Frontend `apps/web` | ✓ completed (`next build` PASS) |
-| Demo Wave 4 | Full integration & validation | ✓ completed (E2E 2026-09-08, demo_e2e.sh PASS=52) |
-| 9 | Student Examination Attempts | ✓ completed (via demo Wave 2) |
-| 10 | Automatic Evaluation | ✓ completed (E2E 2026-09-08, ATTEMPTS PASS=76) |
-| 11 | Results | ✓ completed (with Phase 10 + Wave 4) |
-| 12 | Examination Analytics | ✓ completed (E2E 2026-09-08, attempts_e2e.sh PASS=96, node:test 12/12) |
-| 13 | Practice System | ✓ completed (E2E 2026-09-08, practice_e2e.sh PASS=73) |
-| 14 | Cross-Module Validation & Security | ✓ completed (E2E 2026-09-09, sec14_e2e.sh PASS=22) |
-| 15 | API Contract Verification | ✓ completed (E2E 2026-09-09, api_contract_e2e.sh PASS=49) |
-| 16 | Testing & Demonstration Readiness | ✓ completed (E2E 2026-09-09, 11-suite regression 505 assertions FAIL=0) |
-| 17 | Backend-Complete Checkpoint | ✓ completed (PASSED 2026-09-09, regression 508 assertions FAIL=0) |
-| 18 | Paper Pattern / Blueprint (Backend) | ✓ completed (2026-09-09, regression 583 assertions FAIL=0, 12 suites) |
-| 19 | Frontend Product Transformation | ✓ completed (2026-09-10, web_workflow 33/33) |
-| 20 | Demo Seed Enrichment + Student Journey Closure | ✓ completed (2026-09-10, WF-11b 12/12 attempt loop) |
-| 21 | SaaS Management + Public Landing Page | ✓ completed (2026-09-10, saas_e2e 39/39 + 14-suite regression FAIL=0) |
-| 22–26 | Frontend + Integration + Polish | ○ deferred (gate open — Phase 21 delivered) |
+| Phase       | Name                                           | Status                                                                  |
+| ----------- | ---------------------------------------------- | ----------------------------------------------------------------------- |
+| 1           | Backend Foundation & Authentication            | ✓ completed                                                             |
+| 2           | Academic Structure                             | ✓ completed                                                             |
+| 3           | Learning Materials                             | ✓ completed                                                             |
+| 4           | Async Processing & Text Extraction             | ✓ completed                                                             |
+| 5           | AI Learning Content Generation                 | ✓ completed (E2E validated 2026-09-02)                                  |
+| 6           | Question Bank                                  | ✓ completed (E2E validated 2026-09-02)                                  |
+| 7           | AI Question Generation & Review                | ✓ completed (E2E validated 2026-09-03)                                  |
+| 8           | Quiz & Examination Management                  | ✓ completed (E2E validated 2026-09-07)                                  |
+| Demo Wave 0 | Bootstrap (seed + memberships)                 | ✓ completed                                                             |
+| Demo Wave 1 | Syllabus backend                               | ✓ completed (E2E 2026-09-08, syllabus_e2e.sh PASS=39)                   |
+| Demo Wave 2 | Attempts backend                               | ✓ completed (E2E 2026-09-08, attempts_e2e.sh PASS=60→76)                |
+| Demo Wave 3 | Frontend `apps/web`                            | ✓ completed (`next build` PASS)                                         |
+| Demo Wave 4 | Full integration & validation                  | ✓ completed (E2E 2026-09-08, demo_e2e.sh PASS=52)                       |
+| 9           | Student Examination Attempts                   | ✓ completed (via demo Wave 2)                                           |
+| 10          | Automatic Evaluation                           | ✓ completed (E2E 2026-09-08, ATTEMPTS PASS=76)                          |
+| 11          | Results                                        | ✓ completed (with Phase 10 + Wave 4)                                    |
+| 12          | Examination Analytics                          | ✓ completed (E2E 2026-09-08, attempts_e2e.sh PASS=96, node:test 12/12)  |
+| 13          | Practice System                                | ✓ completed (E2E 2026-09-08, practice_e2e.sh PASS=73)                   |
+| 14          | Cross-Module Validation & Security             | ✓ completed (E2E 2026-09-09, sec14_e2e.sh PASS=22)                      |
+| 15          | API Contract Verification                      | ✓ completed (E2E 2026-09-09, api_contract_e2e.sh PASS=49)               |
+| 16          | Testing & Demonstration Readiness              | ✓ completed (E2E 2026-09-09, 11-suite regression 505 assertions FAIL=0) |
+| 17          | Backend-Complete Checkpoint                    | ✓ completed (PASSED 2026-09-09, regression 508 assertions FAIL=0)       |
+| 18          | Paper Pattern / Blueprint (Backend)            | ✓ completed (2026-09-09, regression 583 assertions FAIL=0, 12 suites)   |
+| 19          | Frontend Product Transformation                | ✓ completed (2026-09-10, web_workflow 33/33)                            |
+| 20          | Demo Seed Enrichment + Student Journey Closure | ✓ completed (2026-09-10, WF-11b 12/12 attempt loop)                     |
+| 21          | SaaS Management + Public Landing Page          | ✓ completed (2026-09-10, saas_e2e 39/39 + 14-suite regression FAIL=0)   |
+| 22–26       | Frontend + Integration + Polish                | ○ deferred (gate open — Phase 21 delivered)                             |
 
 ## Current Task
 
@@ -157,8 +157,8 @@ user-identified gaps)
 
 ## Performance Metrics
 
-| Plan | Duration | Tasks | Files |
-|------|----------|-------|-------|
-| Phase 8 P3 | 12 | 3 tasks | 3 files |
-| Phase 8 P4 | 12 | 3 tasks | 4 files |
-| Phase 8 P5 | 33 | 2 tasks | 3 files |
+| Plan       | Duration | Tasks   | Files   |
+| ---------- | -------- | ------- | ------- |
+| Phase 8 P3 | 12       | 3 tasks | 3 files |
+| Phase 8 P4 | 12       | 3 tasks | 4 files |
+| Phase 8 P5 | 33       | 2 tasks | 3 files |

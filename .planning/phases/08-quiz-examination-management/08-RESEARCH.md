@@ -16,15 +16,15 @@ The implementation follows the exact patterns established in Phases 1–7: a Nes
 
 ## Architectural Responsibility Map
 
-| Capability | Primary Tier | Secondary Tier | Rationale |
-|------------|-------------|----------------|-----------|
-| Assessment CRUD | API / Backend | Database / Storage | Business logic + persistence |
-| Question linking (add/remove) | API / Backend | Database / Storage | Join table management with institute-scoped validation |
-| State machine (transitions) | API / Backend | — | Server-side transition enforcement, no external tier involved |
-| Scheduling (time-gating) | API / Backend | — | Schedule checked server-side on reads; no cron needed for MVP |
-| Duration / max marks config | API / Backend | — | Pure configuration stored on the assessment row |
-| Question approval enforcement | API / Backend | Database / Storage | JOIN to questions table to filter APPROVED only at publish time |
-| Tenant isolation | API / Backend (guards) | Database / Storage (FK cascade) | `instituteId` on assessment + institute-scoped question lookups |
+| Capability                    | Primary Tier           | Secondary Tier                  | Rationale                                                       |
+| ----------------------------- | ---------------------- | ------------------------------- | --------------------------------------------------------------- |
+| Assessment CRUD               | API / Backend          | Database / Storage              | Business logic + persistence                                    |
+| Question linking (add/remove) | API / Backend          | Database / Storage              | Join table management with institute-scoped validation          |
+| State machine (transitions)   | API / Backend          | —                               | Server-side transition enforcement, no external tier involved   |
+| Scheduling (time-gating)      | API / Backend          | —                               | Schedule checked server-side on reads; no cron needed for MVP   |
+| Duration / max marks config   | API / Backend          | —                               | Pure configuration stored on the assessment row                 |
+| Question approval enforcement | API / Backend          | Database / Storage              | JOIN to questions table to filter APPROVED only at publish time |
+| Tenant isolation              | API / Backend (guards) | Database / Storage (FK cascade) | `instituteId` on assessment + institute-scoped question lookups |
 
 ## Standard Stack
 
@@ -32,12 +32,12 @@ The implementation follows the exact patterns established in Phases 1–7: a Nes
 
 No new dependencies needed. Everything uses the existing stack:
 
-| Library | Version | Purpose | Why Standard |
-|---------|---------|---------|--------------|
-| Drizzle ORM | existing | Assessment + join table schema, migrations | Project-standard ORM |
-| Zod | existing | Contract validation schemas | Project-standard validation |
-| class-validator | existing | NestJS DTO validation | Project-standard DTO pattern |
-| NestJS | existing | Module, controller, service | Project framework |
+| Library         | Version  | Purpose                                    | Why Standard                 |
+| --------------- | -------- | ------------------------------------------ | ---------------------------- |
+| Drizzle ORM     | existing | Assessment + join table schema, migrations | Project-standard ORM         |
+| Zod             | existing | Contract validation schemas                | Project-standard validation  |
+| class-validator | existing | NestJS DTO validation                      | Project-standard DTO pattern |
+| NestJS          | existing | Module, controller, service                | Project framework            |
 
 ### Supporting
 
@@ -57,9 +57,9 @@ No alternatives — the established patterns are proven across 7 phases.
 
 No new external packages are being installed. This phase only adds application code using the existing stack.
 
-| Package | Registry | Age | Downloads | Source Repo | Verdict | Disposition |
-|---------|----------|-----|-----------|-------------|---------|-------------|
-| *(none — no new packages)* | — | — | — | — | — | N/A |
+| Package                    | Registry | Age | Downloads | Source Repo | Verdict | Disposition |
+| -------------------------- | -------- | --- | --------- | ----------- | ------- | ----------- |
+| _(none — no new packages)_ | —        | —   | —         | —           | —       | N/A         |
 
 **Packages removed due to [SLOP] verdict:** none
 **Packages flagged as suspicious [SUS]:** none
@@ -180,9 +180,7 @@ export const assessmentQuestions = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     marks: integer('marks').notNull().default(1),
   },
-  (table) => [
-    unique('assessment_questions_unique').on(table.assessmentId, table.questionId),
-  ],
+  (table) => [unique('assessment_questions_unique').on(table.assessmentId, table.questionId)],
 );
 ```
 
@@ -254,49 +252,55 @@ async publishAssessment(instituteId: string, assessmentId: string) {
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| State machine | Custom if/else chains | Transition lookup table (see Pattern 1) | Explicit, auditable, easy to extend |
-| Question ordering | Manual SQL reordering | `sortOrder` integer on join table + application-level reorder | Simple, Drizzle-friendly |
-| Date/time handling | Raw string comparisons | Drizzle `timestamp` with timezone + `Date` objects | Timezone correctness |
-| Validation | Manual checks in controller | Zod schemas (contracts) + class-validator (DTOs) | Two-layer validation, project standard |
-| Tenant isolation | Checking in service methods | `TenantGuard` + `instituteId` on every query | Consistent with all other modules |
+| Problem            | Don't Build                 | Use Instead                                                   | Why                                    |
+| ------------------ | --------------------------- | ------------------------------------------------------------- | -------------------------------------- |
+| State machine      | Custom if/else chains       | Transition lookup table (see Pattern 1)                       | Explicit, auditable, easy to extend    |
+| Question ordering  | Manual SQL reordering       | `sortOrder` integer on join table + application-level reorder | Simple, Drizzle-friendly               |
+| Date/time handling | Raw string comparisons      | Drizzle `timestamp` with timezone + `Date` objects            | Timezone correctness                   |
+| Validation         | Manual checks in controller | Zod schemas (contracts) + class-validator (DTOs)              | Two-layer validation, project standard |
+| Tenant isolation   | Checking in service methods | `TenantGuard` + `instituteId` on every query                  | Consistent with all other modules      |
 
 **Key insight:** The assessment entity is conceptually simple (it's a configured container). The complexity lives in the state machine preconditions and the question-linking validation — both of which should be explicit service methods, not scattered conditionals.
 
 ## Common Pitfalls
 
 ### Pitfall 1: Missing Question Approval Check at Publish
+
 **What goes wrong:** Assessment gets published with unapproved questions, violating EXAM-08.
 **Why it happens:** The add-questions endpoint only checks at add time; a question's approval status can change after being added.
 **How to avoid:** The publish validation must re-check ALL linked questions' approval status, not just the status at link time.
 **Warning signs:** A question is approved, added to assessment, then rejected — the assessment still contains a rejected question.
 
 ### Pitfall 2: State Transition Bypass
+
 **What goes wrong:** Assessment is updated (title, marks) in a state that should forbid edits (e.g., COMPLETED).
 **Why it happens:** The update endpoint doesn't check the current status before applying changes.
 **How to avoid:** The update service method must check `assessment.status` and reject updates unless status is `DRAFT` (or `PUBLISHED` for limited fields like instructions).
 **Warning signs:** Teacher modifies a completed assessment's questions.
 
 ### Pitfall 3: Cross-Tenant Question Linking
+
 **What goes wrong:** A teacher adds a question from another institute's question bank to their assessment.
 **Why it happens:** The add-questions query only checks `question.id` exists, not that it belongs to the same institute.
 **How to avoid:** JOIN the `questions` table on both `id` AND `instituteId` when validating question existence.
 **Warning signs:** Assessment contains questions the teacher shouldn't see.
 
 ### Pitfall 4: Orphaned Join Table Rows on Question Delete
+
 **What goes wrong:** A question is deleted from the question bank but its `assessment_questions` row remains.
 **Why it happens:** The `assessment_questions.questionId` FK doesn't have `onDelete: cascade`.
 **How to avoid:** Add `onDelete: 'cascade'` on the `questionId` FK in the join table. This is consistent with how `questions.topicId` cascades.
 **Warning signs:** Assessment shows a question count but the question doesn't exist.
 
 ### Pitfall 5: Max Marks Mismatch
+
 **What goes wrong:** Assessment `maxMarks` says 100, but linked questions' marks sum to 80 or 120.
 **Why it happens:** `maxMarks` is set independently of per-question marks.
 **How to avoid:** Two options — (A) let `maxMarks` be independently set and let the teacher manage consistency (simpler MVP), or (B) auto-compute from sum of question marks. **Recommendation: Option A for MVP.** The teacher explicitly sets max marks. Phase 11 (results) can validate. Add a `ponytail:` comment noting the auto-compute upgrade path.
 **Warning signs:** Score percentages don't make sense to teachers.
 
 ### Pitfall 6: Empty or Invalid Schedule Window
+
 **What goes wrong:** `startsAt` is in the past when creating; `endsAt` is before `startsAt`.
 **Why it happens:** No server-side validation on schedule fields.
 **How to avoid:** Validate on create/update: `startsAt` must be in the future (or null), `endsAt` must be after `startsAt` (if both provided). Allow null for "no schedule" (manual activation).
@@ -356,9 +360,7 @@ export const assessmentQuestions = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     marks: integer('marks').notNull().default(1),
   },
-  (table) => [
-    unique('assessment_questions_unique').on(table.assessmentId, table.questionId),
-  ],
+  (table) => [unique('assessment_questions_unique').on(table.assessmentId, table.questionId)],
 );
 ```
 
@@ -443,8 +445,17 @@ export type AssessmentListItem = z.infer<typeof AssessmentListItemSchema>;
 ```typescript
 // apps/api/src/examinations/examinations.controller.ts
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body,
-  UseGuards, ParseUUIDPipe, HttpCode, HttpStatus,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+  ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { AssessmentsService } from './examinations.service.js';
 import { CreateAssessmentDto, UpdateAssessmentDto } from './dto/create-assessment.dto.js';
@@ -473,9 +484,7 @@ export class AssessmentsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateAssessmentDto,
   ) {
-    const assessment = await this.service.create(
-      tenant.instituteId, user.userId, dto,
-    );
+    const assessment = await this.service.create(tenant.instituteId, user.userId, dto);
     return { assessment };
   }
 
@@ -503,7 +512,10 @@ export class AssessmentsController {
     @Body() dto: UpdateAssessmentDto,
   ) {
     const assessment = await this.service.update(
-      tenant.instituteId, user.userId, assessmentId, dto,
+      tenant.instituteId,
+      user.userId,
+      assessmentId,
+      dto,
     );
     return { assessment };
   }
@@ -525,9 +537,7 @@ export class AssessmentsController {
     @Tenant() tenant: TenantContext,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
-    const questions = await this.service.listQuestions(
-      tenant.instituteId, assessmentId,
-    );
+    const questions = await this.service.listQuestions(tenant.instituteId, assessmentId);
     return { questions };
   }
 
@@ -539,7 +549,9 @@ export class AssessmentsController {
     @Body() dto: AddQuestionsDto,
   ) {
     const added = await this.service.addQuestions(
-      tenant.instituteId, assessmentId, dto.questionIds,
+      tenant.instituteId,
+      assessmentId,
+      dto.questionIds,
     );
     return { added };
   }
@@ -552,9 +564,7 @@ export class AssessmentsController {
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
-    await this.service.removeQuestion(
-      tenant.instituteId, assessmentId, questionId,
-    );
+    await this.service.removeQuestion(tenant.instituteId, assessmentId, questionId);
   }
 
   // ── State transitions ──
@@ -565,9 +575,7 @@ export class AssessmentsController {
     @Tenant() tenant: TenantContext,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
-    const assessment = await this.service.publish(
-      tenant.instituteId, assessmentId,
-    );
+    const assessment = await this.service.publish(tenant.instituteId, assessmentId);
     return { assessment };
   }
 
@@ -577,9 +585,7 @@ export class AssessmentsController {
     @Tenant() tenant: TenantContext,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
-    const assessment = await this.service.complete(
-      tenant.instituteId, assessmentId,
-    );
+    const assessment = await this.service.complete(tenant.instituteId, assessmentId);
     return { assessment };
   }
 }
@@ -587,11 +593,12 @@ export class AssessmentsController {
 
 ## State of the Art
 
-| Old Approach | Current Approach | When Changed | Impact |
-|--------------|------------------|--------------|--------|
-| *(N/A — new entity)* | varchar status + transition table | Phase 8 design | Consistent with `questions.status` and `questions.approvalStatus` patterns |
+| Old Approach         | Current Approach                  | When Changed   | Impact                                                                     |
+| -------------------- | --------------------------------- | -------------- | -------------------------------------------------------------------------- |
+| _(N/A — new entity)_ | varchar status + transition table | Phase 8 design | Consistent with `questions.status` and `questions.approvalStatus` patterns |
 
 **Design decisions to document in the plan:**
+
 - `instructions` is JSONB (flexible: could be `{ text: "..." }` or structured `{ sections: [...] }`) — teacher's choice, not schema-enforced.
 - No `sortOrder` on the assessment itself — assessments are listed by `updatedAt` desc.
 - `marks` on join table defaults to 1; teacher can override per question.
@@ -599,14 +606,14 @@ export class AssessmentsController {
 
 ## Assumptions Log
 
-| # | Claim | Section | Risk if Wrong |
-|---|-------|---------|---------------|
-| A1 | Schedule auto-activation (PUBLISHED → ACTIVE via cron) is NOT needed for MVP; manual publish + schedule check on reads is sufficient | Architecture Patterns | Low — Phase 9 can add a cron job later if needed; the API just needs to check `startsAt` on attempt-start |
-| A2 | `instructions` field is JSONB with no enforced schema — teacher puts whatever they want | Code Examples | Low — the frontend can render it; no backend validation beyond "is an object" |
-| A3 | `maxMarks` is independently set by the teacher, not auto-computed from question marks sum | Common Pitfalls (Pitfall 5) | Medium — could confuse teachers; auto-compute is an easy follow-up |
-| A4 | PUBLISHED → DRAFT (unpublish) is a valid transition for teachers to fix mistakes | Code Examples (Pattern 1) | Low — common pattern; can be removed if not wanted |
-| A5 | `assessment_questions.marks` defaults to 1 and is teacher-editable per question | Code Examples | Low — standard pattern for exam question weighting |
-| A6 | No separate `questionCount` column on assessments; computed from join table at read time | Code Examples | None — always consistent, no denormalization |
+| #   | Claim                                                                                                                                | Section                     | Risk if Wrong                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------- |
+| A1  | Schedule auto-activation (PUBLISHED → ACTIVE via cron) is NOT needed for MVP; manual publish + schedule check on reads is sufficient | Architecture Patterns       | Low — Phase 9 can add a cron job later if needed; the API just needs to check `startsAt` on attempt-start |
+| A2  | `instructions` field is JSONB with no enforced schema — teacher puts whatever they want                                              | Code Examples               | Low — the frontend can render it; no backend validation beyond "is an object"                             |
+| A3  | `maxMarks` is independently set by the teacher, not auto-computed from question marks sum                                            | Common Pitfalls (Pitfall 5) | Medium — could confuse teachers; auto-compute is an easy follow-up                                        |
+| A4  | PUBLISHED → DRAFT (unpublish) is a valid transition for teachers to fix mistakes                                                     | Code Examples (Pattern 1)   | Low — common pattern; can be removed if not wanted                                                        |
+| A5  | `assessment_questions.marks` defaults to 1 and is teacher-editable per question                                                      | Code Examples               | Low — standard pattern for exam question weighting                                                        |
+| A6  | No separate `questionCount` column on assessments; computed from join table at read time                                             | Code Examples               | None — always consistent, no denormalization                                                              |
 
 **If this table is empty:** Not applicable — 6 assumptions documented.
 
@@ -631,25 +638,25 @@ export class AssessmentsController {
 
 ### Test Framework
 
-| Property | Value |
-|----------|-------|
-| Framework | No test framework installed yet (Phase 16 scope) |
-| Config file | none — see Wave 0 |
-| Quick run command | `pnpm typecheck && pnpm lint` |
-| Full suite command | `pnpm typecheck && pnpm lint` |
+| Property           | Value                                            |
+| ------------------ | ------------------------------------------------ |
+| Framework          | No test framework installed yet (Phase 16 scope) |
+| Config file        | none — see Wave 0                                |
+| Quick run command  | `pnpm typecheck && pnpm lint`                    |
+| Full suite command | `pnpm typecheck && pnpm lint`                    |
 
 ### Phase Requirements → Test Map
 
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
-| EXAM-01 | Assessment CRUD | integration | manual via `curl` / E2E script | ❌ Wave 0 |
-| EXAM-02 | Add/remove questions | integration | manual via `curl` / E2E script | ❌ Wave 0 |
-| EXAM-03 | Configure duration + max marks + instructions | integration | manual via `curl` / E2E script | ❌ Wave 0 |
-| EXAM-04 | Scheduling | integration | manual via `curl` / E2E script | ❌ Wave 0 |
-| EXAM-05 | Publish + complete | integration | manual via `curl` / E2E script | ❌ Wave 0 |
-| EXAM-06 | Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED | integration | manual via `curl` / E2E script | ❌ Wave 0 |
-| EXAM-07 | Backend enforces valid state transitions | unit/integration | manual via `curl` / E2E script | ❌ Wave 0 |
-| EXAM-08 | Only APPROVED questions usable in official assessments | integration | manual via `curl` / E2E script | ❌ Wave 0 |
+| Req ID  | Behavior                                               | Test Type        | Automated Command              | File Exists? |
+| ------- | ------------------------------------------------------ | ---------------- | ------------------------------ | ------------ |
+| EXAM-01 | Assessment CRUD                                        | integration      | manual via `curl` / E2E script | ❌ Wave 0    |
+| EXAM-02 | Add/remove questions                                   | integration      | manual via `curl` / E2E script | ❌ Wave 0    |
+| EXAM-03 | Configure duration + max marks + instructions          | integration      | manual via `curl` / E2E script | ❌ Wave 0    |
+| EXAM-04 | Scheduling                                             | integration      | manual via `curl` / E2E script | ❌ Wave 0    |
+| EXAM-05 | Publish + complete                                     | integration      | manual via `curl` / E2E script | ❌ Wave 0    |
+| EXAM-06 | Lifecycle DRAFT → PUBLISHED → ACTIVE → COMPLETED       | integration      | manual via `curl` / E2E script | ❌ Wave 0    |
+| EXAM-07 | Backend enforces valid state transitions               | unit/integration | manual via `curl` / E2E script | ❌ Wave 0    |
+| EXAM-08 | Only APPROVED questions usable in official assessments | integration      | manual via `curl` / E2E script | ❌ Wave 0    |
 
 ### Sampling Rate
 
@@ -667,24 +674,24 @@ export class AssessmentsController {
 
 ### Applicable ASVS Categories
 
-| ASVS Category | Applies | Standard Control |
-|---------------|---------|-----------------|
-| V2 Authentication | yes | Existing `AccessTokenGuard` (cookie JWT) |
-| V3 Session Management | yes | Existing session management from Phase 1 |
-| V4 Access Control | yes | `TenantGuard` + `RolesGuard` + `RequiredRoles` decorators; institute-scoped queries |
-| V5 Input Validation | yes | Zod schemas (contracts) + class-validator (DTOs) |
-| V6 Cryptography | no | No crypto operations in this phase |
+| ASVS Category         | Applies | Standard Control                                                                    |
+| --------------------- | ------- | ----------------------------------------------------------------------------------- |
+| V2 Authentication     | yes     | Existing `AccessTokenGuard` (cookie JWT)                                            |
+| V3 Session Management | yes     | Existing session management from Phase 1                                            |
+| V4 Access Control     | yes     | `TenantGuard` + `RolesGuard` + `RequiredRoles` decorators; institute-scoped queries |
+| V5 Input Validation   | yes     | Zod schemas (contracts) + class-validator (DTOs)                                    |
+| V6 Cryptography       | no      | No crypto operations in this phase                                                  |
 
 ### Known Threat Patterns for NestJS + PostgreSQL Stack
 
-| Pattern | STRIDE | Standard Mitigation |
-|---------|--------|---------------------|
-| Cross-tenant assessment access | Information Disclosure | `instituteId` on every query + `TenantGuard` |
-| Adding another institute's questions | Tampering | JOIN validation: `questions.instituteId = assessment.instituteId` |
-| State transition bypass | Tampering | Server-side transition table, never trust client state |
-| Unapproved question in published exam | Tampering | Publish gate re-checks all `approvalStatus` values |
-| Assessment data leak via 404 vs 403 | Information Disclosure | Always 404 for foreign-institute access (consistent with Phase 6 pattern) |
-| Schedule manipulation | Elevation of Privilege | `startsAt`/`endsAt` validated on create/update; schedule check on student access (Phase 9) |
+| Pattern                               | STRIDE                 | Standard Mitigation                                                                        |
+| ------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------ |
+| Cross-tenant assessment access        | Information Disclosure | `instituteId` on every query + `TenantGuard`                                               |
+| Adding another institute's questions  | Tampering              | JOIN validation: `questions.instituteId = assessment.instituteId`                          |
+| State transition bypass               | Tampering              | Server-side transition table, never trust client state                                     |
+| Unapproved question in published exam | Tampering              | Publish gate re-checks all `approvalStatus` values                                         |
+| Assessment data leak via 404 vs 403   | Information Disclosure | Always 404 for foreign-institute access (consistent with Phase 6 pattern)                  |
+| Schedule manipulation                 | Elevation of Privilege | `startsAt`/`endsAt` validated on create/update; schedule check on student access (Phase 9) |
 
 ## Sources
 
@@ -707,6 +714,7 @@ export class AssessmentsController {
 ## Metadata
 
 **Confidence breakdown:**
+
 - Standard Stack: HIGH — no new dependencies; all existing patterns confirmed in codebase
 - Architecture: HIGH — state machine + join table is a well-understood pattern; constraints from REQUIREMENTS.md are explicit
 - Pitfalls: HIGH — derived from cross-referencing REQUIREMENTS.md constraints with existing codebase patterns (EXAM-07, EXAM-08, tenant isolation)

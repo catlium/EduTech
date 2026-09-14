@@ -1,5 +1,5 @@
-import { StatusBadge } from "./status-badge";
-import type { MaterialProcessingStatus } from "@catlium/contracts";
+import { StatusBadge } from './status-badge';
+import type { MaterialProcessingStatus } from '@catlium/contracts';
 
 export function ProcessingStatus({
   processingStatus,
@@ -11,7 +11,7 @@ export function ProcessingStatus({
   return (
     <div className="flex items-center gap-2 text-sm">
       <StatusBadge status={processingStatus} />
-      {(processingStatus === "PROCESSING" || processingStatus === "QUEUED") && jobId && (
+      {(processingStatus === 'PROCESSING' || processingStatus === 'QUEUED') && jobId && (
         <span className="text-muted-foreground">Job {jobId.slice(0, 8)}</span>
       )}
     </div>
