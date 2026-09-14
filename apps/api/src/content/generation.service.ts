@@ -30,6 +30,7 @@ import type {
   GenerateBatchJobIds,
   GenerationBatchResponse,
   GenerationBatchJob,
+  GenerationSourceTypeEnum,
 } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
@@ -364,57 +365,120 @@ export class GenerationService {
   async requestBatchGeneration(
     instituteId: string,
     userId: string,
-    sourceType: 'MATERIAL' | 'TOPIC',
+    sourceType: (typeof GenerationSourceTypeEnum.options)[number],
     sourceId: string,
     types: string[],
   ): Promise<GenerateBatchJobIds> {
-    if (sourceType === 'MATERIAL') {
-      await this.assertGeneratableMaterial(instituteId, sourceId);
-    } else {
-      await this.assertTopicInInstitute(instituteId, sourceId);
-    }
-
     const resourceTypes = types as ContentPackageType[];
     const batchId = randomUUID();
     const jobIds: string[] = [];
     const alreadyActive: ContentPackageType[] = [];
 
-    for (const type of resourceTypes) {
-      const operation = BATCH_TYPE_TO_OPERATION[type];
-      const payload: Record<string, unknown> = {
-        operation,
-        resourceType: type,
-        batchId,
-        source: { type: sourceType, id: sourceId },
-        requestedBy: userId,
-      };
-      // CORNELL_NOTE is a one-type package run; the worker's per-type package
-      // path already honours `params.types = ["cornell"]`.
-      if (operation === CONTENT_PACKAGE_OPERATION) {
-        payload.params = { types: ['cornell'] };
-      }
+    // Batch-level source is preserved for the batch summary; each child job
+    // carries its own per-resource source (a CHAPTER/SUBJECT batch expands to
+    // one TOPIC-sourced job per active topic × type — the worker never sees the
+    // whole scope at once, keeping context shared via the DB, not the payload).
+    const batchSource = { type: sourceType, id: sourceId };
 
-      try {
-        const job = await this.jobs.insertJob(instituteId, operation, payload);
-        await this.jobs.publishJob(job);
-        jobIds.push(job.id);
-      } catch (error) {
-        // The active-generation unique index rejects a concurrent duplicate.
-        if (isUniqueViolation(error)) {
-          alreadyActive.push(type);
-          continue;
+    for (const source of await this.resolveBatchSources(instituteId, sourceType, sourceId)) {
+      for (const type of resourceTypes) {
+        const operation = BATCH_TYPE_TO_OPERATION[type];
+        const payload: Record<string, unknown> = {
+          operation,
+          resourceType: type,
+          batchId,
+          batchSource,
+          source: { type: source.type, id: source.id },
+          requestedBy: userId,
+        };
+        // CORNELL_NOTE is a one-type package run; the worker's per-type package
+        // path already honours `params.types = ["cornell"]`.
+        if (operation === CONTENT_PACKAGE_OPERATION) {
+          payload.params = { types: ['cornell'] };
         }
-        throw error;
+
+        try {
+          const job = await this.jobs.insertJob(instituteId, operation, payload);
+          await this.jobs.publishJob(job);
+          jobIds.push(job.id);
+        } catch (error) {
+          // The active-generation unique index rejects a concurrent duplicate.
+          if (isUniqueViolation(error)) {
+            alreadyActive.push(type);
+            continue;
+          }
+          throw error;
+        }
       }
     }
 
     return { batchId, sourceType, sourceId, jobIds, alreadyActive };
   }
 
-  async getGenerationBatch(
-    batchId: string,
+  /** Resolve a batch's per-resource sources: MATERIAL/TOPIC stay 1:1; a
+   * CHAPTER/SUBJECT batch expands to every active topic under the scope. */
+  private async resolveBatchSources(
     instituteId: string,
-  ): Promise<GenerationBatchResponse> {
+    sourceType: (typeof GenerationSourceTypeEnum.options)[number],
+    sourceId: string,
+  ): Promise<Array<{ type: 'MATERIAL' | 'TOPIC'; id: string }>> {
+    if (sourceType === 'MATERIAL') {
+      await this.assertGeneratableMaterial(instituteId, sourceId);
+      return [{ type: 'MATERIAL', id: sourceId }];
+    }
+    if (sourceType === 'TOPIC') {
+      await this.assertTopicInInstitute(instituteId, sourceId);
+      return [{ type: 'TOPIC', id: sourceId }];
+    }
+
+    const topicIds = await this.listActiveTopicIds(instituteId, sourceType, sourceId);
+    if (topicIds.length === 0) {
+      throw new ConflictException('No active topics in this source scope');
+    }
+    return topicIds.map((id) => ({ type: 'TOPIC', id }));
+  }
+
+  private async listActiveTopicIds(
+    instituteId: string,
+    scopeType: 'CHAPTER' | 'SUBJECT',
+    scopeId: string,
+  ): Promise<string[]> {
+    const [scope] = await this.db
+      .select({ id: topics.id })
+      .from(topics)
+      .innerJoin(chapters, eq(topics.chapterId, chapters.id))
+      .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
+      .where(
+        and(
+          eq(subjects.instituteId, instituteId),
+          scopeType === 'CHAPTER' ? eq(chapters.id, scopeId) : eq(subjects.id, scopeId),
+        ),
+      )
+      .limit(1);
+    if (!scope) {
+      throw new NotFoundException(
+        scopeType === 'CHAPTER' ? 'Chapter not found' : 'Subject not found',
+      );
+    }
+
+    const rows = await this.db
+      .select({ id: topics.id })
+      .from(topics)
+      .innerJoin(chapters, eq(topics.chapterId, chapters.id))
+      .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
+      .where(
+        and(
+          eq(subjects.instituteId, instituteId),
+          scopeType === 'CHAPTER' ? eq(chapters.id, scopeId) : eq(subjects.id, scopeId),
+          eq(chapters.status, 'active'),
+          eq(topics.status, 'active'),
+        ),
+      )
+      .orderBy(chapters.sortOrder, topics.sortOrder);
+    return rows.map((row) => row.id);
+  }
+
+  async getGenerationBatch(batchId: string, instituteId: string): Promise<GenerationBatchResponse> {
     const rows = await this.db
       .select({
         id: jobs.id,
@@ -431,6 +495,11 @@ export class GenerationService {
 
     const first = rows[0];
     const payload = first.payload as Record<string, unknown> | null;
+    const batchSource =
+      (payload?.batchSource as
+        { type?: (typeof GenerationSourceTypeEnum.options)[number]; id?: string } | undefined) ??
+      (payload?.source as
+        { type?: (typeof GenerationSourceTypeEnum.options)[number]; id?: string } | undefined);
     const jobsList: GenerationBatchJob[] = rows.map((row) => {
       const jobPayload = row.payload as Record<string, unknown> | null;
       const resourceType =
@@ -457,8 +526,8 @@ export class GenerationService {
 
     return {
       batchId,
-      sourceType: (payload?.source as { type?: 'MATERIAL' | 'TOPIC' } | undefined)?.type ?? 'MATERIAL',
-      sourceId: (payload?.source as { id?: string } | undefined)?.id ?? '',
+      sourceType: batchSource?.type ?? 'MATERIAL',
+      sourceId: batchSource?.id ?? '',
       total: rows.length,
       completed: count(['completed']),
       failed: count(['failed']),
@@ -491,6 +560,7 @@ export class GenerationService {
         status: materials.status,
         processingStatus: materials.processingStatus,
         textContent: materials.textContent,
+        topicId: materials.topicId,
       })
       .from(materials)
       .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
@@ -503,6 +573,14 @@ export class GenerationService {
     }
     if (!material.textContent?.trim()) {
       throw new ConflictException('Material has no extracted text');
+    }
+    // Derived resources are Topic-owned: a material without a topic cannot be
+    // a generation source (it would produce a topic-less resource). Generate
+    // from the topic instead.
+    if (!material.topicId) {
+      throw new ConflictException(
+        'Material is not linked to a topic; generate from its topic instead',
+      );
     }
   }
 

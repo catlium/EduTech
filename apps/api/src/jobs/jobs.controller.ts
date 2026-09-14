@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -40,6 +41,29 @@ export class JobsController {
     return { job };
   }
 
+  @Get()
+  @RequiredRoles(...WRITE_ROLES)
+  async list(
+    @CurrentUser() _user: AuthenticatedUser,
+    @Tenant() tenant: TenantContext,
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+    @Query('batchId') batchId?: string,
+    @Query('sourceType') sourceType?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const parsedLimit = Math.min(Math.max(Number(limit ?? 50) || 50, 1), 100);
+    const parsedOffset = Math.max(Number(offset ?? 0) || 0, 0);
+    const result = await this.jobsService.listJobs(
+      tenant.instituteId,
+      { status, type, batchId, sourceType },
+      parsedLimit,
+      parsedOffset,
+    );
+    return result;
+  }
+
   @Get(':jobId')
   @RequiredRoles(...WRITE_ROLES)
   async findOne(
@@ -48,6 +72,18 @@ export class JobsController {
     @Param('jobId', ParseUUIDPipe) jobId: string,
   ) {
     const job = await this.jobsService.getJob(jobId, tenant.instituteId);
+    return { job };
+  }
+
+  @Post(':jobId/retry')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async retry(
+    @CurrentUser() _user: AuthenticatedUser,
+    @Tenant() tenant: TenantContext,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+  ) {
+    const job = await this.jobsService.retryJob(jobId, tenant.instituteId);
     return { job };
   }
 

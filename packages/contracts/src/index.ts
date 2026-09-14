@@ -258,7 +258,10 @@ export const NoteTableBlockSchema = z.object({
   type: z.literal('table'),
   caption: z.string().max(255).optional(),
   headers: z.array(z.string().min(1).max(500)).max(12).optional(),
-  rows: z.array(z.array(z.string().min(1).max(2000)).max(12)).min(1).max(100),
+  rows: z
+    .array(z.array(z.string().min(1).max(2000)).max(12))
+    .min(1)
+    .max(100),
 });
 
 export const NoteFormulaVariableSchema = z.object({
@@ -751,7 +754,7 @@ export const GenerationBatchJobStatusSchema = z.string();
 export type GenerationBatchJobStatus = z.infer<typeof GenerationBatchJobStatusSchema>;
 
 export const GenerateBatchRequestSchema = z.object({
-  sourceType: z.enum(['MATERIAL', 'TOPIC']),
+  sourceType: GenerationSourceTypeEnum,
   sourceId: z.string().uuid(),
   types: z.array(ContentPackageTypeEnum).min(1),
 });
@@ -768,7 +771,7 @@ export type GenerationBatchJob = z.infer<typeof GenerationBatchJobSchema>;
 
 export const GenerationBatchResponseSchema = z.object({
   batchId: z.string().uuid(),
-  sourceType: z.enum(['MATERIAL', 'TOPIC']),
+  sourceType: GenerationSourceTypeEnum,
   sourceId: z.string().uuid(),
   total: z.number(),
   completed: z.number(),
@@ -781,7 +784,7 @@ export type GenerationBatchResponse = z.infer<typeof GenerationBatchResponseSche
 
 export const GenerateBatchJobIdsSchema = z.object({
   batchId: z.string().uuid(),
-  sourceType: z.enum(['MATERIAL', 'TOPIC']),
+  sourceType: GenerationSourceTypeEnum,
   sourceId: z.string().uuid(),
   jobIds: z.array(z.string().uuid()),
   alreadyActive: z.array(ContentPackageTypeEnum),
@@ -888,7 +891,11 @@ export const QuestionTypeDefinitionSchema = z.object({
   answerFormat: AnswerFormatEnum,
   kind: QuestionTypeKindEnum,
   defaultMarks: z.number().int().min(1).max(1000).nullable().optional(),
-  allowedDifficulties: z.array(z.enum(['EASY','MEDIUM','HARD'])).max(3).nullable().optional(),
+  allowedDifficulties: z
+    .array(z.enum(['EASY', 'MEDIUM', 'HARD']))
+    .max(3)
+    .nullable()
+    .optional(),
   evaluationConfig: z.record(z.string(), z.unknown()).nullable().optional(),
   isGlobal: z.boolean(),
   active: z.boolean(),
@@ -905,7 +912,10 @@ export const CreateQuestionTypeRequestSchema = z.object({
   answerFormat: AnswerFormatEnum,
   kind: QuestionTypeKindEnum,
   defaultMarks: z.number().int().min(1).max(1000).optional(),
-  allowedDifficulties: z.array(z.enum(['EASY','MEDIUM','HARD'])).max(3).optional(),
+  allowedDifficulties: z
+    .array(z.enum(['EASY', 'MEDIUM', 'HARD']))
+    .max(3)
+    .optional(),
   evaluationConfig: z.record(z.string(), z.unknown()).optional(),
 });
 export type CreateQuestionTypeRequest = z.infer<typeof CreateQuestionTypeRequestSchema>;
@@ -968,7 +978,9 @@ export const CreateQuestionRequestSchema = z
   .superRefine((value, ctx) => {
     // Built-in codes get client-side payload validation; custom codes
     // (any string) are validated server-side against the type's answer format.
-    const schema = (QuestionPayloadSchemas as Record<string, import('zod').ZodTypeAny | undefined>)[value.questionType];
+    const schema = (QuestionPayloadSchemas as Record<string, import('zod').ZodTypeAny | undefined>)[
+      value.questionType
+    ];
     if (!schema) return;
     const result = schema.safeParse(value.payload);
     if (!result.success) {
@@ -1080,14 +1092,13 @@ export const DifficultyDistributionSchema = z
   });
 export type DifficultyDistribution = z.infer<typeof DifficultyDistributionSchema>;
 
-export const GenerateBankRequestSchema = z
-  .object({
-    ...QuestionBankScopeSchema.shape,
-    questionTypes: z.array(QuestionTypeRefSchema).min(1).max(32).optional(),
-    count: z.number().int().min(1).max(100),
-    difficultyDistribution: DifficultyDistributionSchema.optional(),
-    blueprintId: z.string().uuid().optional(),
-  });
+export const GenerateBankRequestSchema = z.object({
+  ...QuestionBankScopeSchema.shape,
+  questionTypes: z.array(QuestionTypeRefSchema).min(1).max(32).optional(),
+  count: z.number().int().min(1).max(100),
+  difficultyDistribution: DifficultyDistributionSchema.optional(),
+  blueprintId: z.string().uuid().optional(),
+});
 export type GenerateBankRequest = z.infer<typeof GenerateBankRequestSchema>;
 
 export const CountBucketSchema = z.object({
@@ -1285,12 +1296,7 @@ export const SyllabusProcessingStatusEnum = z.enum([
 ]);
 export type SyllabusProcessingStatus = z.infer<typeof SyllabusProcessingStatusEnum>;
 
-export const SyllabusAnalysisStatusEnum = z.enum([
-  'PENDING',
-  'PROCESSING',
-  'READY',
-  'FAILED',
-]);
+export const SyllabusAnalysisStatusEnum = z.enum(['PENDING', 'PROCESSING', 'READY', 'FAILED']);
 export type SyllabusAnalysisStatus = z.infer<typeof SyllabusAnalysisStatusEnum>;
 
 export const SyllabusLifecycleStatusEnum = z.enum(['PROPOSED', 'CONFIRMED', 'ARCHIVED']);

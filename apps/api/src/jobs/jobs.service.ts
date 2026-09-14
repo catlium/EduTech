@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { eq, and, sql, desc, inArray } from 'drizzle-orm';
-import { jobs } from '@catlium/database';
+import { jobs, materials, topics, chapters, subjects, syllabi } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { RabbitMQService } from '../common/services/rabbitmq.service.js';
+import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 
 export interface Job {
   id: string;
@@ -17,6 +18,19 @@ export interface Job {
   createdAt: Date;
   startedAt: Date | null;
   completedAt: Date | null;
+}
+
+export interface JobListItem {
+  id: string;
+  type: string;
+  status: string;
+  error: string | null;
+  sourceType: string | null;
+  sourceId: string | null;
+  batchId: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 // Job-type → queue routing. Jobs without an explicit mapping default to the
@@ -36,10 +50,7 @@ const JOB_QUEUE_BY_TYPE: Record<string, string> = {
 
 // Types the generic `POST /jobs` endpoint accepts. Anything else is rejected
 // up front instead of being consumed (acked) and never progressed by a worker.
-export const ALLOWED_JOB_TYPES = [
-  'MATERIAL_PROCESS',
-  ...Object.keys(JOB_QUEUE_BY_TYPE),
-] as const;
+export const ALLOWED_JOB_TYPES = ['MATERIAL_PROCESS', ...Object.keys(JOB_QUEUE_BY_TYPE)] as const;
 
 @Injectable()
 export class JobsService {
@@ -195,6 +206,190 @@ export class JobsService {
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       completedAt: job.completedAt,
+    };
+  }
+
+  // ── Job monitor ─────────────────────────────────────────────────
+
+  /** Bulk human labels for payload references (topics/materials/chapters/
+   * subjects and syllabi). Scoped to the institute via joins. */
+  private async resolveLabels(
+    instituteId: string,
+    rows: (typeof jobs.$inferSelect)[],
+  ): Promise<Record<string, Record<string, string>>> {
+    const byType = new Map<string, Set<string>>();
+    const collect = (type: string | undefined, id: string | undefined) => {
+      if (!type || !id) return;
+      if (!byType.has(type)) byType.set(type, new Set());
+      byType.get(type)!.add(id);
+    };
+    for (const job of rows) {
+      const payload = job.payload as Record<string, unknown> | null;
+      if (!payload) continue;
+      const source =
+        typeof payload.source === 'object' && payload.source !== null
+          ? (payload.source as { type?: string; id?: string })
+          : null;
+      collect(source?.type, source?.id);
+      const batchSource =
+        typeof payload.batchSource === 'object' && payload.batchSource !== null
+          ? (payload.batchSource as { type?: string; id?: string })
+          : null;
+      collect(batchSource?.type, batchSource?.id);
+      collect(
+        'materialId',
+        typeof payload.materialId === 'string' ? payload.materialId : undefined,
+      );
+      collect(
+        'syllabusId',
+        typeof payload.syllabusId === 'string' ? payload.syllabusId : undefined,
+      );
+    }
+
+    const labels: Record<string, Record<string, string>> = {};
+    for (const [kind, idSet] of byType) {
+      const ids = [...idSet];
+      let nameRows: Array<{ id: string; name: string }> = [];
+      switch (kind) {
+        case 'MATERIAL':
+        case 'materialId':
+          nameRows = await this.db
+            .select({ id: materials.id, name: materials.title })
+            .from(materials)
+            .where(and(eq(materials.instituteId, instituteId), inArray(materials.id, ids)));
+          break;
+        case 'TOPIC':
+          nameRows = await this.db
+            .select({ id: topics.id, name: topics.name })
+            .from(topics)
+            .innerJoin(chapters, eq(topics.chapterId, chapters.id))
+            .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
+            .where(and(eq(subjects.instituteId, instituteId), inArray(topics.id, ids)));
+          break;
+        case 'CHAPTER':
+          nameRows = await this.db
+            .select({ id: chapters.id, name: chapters.name })
+            .from(chapters)
+            .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
+            .where(and(eq(subjects.instituteId, instituteId), inArray(chapters.id, ids)));
+          break;
+        case 'SUBJECT':
+          nameRows = await this.db
+            .select({ id: subjects.id, name: subjects.name })
+            .from(subjects)
+            .where(and(eq(subjects.instituteId, instituteId), inArray(subjects.id, ids)));
+          break;
+        case 'syllabusId':
+          nameRows = await this.db
+            .select({ id: syllabi.id, name: subjects.name })
+            .from(syllabi)
+            .innerJoin(subjects, eq(syllabi.subjectId, subjects.id))
+            .where(and(eq(syllabi.instituteId, instituteId), inArray(syllabi.id, ids)));
+          break;
+        default:
+          continue;
+      }
+      labels[kind] = Object.fromEntries(nameRows.map((r) => [r.id, r.name]));
+    }
+    return labels;
+  }
+
+  /** Re-enqueue a failed/cancelled job with its original payload. */
+  async retryJob(jobId: string, instituteId: string): Promise<Job> {
+    const job = await this.getJob(jobId, instituteId);
+    if (job.status !== 'failed' && job.status !== 'cancelled') {
+      throw new ConflictException('Only failed or cancelled jobs can be retried');
+    }
+    try {
+      await this.updateJobStatus(job.id, 'queued');
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('A generation is already in progress for this source');
+      }
+      throw error;
+    }
+    try {
+      await this.publishJob({ ...job, status: 'queued' });
+    } catch {
+      await this.updateJobStatus(job.id, 'failed', undefined, {
+        message: 'Failed to re-enqueue job',
+      });
+      throw new ConflictException('Failed to re-enqueue job');
+    }
+    return this.getJob(job.id, instituteId);
+  }
+
+  async listJobs(
+    instituteId: string,
+    filters: {
+      status?: string;
+      type?: string;
+      batchId?: string;
+      sourceType?: string;
+    },
+    limit: number,
+    offset: number,
+  ): Promise<{
+    jobs: JobListItem[];
+    labels: Record<string, Record<string, string>>;
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    const conditions = [eq(jobs.instituteId, instituteId)];
+    if (filters.status) conditions.push(eq(jobs.status, filters.status.toLowerCase()));
+    if (filters.type) conditions.push(eq(jobs.type, filters.type.toUpperCase()));
+    if (filters.batchId) conditions.push(sql`${jobs.payload}->>'batchId' = ${filters.batchId}`);
+    if (filters.sourceType) {
+      conditions.push(
+        sql`${jobs.payload}->'source'->>'type' = ${filters.sourceType.toUpperCase()}`,
+      );
+    }
+    const where = and(...conditions);
+
+    const [rows, totalRows] = await Promise.all([
+      this.db
+        .select()
+        .from(jobs)
+        .where(where)
+        .orderBy(desc(jobs.createdAt))
+        .limit(limit)
+        .offset(offset),
+      this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobs)
+        .where(where),
+    ]);
+
+    return {
+      jobs: rows.map((row) => this.toListItem(row)),
+      labels: await this.resolveLabels(instituteId, rows),
+      total: totalRows[0]?.count ?? 0,
+      limit,
+      offset,
+    };
+  }
+
+  private toListItem(job: typeof jobs.$inferSelect): JobListItem {
+    const payload = job.payload as Record<string, unknown> | null;
+    const source =
+      payload && typeof payload.source === 'object' && payload.source !== null
+        ? (payload.source as { type?: string; id?: string })
+        : null;
+    return {
+      id: job.id,
+      type: job.type,
+      status: job.status,
+      error:
+        job.error && typeof job.error === 'object' && 'message' in job.error
+          ? String(job.error.message)
+          : null,
+      sourceType: source?.type ?? null,
+      sourceId: source?.id ?? null,
+      batchId: typeof payload?.batchId === 'string' ? payload.batchId : null,
+      createdAt: job.createdAt.toISOString(),
+      startedAt: job.startedAt?.toISOString() ?? null,
+      completedAt: job.completedAt?.toISOString() ?? null,
     };
   }
 }
