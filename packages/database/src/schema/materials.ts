@@ -35,6 +35,7 @@ export const materials = pgTable(
     storageKey: varchar('storage_key', { length: 1000 }),
     textContent: text('text_content'),
     processingStatus: varchar('processing_status', { length: 20 }).notNull().default('UPLOADED'),
+    progress: jsonb('progress'),
     status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
     revision: integer('revision').notNull().default(1),
     metadata: jsonb('metadata'),
