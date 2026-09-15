@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech — Distributed OCR worker (external pull worker)
+#
+# Standalone image for the distributed OCR architecture
+# (docs/architecture/ocr-distributed-workers.md). Runs OCR computation ONLY:
+# no PostgreSQL, no RabbitMQ, no OmniRoute, no NestJS source, no Next.js.
+# The worker polls the NestJS Worker API and never touches the database.
+#
+# An external machine needs only Docker + env:
+#   WORKER_OCR_SERVER_URL=https://<host>/api/v1
+#   WORKER_OCR_WORKER_ID=<uuid from POST /ocr/workers>
+#   WORKER_OCR_API_KEY=owr_...  (issued once)
+#
+# Entrypoint: the `ocr-worker` console script (ocr_worker.app:run).
+# ─────────────────────────────────────────────────────────────
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# System libs required by paddlepaddle (OpenMP) and paddleocr/OpenCV (GL).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 \
+        libgl1 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /srv
+
+# The OCR engine library ships inside `apps/ocr` (the old FastAPI app modules
+# are present in the source tree but never run); the pull worker is
+# `apps/workers/ocr-worker`. Installing both packages into one interpreter is
+# the same convention as Dockerfile.python.
+COPY apps/ocr ./ocr
+COPY apps/workers/ocr-worker ./ocr-worker
+
+RUN pip install ./ocr ./ocr-worker
+
+# Persist the PaddleOCR model cache so downloads survive container rebuilds.
+VOLUME /root/.paddlex
+
+CMD ["ocr-worker"]

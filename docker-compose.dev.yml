@@ -46,3 +46,30 @@ services:
       # Production must never use the fallbacks (use the base file only).
       INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-omniroute-dev-password}
       JWT_SECRET: ${OMNIROUTE_JWT_SECRET:-dev-only-insecure-secret-change-me}
+
+  # Distributed OCR worker for local validation — the SAME standalone image an
+  # external machine runs (infrastructure/compose/Dockerfile.ocr-worker),
+  # pointed at the dev API over the private network.
+  #
+  # Bootstrap: register a worker once (admin UI or POST /ocr/workers → returns
+  # {workerId, apiKey} only once), put those in .env as WORKER_OCR_WORKER_ID /
+  # WORKER_OCR_API_KEY, then `docker compose ... up ocr-worker`. Without them
+  # the worker exits at boot (required config).
+  ocr-worker:
+    build:
+      context: .
+      dockerfile: infrastructure/compose/Dockerfile.ocr-worker
+    container_name: catlium-ocr-worker
+    env_file:
+      - .env
+    environment:
+      # Dev uses the private network (http + container name); external
+      # production workers use https://<public-host>/api/v1 instead.
+      WORKER_OCR_SERVER_URL: http://api:3000/api/v1
+      WORKER_OCR_WORKER_ID: ${WORKER_OCR_WORKER_ID:-}
+      WORKER_OCR_API_KEY: ${WORKER_OCR_API_KEY:-}
+    volumes:
+      - paddle_models:/root/.paddlex
+    depends_on:
+      api:
+        condition: service_healthy

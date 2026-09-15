@@ -269,7 +269,15 @@ retry, aggregation and READY/FAILED. RabbitMQ stays internal (AI worker only).
 > - [x] D3 Contracts: worker/chunk schemas + aggregate progress shape
 > - [x] D4 API: worker registry + `OcrWorkerAuthGuard` (+ token/status derivation unit tests)
 > - [x] D5 API: coordinator (claim/lease/reclaim/retry/aggregate/READY/FAILED) + worker endpoints + MaterialsService routing
-> - [ ] D6 `apps/workers/ocr-worker` pull client + standalone Docker image
+> - [x] D6 `apps/workers/ocr-worker` pull client + standalone Docker image
+      + dev compose service. Root cause fixed: `WorkerConfig()` eagerly read
+      unrelated env vars (`extra="forbid"`); now `extra="ignore"` and the
+      unused module-level `settings` singleton removed (`apps/ocr/app/config.py`
+      got the same one-line fix). 9 worker tests green (claim/heartbeat/source/
+      result/fail/process-chunk/auth-error), ruff + mypy clean; OCR engine 21
+      tests green; `Dockerfile.ocr-worker` builds and boots (models cache
+      volume, paddle libs); `ocr-worker` dev service in docker-compose.dev.yml
+      (reads `WORKER_OCR_WORKER_ID`/`WORKER_OCR_API_KEY`/`SERVER_URL` from .env)
 > - [ ] D7 Web: workers admin view + aggregate `MaterialProgress`
 > - [ ] D8 Validation + docs + flip default + retire old OCR service/worker
 

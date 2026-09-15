@@ -2,17 +2,29 @@
 
 ## Continue OCR — distributed-worker implementation (2026-09-15)
 
-**Status: implementation in progress (D1–D5 committed).** The redesigned
+**Status: D6 complete (committed).** The redesigned
  distributed-worker OCR architecture (`docs/architecture/ocr-distributed-workers.md`)
  is being built; the old monolith OCR path stays paused/uncommitted.
 
-- **New architecture:** OCR computation moves off the main server onto external
-  Docker workers that pull work over HTTPS from the NestJS API. The server (OCR
-  coordinator) owns chunk creation, assignment, lease/reclaim, retry,
-  aggregation, and final READY/FAILED. RabbitMQ stays internal for the AI
-  worker only; no public exposure of Postgres/RabbitMQ/OmniRoute/internal
-  ports; browser never talks to workers.
-- **Committed milestones:** D1 schema `ocr_workers` + `ocr_chunks` + migration
+- **D6 (committed):** external pull worker at `apps/workers/ocr-worker`
+  (computation-only HTTPS polling loop: heartbeat → claim → source → local
+  page-range extraction → result/fail, graceful shutdown, transient-claim
+  backoff, per-chunk fail reporting) + standalone image
+  `infrastructure/compose/Dockerfile.ocr-worker` (python:3.12-slim + paddle
+  libs + engine + worker; no Postgres/RabbitMQ/OmniRoute/NestJS source) +
+  dev `ocr-worker` service in `docker-compose.dev.yml`.
+  **Env-pollution root cause fixed:** `WorkerConfig()` eagerly instantiated at
+  module scope under pydantic `extra="forbid"` crashed on unrelated env vars
+  (node_env/worker_ai_*/mock_ai_*/…). Minimal fix: `extra="ignore"` + removed
+  the unused module-level `settings` singleton; `apps/ocr/app/config.py`
+  received the same one-line fix so the ocr venv's pytest surface isn't blocked
+  by a polluted shell either. Worker tests **9 PASS** (claim/heartbeat/source/
+  result/fail/process-chunk/auth-error paths over mocked httpx), ruff + mypy
+  clean; OCR engine **21 PASS** regression; Docker image builds and boots
+  (heartbeat retries against an absent coordinator as expected).
+  Bootstrap: `POST /ocr/workers` issues `{workerId, apiKey}` once; dev compose
+  reads `WORKER_OCR_WORKER_ID`/`WORKER_OCR_API_KEY` from `.env`.
+- **Committed D1–D5:** D1 schema `ocr_workers` + `ocr_chunks` + migration
   `0028` (applied to dev DB); D2 `apps/ocr/ocr_engine` FastAPI-free library
   (21 tests green, ruff/mypy clean); D3 OCR worker/chunk/progress contracts;
   D4 `OcrWorkersService` registry + `OcrWorkerAuthGuard` + admin endpoints
@@ -36,8 +48,8 @@
   streaming client, `_run_extraction` full-file flow, the `ocr` FastAPI compose
   service, `worker-material` OCR consumers, and the shared `x-internal-api-key`
   OCR call.
-- **Tasks:** `docs/tasks.md` D1–D5 `[x]`; next is D6 worker pull client
-  (`apps/workers/ocr-worker`) + standalone Docker image.
+- **Tasks:** `docs/tasks.md` D1–D6 `[x]`; next is D7 web workers admin view +
+  aggregate `MaterialProgress` (`apps/web`).
 - **Environment:** dev stack containers are online.
 
 ## Phase 32 — Correction: Generation Workflows & AI Reliability (2026-09-14)
