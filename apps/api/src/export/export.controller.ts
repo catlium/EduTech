@@ -20,6 +20,7 @@ import { Tenant } from '../common/decorators/tenant.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 
 const EXPORT_FORMATS = ['pdf', 'docx'] as const;
+const EXPORT_INCLUDES = ['paper', 'answers'] as const;
 
 @Controller('export')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
@@ -63,9 +64,23 @@ export class ExportController {
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
     format: (typeof EXPORT_FORMATS)[number] = 'pdf',
+    // Paper = student-facing (no answers/difficulty), answers = teacher key.
+    @Query('include', new ParseEnumPipe(EXPORT_INCLUDES, { optional: true }))
+    include: (typeof EXPORT_INCLUDES)[number] = 'paper',
   ): Promise<void> {
-    const doc = await this.exportService.buildAssessmentDoc(tenant.instituteId, assessmentId);
-    sendDoc(res, doc, format, `assessment-${assessmentId}`);
+    const doc = await this.exportService.buildAssessmentDoc(
+      tenant.instituteId,
+      assessmentId,
+      include === 'answers' ? 'teacher' : 'paper',
+    );
+    sendDoc(
+      res,
+      doc,
+      format,
+      include === 'answers'
+        ? `assessment-${assessmentId}-answer-key`
+        : `assessment-${assessmentId}`,
+    );
   }
 
   @Get('paper-pattern/:patternId')

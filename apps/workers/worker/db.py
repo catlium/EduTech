@@ -449,28 +449,28 @@ def insert_generated_questions(
     created_by: str,
     provenance: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Persist AI-generated questions as PENDING rows in the ``questions`` table.
+    """Persist AI-generated questions as APPROVED, ACTIVE rows in the ``questions`` table.
 
-    Mirrors the API's ``QuestionsService.createQuestion`` for the AI_GENERATED
-    path: ``source`` = ``AI_GENERATED`` and ``approval_status`` = ``PENDING``
-    (never auto-approved — AIGQ-08). The worker writes directly to PostgreSQL,
-    consistent with material processing / ``insert_ai_content``. Each item is
-    the validated ``GeneratedQuestion`` shape (canonical payload after the
-    Pydantic mirror normalized MCQ choice ids).
+    AI-generated questions are derived content: they become available in the
+    Question Bank immediately (approval_status APPROVED, status ACTIVE) — no
+    mandatory teacher confirmation gate. Review remains available as a
+    capability (any question can still be REJECTED/ARCHIVED by a teacher),
+    but it is never a prerequisite for usage.
     """
     ids: list[str] = []
     with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
         # Idempotency for same-job re-runs (API retry / stale-recovery requeue
         # reuse the SAME jobId). A previous partial run of this job may have
-        # inserted PENDING rows before failing; purge them so a retry never
-        # duplicates questions. Only untouched system rows: anything a teacher
-        # already reviewed is never deleted.
+        # inserted rows before failing; purge them so a retry never duplicates
+        # questions. Only untouched system rows are deleted: anything a teacher
+        # already touched (updated_by != created_by) is never removed.
         job_id = provenance.get("jobId") if isinstance(provenance, dict) else None
         if isinstance(job_id, str):
             cur.execute(
                 "DELETE FROM questions"
-                " WHERE status = 'ACTIVE' AND approval_status = 'PENDING'"
-                "   AND provenance->>'jobId' = %s",
+                " WHERE status = 'ACTIVE' AND source = 'AI_GENERATED'"
+                "   AND provenance->>'jobId' = %s"
+                "   AND updated_by = created_by",
                 (job_id,),
             )
         for q in questions:
@@ -483,7 +483,7 @@ def insert_generated_questions(
                 "  answer_format, difficulty, explanation, payload, source,"
                 "  approval_status, status, created_by, updated_by, provenance)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'AI_GENERATED',"
-                "  'PENDING', 'ACTIVE', %s, %s, %s)"
+                "  'APPROVED', 'ACTIVE', %s, %s, %s)"
                 " RETURNING id",
                 (
                     institute_id,

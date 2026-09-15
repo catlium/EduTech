@@ -52,6 +52,9 @@ export const assessmentQuestions = pgTable(
       .references(() => questions.id, { onDelete: 'cascade' }),
     sortOrder: integer('sort_order').notNull().default(0),
     marks: integer('marks').notNull().default(1),
+    // Paper-pattern section this question belongs to ('General' when the
+    // assessment has no blueprint or the question was added without a section).
+    section: varchar('section', { length: 100 }).notNull().default('General'),
   },
   (table) => [unique('assessment_questions_unique').on(table.assessmentId, table.questionId)],
 );

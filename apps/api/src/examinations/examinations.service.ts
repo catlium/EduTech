@@ -6,11 +6,22 @@ import {
   Inject,
 } from '@nestjs/common';
 import { eq, and, desc, asc, inArray, count, max } from 'drizzle-orm';
-import { assessments, assessmentQuestions, paperPatterns, questions } from '@catlium/database';
+import {
+  assessments,
+  assessmentQuestions,
+  paperPatterns,
+  paperPatternSubjects,
+  questions,
+} from '@catlium/database';
 import type { Database } from '@catlium/database';
-import type { AssessmentStatus } from '@catlium/contracts';
+import type { AssessmentStatus, PaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
+import {
+  planAutoSelection,
+  computePatternCoverage,
+  type Difficulty,
+} from './paper-selection.js';
 
 // Pattern 1 (08-RESEARCH) — the transition lookup table is the single source
 // of truth for lifecycle legality. COMPLETED is terminal (empty list).
@@ -316,6 +327,7 @@ export class ExaminationsService {
       questionId: row.assessment_questions.questionId,
       sortOrder: row.assessment_questions.sortOrder,
       marks: row.assessment_questions.marks,
+      section: row.assessment_questions.section,
       question: row.questions,
     }));
   }
@@ -325,6 +337,7 @@ export class ExaminationsService {
     assessmentId: string,
     questionIds: string[],
     marksOverride?: Record<string, number>,
+    sectionsOverride?: Record<string, string>,
   ) {
     const existing = await this.getAssessment(instituteId, assessmentId);
 
@@ -365,6 +378,20 @@ export class ExaminationsService {
       }
     }
 
+    // Per-question section assignment: freeform label (a pattern section name,
+    // default 'General'). Never fabricated — trimmed, length-capped.
+    const cleanSection = (raw: string): string => {
+      const s = raw.trim();
+      if (s.length === 0) throw new BadRequestException('Section names cannot be blank');
+      return s.slice(0, 100);
+    };
+    for (const [id, section] of Object.entries(sectionsOverride ?? {})) {
+      if (typeof section !== 'string') {
+        throw new BadRequestException(`Section for question ${id} must be a string`);
+      }
+      cleanSection(section);
+    }
+
     try {
       return await this.db.transaction(async (tx) => {
         // WR-04 (08-07): read max(sortOrder) ONCE per assessment, inside the
@@ -388,6 +415,9 @@ export class ExaminationsService {
               questionId: questionIds[i]!,
               sortOrder: (agg?.maxSort ?? 0) + i + 1,
               marks: marksOverride?.[questionIds[i]!] ?? 1,
+              section: sectionsOverride?.[questionIds[i]!]
+                ? cleanSection(sectionsOverride[questionIds[i]!]!)
+                : 'General',
             })
             .returning();
           added.push(row!);
@@ -428,6 +458,148 @@ export class ExaminationsService {
     if (isUniqueViolation(error)) {
       throw new ConflictException(message);
     }
+  }
+
+  // ── Paper pattern integration ─────────────
+
+  private async loadBlueprintPattern(instituteId: string, blueprintId: string) {
+    const [pattern] = await this.db
+      .select()
+      .from(paperPatterns)
+      .where(and(eq(paperPatterns.id, blueprintId), eq(paperPatterns.instituteId, instituteId)))
+      .limit(1);
+    if (!pattern || pattern.status !== 'APPROVED' || !pattern.structure) {
+      throw new BadRequestException('Blueprint must be an approved paper pattern with a structure');
+    }
+    return pattern;
+  }
+
+  private structureSections(structure: PaperPatternStructure) {
+    return structure.sections.map((s) => ({
+      id: s.id,
+      name: s.name,
+      questionType: s.questionType ?? null,
+      count: s.count ?? null,
+      marksPerQuestion: s.marksPerQuestion ?? null,
+      totalMarks: s.totalMarks ?? null,
+      compulsory: s.compulsory,
+      attemptCount: s.attemptCount ?? null,
+      difficultyDistribution: (s.difficultyDistribution ?? null) as
+        | Partial<Record<Difficulty, number>>
+        | null,
+    }));
+  }
+
+  /** Mode A — the system builds the paper from the Question Bank. Only DRAFT
+   * assessments linked to an APPROVED pattern are eligible. Selection honors
+   * each section's type/count/difficulty and records honest shortages when the
+   * bank cannot satisfy a section (never a fabricated/short-changed paper). */
+  async autoSelectFromPattern(instituteId: string, assessmentId: string) {
+    const assessment = await this.getAssessment(instituteId, assessmentId);
+    if (assessment.status !== 'DRAFT') {
+      throw new BadRequestException('Questions can only be added in DRAFT status');
+    }
+    if (!assessment.blueprintId) {
+      throw new BadRequestException('Assessment has no paper-pattern blueprint');
+    }
+
+    const pattern = await this.loadBlueprintPattern(instituteId, assessment.blueprintId);
+    const structure = pattern.structure as PaperPatternStructure;
+    const sections = this.structureSections(structure);
+
+    const subjectRows = await this.db
+      .select({ subjectId: paperPatternSubjects.subjectId })
+      .from(paperPatternSubjects)
+      .where(eq(paperPatternSubjects.patternId, pattern.id));
+    const subjectIds = subjectRows.map((r) => r.subjectId);
+
+    const linked = await this.db
+      .select({ questionId: assessmentQuestions.questionId })
+      .from(assessmentQuestions)
+      .where(eq(assessmentQuestions.assessmentId, assessmentId));
+    const taken = new Set(linked.map((r) => r.questionId));
+
+    const typeCodes = new Set(
+      sections.flatMap((s) => (s.questionType ? [s.questionType] : [])),
+    );
+    const conditions = [
+      eq(questions.instituteId, instituteId),
+      eq(questions.approvalStatus, 'APPROVED'),
+      eq(questions.status, 'ACTIVE'),
+    ];
+    if (subjectIds.length > 0) conditions.push(inArray(questions.subjectId, subjectIds));
+    if (typeCodes.size > 0) conditions.push(inArray(questions.questionType, [...typeCodes]));
+
+    const rows = await this.db
+      .select({
+        id: questions.id,
+        questionType: questions.questionType,
+        difficulty: questions.difficulty,
+      })
+      .from(questions)
+      .where(and(...conditions));
+
+    const plan = planAutoSelection(
+      sections,
+      rows.map((r) => ({
+        id: r.id,
+        questionType: r.questionType,
+        difficulty: r.difficulty as Difficulty,
+      })),
+      taken,
+    );
+
+    // Append only what the bank actually satisfied, in section order.
+    await this.db.transaction(async (tx) => {
+      const [agg] = await tx
+        .select({ maxSort: max(assessmentQuestions.sortOrder) })
+        .from(assessmentQuestions)
+        .where(eq(assessmentQuestions.assessmentId, assessmentId));
+      let base = agg?.maxSort ?? 0;
+      for (const sec of plan.sections) {
+        for (const questionId of sec.selected) {
+          base += 1;
+          await tx.insert(assessmentQuestions).values({
+            assessmentId,
+            questionId,
+            sortOrder: base,
+            marks: sec.marks,
+            section: sec.name,
+          });
+        }
+      }
+    });
+
+    return {
+      assessmentId,
+      totalSelected: plan.totalSelected,
+      totalMarks: plan.totalMarks,
+      sections: plan.sections,
+    };
+  }
+
+  /** Live per-section status against the paper pattern for BOTH selection
+   * modes (auto or manual). Returns null for assessments with no blueprint. */
+  async getPatternCoverage(instituteId: string, assessmentId: string) {
+    const assessment = await this.getAssessment(instituteId, assessmentId);
+    if (!assessment.blueprintId) return null;
+
+    const pattern = await this.loadBlueprintPattern(instituteId, assessment.blueprintId);
+    const structure = pattern.structure as PaperPatternStructure;
+    const links = await this.listQuestions(instituteId, assessmentId);
+
+    return {
+      patternId: pattern.id,
+      patternTitle: pattern.title,
+      sections: computePatternCoverage(
+        this.structureSections(structure),
+        links.map((l) => ({
+          section: l.section,
+          questionType: l.question.questionType,
+          marks: l.marks,
+        })),
+      ),
+    };
   }
 
   // ── Read ──────────────────────────────────

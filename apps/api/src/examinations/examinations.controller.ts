@@ -172,8 +172,41 @@ export class ExaminationsController {
       assessmentId,
       dto.questionIds,
       dto.marks,
+      dto.sections,
     );
     return { added };
+  }
+
+  // Live per-section status against the assessment's paper pattern (Mode A or
+  // Mode B manual selection). `coverage` is null when the assessment has no
+  // blueprint — the client hides the pattern panel in that case.
+  @Get(':assessmentId/pattern-coverage')
+  @RequiredRoles(...WRITE_ROLES)
+  async patternCoverage(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    const coverage = await this.examinationsService.getPatternCoverage(
+      tenant.instituteId,
+      assessmentId,
+    );
+    return { coverage };
+  }
+
+  // Mode A — the system selects questions from the Question Bank for every
+  // pattern section and appends them to this DRAFT assessment. Honest
+  // shortages reported per section when the bank cannot satisfy the pattern.
+  @Post(':assessmentId/select-from-pattern')
+  @RequiredRoles(...WRITE_ROLES)
+  async selectFromPattern(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ) {
+    const result = await this.examinationsService.autoSelectFromPattern(
+      tenant.instituteId,
+      assessmentId,
+    );
+    return { result };
   }
 
   @Delete(':assessmentId/questions/:questionId')

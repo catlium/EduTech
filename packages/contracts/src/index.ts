@@ -1478,6 +1478,10 @@ export const AssessmentResponseSchema = z.object({
   startsAt: z.string().datetime().nullable(),
   endsAt: z.string().datetime().nullable(),
   status: AssessmentStatusEnum,
+  // Provenance: the APPROVED paper pattern this assessment was built from
+  // (null when created standalone). Drives the pattern panel, auto-select and
+  // the attempt-N-of-M preview.
+  blueprintId: z.string().uuid().nullable(),
   createdBy: z.string().uuid(),
   updatedBy: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
@@ -1503,9 +1507,70 @@ export const AssessmentQuestionSchema = z.object({
   questionId: z.string().uuid(),
   sortOrder: z.number(),
   marks: z.number(),
+  // Paper-pattern section this question belongs to ('General' when added
+  // without a section or when the assessment has no blueprint).
+  section: z.string().max(100),
   question: QuestionResponseSchema,
 });
 export type AssessmentQuestion = z.infer<typeof AssessmentQuestionSchema>;
+
+// ── Paper pattern → assessment selection ────────────────────────────────
+//
+// Both selection modes (Mode A: system auto-select; Mode B: teacher manual
+// selection from the Question Bank) converge onto the same assessment draft.
+// `pattern-coverage` reports live per-section status for either mode.
+
+export const PatternCoverageStatusEnum = z.enum(['OK', 'SHORT', 'EXCESS', 'TYPE_MISMATCH']);
+export type PatternCoverageStatus = z.infer<typeof PatternCoverageStatusEnum>;
+
+export const PatternCoverageSectionSchema = z.object({
+  name: z.string().min(1).max(100),
+  questionType: z.string().nullable(),
+  /* Questions the paper must present (M). For optional "attempt N of M"
+   * sections this is the total presented set. */
+  requiredCount: z.number().int().min(0),
+  /* Minimum a student must attempt to earn section marks (N; count for
+   * compulsory sections, attemptCount for optional ones). */
+  attemptCount: z.number().int().min(0),
+  requiredMarks: z.number().int().min(0),
+  presentCount: z.number().int().min(0),
+  presentMarks: z.number().int().min(0),
+  status: PatternCoverageStatusEnum,
+  message: z.string().nullable(),
+});
+export type PatternCoverageSection = z.infer<typeof PatternCoverageSectionSchema>;
+
+export const PatternCoverageResponseSchema = z.object({
+  patternId: z.string().uuid(),
+  patternTitle: z.string(),
+  sections: z.array(PatternCoverageSectionSchema),
+});
+export type PatternCoverageResponse = z.infer<typeof PatternCoverageResponseSchema>;
+
+export const PaperAutoSelectSectionResultSchema = z.object({
+  sectionId: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  questionType: z.string().nullable(),
+  /* Marks applied to every selected question in this section. */
+  marks: z.number().int().min(1),
+  selected: z.array(z.string().uuid()),
+  /* Pattern-requested presented count (M). */
+  requested: z.number().int().min(0),
+  /* Questions the system actually found and selected. */
+  found: z.number().int().min(0),
+  /* Honest reasons when the bank could not satisfy the section — never a
+   * fabricated value. Empty when the section was fully satisfied. */
+  shortages: z.array(z.string()),
+});
+export type PaperAutoSelectSectionResult = z.infer<typeof PaperAutoSelectSectionResultSchema>;
+
+export const PaperAutoSelectResponseSchema = z.object({
+  assessmentId: z.string().uuid(),
+  totalSelected: z.number().int().min(0),
+  totalMarks: z.number().int().min(0),
+  sections: z.array(PaperAutoSelectSectionResultSchema),
+});
+export type PaperAutoSelectResponse = z.infer<typeof PaperAutoSelectResponseSchema>;
 
 // ── Syllabus Contracts ─────────────────────
 //

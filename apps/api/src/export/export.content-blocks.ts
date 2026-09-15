@@ -65,21 +65,26 @@ export function questionDocBlock(args: {
   payload?: Record<string, unknown> | null;
   explanation?: string | null;
   includeAnswers: boolean;
+  /* 'paper' renders a student-facing question: no difficulty, no answer
+   * markers, no correct-choice flags, no explanation. 'teacher' (default)
+   * renders the full annotated block for answer keys. */
+  scope?: 'paper' | 'teacher';
 }): DocBlock {
+  const isPaper = args.scope === 'paper';
   const payload = args.payload ?? {};
   const correctId = payload['correctChoiceId'];
   const choices = (Array.isArray(payload['choices']) ? payload['choices'] : [])
     .map((c) => ({
       id: String((c as { id?: unknown })?.['id'] ?? ''),
       text: String((c as { text?: unknown })?.['text'] ?? ''),
-      correct: (c as { id?: unknown })?.['id'] === correctId,
+      correct: !isPaper && (c as { id?: unknown })?.['id'] === correctId,
     }))
     .filter((c) => c.id && c.text);
   const fmt = (
     typeof payload['answerFormat'] === 'string' ? payload['answerFormat'] : args.type
   ).toUpperCase();
   let answerNote: string | undefined;
-  if (args.includeAnswers) {
+  if (args.includeAnswers && !isPaper) {
     if (fmt === 'FILL_IN_BLANK' && Array.isArray(payload['acceptableAnswers'])) {
       const acc = payload['acceptableAnswers'].map(String).filter((v) => v.length > 0);
       if (acc.length > 0) answerNote = acc.join(' / ');
@@ -98,12 +103,12 @@ export function questionDocBlock(args: {
     kind: 'question',
     stem: args.stem,
     type: args.type,
-    difficulty: (args.difficulty ?? '').toUpperCase(),
+    difficulty: isPaper ? '' : (args.difficulty ?? '').toUpperCase(),
     marks: args.marks ?? undefined,
     choices,
     answerNote,
-    explanation: args.explanation ?? undefined,
-    showAnswer: args.includeAnswers,
+    explanation: isPaper ? undefined : (args.explanation ?? undefined),
+    showAnswer: isPaper ? false : args.includeAnswers,
   };
 }
 

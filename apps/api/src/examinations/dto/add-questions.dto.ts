@@ -21,4 +21,10 @@ export class AddQuestionsDto {
   @IsOptional()
   @IsObject()
   marks?: Record<string, number>;
+
+  // Per-question paper-pattern section (optional). A freeform label truncated
+  // to 100 chars in the service; 'General' when absent.
+  @IsOptional()
+  @IsObject()
+  sections?: Record<string, string>;
 }

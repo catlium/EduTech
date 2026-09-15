@@ -1,5 +1,5 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, asc } from 'drizzle-orm';
 import {
   contentItems,
   contentVersions,
@@ -92,7 +92,11 @@ export class ExportService {
     };
   }
 
-  async buildAssessmentDoc(instituteId: string, assessmentId: string): Promise<DocumentModel> {
+  async buildAssessmentDoc(
+    instituteId: string,
+    assessmentId: string,
+    scope: 'paper' | 'teacher' = 'paper',
+  ): Promise<DocumentModel> {
     const [assessment] = await this.db
       .select()
       .from(assessments)
@@ -109,11 +113,31 @@ export class ExportService {
         explanation: questions.explanation,
         marks: assessmentQuestions.marks,
         sortOrder: assessmentQuestions.sortOrder,
+        section: assessmentQuestions.section,
       })
       .from(assessmentQuestions)
       .innerJoin(questions, eq(assessmentQuestions.questionId, questions.id))
       .where(eq(assessmentQuestions.assessmentId, assessmentId))
-      .orderBy(assessmentQuestions.sortOrder);
+      .orderBy(asc(assessmentQuestions.sortOrder));
+
+    // Section metadata from the assessment's paper pattern (attempt N of M
+    // rendering) when a blueprint is attached.
+    let patternSections: PaperPatternStructure['sections'] = [];
+    if (assessment.blueprintId) {
+      const [pattern] = await this.db
+        .select({ structure: paperPatterns.structure })
+        .from(paperPatterns)
+        .where(
+          and(
+            eq(paperPatterns.id, assessment.blueprintId),
+            eq(paperPatterns.instituteId, instituteId),
+          ),
+        )
+        .limit(1);
+      if (pattern?.structure) {
+        patternSections = (pattern.structure as PaperPatternStructure).sections;
+      }
+    }
 
     const blocks: DocBlock[] = [
       {
@@ -130,19 +154,65 @@ export class ExportService {
     if (instructionLines.length > 0) {
       blocks.push({ kind: 'bullets', items: instructionLines });
     }
-    blocks.push(
-      ...links.map((l): DocBlock =>
-        questionDocBlock({
-          stem: l.stem,
-          type: l.questionType,
-          difficulty: l.difficulty,
-          marks: l.marks,
-          payload: (l.payload ?? {}) as Record<string, unknown>,
-          explanation: l.explanation,
-          includeAnswers: false,
-        }),
-      ),
+
+    const bySection = (name: string) =>
+      links.filter((l) => (l.section || 'General') === name).sort((a, b) => a.sortOrder - b.sortOrder);
+    const renderSection = (name: string, sectionMeta?: (typeof patternSections)[number]) => {
+      const sectionLinks = bySection(name);
+      if (sectionLinks.length === 0) return;
+      blocks.push({ kind: 'heading', text: name });
+      if (
+        scope === 'paper' &&
+        sectionMeta &&
+        !sectionMeta.compulsory &&
+        sectionMeta.attemptCount &&
+        sectionMeta.count
+      ) {
+        blocks.push({
+          kind: 'paragraph',
+          text: `Attempt any ${sectionMeta.attemptCount} of ${sectionMeta.count} questions in this section.`,
+        });
+      }
+      blocks.push(
+        ...sectionLinks.map((l): DocBlock =>
+          questionDocBlock({
+            stem: l.stem,
+            type: l.questionType,
+            difficulty: l.difficulty,
+            marks: l.marks,
+            payload: (l.payload ?? {}) as Record<string, unknown>,
+            explanation: l.explanation,
+            includeAnswers: scope === 'teacher',
+            scope,
+          }),
+        ),
+      );
+    };
+
+    for (const sectionMeta of patternSections) {
+      renderSection(sectionMeta.name, sectionMeta);
+    }
+    const general = links.filter(
+      (l) => !patternSections.some((s) => s.name === (l.section || 'General')),
     );
+    if (general.length > 0) {
+      blocks.push({ kind: 'heading', text: 'General' });
+      blocks.push(
+        ...general.map(
+          (l): DocBlock =>
+            questionDocBlock({
+              stem: l.stem,
+              type: l.questionType,
+              difficulty: l.difficulty,
+              marks: l.marks,
+              payload: (l.payload ?? {}) as Record<string, unknown>,
+              explanation: l.explanation,
+              includeAnswers: scope === 'teacher',
+              scope,
+            }),
+        ),
+      );
+    }
 
     return { title: assessment.title, blocks };
   }
