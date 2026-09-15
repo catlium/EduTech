@@ -268,7 +268,7 @@ retry, aggregation and READY/FAILED. RabbitMQ stays internal (AI worker only).
 > - [x] D2 Extract `apps/ocr/ocr_engine` library from the FastAPI app (+ tests, 21 pass)
 > - [x] D3 Contracts: worker/chunk schemas + aggregate progress shape
 > - [x] D4 API: worker registry + `OcrWorkerAuthGuard` (+ token/status derivation unit tests)
-> - [ ] D5 API: coordinator (claim/lease/reclaim/retry/aggregate/READY/FAILED)
+> - [x] D5 API: coordinator (claim/lease/reclaim/retry/aggregate/READY/FAILED) + worker endpoints + MaterialsService routing
 > - [ ] D6 `apps/workers/ocr-worker` pull client + standalone Docker image
 > - [ ] D7 Web: workers admin view + aggregate `MaterialProgress`
 > - [ ] D8 Validation + docs + flip default + retire old OCR service/worker

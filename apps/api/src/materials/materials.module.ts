@@ -4,9 +4,10 @@ import { MaterialsService } from './materials.service.js';
 import { LocalStorageProvider } from './storage/local-storage.provider.js';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface.js';
 import { JobsModule } from '../jobs/jobs.module.js';
+import { OcrModule } from '../ocr/ocr.module.js';
 
 @Module({
-  imports: [JobsModule],
+  imports: [JobsModule, OcrModule],
   controllers: [MaterialsController],
   providers: [
     MaterialsService,

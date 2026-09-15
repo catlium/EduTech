@@ -2,9 +2,9 @@
 
 ## Continue OCR — distributed-worker implementation (2026-09-15)
 
-**Status: implementation in progress (D1–D4 committed).** The redesigned
-distributed-worker OCR architecture (`docs/architecture/ocr-distributed-workers.md`)
-is being built; the old monolith OCR path stays paused/uncommitted.
+**Status: implementation in progress (D1–D5 committed).** The redesigned
+ distributed-worker OCR architecture (`docs/architecture/ocr-distributed-workers.md`)
+ is being built; the old monolith OCR path stays paused/uncommitted.
 
 - **New architecture:** OCR computation moves off the main server onto external
   Docker workers that pull work over HTTPS from the NestJS API. The server (OCR
@@ -16,8 +16,16 @@ is being built; the old monolith OCR path stays paused/uncommitted.
   `0028` (applied to dev DB); D2 `apps/ocr/ocr_engine` FastAPI-free library
   (21 tests green, ruff/mypy clean); D3 OCR worker/chunk/progress contracts;
   D4 `OcrWorkersService` registry + `OcrWorkerAuthGuard` + admin endpoints
-  (`GET/POST /ocr/workers`, `PATCH /ocr/workers/:id`) + unit tests (6 pass).
-- **Head:** D4 commit; working tree keeps the paused monolith changes as design
+  (`GET/POST /ocr/workers`, `PATCH /ocr/workers/:id`) + unit tests (6 pass);
+  D5 `OcrCoordinatorService` (enqueue-chunk-1, claim `FOR UPDATE SKIP LOCKED`,
+  lease/heartbeat/reclaim/retry sweep, page validation + 1..N coverage gate,
+  aggregation → READY/FAILED, cancel/chunk cancellation, chunk-aggregate
+  `materials.progress` writes) + worker-facing endpoints
+  (`heartbeat`/`claim`/`source`/`result`/`fail` behind `OcrWorkerAuthGuard`) +
+  `MaterialsService` routing of `MATERIAL_PROCESS` to the coordinator (no
+  RabbitMQ publish for OCR). D5 covers `StorageProvider.read` for source
+  streaming; coordinator unit tests (4 pass, 10 OCR total).
+- **Head:** D5 commit; working tree keeps the paused monolith changes as design
   input only (superseded, do not resume).
 - **Reused from the paused work:** the OCR engine computation (PyMuPDF first +
   PaddleOCR fallback, bounded retry, `normalize_text`, page-level extraction)
@@ -28,11 +36,8 @@ is being built; the old monolith OCR path stays paused/uncommitted.
   streaming client, `_run_extraction` full-file flow, the `ocr` FastAPI compose
   service, `worker-material` OCR consumers, and the shared `x-internal-api-key`
   OCR call.
-- **Tasks:** `docs/tasks.md` D1–D4 `[x]`; next is D5 coordinator
-  (enqueue-chunk-1, claim `FOR UPDATE SKIP LOCKED`, lease/heartbeat/reclaim/
-  retry sweep, aggregation → READY/FAILED, cancel settlement, `progress`
-  writes) — `StorageProvider.read` added to the interface for the source
-  stream, reverted out of the D4 commit and re-landing with D5.
+- **Tasks:** `docs/tasks.md` D1–D5 `[x]`; next is D6 worker pull client
+  (`apps/workers/ocr-worker`) + standalone Docker image.
 - **Environment:** dev stack containers are online.
 
 ## Phase 32 — Correction: Generation Workflows & AI Reliability (2026-09-14)

@@ -9,6 +9,7 @@ export interface StorageSaveParams {
 
 export interface StorageProvider {
   save(params: StorageSaveParams): Promise<void>;
+  read(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
 }
 

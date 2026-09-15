@@ -16,6 +16,7 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
+import { OcrCoordinatorService } from '../ocr/ocr-coordinator.service.js';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface.js';
 import type { StorageProvider } from './storage/storage-provider.interface.js';
 import { ALLOWED_FILE_TYPES } from './materials.constants.js';
@@ -56,6 +57,7 @@ export class MaterialsService {
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     private readonly jobsService: JobsService,
+    private readonly ocrCoordinator: OcrCoordinatorService,
   ) {}
 
   // ── Create ────────────────────────────────
@@ -365,7 +367,9 @@ export class MaterialsService {
 
     try {
       job = await this.jobsService.insertJob(instituteId, 'MATERIAL_PROCESS', { materialId });
-      await this.jobsService.publishJob(job);
+      // Server-side OCR coordinator owns chunk materialization and start; no
+      // RabbitMQ publish for MATERIAL_PROCESS (workers poll the API instead).
+      await this.ocrCoordinator.enqueueJob(job, materialId);
     } catch (error) {
       if (job) {
         try {
@@ -396,7 +400,7 @@ export class MaterialsService {
     return {
       materialId,
       jobId: job.id,
-      processingStatus: 'QUEUED',
+      processingStatus: 'PROCESSING',
     } as const;
   }
 

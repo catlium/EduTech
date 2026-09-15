@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 import type { StorageProvider, StorageSaveParams } from './storage-provider.interface.js';
@@ -16,6 +16,10 @@ export class LocalStorageProvider implements StorageProvider {
     const target = this.targetPath(params.key);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, params.data);
+  }
+
+  async read(key: string): Promise<Buffer> {
+    return readFile(this.targetPath(key));
   }
 
   async delete(key: string): Promise<void> {
