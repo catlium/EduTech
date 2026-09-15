@@ -649,7 +649,13 @@ export type MaterialProcessResponse = z.infer<typeof MaterialProcessResponseSche
 // or report failure. The admin/monitoring side (INSTITUTE_ADMIN) registers,
 // lists, disables, and rotates workers.
 
-export const OcrChunkStatusEnum = z.enum(['pending', 'claimed', 'submitted', 'failed', 'cancelled']);
+export const OcrChunkStatusEnum = z.enum([
+  'pending',
+  'claimed',
+  'submitted',
+  'failed',
+  'cancelled',
+]);
 export type OcrChunkStatus = z.infer<typeof OcrChunkStatusEnum>;
 
 export const OcrWorkerCapabilitiesSchema = z.object({
@@ -668,7 +674,11 @@ export const WorkerSummarySchema = z.object({
   status: z.enum(['processing', 'idle', 'offline', 'disabled']),
   currentChunkId: z.string().uuid().nullable(),
   currentChunkRange: z
-    .object({ index: z.number().int().positive(), startPage: z.number().int().positive(), endPage: z.number().int().positive() })
+    .object({
+      index: z.number().int().positive(),
+      startPage: z.number().int().positive(),
+      endPage: z.number().int().positive(),
+    })
     .nullable(),
   lastHeartbeatAt: z.string().datetime().nullable(),
   lastSeenAt: z.string().datetime().nullable(),
@@ -717,15 +727,17 @@ export type UpdateWorkerResponse = z.infer<typeof UpdateWorkerResponseSchema>;
 
 // Worker-facing claim/submit/fail payloads.
 export const WorkerClaimResponseSchema = z.object({
-  chunk: z.object({
-    id: z.string().uuid(),
-    index: z.number().int().positive(),
-    startPage: z.number().int().positive(),
-    endPage: z.number().int().positive(),
-    pageCount: z.number().int().positive(),
-    sourceType: z.enum(['MATERIAL', 'SYLLABUS']),
-    sourceId: z.string().uuid(),
-  }).nullable(),
+  chunk: z
+    .object({
+      id: z.string().uuid(),
+      index: z.number().int().positive(),
+      startPage: z.number().int().positive(),
+      endPage: z.number().int().positive(),
+      pageCount: z.number().int().positive(),
+      sourceType: z.enum(['MATERIAL', 'SYLLABUS']),
+      sourceId: z.string().uuid(),
+    })
+    .nullable(),
 });
 export type WorkerClaimResponse = z.infer<typeof WorkerClaimResponseSchema>;
 
@@ -763,6 +775,8 @@ export const OcrChunkSchema = z.object({
   status: OcrChunkStatusEnum,
   attempts: z.number().int().nonnegative(),
   claimedBy: z.string().uuid().nullable(),
+  workerName: z.string().nullable(),
+  leaseExpiresAt: z.string().datetime().nullable(),
   error: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

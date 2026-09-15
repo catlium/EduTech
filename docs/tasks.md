@@ -220,19 +220,19 @@ chunking, per-page retry, and resource limits; the worker client uses
 configurable timeouts instead of a hardcoded 60s.
 
 - [~] OCR1 Configurable chunking: `OCR_CHUNK_PAGES` (default 10), pages
-      processed in bounded chunks with progress logging
+  processed in bounded chunks with progress logging
 - [~] OCR2 Resource limits: `OCR_MAX_PAGES`, `OCR_MAX_FILE_BYTES` reject
-      oversized documents before extraction begins
+  oversized documents before extraction begins
 - [~] OCR3 Per-page retry: bounded retry count + backoff on transient OCR
-      failures (503); permanent failures propagate immediately
+  failures (503); permanent failures propagate immediately
 - [~] OCR4 Progress logging: extraction start, chunk progress, completion
-      with page-source breakdown
+  with page-source breakdown
 - [~] OCR5 Worker timeouts: `WORKER_OCR_CONNECT_TIMEOUT_SECONDS` (default 10),
-      `WORKER_OCR_READ_TIMEOUT_SECONDS` (default 300) replace hardcoded 60s
+  `WORKER_OCR_READ_TIMEOUT_SECONDS` (default 300) replace hardcoded 60s
 - [~] OCR6 Tests: chunk aggregation, page ordering, retry/failure behavior,
-      configurable chunk size, resource limits, existing path regression
+  configurable chunk size, resource limits, existing path regression
 - [~] OCR7 Validation: OCR pytest + worker pytest, ruff, mypy, typecheck;
-      rebuild/restart OCR + worker-material, retry stalled job
+  rebuild/restart OCR + worker-material, retry stalled job
 - [ ] OCR8 Docs: tasks.md, project-status.md, env examples; commit + push
 
 > **STATUS: PAUSED — replaced by the distributed OCR worker architecture
@@ -253,12 +253,12 @@ the NestJS coordinator owns chunk creation, assignment, leases/reclaim,
 retry, aggregation and READY/FAILED. RabbitMQ stays internal (AI worker only).
 
 - [~] DW1 Inspect implementations (OCR, worker, Jobs/RabbitMQ, StorageProvider,
-      frontend progress UI) and inventory reuse vs. replace
+  frontend progress UI) and inventory reuse vs. replace
 - [~] DW2 Write design doc: responsibilities, topology, data model, task +
-      worker lifecycle, auth model, endpoints, source flow, package layout,
-      Docker image, migration from the paused changes
+  worker lifecycle, auth model, endpoints, source flow, package layout,
+  Docker image, migration from the paused changes
 - [~] DW3 Update tasks.md + project-status.md to mark implementation PAUSED
-      pending the new architecture
+  pending the new architecture
 - [ ] DW4 Accept design via review, then start increment D1 below
 
 > After design acceptance, the implementation increments (from §14 of the
@@ -269,48 +269,46 @@ retry, aggregation and READY/FAILED. RabbitMQ stays internal (AI worker only).
 > - [x] D3 Contracts: worker/chunk schemas + aggregate progress shape
 > - [x] D4 API: worker registry + `OcrWorkerAuthGuard` (+ token/status derivation unit tests)
 > - [x] D5 API: coordinator (claim/lease/reclaim/retry/aggregate/READY/FAILED) + worker endpoints + MaterialsService routing
-> - [x] D6 `apps/workers/ocr-worker` pull client + standalone Docker image
-      + dev compose service. Root cause fixed: `WorkerConfig()` eagerly read
-      unrelated env vars (`extra="forbid"`); now `extra="ignore"` and the
-      unused module-level `settings` singleton removed (`apps/ocr/app/config.py`
-      got the same one-line fix). 9 worker tests green (claim/heartbeat/source/
-      result/fail/process-chunk/auth-error), ruff + mypy clean; OCR engine 21
-      tests green; `Dockerfile.ocr-worker` builds and boots (models cache
-      volume, paddle libs); `ocr-worker` dev service in docker-compose.dev.yml
-      (reads `WORKER_OCR_WORKER_ID`/`WORKER_OCR_API_KEY`/`SERVER_URL` from .env)
-> - [x] D7 Web workers admin + per-page inspection/correction:
->       - Migration `0029_ocr_page_corrections.sql` (`ocr_page_corrections`
->         keyed by sourceType+sourceId+page so corrections survive re-runs;
->         `corrected_by` FK → users, `corrected_at`/`updated_at` metadata;
->         applied to dev DB) + `_journal.json` entry 29
->       - Contracts: `WorkerPage` now carries per-page `text`; removed unused
->         `OcrChunkListResponse`; added `OcrChunk` + `OcrPageStatus` +
->         `OcrPageDetail` + `OcrPageListResponse` + `CreateOcrPageCorrectionRequest`
->       - Coordinator: `finalizeReady`/aggregation is correction-aware
->         (page-by-page, correction wins; only `submitted` chunks contribute);
->         new admin endpoints — `GET /materials/:id/ocr-pages`, `PUT`/`DELETE
->         /materials/:id/ocr-pages/:page/correction` (tenant-scoped, RESTORE
->         original, re-aggregates READY `textContent` + revision bump when it
->         changes). Page statuses derived: corrected > failed > missing >
->         extracted > pending — a submitted-but-empty page is `missing`, never
->         silently "complete". Pure logic extracted to
->         `ocr-coordinator.util.ts` (`derivePageDetails`, `aggregatePagesText`)
->         + 6-test `ocr-page-inspection.test.ts` (node:test, 17 total pass)
->       - Worker submits per-page text; worker test updated (9 pass, ruff+mypy clean)
->       - Web: `(workspace)/ocr/workers` admin page (workers table, online/
->         idle/processing/offline/disabled summary, register + copy-once key,
->         disable/enable, rotate key — ~3s poll, single interval, aborted on
->         unmount); dashboard `MaterialProgress` switched to the aggregate
->         OCRProgress shape; material detail page gains an "OCR inspection"
->         card (chunk table, failed/missing incomplete banner with retry, page
->         navigator, editor with Save/Cancel/Restore-original); `/ocr/workers`
->         added to sidebar adminNav + sideCrumb + ADMIN_ONLY_PREFIXES + middleware
->       - Validation: api typecheck+lint clean, contracts+database typecheck
->         clean, node:test 17 PASS, worker pytest 9 PASS + ruff+mypy clean,
->         OCR 21 PASS, web typecheck + `next build` green
-> - [ ] D8 Rebuild containers (api/ocr-worker) with new code, run live
->       end-to-end (register worker → process → correct → re-aggregate), full
->       validation + docs + retire old OCR service/worker
+> - [x] D6 `apps/workers/ocr-worker` pull client + standalone Docker image + dev compose service. Root cause fixed: `WorkerConfig()` eagerly read
+>       unrelated env vars (`extra="forbid"`); now `extra="ignore"` and the
+>       unused module-level `settings` singleton removed (`apps/ocr/app/config.py`
+>       got the same one-line fix). 9 worker tests green (claim/heartbeat/source/
+>       result/fail/process-chunk/auth-error), ruff + mypy clean; OCR engine 21
+>       tests green; `Dockerfile.ocr-worker` builds and boots (models cache
+>       volume, paddle libs); `ocr-worker` dev service in docker-compose.dev.yml
+>       (reads `WORKER_OCR_WORKER_ID`/`WORKER_OCR_API_KEY`/`SERVER_URL` from .env)
+> - [x] D7 Web workers admin + per-page inspection/correction: - Migration `0029_ocr_page_corrections.sql` (`ocr_page_corrections`
+>       keyed by sourceType+sourceId+page so corrections survive re-runs;
+>       `corrected_by` FK → users, `corrected_at`/`updated_at` metadata;
+>       applied to dev DB) + `_journal.json` entry 29 - Contracts: `WorkerPage` now carries per-page `text`; removed unused
+>       `OcrChunkListResponse`; added `OcrChunk` + `OcrPageStatus` +
+>       `OcrPageDetail` + `OcrPageListResponse` + `CreateOcrPageCorrectionRequest` - Coordinator: `finalizeReady`/aggregation is correction-aware
+>       (page-by-page, correction wins; only `submitted` chunks contribute);
+>       new admin endpoints — `GET /materials/:id/ocr-pages`, `PUT`/`DELETE
+      /materials/:id/ocr-pages/:page/correction` (tenant-scoped, retains
+>       original, re-aggregates READY `textContent` + revision bump when it
+>       changes). Page statuses derived: corrected > failed > missing >
+>       extracted > pending — a submitted-but-empty page is `missing`, never
+>       silently "complete". Pure logic extracted to
+>       `ocr-coordinator.util.ts` (`derivePageDetails`, `aggregatePagesText`) + 6-test `ocr-page-inspection.test.ts` (node:test, 17 total pass) - Worker submits per-page text; worker test updated (9 pass, ruff+mypy clean) - Web: `(workspace)/ocr/workers` admin page (workers table, online/
+>       idle/processing/offline/disabled summary, register + copy-once key,
+>       disable/enable, rotate key — ~3s poll, single interval, aborted on
+>       unmount); dashboard `MaterialProgress` switched to the aggregate
+>       OCRProgress shape; material detail page gains an "OCR inspection"
+>       card (chunk table, failed/missing incomplete banner with retry, page
+>       navigator, editor with Save/Cancel/Restore-original); `/ocr/workers`
+>       added to sidebar adminNav + sideCrumb + ADMIN_ONLY_PREFIXES + middleware - Validation: api typecheck+lint clean, contracts+database typecheck
+>       clean, node:test 17 PASS, worker pytest 9 PASS + ruff+mypy clean,
+>       OCR 21 PASS, web typecheck + `next build` green. Committed `e7a0bed`.
+> - [x] D8 Rebuild containers (api/ocr-worker) with new code; full automated
+>       validation (see project-status AUTOMATED VALIDATION); deploy fixes —
+>       requeue routing (MATERIAL_PROCESS never published to RabbitMQ; sweep
+>       adopts `queued` OCR jobs; enqueueJob resets chunks), worker config
+>       `min_length` guard, dead jest `test` script → node:test glob (104/104),
+>       Job Monitor Cancel, materials list defaults to ACTIVE (soft-deleted
+>       hidden), OCR inspection shows claimed → "processing" (+ worker + lease + progress bar). Dev worker registered + launched; live E2E run in
+>       progress (user verifies in UI; ~58 min for the 47-page scanned PDF).
+>       Retire old OCR service/worker: **deferred** until user confirms E2E.
 
 ### Goal: H Validation + docs + checkpoint
 

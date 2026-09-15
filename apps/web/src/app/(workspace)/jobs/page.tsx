@@ -88,6 +88,7 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
   const load = useCallback(
     async (showSpinner = true) => {
@@ -128,6 +129,19 @@ export default function JobsPage() {
       toast.error(err instanceof ApiError ? err.message : 'Failed to requeue job');
     } finally {
       setRetrying(null);
+    }
+  }
+
+  async function cancelJob(jobId: string) {
+    setCancelling(jobId);
+    try {
+      await api<{ job: { status: string } }>(`/jobs/${jobId}/cancel`, { method: 'POST' });
+      toast.success('Job cancel requested');
+      void load(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to cancel job');
+    } finally {
+      setCancelling(null);
     }
   }
 
@@ -233,6 +247,19 @@ export default function JobsPage() {
                       <Loader2 className="size-3 animate-spin" />
                     ) : (
                       <>Requeue</>
+                    )}
+                  </button>
+                )}
+                {(job.status === 'queued' || job.status === 'processing') && (
+                  <button
+                    onClick={() => void cancelJob(job.id)}
+                    disabled={cancelling === job.id}
+                    className="text-destructive hover:underline disabled:opacity-50"
+                  >
+                    {cancelling === job.id ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <>Cancel</>
                     )}
                   </button>
                 )}

@@ -2,12 +2,62 @@
 
 ## Continue OCR — distributed-worker implementation (2026-09-15)
 
-**Status: D7 complete (uncommitted).** The redesigned
- distributed-worker OCR architecture (`docs/architecture/ocr-distributed-workers.md`)
- is being built; the old monolith OCR path stays paused/uncommitted. D8 =
- rebuild containers + live E2E + retire old OCR flow.
+**Status: D7 committed (`e7a0bed`); D8 containers rebuilt + automated
+validation green; live E2E running (dev worker registered + processing).** The
+redesigned distributed-worker OCR architecture
+(`docs/architecture/ocr-distributed-workers.md`) is deployed in the dev
+containers; the old monolith OCR path stays paused/uncommitted. Retirement of
+the old OCR service/worker is **deferred until the user confirms the live E2E**
+in the UI.
 
-- **D7 (uncommitted):** admin page + per-page inspection/manual correction.
+**AUTOMATED VALIDATION (D8) — done:**
+
+- **Routing fix (real bug):** `POST /jobs/:id/retry` and `POST /jobs` pushed
+  `MATERIAL_PROCESS` onto the old RabbitMQ `jobs` queue — the coordinator
+  never consumed it and the stale monolith `worker-material` could
+  double-process. Now `publishJob` early-returns for `MATERIAL_PROCESS`, and
+  the coordinator sweep (`SWEEP_INTERVAL_MS` 15 s) **adopts `queued` OCR
+  jobs**: skips missing material / `READY`; `enqueueJob` deletes existing
+  chunks then materializes chunk 1 (`{startPage:1, endPage:CHUNK_SIZE}`) and
+  marks the material PROCESSING. **Validated live:** simulating the requeue
+  (job → `queued`) produced job `processing` + fresh chunk 1 within one sweep.
+- **Worker config guard:** `WorkerConfig.worker_id`/`api_key` are now
+  `Field(min_length=1)`; compose `:-` overrides pass `''` when `.env` lacks the
+  values, so a worker now exits at boot with `ValidationError` instead of
+  401/claim-looping (as `Dockerfile.ocr-worker` comments promise). Verified in
+  the built image. Worker pytest **10 PASS**.
+- **Dead `test` script fixed:** `apps/api/package.json` had `"test": "jest"`
+  with jest not installed; replaced with
+  `node --test "src/**/*.test.ts"` → whole `apps/api` run **104/104 PASS** (13
+  suites, incl. 4 that were never wired: `export.renderers`,
+  `build-bank-buckets`, `build-question-batch`, `batch-plan`).
+- **Images rebuilt + containers healthy:** `edutech-api`, `edutech-web`,
+  `edutech-ocr-worker` built from current source; api + web recreated and
+  healthy; `docker compose … config -q` OK; fresh API routes return 401
+  (mounted) not 404; migration `0029` applied clean, no pending.
+- **Full suites:** turbo typecheck **10/10**, turbo lint **9/9**, api
+  typecheck + lint + test, worker pytest **10**, OCR engine **21**, web
+  typecheck + `next build` + `test:paper-pattern-builder` (4), database +
+  contracts typecheck/lint, prettier `format:check` green (formatted 21 files).
+- **UX gaps closed:** Job Monitor gains **Cancel** (queued/processing → the
+  coordinator un-sticks OCR jobs: chunks cancelled, material back to QUEUED);
+  material listing now hides archived by default (API defaults `status` to
+  `ACTIVE`; list tab defaults to Active) so soft-deleted items don't show
+  directly; OCR inspection shows `claimed` chunks as **processing** with the
+  worker name + lease countdown and a page/chunk **progress bar**.
+
+**MANUAL FUNCTIONAL VALIDATION (D8) — in progress, USER WILL VERIFY:** a dev
+worker (`dev-laptop-worker`, id `a4323530-d5ff-42dc-a1aa-9925a8b5e0cd`) was
+registered and the `ocr-worker` container launched against the stuck material
+`8169f843` ("CIS Module - 1", 47 pages). The worker claimed chunk 1 (status
+now `claimed` → "processing" in the UI; source downloaded; PaddleOCR running on
+CPU). Chunks 2..5 materialize only after the worker reports `totalPages` on
+chunk 1's submit; READY is gated on contiguous full coverage. Monitor with
+`docker logs -f catlium-ocr-worker` or the Jobs/OCR-inspection UI; per-page
+correction then re-aggregation is the remaining user-verified step.
+
+- **D7 (committed, `e7a0bed`):** admin page + per-page inspection/manual
+  correction.
   - **Migration `0029_ocr_page_corrections.sql`** + `_journal.json` entry:
     `ocr_page_corrections` table keyed by `source_type+source_id+page`
     (NOT chunk/job, so corrections survive re-runs); `corrected_text`,
@@ -28,9 +78,9 @@
       `revision` bumped only if content actually changed — downstream AI
       never reads stale uncorrected text)
     - `DELETE /materials/:id/ocr-pages/:page/correction` (restore original)
-    Page status derived: **corrected > failed > missing > extracted >
-    pending** — a submitted-but-empty page renders `missing`, so an
-    incomplete result is never silently presented as complete.
+      Page status derived: **corrected > failed > missing > extracted >
+      pending** — a submitted-but-empty page renders `missing`, so an
+      incomplete result is never silently presented as complete.
   - **Pure logic extracted** to `ocr-coordinator.util.ts` (`derivePageDetails`,
     `aggregatePagesText`) + new `ocr-page-inspection.test.ts`
     (6 tests; node:test OCR suite now **17 PASS**).
@@ -64,7 +114,7 @@
   dev `ocr-worker` service in `docker-compose.dev.yml`.
   **Env-pollution root cause fixed:** `WorkerConfig()` eagerly instantiated at
   module scope under pydantic `extra="forbid"` crashed on unrelated env vars
-  (node_env/worker_ai_*/mock_ai_*/…). Minimal fix: `extra="ignore"` + removed
+  (node_env/worker_ai__/mock_ai__/…). Minimal fix: `extra="ignore"` + removed
   the unused module-level `settings` singleton; `apps/ocr/app/config.py`
   received the same one-line fix so the ocr venv's pytest surface isn't blocked
   by a polluted shell either. Worker tests **9 PASS** (claim/heartbeat/source/

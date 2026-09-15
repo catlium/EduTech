@@ -78,7 +78,10 @@ export const ocrChunks = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    check('ocr_chunks_page_range', sql`${table.startPage} >= 1 AND ${table.endPage} >= ${table.startPage}`),
+    check(
+      'ocr_chunks_page_range',
+      sql`${table.startPage} >= 1 AND ${table.endPage} >= ${table.startPage}`,
+    ),
     // One chunk per index per job + a claim-serving index on (status, lease).
     uniqueIndex('ocr_chunks_job_chunk_unique').on(table.jobId, table.chunkIndex),
     index('ocr_chunks_claim_idx').on(table.status, table.leaseExpiresAt),

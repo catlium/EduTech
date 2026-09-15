@@ -4,11 +4,7 @@ import type { OcrPageDetail } from '@catlium/contracts';
 
 /** Validate a worker's reported page list against a claimed chunk range.
  *  Rejects empty/oversized lists, out-of-range pages, and duplicates. */
-export function validateChunkPages(
-  pages: number[],
-  startPage: number,
-  endPage: number,
-): void {
+export function validateChunkPages(pages: number[], startPage: number, endPage: number): void {
   if (!pages.length || pages.length > endPage - startPage + 1) {
     throw new Error('Page list does not fit the chunk range');
   }
@@ -26,10 +22,7 @@ export function validateChunkPages(
 
 /** True iff reported pages cover exactly {1..documentPages} with no gaps,
  *  overlaps, or extras. */
-export function isCompleteCoverage(
-  reportedPages: number[],
-  documentPages: number,
-): boolean {
+export function isCompleteCoverage(reportedPages: number[], documentPages: number): boolean {
   const reported = new Set(reportedPages);
   if (reported.size !== documentPages) return false;
   for (let p = 1; p <= documentPages; p++) {
@@ -92,14 +85,30 @@ export function derivePageDetails(
 
     const chunk = chunkContaining(chunks, page);
     if (chunk?.status === 'failed') {
-      rows.push({ page, status: 'failed', source: null, text: null, correctedText: null, correctedBy: null, correctedAt: null });
+      rows.push({
+        page,
+        status: 'failed',
+        source: null,
+        text: null,
+        correctedText: null,
+        correctedBy: null,
+        correctedAt: null,
+      });
       continue;
     }
     if (chunk?.status === 'submitted') {
       const entry = pageEntriesOf(chunk).find((p) => p['page'] === page);
       const text = typeof entry?.['text'] === 'string' ? entry['text'] : '';
       if (!entry || text.length === 0) {
-        rows.push({ page, status: 'missing', source: null, text: null, correctedText: null, correctedBy: null, correctedAt: null });
+        rows.push({
+          page,
+          status: 'missing',
+          source: null,
+          text: null,
+          correctedText: null,
+          correctedBy: null,
+          correctedAt: null,
+        });
         continue;
       }
       const source = entry['source'];
@@ -114,7 +123,15 @@ export function derivePageDetails(
       });
       continue;
     }
-    rows.push({ page, status: 'pending', source: null, text: null, correctedText: null, correctedBy: null, correctedAt: null });
+    rows.push({
+      page,
+      status: 'pending',
+      source: null,
+      text: null,
+      correctedText: null,
+      correctedBy: null,
+      correctedAt: null,
+    });
   }
   return rows;
 }
@@ -123,24 +140,17 @@ export function derivePageDetails(
  *  correction winning over the original OCR output for its page. Each page is
  *  a paragraph block; blank lines separate pages. Only `submitted` chunks
  *  contribute — callers must have proven complete coverage separately. */
-export function aggregatePagesText(
-  chunks: ChunkLike[],
-  corrections: Map<number, string>,
-): string {
+export function aggregatePagesText(chunks: ChunkLike[], corrections: Map<number, string>): string {
   const lines: string[] = [];
   const ordered = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
 
   for (const chunk of ordered) {
     if (chunk.status !== 'submitted') continue;
-    const entries = pageEntriesOf(chunk).sort(
-      (a, b) => Number(a['page']) - Number(b['page']),
-    );
+    const entries = pageEntriesOf(chunk).sort((a, b) => Number(a['page']) - Number(b['page']));
     for (const entry of entries) {
       const page = Number(entry['page']);
       const correction = corrections.get(page);
-      lines.push(
-        correction ?? (typeof entry['text'] === 'string' ? entry['text'] : ''),
-      );
+      lines.push(correction ?? (typeof entry['text'] === 'string' ? entry['text'] : ''));
     }
   }
 

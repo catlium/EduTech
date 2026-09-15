@@ -150,7 +150,7 @@ export class MaterialsService {
     if (filters.processingStatus) {
       conditions.push(eq(materials.processingStatus, filters.processingStatus));
     }
-    if (filters.status) conditions.push(eq(materials.status, filters.status));
+    conditions.push(eq(materials.status, filters.status ?? 'ACTIVE'));
     if (filters.q) {
       conditions.push(
         or(

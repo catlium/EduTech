@@ -70,7 +70,10 @@ export class OcrWorkerController {
       throw new Error('Worker mismatch');
     }
     const { data, mimeType, fileName } = await this.coordinator.getSource(workerId, chunkId);
-    return new StreamableFile(data, { type: mimeType, disposition: `attachment; filename="${fileName}"` });
+    return new StreamableFile(data, {
+      type: mimeType,
+      disposition: `attachment; filename="${fileName}"`,
+    });
   }
 
   @Post(':workerId/chunks/:chunkId/result')

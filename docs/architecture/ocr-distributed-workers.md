@@ -1,15 +1,17 @@
 # OCR Distributed Worker Architecture
 
-**Status: D1–D7 implemented (D8 = rebuild containers + live E2E + retire old
-OCR flow).**
-**HEAD: `648da32` (D6).** D7 (addressed below) is uncommitted. The paused
-monolith-OCR changes remain uncommitted and are design input only —
-nothing here is committed.
+**Status: D1–D8 implemented; automated validation green; live E2E in
+progress (dev worker registered + running). Old OCR flow retirement deferred
+until the user confirms the E2E in the UI.**
+**HEAD: `e7a0bed` (D7).** D8 fixes (requeue routing, worker config guard,
+job cancel, archived-hidden listing, claimed→processing/progress UI) are
+committed below. The paused monolith-OCR changes remain uncommitted and are
+design input only — nothing about the old flow is committed.
 
 > Supersedes the in-progress monolith OCR workstream: internal chunking,
 > NDJSON `/extract` streaming, worker-side streaming progress, and the
 > `x-internal-api-key` OCR call path. The distributed design below reuses the
-> *computation* from that work but replaces its *transport and orchestration*.
+> _computation_ from that work but replaces its _transport and orchestration_.
 
 ## 1. Goal
 
@@ -24,6 +26,7 @@ monorepo, NestJS, PostgreSQL, RabbitMQ, Next.js, or OmniRoute.
 ## 2. Responsibilities
 
 ### Main server (NestJS API — owns state)
+
 - Application/API requests, database, material+syllabus state.
 - **OCR coordinator**: creates page-range chunk tasks, assigns them, reclaims
   expired leases, retries, aggregates results in page order, and drives the
@@ -35,12 +38,14 @@ monorepo, NestJS, PostgreSQL, RabbitMQ, Next.js, or OmniRoute.
 - **Frontend worker/job monitoring** endpoints.
 
 ### External OCR worker (computation only)
-- Registers/heartbeats; pulls work; fetches source bytes; OCRs *only its
-  assigned page range* locally (PyMuPDF first, PaddleOCR fallback, bounded
+
+- Registers/heartbeats; pulls work; fetches source bytes; OCRs _only its
+  assigned page range_ locally (PyMuPDF first, PaddleOCR fallback, bounded
   retries); submits normalized text per page; reports failure; repeats.
 - Never touches the database, RabbitMQ, OmniRoute, or the internal network.
 
 ### RabbitMQ
+
 - Remains for INTERNAL server-side async orchestration only (AI generation
   worker). It is NOT the external worker protocol and is never exposed
   publicly. OCR no longer requires RabbitMQ at all.
@@ -67,6 +72,7 @@ monorepo, NestJS, PostgreSQL, RabbitMQ, Next.js, or OmniRoute.
 ```
 
 Constraints honored:
+
 - Workers pull via HTTPS; the server assigns work atomically.
 - No public exposure of PostgreSQL, RabbitMQ, OmniRoute, or internal ports.
 - Browser never talks to workers — only to NestJS APIs.
@@ -89,9 +95,10 @@ Constraints honored:
 ## 5. Domain model / state machine
 
 ### Chunk task (`ocr_chunks`) — the unit of work
+
 Status: `pending → claimed → submitted → (coordinator) complete`
-                                     ↘ `failed`   (retryable until attempts=0)
-                                     ↘ `cancelled`
+↘ `failed` (retryable until attempts=0)
+↘ `cancelled`
 
 - A chunk covers a 1-based page range `[start_page, end_page]` of one source
   (`source_type`: `MATERIAL | SYLLABUS`; `source_id`).
@@ -103,6 +110,7 @@ Status: `pending → claimed → submitted → (coordinator) complete`
 - `chunk_index` plus per-page page numbers give deterministic page ordering.
 
 ### Material state (existing enum + new `progress` shape)
+
 - `UPLOADED → QUEUED → PROCESSING → READY | FAILED` (unchanged enum).
 - **`READY` requires ALL required chunks submitted** (contiguous coverage of
   pages 1..N exactly once, in order) and the aggregated normalized text
@@ -113,10 +121,11 @@ Status: `pending → claimed → submitted → (coordinator) complete`
   for retry/recovery but are never surfaced as READY.
 - `materials.progress` (jsonb) changes shape to the aggregate:
   `{ chunksCompleted, chunksTotal, pagesProcessed, pagesTotal, percent,
-     activeChunks, failedChunks, retryingChunks }` — written by the
+ activeChunks, failedChunks, retryingChunks }` — written by the
   coordinator alongside every chunk transition.
 
 ### Job row (`jobs`) — untouched tracker
+
 - `MATERIAL_PROCESS` / `PROCESS_SYLLABUS` rows are still created at
   enqueue and keep the existing cancel/retry/list semantics
   (`docs/api/jobs.md`). **No RabbitMQ publish for OCR job types** — the
@@ -133,21 +142,22 @@ Not the shared `INTERNAL_API_KEY`. Per-worker, revocable credential.
 
 `ocr_workers` table (platform-global, not tenant-scoped):
 
-| Column | Notes |
-|---|---|
-| `id` | uuid PK |
-| `name` | friendly label |
-| `token_hash` | SHA-256 of the secret portion of the `owr_` API key (never stored plaintext) |
-| `enabled` | bool; false = refuse heartbeat/claim/submit and fail open tasks at lease expiry |
-| `current_chunk_id` | uuid null — task currently held |
-| `last_heartbeat_at` | ts null |
-| `last_seen_at` | ts null — any successful authenticated call |
-| `version` | varchar (worker image version) |
-| `capabilities` | jsonb `{engines:[...], gpu:bool, concurrency:int}` |
-| `created_at`, `updated_at` | |
+| Column                     | Notes                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `id`                       | uuid PK                                                                         |
+| `name`                     | friendly label                                                                  |
+| `token_hash`               | SHA-256 of the secret portion of the `owr_` API key (never stored plaintext)    |
+| `enabled`                  | bool; false = refuse heartbeat/claim/submit and fail open tasks at lease expiry |
+| `current_chunk_id`         | uuid null — task currently held                                                 |
+| `last_heartbeat_at`        | ts null                                                                         |
+| `last_seen_at`             | ts null — any successful authenticated call                                     |
+| `version`                  | varchar (worker image version)                                                  |
+| `capabilities`             | jsonb `{engines:[...], gpu:bool, concurrency:int}`                              |
+| `created_at`, `updated_at` |                                                                                 |
 
 Derived status for the UI — computed from `last_heartbeat_at` +
 `current_chunk_id` (+ stale threshold), not stored:
+
 - `processing` — active `current_chunk_id`
 - `idle` — fresh heartbeat, no task
 - `offline` — heartbeat older than `WORKER_OFFLINE_SECONDS` (default 120)
@@ -229,10 +239,10 @@ worker never queries them directly.
    - runs the `cancelling → cancelled` settlement and `READY`/`FAILED`
      finalization (§5),
    - writes `materials.progress`.
-   Sweep interval configurable (`WORKER_SWEEP_INTERVAL_MS`, default 15 000).
-   Implemented with a plain `setInterval` in a NestJS `OnApplicationBootstrap`
-   service (ponytail: `@nestjs/schedule` not installed; an interval does this;
-   move to a cron lib when scheduling beyond interval arithmetic appears).
+     Sweep interval configurable (`WORKER_SWEEP_INTERVAL_MS`, default 15 000).
+     Implemented with a plain `setInterval` in a NestJS `OnApplicationBootstrap`
+     service (ponytail: `@nestjs/schedule` not installed; an interval does this;
+     move to a cron lib when scheduling beyond interval arithmetic appears).
 6. **READY** only after all chunks `submitted` and coverage is complete
    (pages 1..N contiguous, each exactly once, ordered by `start_page`).
    Aggregate = page-order join of chunk texts → `normalize_text` →
@@ -299,18 +309,20 @@ apps/
 ## 11. Fate of the paused monolith OCR changes (HEAD `dd86248` + uncommitted)
 
 ### (a) Retain & adapt (reused in the new design)
-| Paused artifact | New home |
-|---|---|
+
+| Paused artifact                                                                                                                                                  | New home                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `apps/ocr/app/extraction.py`: `_iter_pdf_pages`, `_ocr_page`, `_ocr_page_with_retry`, `_get_paddle`, `validate_pdf`, `normalize_text`, `extract_image`, mime map | `apps/ocr/ocr_engine/*` (§10), called per-chunk in the worker image |
-| `apps/ocr/app/config.py` knobs (chunk size, retry count/backoff, limits) | → `ocr_engine` config + coordinator chunk-size config |
-| `materials.progress` jsonb column + migration `0027` + `MaterialResponseSchema.progress` | retained, shape changed to aggregate (§5, §9) |
-| `update_material_text` / `update_material_ready` / `update_material_progress` (`worker/db.py`) | moved server-side into the coordinator service (same SQL semantics) |
-| Cancel semantics (`cancelling → cancelled`, material → QUEUED) | coordinator sweep (§8) |
-| Stale `processing` recovery | replaced by lease expiry/reclaim on chunks (§8) |
-| Frontend `MaterialProgress` + dashboard/list/detail progress UI | kept, aggregate payload (§9) |
-| Per-worker configurable timeouts | `WORKER_OCR_*` env on the worker (connect vs read) |
+| `apps/ocr/app/config.py` knobs (chunk size, retry count/backoff, limits)                                                                                         | → `ocr_engine` config + coordinator chunk-size config               |
+| `materials.progress` jsonb column + migration `0027` + `MaterialResponseSchema.progress`                                                                         | retained, shape changed to aggregate (§5, §9)                       |
+| `update_material_text` / `update_material_ready` / `update_material_progress` (`worker/db.py`)                                                                   | moved server-side into the coordinator service (same SQL semantics) |
+| Cancel semantics (`cancelling → cancelled`, material → QUEUED)                                                                                                   | coordinator sweep (§8)                                              |
+| Stale `processing` recovery                                                                                                                                      | replaced by lease expiry/reclaim on chunks (§8)                     |
+| Frontend `MaterialProgress` + dashboard/list/detail progress UI                                                                                                  | kept, aggregate payload (§9)                                        |
+| Per-worker configurable timeouts                                                                                                                                 | `WORKER_OCR_*` env on the worker (connect vs read)                  |
 
 ### (b) Replace / remove (incompatible with distributed chunk workers)
+
 - `apps/ocr/app/main.py` NDJSON `/extract` (StreamingResponse + `iter_pdf_events`)
   — the pull-task protocol replaces it; there is no HTTP OCR service anymore.
 - `apps/workers/worker/ocr.py` httpx streaming client — replaced by
@@ -326,9 +338,10 @@ apps/
   `WORKER_STORAGE_DIR`.
 
 ### (c) Migration sequence (incremental, each step shippable)
+
 1. Introduce `ocr_workers` + `ocr_chunks` schema; keep everything running.
 2. Move extraction logic into `apps/ocr/ocr_engine` (pure library + tests) —
-  no behavior change; FastAPI still serves `/extract` from it.
+   no behavior change; FastAPI still serves `/extract` from it.
 3. Build `apps/workers/ocr-worker` + Dockerfile; standalone image
    registers/heartbeats/claims/submits against the NEW Worker API; run in
    dev compose.
@@ -418,7 +431,7 @@ per-page inspection and manual correction, per the product requirements.
 
 ### 15.1 Per-page corrected text (`ocr_page_corrections`)
 
-Corrections are keyed by **`(source_type, source_id, page)`** — *not* chunk or
+Corrections are keyed by **`(source_type, source_id, page)`** — _not_ chunk or
 job — so a correction survives a re-run (a retry creates a new job and new
 chunks, but the physical pages are the same). Migration `0029`; applied.
 
@@ -441,19 +454,20 @@ chunks, but the physical pages are the same). Migration `0029`; applied.
 
 From the latest task's chunks + corrections (precedence high→low):
 
-| Status     | Meaning                                                     |
-| ---------- | ----------------------------------------------------------- |
-| `corrected`| a correction exists for the page                            |
-| `failed`   | page's covering chunk reached a terminal `failed` state     |
-| `missing`  | chunk `submitted` but the page has no extracted text        |
-| `extracted`| extracted text exists (original or corrected-empty parse)   |
-| `pending`  | no submitted chunk covers the page yet                      |
+| Status      | Meaning                                                   |
+| ----------- | --------------------------------------------------------- |
+| `corrected` | a correction exists for the page                          |
+| `failed`    | page's covering chunk reached a terminal `failed` state   |
+| `missing`   | chunk `submitted` but the page has no extracted text      |
+| `extracted` | extracted text exists (original or corrected-empty parse) |
+| `pending`   | no submitted chunk covers the page yet                    |
 
 A `missing`/`failed` result is never silently presented as complete: READY is
 gated on full coverage, and the web UI flags incomplete pages with an explicit
 banner.
 
 ### 15.3 Endpoints (all tenant-scoped via `:materialId`; read for any member,
+
 writes for INSTITUTE_ADMIN/TEACHER)
 
 - `GET /materials/:materialId/ocr-pages` → `{ documentPages, chunks, pages }`

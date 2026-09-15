@@ -7,7 +7,10 @@ import { validateChunkPages, isCompleteCoverage } from './ocr-coordinator.util.t
 
 test('validateChunkPages rejects empty and oversized page lists', () => {
   assert.throws(() => validateChunkPages([], 1, 10), /does not fit/);
-  assert.throws(() => validateChunkPages([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 1, 10), /does not fit/);
+  assert.throws(
+    () => validateChunkPages([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 1, 10),
+    /does not fit/,
+  );
 });
 
 test('validateChunkPages rejects out-of-range and duplicate pages', () => {

@@ -88,6 +88,10 @@ export class JobsService {
   }
 
   async publishJob(job: Job): Promise<void> {
+    // OCR is coordinator-owned: MATERIAL_PROCESS is never published to
+    // RabbitMQ (no consumer in the distributed design). The coordinator
+    // adopts queued OCR jobs from its sweep instead.
+    if (job.type === 'MATERIAL_PROCESS') return;
     const queue = JOB_QUEUE_BY_TYPE[job.type] ?? 'jobs';
     await this.rabbitmq.publish(queue, {
       jobId: job.id,

@@ -7,6 +7,7 @@ vars so one image can be pointed at any deployment with shell config alone.
 
 from __future__ import annotations
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,8 +17,11 @@ class WorkerConfig(BaseSettings):
     server_url: str = "http://localhost:3000/api/v1"
 
     # Per-worker identity/credential issued by POST /ocr/workers (once).
-    worker_id: str
-    api_key: str
+    # Reject empty strings: compose `:-` overrides pass '' when the .env
+    # values are absent, and an empty id/key would 401-loop instead of
+    # exiting at boot as the deploy comments promise.
+    worker_id: str = Field(min_length=1)
+    api_key: str = Field(min_length=1)
 
     # Poll cadence. Idle poll is fast (chunks are usually waiting); heartbeat
     # lands well under the coordinator lease (default 300 s) so the held

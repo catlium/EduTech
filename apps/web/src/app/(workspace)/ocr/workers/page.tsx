@@ -168,7 +168,13 @@ export default function OcrWorkersPage() {
         title="OCR Workers"
         description="Registered external OCR workers and their live status."
         actions={
-          <Button size="sm" onClick={() => { setNewKey(null); setRegisterOpen(true); }}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setNewKey(null);
+              setRegisterOpen(true);
+            }}
+          >
             <Plus className="size-4" /> Register worker
           </Button>
         }
@@ -280,7 +286,10 @@ export default function OcrWorkersPage() {
       <RegisterWorkerDialog
         open={registerOpen}
         apiKey={newKey}
-        onClose={() => { setRegisterOpen(false); setNewKey(null); }}
+        onClose={() => {
+          setRegisterOpen(false);
+          setNewKey(null);
+        }}
         onRegistered={async (key) => {
           setNewKey(key);
           await load();
@@ -303,7 +312,9 @@ export default function OcrWorkersPage() {
             )}
             {rotatedKey !== null && (
               <div className="space-y-3">
-                <div className="rounded-lg bg-muted/50 p-3 font-mono text-sm break-all">{rotatedKey}</div>
+                <div className="rounded-lg bg-muted/50 p-3 font-mono text-sm break-all">
+                  {rotatedKey}
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -315,7 +326,13 @@ export default function OcrWorkersPage() {
               </div>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setRotateOpen(null); setRotatedKey(null); }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRotateOpen(null);
+                  setRotatedKey(null);
+                }}
+              >
                 Done
               </Button>
             </DialogFooter>
@@ -334,10 +351,12 @@ function CapabilityCell({ capabilities }: { capabilities: OcrWorkerCapabilities 
         <Cpu className="size-3.5" />
         {capabilities.concurrency}×
       </span>
-      {capabilities.gpu && <Badge variant="secondary" className="text-xs">GPU</Badge>}
-      <span className="text-xs text-muted-foreground">
-        {capabilities.engines.join(', ')}
-      </span>
+      {capabilities.gpu && (
+        <Badge variant="secondary" className="text-xs">
+          GPU
+        </Badge>
+      )}
+      <span className="text-xs text-muted-foreground">{capabilities.engines.join(', ')}</span>
     </div>
   );
 }
@@ -372,7 +391,10 @@ function RegisterWorkerDialog({
           name: name.trim(),
           ...(version.trim() ? { version: version.trim() } : {}),
           capabilities: {
-            engines: engines.split(',').map((e) => e.trim()).filter(Boolean),
+            engines: engines
+              .split(',')
+              .map((e) => e.trim())
+              .filter(Boolean),
             gpu,
             concurrency: 1,
           },
@@ -387,7 +409,12 @@ function RegisterWorkerDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         {apiKey === null ? (
           <>
@@ -400,16 +427,30 @@ function RegisterWorkerDialog({
             <div className="space-y-4">
               <div className="grid gap-2">
                 <Label htmlFor="worker-name">Name</Label>
-                <Input id="worker-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="worker-1" />
+                <Input
+                  id="worker-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="worker-1"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="worker-version">Version</Label>
-                  <Input id="worker-version" value={version} onChange={(e) => setVersion(e.target.value)} placeholder="0.1.0" />
+                  <Input
+                    id="worker-version"
+                    value={version}
+                    onChange={(e) => setVersion(e.target.value)}
+                    placeholder="0.1.0"
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="worker-engines">Engines</Label>
-                  <Input id="worker-engines" value={engines} onChange={(e) => setEngines(e.target.value)} />
+                  <Input
+                    id="worker-engines"
+                    value={engines}
+                    onChange={(e) => setEngines(e.target.value)}
+                  />
                 </div>
               </div>
               <label className="flex items-center gap-2 text-sm">
@@ -418,20 +459,27 @@ function RegisterWorkerDialog({
               </label>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
-              <Button onClick={register} disabled={saving}>{saving ? 'Registering…' : 'Register worker'}</Button>
+              <Button variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button onClick={register} disabled={saving}>
+                {saving ? 'Registering…' : 'Register worker'}
+              </Button>
             </DialogFooter>
           </>
         ) : (
           <>
             <DialogHeader>
               <DialogTitle>Worker registered</DialogTitle>
-              <DialogDescription>
-                Save this API key now — it is shown only once.
-              </DialogDescription>
+              <DialogDescription>Save this API key now — it is shown only once.</DialogDescription>
             </DialogHeader>
             <div className="rounded-lg bg-muted/50 p-3 font-mono text-sm break-all">{apiKey}</div>
-            <Button variant="outline" size="sm" className="w-full" onClick={() => void copyText(apiKey)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => void copyText(apiKey)}
+            >
               <Copy className="size-4" /> Copy key
             </Button>
             <DialogFooter>

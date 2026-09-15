@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type {
@@ -38,6 +38,14 @@ const CHUNK_STATUS_STYLES: Record<string, string> = {
   submitted: 'bg-green-500/15 text-green-700',
   failed: 'bg-red-500/15 text-red-700',
   cancelled: 'bg-muted text-muted-foreground',
+};
+
+const CHUNK_STATUS_LABELS: Record<string, string> = {
+  pending: 'waiting',
+  claimed: 'processing',
+  submitted: 'done',
+  failed: 'failed',
+  cancelled: 'cancelled',
 };
 
 type Props = {
@@ -119,6 +127,14 @@ export function OcrInspection({
 
   const page = data.pages.find((p) => p.page === selected) ?? null;
 
+  const done = data.pages.filter(
+    (p) => p.status === 'extracted' || p.status === 'corrected',
+  ).length;
+  const totalPages = data.documentPages ?? data.pages.length;
+  const percent = totalPages ? Math.min(100, Math.round((done / totalPages) * 100)) : 0;
+  const chunksDone = data.chunks.filter((c) => c.status === 'submitted').length;
+  const activeChunk = data.chunks.find((c) => c.status === 'claimed');
+
   async function saveCorrection() {
     if (!page || draft === null) return;
     setSaving(true);
@@ -130,7 +146,9 @@ export function OcrInspection({
       toast.success(`Correction saved for page ${page.page}`);
       setDraft(null);
       setData((prev) =>
-        prev ? { ...prev, pages: prev.pages.map((p) => (p.page === page.page ? res.page : p)) } : prev,
+        prev
+          ? { ...prev, pages: prev.pages.map((p) => (p.page === page.page ? res.page : p)) }
+          : prev,
       );
       onChanged();
     } catch (err) {
@@ -151,7 +169,9 @@ export function OcrInspection({
       toast.success(`Restored original OCR text for page ${page.page}`);
       setDraft(null);
       setData((prev) =>
-        prev ? { ...prev, pages: prev.pages.map((p) => (p.page === page.page ? res.page : p)) } : prev,
+        prev
+          ? { ...prev, pages: prev.pages.map((p) => (p.page === page.page ? res.page : p)) }
+          : prev,
       );
       onChanged();
     } catch (err) {
@@ -183,6 +203,27 @@ export function OcrInspection({
         </div>
       )}
 
+      {totalPages > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              {activeChunk && <Loader2 className="size-3 animate-spin text-blue-600" />}
+              {activeChunk
+                ? `Chunk ${activeChunk.chunkIndex} of ${data.chunks.length} processing${
+                    activeChunk.workerName ? ` by ${activeChunk.workerName}` : ''
+                  }`
+                : `${chunksDone} of ${data.chunks.length} chunks done`}
+            </span>
+            <span className="tabular-nums">
+              {done} / {totalPages} pages
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+          </div>
+        </div>
+      )}
+
       {data.chunks.length > 0 && (
         <div className="overflow-hidden rounded-lg border">
           <Table>
@@ -203,9 +244,29 @@ export function OcrInspection({
                     {chunk.startPage}–{chunk.endPage}
                   </TableCell>
                   <TableCell>
-                    <Badge className={`${CHUNK_STATUS_STYLES[chunk.status] ?? ''} border-0`}>
-                      {chunk.status}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      {chunk.status === 'claimed' && (
+                        <Loader2 className="size-3 animate-spin text-blue-600" />
+                      )}
+                      <Badge className={`${CHUNK_STATUS_STYLES[chunk.status] ?? ''} border-0`}>
+                        {CHUNK_STATUS_LABELS[chunk.status] ?? chunk.status}
+                      </Badge>
+                    </div>
+                    {chunk.status === 'claimed' && chunk.workerName && (
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        worker: {chunk.workerName}
+                      </span>
+                    )}
+                    {chunk.status === 'claimed' && chunk.leaseExpiresAt && (
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        lease expires{' '}
+                        {new Date(chunk.leaseExpiresAt).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>{chunk.attempts}</TableCell>
                   <TableCell className="max-w-[240px] truncate">
@@ -302,7 +363,9 @@ export function OcrInspection({
               <>
                 {page.correctedText && page.text && (
                   <div>
-                    <p className="mb-1 text-xs font-medium text-muted-foreground">Original OCR output</p>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">
+                      Original OCR output
+                    </p>
                     <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
                       {page.text}
                     </pre>
@@ -322,21 +385,35 @@ export function OcrInspection({
                       />
                       {draft !== null && (
                         <div className="mt-2 flex items-center gap-2">
-                          <Button size="sm" onClick={saveCorrection} disabled={saving || draft.length === 0}>
+                          <Button
+                            size="sm"
+                            onClick={saveCorrection}
+                            disabled={saving || draft.length === 0}
+                          >
                             <Pencil className="size-3.5" /> Save correction
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
                             Cancel
                           </Button>
                           {page.correctedText && currentDraftEqualsOriginal(draft, page.text) && (
-                            <Button variant="outline" size="sm" onClick={clearCorrection} disabled={saving}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={clearCorrection}
+                              disabled={saving}
+                            >
                               Restore original OCR text
                             </Button>
                           )}
                         </div>
                       )}
                       {draft === null && page.correctedText && (
-                        <Button variant="outline" size="sm" onClick={clearCorrection} disabled={saving}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={clearCorrection}
+                          disabled={saving}
+                        >
                           Restore original OCR text
                         </Button>
                       )}

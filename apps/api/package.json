@@ -11,7 +11,7 @@
     "start:prod": "node dist/main",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "jest",
+    "test": "node --test \"src/**/*.test.ts\"",
     "test:analytics": "node --test src/attempts/analytics.test.ts",
     "test:paper-patterns": "node --test src/paper-patterns/paper-patterns.validation.test.ts",
     "test:paper-pattern-subjects": "node --test src/paper-patterns/paper-pattern-subjects.test.ts",

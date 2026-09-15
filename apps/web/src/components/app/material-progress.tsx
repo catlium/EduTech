@@ -15,8 +15,8 @@ export function MaterialProgress({ material }: { material: MaterialResponse }) {
     <div className="mt-1.5 flex items-center gap-2">
       <Progress value={progress.percent} className="h-1.5 w-24" />
       <span className="text-xs text-muted-foreground">
-        Page {progress.pagesProcessed} of {progress.pagesTotal} ·{' '}
-        {progress.chunksCompleted}/{progress.chunksTotal} chunks
+        Page {progress.pagesProcessed} of {progress.pagesTotal} · {progress.chunksCompleted}/
+        {progress.chunksTotal} chunks
         {failed ? ` · ${progress.failedChunks} failed` : ''}
         {retrying ? ` · ${progress.retryingChunks} retrying` : ''}
       </span>

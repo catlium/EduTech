@@ -18,6 +18,7 @@ import httpx
 import pytest
 from ocr_engine import ExtractedPage
 from ocr_engine.config import EngineConfig
+from pydantic import ValidationError
 
 from ocr_worker.app import process_chunk
 from ocr_worker.client import OcrClient, WorkerApiError, WorkerAuthError
@@ -32,6 +33,15 @@ CONFIG = WorkerConfig(
     idle_poll_seconds=0.01,
     heartbeat_interval_seconds=0.01,
 )
+
+
+def test_config_rejects_empty_identity_or_key() -> None:
+    # compose `:-` overrides pass '' when the .env values are absent; an empty
+    # id/key must fail at boot instead of 401-looping forever.
+    with pytest.raises(ValidationError):
+        WorkerConfig(_env_file=None, server_url=HOST, worker_id="", api_key="owr_test_key")
+    with pytest.raises(ValidationError):
+        WorkerConfig(_env_file=None, server_url=HOST, worker_id="w-1", api_key="")
 
 
 def _with_auth(request: httpx.Request) -> None:

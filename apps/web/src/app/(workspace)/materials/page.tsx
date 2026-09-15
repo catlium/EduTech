@@ -130,7 +130,7 @@ export default function MaterialsListPage() {
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('ACTIVE');
   const [processingFilter, setProcessingFilter] = useState<string>('all');
   const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
   const debouncedSearch = useDebouncedValue(search, 300);

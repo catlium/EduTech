@@ -7,10 +7,14 @@ import { jobs, materials, ocrChunks, ocrPageCorrections, ocrWorkers } from '@cat
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService } from '../jobs/jobs.service.js';
-import type { Job } from '../jobs/jobs.service.js';
 import { STORAGE_PROVIDER } from '../materials/storage/storage-provider.interface.js';
 import type { StorageProvider } from '../materials/storage/storage-provider.interface.js';
-import { validateChunkPages, isCompleteCoverage, derivePageDetails, aggregatePagesText } from './ocr-coordinator.util.js';
+import {
+  validateChunkPages,
+  isCompleteCoverage,
+  derivePageDetails,
+  aggregatePagesText,
+} from './ocr-coordinator.util.js';
 import type { ChunkLike, CorrectionLike } from './ocr-coordinator.util.js';
 import type {
   OCRProgress,
@@ -64,9 +68,12 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
   // ── Enqueue (called from MaterialsService after insertJob) ─────────────
 
   /** Server-side enqueue: chunk 1 (pages 1..chunkSize), job → processing,
-   *  material → PROCESSING. No RabbitMQ publish for OCR job types. */
-  async enqueueJob(job: Job, materialId: string): Promise<void> {
+   *  material → PROCESSING. No RabbitMQ publish for OCR job types. Any
+   *  chunks a previous run left on the same job row are dropped first, so
+   *  re-adopting a re-queued job materializes a clean chunk set. */
+  async enqueueJob(job: { id: string; instituteId: string }, materialId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
+      await tx.delete(ocrChunks).where(eq(ocrChunks.jobId, job.id));
       await tx.insert(ocrChunks).values({
         jobId: job.id,
         instituteId: job.instituteId,
@@ -211,13 +218,13 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     return { data, mimeType, fileName };
   }
 
-  async submitResult(
-    workerId: string,
-    chunkId: string,
-    result: WorkerChunkResult,
-  ): Promise<void> {
+  async submitResult(workerId: string, chunkId: string, result: WorkerChunkResult): Promise<void> {
     const chunk = await this.assertHeld(workerId, chunkId);
-    validateChunkPages(result.pages.map((p) => p.page), chunk.startPage, chunk.endPage);
+    validateChunkPages(
+      result.pages.map((p) => p.page),
+      chunk.startPage,
+      chunk.endPage,
+    );
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -310,6 +317,27 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       .set({ status: 'pending', error: null, updatedAt: now })
       .where(and(eq(ocrChunks.status, 'failed'), lt(ocrChunks.attempts, MAX_ATTEMPTS)));
 
+    // Adopt queued MATERIAL_PROCESS jobs the generic POST /jobs and
+    // POST /jobs/:id/retry leave behind (they must NOT publish to RabbitMQ —
+    // OCR is coordinator-owned). Materialize chunks and drive material state
+    // exactly like the material-level retry. READY materials are skipped so a
+    // stale failed-job retry never clobbers already-extracted text.
+    const queuedOcr = await this.db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.type, 'MATERIAL_PROCESS'), eq(jobs.status, 'queued')));
+    for (const job of queuedOcr) {
+      const materialId = materialIdOf(job.payload);
+      if (!materialId) continue;
+      const [material] = await this.db
+        .select({ processingStatus: materials.processingStatus })
+        .from(materials)
+        .where(eq(materials.id, materialId))
+        .limit(1);
+      if (!material || material.processingStatus === 'READY') continue;
+      await this.enqueueJob(job, materialId);
+    }
+
     await this.settleActiveJobs();
   }
 
@@ -318,10 +346,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       .select()
       .from(jobs)
       .where(
-        and(
-          eq(jobs.type, 'MATERIAL_PROCESS'),
-          inArray(jobs.status, ['processing', 'cancelling']),
-        ),
+        and(eq(jobs.type, 'MATERIAL_PROCESS'), inArray(jobs.status, ['processing', 'cancelling'])),
       );
 
     for (const job of activeRows) {
@@ -344,7 +369,11 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
 
       const terminalFailed = chunks.find((c) => c.status === 'failed');
       if (terminalFailed) {
-        await this.finalizeFailed(job.id, materialId, (terminalFailed.error ?? null) as Record<string, unknown> | null);
+        await this.finalizeFailed(
+          job.id,
+          materialId,
+          (terminalFailed.error ?? null) as Record<string, unknown> | null,
+        );
         continue;
       }
 
@@ -382,8 +411,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     materialId: string,
     error: Record<string, unknown> | null,
   ): Promise<void> {
-    const message =
-      error && typeof error['message'] === 'string' ? error['message'] : 'OCR failed';
+    const message = error && typeof error['message'] === 'string' ? error['message'] : 'OCR failed';
     await this.db.transaction(async (tx) => {
       await tx
         .update(materials)
@@ -421,7 +449,12 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       // update_material_text/ready semantics did).
       await tx
         .update(materials)
-        .set({ textContent: text, processingStatus: 'READY', progress: null, updatedAt: new Date() })
+        .set({
+          textContent: text,
+          processingStatus: 'READY',
+          progress: null,
+          updatedAt: new Date(),
+        })
         .where(eq(materials.id, materialId));
     });
     await this.jobsService.updateJobStatus(jobId, 'completed', {
@@ -432,7 +465,10 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
 
   // ── Admin-facing page inspection / correction ─────────────────────────
 
-  public async listMaterialPages(instituteId: string, materialId: string): Promise<OcrPageListResponse> {
+  public async listMaterialPages(
+    instituteId: string,
+    materialId: string,
+  ): Promise<OcrPageListResponse> {
     await this.assertMaterialScoped(instituteId, materialId);
     const job = await this.jobsService.latestMaterialJob(instituteId, materialId);
     if (!job || job.type !== 'MATERIAL_PROCESS') {
@@ -442,18 +478,22 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     const chunks = await this.db
       .select()
       .from(ocrChunks)
+      .leftJoin(ocrWorkers, eq(ocrChunks.claimedBy, ocrWorkers.id))
       .where(eq(ocrChunks.jobId, job.id))
       .orderBy(asc(ocrChunks.chunkIndex));
     const corrections = await this.correctionsFor(materialId);
 
-    const documentPages = this.documentPagesOf(chunks);
-    const pageCount = documentPages ?? Math.max(0, ...chunks.map((c) => c.endPage));
+    const chunkRows = chunks.map((r) => r.ocr_chunks);
+    const workerNames = new Map(chunks.map((r) => [r.ocr_chunks.id, r.ocr_workers?.name ?? null]));
+
+    const documentPages = this.documentPagesOf(chunkRows);
+    const pageCount = documentPages ?? Math.max(0, ...chunkRows.map((c) => c.endPage));
 
     return {
       documentPages,
-      chunks: chunks.map((c) => this.chunkSummaryOf(c)),
+      chunks: chunkRows.map((c) => this.chunkSummaryOf(c, workerNames.get(c.id) ?? null)),
       pages: derivePageDetails(
-        chunks.map((c) => this.chunkLikeOf(c)),
+        chunkRows.map((c) => this.chunkLikeOf(c)),
         pageCount,
         corrections,
       ),
@@ -477,7 +517,9 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     const chunk = chunks.find((c) => c.startPage <= page && page <= c.endPage);
     const pageIsExtracted = this.hasPageEntry(chunk, page);
     if (!pageIsExtracted) {
-      throw new BadRequestException('Page has no extracted text yet; correct it after OCR completes');
+      throw new BadRequestException(
+        'Page has no extracted text yet; correct it after OCR completes',
+      );
     }
 
     await this.db
@@ -491,7 +533,11 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
         correctedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: [ocrPageCorrections.sourceType, ocrPageCorrections.sourceId, ocrPageCorrections.page],
+        target: [
+          ocrPageCorrections.sourceType,
+          ocrPageCorrections.sourceId,
+          ocrPageCorrections.page,
+        ],
         set: {
           correctedText: text,
           correctedBy,
@@ -510,7 +556,11 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
 
   /** Remove a correction; the page falls back to its original OCR output and
    *  the aggregate `textContent` is recomputed (bumped only if it changed). */
-  public async clearCorrection(instituteId: string, materialId: string, page: number): Promise<OcrPageDetail> {
+  public async clearCorrection(
+    instituteId: string,
+    materialId: string,
+    page: number,
+  ): Promise<OcrPageDetail> {
     const material = await this.assertMaterialScoped(instituteId, materialId);
     const [deleted] = await this.db
       .delete(ocrPageCorrections)
@@ -578,7 +628,11 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     return new Map(
       rows.map((r) => [
         r.page,
-        { correctedText: r.correctedText, correctedBy: r.correctedBy, correctedAt: r.correctedAt.toISOString() },
+        {
+          correctedText: r.correctedText,
+          correctedBy: r.correctedBy,
+          correctedAt: r.correctedAt.toISOString(),
+        },
       ]),
     );
   }
@@ -599,7 +653,8 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     return (
       Array.isArray(pages) &&
       (pages as Array<Record<string, unknown>>).some(
-        (p) => p['page'] === page && typeof p['text'] === 'string' && (p['text'] as string).length > 0,
+        (p) =>
+          p['page'] === page && typeof p['text'] === 'string' && (p['text'] as string).length > 0,
       )
     );
   }
@@ -617,7 +672,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     return rows[rows.length - 1]!;
   }
 
-  private chunkSummaryOf(chunk: ChunkRow) {
+  private chunkSummaryOf(chunk: ChunkRow, workerName: string | null) {
     const error = chunk.error;
     return {
       id: chunk.id,
@@ -627,9 +682,12 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       status: chunk.status as OcrChunkStatus,
       attempts: chunk.attempts,
       claimedBy: chunk.claimedBy,
-      error: error && typeof (error as { message?: unknown })['message'] === 'string'
-        ? ((error as { message: string }).message)
-        : null,
+      workerName,
+      leaseExpiresAt: chunk.leaseExpiresAt?.toISOString() ?? null,
+      error:
+        error && typeof (error as { message?: unknown })['message'] === 'string'
+          ? (error as { message: string }).message
+          : null,
       createdAt: chunk.createdAt.toISOString(),
       updatedAt: chunk.updatedAt.toISOString(),
     };
@@ -654,10 +712,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     const [job] = await this.db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!job) return;
 
-    const chunks = await this.db
-      .select()
-      .from(ocrChunks)
-      .where(eq(ocrChunks.jobId, jobId));
+    const chunks = await this.db.select().from(ocrChunks).where(eq(ocrChunks.jobId, jobId));
 
     const materialId = materialIdOf(job.payload);
     if (!materialId) return;
@@ -665,10 +720,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     const documentPages = this.documentPagesOf(chunks);
     const submitted = chunks.filter((c) => c.status === 'submitted');
 
-    const pagesProcessed = submitted.reduce(
-      (acc, c) => acc + this.pagesOf(c).length,
-      0,
-    );
+    const pagesProcessed = submitted.reduce((acc, c) => acc + this.pagesOf(c).length, 0);
     const pagesTotal = documentPages ?? Math.max(0, ...chunks.map((c) => c.endPage));
 
     const progress: OCRProgress = {
@@ -766,9 +818,10 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
   private documentPagesOf(chunks: ChunkRow[]): number | null {
     let documentPages: number | null = null;
     for (const c of chunks) {
-      const reported = typeof this.resultOf(c)['totalPages'] === 'number'
-        ? (this.resultOf(c)['totalPages'] as number)
-        : c.documentPages;
+      const reported =
+        typeof this.resultOf(c)['totalPages'] === 'number'
+          ? (this.resultOf(c)['totalPages'] as number)
+          : c.documentPages;
       if (reported && (!documentPages || reported > documentPages)) {
         documentPages = reported;
       }
