@@ -17,6 +17,7 @@
     "test:paper-pattern-subjects": "node --test src/paper-patterns/paper-pattern-subjects.test.ts",
     "test:paper-pattern-policy": "node --test src/paper-patterns/paper-pattern-policy.test.ts",
     "test:export": "node --test src/export/export.service.test.ts",
+    "test:ocr": "node --test src/ocr/ocr-workers.test.ts",
     "test:paper-pattern-export": "node --test src/export/paper-pattern-doc.test.ts",
     "clean": "rm -rf dist .turbo"
   },

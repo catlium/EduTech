@@ -1,5 +1,40 @@
 # Project Status
 
+## Continue OCR — distributed-worker implementation (2026-09-15)
+
+**Status: implementation in progress (D1–D4 committed).** The redesigned
+distributed-worker OCR architecture (`docs/architecture/ocr-distributed-workers.md`)
+is being built; the old monolith OCR path stays paused/uncommitted.
+
+- **New architecture:** OCR computation moves off the main server onto external
+  Docker workers that pull work over HTTPS from the NestJS API. The server (OCR
+  coordinator) owns chunk creation, assignment, lease/reclaim, retry,
+  aggregation, and final READY/FAILED. RabbitMQ stays internal for the AI
+  worker only; no public exposure of Postgres/RabbitMQ/OmniRoute/internal
+  ports; browser never talks to workers.
+- **Committed milestones:** D1 schema `ocr_workers` + `ocr_chunks` + migration
+  `0028` (applied to dev DB); D2 `apps/ocr/ocr_engine` FastAPI-free library
+  (21 tests green, ruff/mypy clean); D3 OCR worker/chunk/progress contracts;
+  D4 `OcrWorkersService` registry + `OcrWorkerAuthGuard` + admin endpoints
+  (`GET/POST /ocr/workers`, `PATCH /ocr/workers/:id`) + unit tests (6 pass).
+- **Head:** D4 commit; working tree keeps the paused monolith changes as design
+  input only (superseded, do not resume).
+- **Reused from the paused work:** the OCR engine computation (PyMuPDF first +
+  PaddleOCR fallback, bounded retry, `normalize_text`, page-level extraction)
+  moves into `apps/ocr/ocr_engine/`; `materials.progress` + the web
+  `MaterialProgress`/polling UI stay (shape becomes chunk-aggregate); cancel
+  semantics, stale recovery, and per-configurable timeouts are adapted.
+- **Replaced (D8):** the NDJSON streaming `/extract` endpoint, the worker httpx
+  streaming client, `_run_extraction` full-file flow, the `ocr` FastAPI compose
+  service, `worker-material` OCR consumers, and the shared `x-internal-api-key`
+  OCR call.
+- **Tasks:** `docs/tasks.md` D1–D4 `[x]`; next is D5 coordinator
+  (enqueue-chunk-1, claim `FOR UPDATE SKIP LOCKED`, lease/heartbeat/reclaim/
+  retry sweep, aggregation → READY/FAILED, cancel settlement, `progress`
+  writes) — `StorageProvider.read` added to the interface for the source
+  stream, reverted out of the D4 commit and re-landing with D5.
+- **Environment:** dev stack containers are online.
+
 ## Phase 32 — Correction: Generation Workflows & AI Reliability (2026-09-14)
 
 **Goal:** correct the post-Phase 31 AI generation workflows. Sub-goals:

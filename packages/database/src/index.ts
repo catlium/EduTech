@@ -27,6 +27,7 @@ export { questionTypes } from './schema/question-types.js';
 export { assessments, assessmentQuestions } from './schema/examinations.js';
 export { paperPatterns, paperPatternSubjects } from './schema/paper-patterns.js';
 export { syllabi } from './schema/syllabus.js';
+export { ocrWorkers, ocrChunks } from './schema/ocr.js';
 export { attempts, attemptQuestions, attemptResponses } from './schema/attempts.js';
 export {
   practiceSessions,

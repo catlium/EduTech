@@ -212,6 +212,67 @@ the web detail page.
 - [x] FG9 Docs: tasks.md + project-status.md updated; prettier; graphify
       update; commit + push + checkpoint report + STOP
 
+### Goal: OCR Extraction Reliability
+
+Hardened the OCR extraction pipeline so large/handwritten documents are
+processed reliably without timeouts. The OCR service now handles internal
+chunking, per-page retry, and resource limits; the worker client uses
+configurable timeouts instead of a hardcoded 60s.
+
+- [~] OCR1 Configurable chunking: `OCR_CHUNK_PAGES` (default 10), pages
+      processed in bounded chunks with progress logging
+- [~] OCR2 Resource limits: `OCR_MAX_PAGES`, `OCR_MAX_FILE_BYTES` reject
+      oversized documents before extraction begins
+- [~] OCR3 Per-page retry: bounded retry count + backoff on transient OCR
+      failures (503); permanent failures propagate immediately
+- [~] OCR4 Progress logging: extraction start, chunk progress, completion
+      with page-source breakdown
+- [~] OCR5 Worker timeouts: `WORKER_OCR_CONNECT_TIMEOUT_SECONDS` (default 10),
+      `WORKER_OCR_READ_TIMEOUT_SECONDS` (default 300) replace hardcoded 60s
+- [~] OCR6 Tests: chunk aggregation, page ordering, retry/failure behavior,
+      configurable chunk size, resource limits, existing path regression
+- [~] OCR7 Validation: OCR pytest + worker pytest, ruff, mypy, typecheck;
+      rebuild/restart OCR + worker-material, retry stalled job
+- [ ] OCR8 Docs: tasks.md, project-status.md, env examples; commit + push
+
+> **STATUS: PAUSED — replaced by the distributed OCR worker architecture
+> (2026-09-15).** OCR1–OCR5 above were superseded by
+> `docs/architecture/ocr-distributed-workers.md` before reaching green
+> validation: the NDJSON `/extract` streaming path and shared
+> `x-internal-api-key` OCR call are **not** the shipped design. OCR6–OCR8 stay
+> open. No commit/push was made for this goal; the working tree carries the
+> paused changes as design input only. Do NOT resume OCR6–OCR8. Next work is
+> the distributed-worker design task below.
+
+### Goal: OCR Distributed Worker Architecture — DESIGN (2026-09-15)
+
+DESIGN-ONLY checkpoint: no implementation, no commit of implementation. The
+design (`docs/architecture/ocr-distributed-workers.md`) moves OCR computation
+off the main server onto external Docker workers connected by HTTPS pull;
+the NestJS coordinator owns chunk creation, assignment, leases/reclaim,
+retry, aggregation and READY/FAILED. RabbitMQ stays internal (AI worker only).
+
+- [~] DW1 Inspect implementations (OCR, worker, Jobs/RabbitMQ, StorageProvider,
+      frontend progress UI) and inventory reuse vs. replace
+- [~] DW2 Write design doc: responsibilities, topology, data model, task +
+      worker lifecycle, auth model, endpoints, source flow, package layout,
+      Docker image, migration from the paused changes
+- [~] DW3 Update tasks.md + project-status.md to mark implementation PAUSED
+      pending the new architecture
+- [ ] DW4 Accept design via review, then start increment D1 below
+
+> After design acceptance, the implementation increments (from §14 of the
+> design doc) replace OCR6–OCR8:
+>
+> - [x] D1 Schema: `ocr_workers` + `ocr_chunks` + migration 0028 + applied to dev DB
+> - [x] D2 Extract `apps/ocr/ocr_engine` library from the FastAPI app (+ tests, 21 pass)
+> - [x] D3 Contracts: worker/chunk schemas + aggregate progress shape
+> - [x] D4 API: worker registry + `OcrWorkerAuthGuard` (+ token/status derivation unit tests)
+> - [ ] D5 API: coordinator (claim/lease/reclaim/retry/aggregate/READY/FAILED)
+> - [ ] D6 `apps/workers/ocr-worker` pull client + standalone Docker image
+> - [ ] D7 Web: workers admin view + aggregate `MaterialProgress`
+> - [ ] D8 Validation + docs + flip default + retire old OCR service/worker
+
 ### Goal: H Validation + docs + checkpoint
 
 - [ ] H1 Tests — material prerequisite, idempotency (missing vs regenerate),
