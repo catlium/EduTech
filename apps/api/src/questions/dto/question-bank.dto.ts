@@ -59,11 +59,12 @@ export class GenerateBankDto extends QuestionBankScopeDto {
   @MaxLength(64, { each: true })
   questionTypes?: string[];
 
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
-  count!: number;
+  count?: number;
 
   @IsOptional()
   difficultyDistribution?: {

@@ -12,6 +12,7 @@ import {
   ParseEnumPipe,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 
 import { QuestionsService } from './questions.service.js';
@@ -178,11 +179,14 @@ export class QuestionsController {
   ) {
     // Build (type, difficulty, count) buckets from the request config, or use
     // the explicit buckets supplied by the client (Create New Set).
+    if (!dto.buckets && dto.count == null) {
+      throw new BadRequestException('count is required when no explicit buckets are provided');
+    }
     const buckets =
       dto.buckets ??
       buildBankBuckets({
         questionTypes: dto.questionTypes ?? QUESTION_TYPES,
-        count: dto.count,
+        count: dto.count!,
         difficultyDistribution: dto.difficultyDistribution,
       });
 
@@ -194,7 +198,7 @@ export class QuestionsController {
         chapterId: dto.chapterId,
         topicId: dto.topicId,
         questionTypes: dto.questionTypes,
-        count: dto.count,
+        count: dto.count ?? buckets.reduce((s: number, b) => s + b.count, 0),
         difficultyDistribution: dto.difficultyDistribution,
         blueprintId: dto.blueprintId,
       },
