@@ -3,6 +3,7 @@
 from worker.ai.generation import (
     blueprint,
     concepts,
+    coverage,
     flashcards,
     note,
     package,
@@ -16,6 +17,7 @@ from worker.ai.generation import (
 __all__ = [
     "blueprint",
     "concepts",
+    "coverage",
     "flashcards",
     "note",
     "package",

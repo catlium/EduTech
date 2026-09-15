@@ -494,12 +494,16 @@ def generate(
             return
 
         provider = create_provider()
+        scope = _resolve_scope(institute_id, source, materials)
+        academic_context = _build_academic_context(institute_id, scope, operation.operation)
         outputs: list[dict[str, Any]] = []
         label = _source_label(source, materials, institute_id)
         for index, chunk in enumerate(chunks):
             _check_cancelled(job_id)
             part = _part_label(label, chunks, index)
-            raw = provider.complete(operation.build_messages(chunk, part))
+            raw = provider.complete(
+                operation.build_messages(chunk, part, academic_context=academic_context)
+            )
             outputs.append(_validate_output(operation, raw))
 
         output = outputs[0] if len(outputs) == 1 else _aggregate(operation, outputs)
@@ -531,19 +535,34 @@ def generate(
         _fail(job_id, exc)
 
 
+# Operations whose prompts receive the resolved academic context (subject /
+# chapter / topic descriptions + confirmed-syllabus extract). Questions and the
+# derived study resources share one resolution pass; every other operation
+# resolves its own scope internally.
+_ACADEMIC_CONTEXT_OPERATIONS = {
+    QA_OPERATION,
+    "AI_GENERATE_NOTE",
+    "AI_GENERATE_SUMMARY",
+    "AI_GENERATE_FLASHCARDS",
+    "AI_GENERATE_CONCEPTS",
+    CONTENT_PACKAGE_OPERATION,
+}
+
+
 def _build_academic_context(
     institute_id: str,
     scope: dict[str, str | None],
     operation_name: str,
 ) -> str:
-    """Build the academic-context block for question generation prompts.
+    """Build the academic-context block for a generation prompt.
 
     Includes subject/chapter/topic names + descriptions plus the syllabus
-    extract (objectives/outcomes/scope) when available. The rendered block
-    always carries the coverage-boundary statement: the source material is
-    the boundary, never a licence to invent content beyond it.
+    extract (objectives/outcomes/scope) when available. The rendered block is
+    always a boundary: the context orients the resource within the course, but
+    the source material remains the coverage boundary. Questions and derived
+    resources share this resolution; operations outside the set get no block.
     """
-    if operation_name != QA_OPERATION:
+    if operation_name not in _ACADEMIC_CONTEXT_OPERATIONS:
         return ""
 
     academic: dict[str, Any] = db.get_scope_context(
@@ -560,7 +579,13 @@ def _build_academic_context(
     if syllabus is not None:
         academic["syllabus"] = syllabus
 
-    return generation.questions.build_academic_context(academic)
+    if operation_name == QA_OPERATION:
+        return generation.questions.build_academic_context(academic)
+
+    return generation.coverage.build_academic_context(
+        academic,
+        boundary=generation.coverage.RESOURCE_CONTEXT_BOUNDARY,
+    )
 
 
 def _generate_questions(
@@ -843,12 +868,16 @@ def _generate_content_package(
         raise GenerationError("No valid content types requested")
 
     provider = create_provider()
+    scope = _resolve_scope(institute_id, source, materials)
+    academic_context = _build_academic_context(institute_id, scope, CONTENT_PACKAGE_OPERATION)
     per_type_chunks: dict[ContentTypeName, list[dict[str, Any]]] = {t: [] for t in types}
 
     for index, chunk in enumerate(chunks):
         _check_cancelled(job_id)
         label = _part_label(_source_label(source, materials, institute_id), chunks, index)
-        raw = provider.complete(operation.build_messages(chunk, label, types=types))
+        raw = provider.complete(
+            operation.build_messages(chunk, label, types=types, academic_context=academic_context)
+        )
         try:
             parsed = operation.parse(raw)
         except ValueError as exc:
@@ -864,7 +893,6 @@ def _generate_content_package(
             if isinstance(raw_payload, dict):
                 per_type_chunks[t].append(raw_payload)
 
-    scope = _resolve_scope(institute_id, source, materials)
     ai_context: dict[str, Any] = {
         "operation": CONTENT_PACKAGE_OPERATION,
         "jobId": job_id,

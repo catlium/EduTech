@@ -1,5 +1,57 @@
 # Project Status
 
+## Phase 35 — Derived Resource Content Quality (2026-09-15)
+
+**Status: implemented, validated, committed.**
+
+### Completed work
+
+- **Shared prompt contract** (`worker/ai/generation/coverage.py`): new
+  `SOURCE_ROLE`, `QUALITY_RULES`, `RESOURCE_CONTEXT_BOUNDARY`, and a generic
+  `build_academic_context(academic, boundary=...)` renderer.
+  `questions.build_academic_context` now delegates to the shared renderer with
+  its own question-boundary sentence, so QA output is byte-identical.
+- **Resource-specific prompts rewritten**: Note (detailed teaching material —
+  deep explanation, headings, gap-filling from reliable subject knowledge,
+  transform-not-copy, standalone); Summary (small precise revision resource,
+  explicitly NOT a shortened Note, answers "what are the essentials?"); Flashcards
+  (active recall — one clear idea per card, recall prompts, no trivial/duplicate
+  cards, quality over quantity); Concepts (what/how/why/relationships +
+  prerequisites, not a full Note, no shallow one-line definitions); and the
+  content-package prompt now carries per-type purpose guidance including the
+  previously-unguided Cornell cues/notes/summary structure.
+- **Academic context wiring** (no architecture change): `build_messages` for
+  note/summary/flashcards/concepts/package accept an `academic_context` kwarg;
+  `service._build_academic_context` resolves topic/chapter/subject descriptions
+  plus the confirmed syllabus for the derived resources (same resolution QA
+  uses) and injects it as a course-boundary block. Carried through the existing
+  single-resource generation loop and `_generate_content_package` — same jobs,
+  RabbitMQ, worker and orchestration path; only the prompt payload changed.
+- **Tests**: new `tests/test_derived_resource_quality.py` (shared framing,
+  per-resource purpose, context injection, canonical-schema validity);
+  `tests/test_note_quality.py` updated for the new Summary contract.
+
+### Validation
+
+- Worker pytest: **72 passed**; 3 pre-existing failures in `test_ocr_client.py`
+  and `test_processing_failures.py` caused by the intentionally-uncommitted
+  paused OCR worker refactor (files explicitly out of scope and untouched).
+- `ruff check` / `ruff format` clean on every changed file; `mypy worker/ai`
+  clean (only pre-existing `worker/ocr.py` errors in the paused work).
+- No API/contracts schema change; prompts only.
+
+### Known issues
+
+- The 3 paused-OCR uncommitted files (`config/consumer/db/ocr/processing.py`,
+  `test_ocr_client.py`) remain out of scope and still fail under the live suite.
+
+### Exact recommended next task
+
+1. Commit + push this quality checkpoint.
+2. Stop — no automatic progression beyond this checkpoint.
+
+---
+
 ## Phase 34 — AI Job Reliability, Question Bank Gating & Preview-before-Export (2026-09-15)
 
 **Status: implemented, validated, committed.** Commits:

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from worker.ai.generation import coverage
 from worker.ai.generation.parse import parse_json_object
 
 _FORMATS_REFERENCE = (
@@ -143,39 +144,14 @@ def build_academic_context(academic: dict[str, Any] | None) -> str:
     model never invents content beyond the provided document (boundary, not a
     licence to expand generation).
     """
-    if not academic:
-        return ""
-    block = [
-        "ACADEMIC CONTEXT (course boundary): Base every question strictly on the "
-        "source material provided below; never write a question whose answer "
-        "requires information outside that source material."
-    ]
-    for level in ("subject", "chapter", "topic"):
-        info = academic.get(level)
-        if not isinstance(info, dict) or not (info.get("name") or "").strip():
-            continue
-        label = f"{level}: {info['name'].strip()}"
-        description = (info.get("description") or "").strip()
-        if description:
-            label = f"{label} — {description}"
-        block.append(label)
-
-    syllabus = academic.get("syllabus")
-    if isinstance(syllabus, dict):
-        parts: list[str] = []
-        for key in ("program", "course", "academicYear", "scope"):
-            value = syllabus.get(key)
-            if isinstance(value, str) and value.strip():
-                parts.append(f"{key}: {value.strip()}")
-        for key in ("objectives", "learningOutcomes"):
-            values = syllabus.get(key)
-            if isinstance(values, list):
-                joined = "; ".join(str(v) for v in values if isinstance(v, str) and v.strip())
-                if joined:
-                    parts.append(f"{key}: {joined}")
-        if parts:
-            block.append("syllabus: " + " | ".join(parts))
-    return "\n".join(block)
+    return coverage.build_academic_context(
+        academic,
+        boundary=(
+            "Base every question strictly on the source material provided below; "
+            "never write a question whose answer requires information outside "
+            "that source material."
+        ),
+    )
 
 
 def parse_questions_json(content: str) -> dict[str, Any]:

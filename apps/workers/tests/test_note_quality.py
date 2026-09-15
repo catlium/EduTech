@@ -61,8 +61,10 @@ def test_note_blocks_schema_round_trips() -> None:
 
 
 def test_summary_stays_concise() -> None:
-    assert "concise summary" in SUMMARY_PROMPT
-    assert "key important points" in SUMMARY_PROMPT
+    assert "SMALL, PRECISE revision resource" in SUMMARY_PROMPT
+    assert "NOT a shortened copy of a Note" in SUMMARY_PROMPT
+    assert "keyConcepts" in SUMMARY_PROMPT
+    assert "importantPoints" in SUMMARY_PROMPT
 
 
 def test_coverage_contract_neutralized_for_notes() -> None:

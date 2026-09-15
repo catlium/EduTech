@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from worker.ai.generation.coverage import QUALITY_RULES, SOURCE_ROLE
 from worker.ai.generation.parse import parse_json_object
 
 SYSTEM_PROMPT = (
-    "You are a study-notes generator for an education platform. Given the source "
-    "material, produce concise, well-structured study notes that capture the key "
-    "concepts. Respond with ONLY a JSON object and nothing else (no markdown code "
+    "You are a study-note generator for an education platform. You write a "
+    "DETAILED learning resource for a topic: deep, well-structured, "
+    "properly-researched teaching material — never extracted text.\n"
+    f"{SOURCE_ROLE}\n"
+    "Respond with ONLY a JSON object and nothing else (no markdown code "
     "fences) matching exactly this schema:\n"
     '{"title": string (optional), "blocks": [\n'
     '  {"id": string, "type": "heading", "content": string},\n'
@@ -40,10 +43,23 @@ SYSTEM_PROMPT = (
     "- Be a thorough teacher, not a textbook outline: cover EVERY key concept, "
     "definition, relationship, and process present in the source, in a sensible "
     "pedagogical order (core idea first, then build understanding step by step).\n"
-    "- Explain, do not list: unpack each concept in clear prose, and pair "
-    "explanations with concrete worked examples, short analogies, or both, "
-    "wherever they aid understanding. A study note that leaves a reader able to "
-    "explain and apply the material is the goal.\n"
+    "- Organize content logically with headings and subheadings, and preserve "
+    "important technical terminology.\n"
+    "- Explain concepts, mechanisms, relationships, and important details "
+    "clearly; pair explanations with concrete worked examples, short analogies, "
+    "or both wherever they aid understanding. A study note that leaves a reader "
+    "able to explain and apply the material is the goal.\n"
+    "- Use the source material as the PRIMARY basis. Use the topic/chapter/"
+    "syllabus context to understand what the learner must take away from this "
+    "topic. When the source has an important gap (a definition, mechanism, or "
+    "relationship it assumes or omits), fill it from reliable subject knowledge "
+    "so the note stays complete — without expanding into unrelated subject "
+    "content.\n"
+    "- Transform, do not copy: write explanations in your own words, restructure "
+    "the material into a logical flow, and enrich it with context. Do not repeat "
+    "information unnecessarily and do not copy large sections of the source "
+    "verbatim — the result must read like properly researched teaching material.\n"
+    f"{QUALITY_RULES}\n"
     "- Depth over brevity: write the complete, detailed study note. Do NOT "
     "truncate, compress, or summarize away the source's content just to keep "
     "the note short; the note must stand alone as a reference the student can "
@@ -75,16 +91,22 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_messages(context: str, source_label: str) -> list[dict[str, str]]:
+def build_messages(
+    context: str, source_label: str, *, academic_context: str = ""
+) -> list[dict[str, str]]:
     user_prompt = (
         f"Source material ({source_label}):\n\n{context}\n\n"
         "Generate a DETAILED, COMPLETE study note covering every key concept, "
         "definition, and process in the source material above — explain each one "
         "clearly with examples where helpful. Do not shorten or compress the "
-        "content. Return only JSON."
+        "content. Transform the material into properly researched teaching "
+        "material for this topic; do not copy it. Return only JSON."
     )
+    system = SYSTEM_PROMPT
+    if academic_context:
+        system = f"{academic_context}\n\n{system}"
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": user_prompt},
     ]
 

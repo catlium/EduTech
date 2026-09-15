@@ -1,5 +1,41 @@
 # Task Tracker
 
+## Phase 35 — Derived Resource Content Quality (2026-09-15)
+
+Improve the resource-specific AI prompts for Topic-owned derived resources
+(Note, Summary, Flashcards, Concept, Cornell Note) so each generates a
+purpose-appropriate learning resource from the source instead of a light
+reformat — without changing the generation/orchestration architecture.
+
+### Goal: Shared prompt contract (transform, not copy)
+
+- [x] `coverage.py`: add `SOURCE_ROLE`, `QUALITY_RULES`, `RESOURCE_CONTEXT_BOUNDARY`
+- [x] `coverage.py`: generic `build_academic_context(academic, boundary=...)` renderer
+- [x] `questions.build_academic_context` delegates to the shared renderer (QA output unchanged)
+
+### Goal: Resource-specific prompt improvements
+
+- [x] Note: detailed teaching material — deep explanation, headings, gap-filling from subject knowledge, transform-not-copy, standalone
+- [x] Summary: small precise revision resource — essentials only, explicitly NOT a shortened Note
+- [x] Flashcards: active recall — one idea per card, recall prompts, no trivial/duplicate cards, quality over quantity
+- [x] Concepts: concept-focused understanding — what/how/why/relationships/prerequisites, not a full Note, no one-line definitions
+- [x] Cornell (package): actual Cornell structure — cues/questions + concise matching notes + synthesising summary
+
+### Goal: Academic context wiring (no architecture change)
+
+- [x] `build_messages(..., academic_context=)` added to note/summary/flashcards/concepts/package
+- [x] `service._build_academic_context` resolves topic/chapter/subject descriptions + confirmed syllabus for derived resources
+- [x] Injected through the existing single-resource loop and `_generate_content_package` (same jobs/RabbitMQ/worker path)
+
+### Goal: Tests + validation
+
+- [x] New `tests/test_derived_resource_quality.py` (prompt contracts, context injection, schema validity)
+- [x] Updated `tests/test_note_quality.py` summary assertions
+- [x] Worker pytest: 72 passed / 3 pre-existing OCR failures (paused uncommitted work)
+- [x] `ruff check` + `ruff format` clean on changed files; `mypy worker/ai` clean
+
+_Checkpoint: commit + push (this checkpoint)._
+
 ## Phase 34 — AI Job Reliability, Question Bank Gating & Preview-before-Export (2026-09-15)
 
 Stabilization + product-rule enforcement over the Phase 33 question-bank/paper-pattern

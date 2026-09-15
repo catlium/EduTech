@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from worker.ai.generation.coverage import QUALITY_RULES, SOURCE_ROLE
 from worker.ai.generation.parse import parse_json_object
 
 _SYSTEM_PROMPT = (
-    "You are a study-notes generator for an education platform. Given the source "
-    "material, produce the requested study resources in one JSON response. "
+    "You are a study-resource generator for an education platform. Given the "
+    "source material, produce the requested study resources in one JSON "
+    "response.\n" + SOURCE_ROLE + "\n"
     "Respond with ONLY a JSON object and nothing else (no markdown code fences) "
     "matching exactly this schema:\n"
     "{\n"
@@ -55,7 +57,29 @@ _SYSTEM_PROMPT = (
     "Only include the keys for the requested resources. Each non-null resource "
     "must contain at least one block/item/card/concept/section. Every block/card/"
     "concept/section needs a unique id.\n"
-    "Guidance:\n"
+    "Guidance:\n" + QUALITY_RULES + "\n"
+    "- Avoid repeating the same content across the requested resources: each one "
+    "has its own purpose and depth.\n"
+    "- note: the DETAILED learning resource — a comprehensive, well-structured "
+    "explanation organised with headings and subheadings, preserving technical "
+    "terminology, deeper and more complete than every other resource; it should "
+    "stand alone as study material.\n"
+    "- summary: the small, precise revision resource — only the most important "
+    "information and the core concepts, relationships and conclusions, compact "
+    "enough to revise in minutes. It is NOT a shortened copy of the note.\n"
+    "- flashcards: important concepts for active recall — one clear idea per "
+    "card, fronts that require recall (never an instruction to reproduce a "
+    "paragraph), concise but sufficient backs, no trivial or duplicate cards, "
+    "quality over quantity.\n"
+    "- concepts: concept-focused understanding — for each concept explain what "
+    "it is, how it works, why it matters, and its important relationships; "
+    "include prerequisites where needed; keep it focused rather than a full note "
+    "and avoid shallow one-line definitions.\n"
+    "- cornell: an ACTUAL Cornell note, not a reformatted note — short cues or "
+    "questions that trigger recall, concise notes that answer each cue, and a "
+    "short summary that synthesises the topic in study-note style. Keep notes "
+    "selective, match every note to its cue, do not turn every sentence into a "
+    "cue, and keep a logical progression through the topic.\n"
     "- In the note, use structured visual blocks ONLY when they genuinely improve "
     "understanding (process -> flowchart, comparison -> table, data -> chart, "
     "progression -> timeline, system -> diagram, math -> formula + worked example). "
@@ -71,14 +95,24 @@ _SYSTEM_PROMPT = (
 )
 
 
-def build_messages(context: str, source_label: str, *, types: list[str]) -> list[dict[str, str]]:
+def build_messages(
+    context: str,
+    source_label: str,
+    *,
+    types: list[str],
+    academic_context: str = "",
+) -> list[dict[str, str]]:
     user_prompt = (
         f"Source material ({source_label}):\n\n{context}\n\n"
         f"Generate the following study resources: {', '.join(types)}. "
+        "Transform the material for each resource type; do not copy it. "
         "Return only JSON."
     )
+    system = _SYSTEM_PROMPT
+    if academic_context:
+        system = f"{academic_context}\n\n{system}"
     return [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": user_prompt},
     ]
 
