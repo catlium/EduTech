@@ -16,6 +16,7 @@ import {
   paperPatterns,
   paperPatternSubjects,
   questions,
+  materials,
   jobs,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
@@ -28,6 +29,8 @@ import { planQuestionBankJobs, DEFAULT_QUESTION_BATCH_SIZE } from './build-quest
 import { patternMatchesSubject } from '../paper-patterns/paper-pattern-subjects.js';
 
 const OPERATION = 'AI_GENERATE_QUESTIONS';
+
+const STARTER_MATERIAL_OPERATION = 'AI_GENERATE_STARTER_MATERIAL';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'processing', 'cancelling'] as const;
 
@@ -208,6 +211,56 @@ export class QuestionGenerationService {
       throw new BadRequestException('No questions to generate for the requested buckets');
     }
 
+    // Derived-resource rule: AI_GENERATE_QUESTIONS needs usable source material
+    // (the worker fails a topic with no READY material). When the topic has
+    // none, don't enqueue jobs that can only fail — enqueue ONE starter-material
+    // job whose dependentResources carry the planned children. The worker's
+    // existing starter handler releases them after the material exists, so the
+    // bank request shows "Starter material queued" (waiting for material)
+    // instead of silently QUEUED-forever / immediate failure.
+    if (workerSource.type === 'TOPIC') {
+      const hasMaterial = await this.hasUsableTopicMaterial(instituteId, workerSource.id);
+      if (!hasMaterial) {
+        const dependentResources = plan.children.map((child) => {
+          const params: Record<string, unknown> = { ...child.payload.params };
+          if (blueprint) params['blueprint'] = blueprint;
+          return { operation: OPERATION, resourceType: 'QUESTIONS', params };
+        });
+        try {
+          const starterJob = await this.jobs.issueJob(
+            instituteId,
+            STARTER_MATERIAL_OPERATION,
+            {
+              operation: STARTER_MATERIAL_OPERATION,
+              batchId,
+              batchSource,
+              source: workerSource,
+              requestedBy: userId,
+              dependentResources,
+            },
+          );
+          return {
+            batchId,
+            jobIds: [starterJob.id],
+            jobId: starterJob.id,
+            operation: OPERATION,
+            sourceType: workerSource.type,
+            sourceId: workerSource.id,
+            status: 'QUEUED' as const,
+            alreadyActive: [],
+            buckets,
+          };
+        } catch (error) {
+          if (isUniqueViolation(error)) {
+            throw new ConflictException(
+              'A material generation is already in progress for this topic',
+            );
+          }
+          throw error;
+        }
+      }
+    }
+
     const jobIds: string[] = [];
     const alreadyActive: string[] = [];
     for (const child of plan.children) {
@@ -245,6 +298,26 @@ export class QuestionGenerationService {
       alreadyActive,
       buckets,
     };
+  }
+
+  /** Whether the topic has at least one READY, active material with extracted
+   * text — the same usability bar the AI worker applies in ``_resolve_materials``
+   * (a topic without usable material fails AI_GENERATE_QUESTIONS). */
+  private async hasUsableTopicMaterial(instituteId: string, topicId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: materials.id })
+      .from(materials)
+      .where(
+        and(
+          eq(materials.instituteId, instituteId),
+          eq(materials.topicId, topicId),
+          eq(materials.status, 'ACTIVE'),
+          eq(materials.processingStatus, 'READY'),
+          sql`length(btrim(${materials.textContent})) > 0`,
+        ),
+      )
+      .limit(1);
+    return Boolean(row);
   }
 
   // ── Bank batch monitor (Goal E) ─────────────────────────────────────
