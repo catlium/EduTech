@@ -12,13 +12,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { DocBlocks } from './doc-blocks';
 import type { DocumentModel } from './doc-blocks';
+import { RenderDocHtml } from './render-doc-html';
 import { ApiError } from '@/lib/api';
 
 export interface ExportPreviewValue {
   hash: string;
   document: DocumentModel;
+  html: string;
 }
 
 /** localStorage key for an assessment preview hash — the assessment page
@@ -102,7 +103,7 @@ export function ExportPreviewDialog({
               Preview #{preview.hash.slice(0, 8)} — the exported file will match this exactly.
             </p>
             <div className="rounded-md border bg-background p-4">
-              <DocBlocks model={preview.document} />
+              <RenderDocHtml html={preview.html} />
             </div>
           </>
         )}

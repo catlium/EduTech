@@ -17,6 +17,7 @@
     "test:paper-pattern-subjects": "node --test src/paper-patterns/paper-pattern-subjects.test.ts",
     "test:paper-pattern-policy": "node --test src/paper-patterns/paper-pattern-policy.test.ts",
     "test:export": "node --test src/export/export.service.test.ts",
+    "test:pdf-smoke": "node --test src/export/pdf-smoke.test.ts",
     "test:ocr": "node --test src/ocr/ocr-workers.test.ts src/ocr/ocr-coordinator.util.test.ts src/ocr/ocr-page-inspection.test.ts",
     "test:paper-pattern-export": "node --test src/export/paper-pattern-doc.test.ts",
     "clean": "rm -rf dist .turbo"
@@ -38,7 +39,7 @@
     "cookie-parser": "^1.4.7",
     "docx": "^9.7.1",
     "drizzle-orm": "^0.44.7",
-    "pdfkit": "^0.20.2",
+    "puppeteer-core": "^25.11.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "uuid": "^14.0.1",
@@ -54,7 +55,6 @@
     "@types/express": "^5.0.6",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.15.3",
-    "@types/pdfkit": "^0.17.6",
     "@types/uuid": "^11.0.0",
     "typescript": "^5.8.3"
   }

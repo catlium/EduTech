@@ -15,6 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DocBlocks } from '@/components/export/doc-blocks';
 import type { DocumentModel } from '@/components/export/doc-blocks';
+import { RenderDocHtml } from '@/components/export/render-doc-html';
 
 /* Assessment preview: renders EXACTLY the document the export endpoints
  * produce (paper = student-facing, answers = teacher key) and remembers the
@@ -26,6 +27,7 @@ const previewStorageKey = (assessmentId: string, include: 'paper' | 'answers', r
 interface PreviewPayload {
   hash: string;
   document: DocumentModel;
+  html: string;
 }
 
 export default function AssessmentPreviewPage() {
@@ -138,10 +140,10 @@ export default function AssessmentPreviewPage() {
           <Card>
             <CardContent className="pt-6">
               <p className="mb-3 text-xs text-muted-foreground">
-                Preview #{preview.hash.slice(0, 8)} — the exported {'pdf'} {'/'} {'docx'} will
-                match this exactly.
+                Preview #{preview.hash.slice(0, 8)} — the exported {'pdf'} {'/'} {'docx'} will match
+                this exactly.
               </p>
-              <DocBlocks model={preview.document} />
+              <RenderDocHtml html={preview.html} />
             </CardContent>
           </Card>
         </>

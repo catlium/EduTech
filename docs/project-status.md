@@ -1,6 +1,69 @@
 # Project Status
 
-## Phase 35 — Derived Resource Content Quality (2026-09-15)
+## Phase 36 — Shared Export Renderer, Preview == PDF, One Visual Source (2026-09-15)
+
+**Status: implemented, validated, committed.**
+
+### Goal
+
+Kill the second layout in exports. Previously the API built PDFs with
+`pdfkit` (plain-text, WinAnsi, glyph stripping) while the web preview used its
+own React `DocBlocks` (Tailwind) — two independent visual representations that
+could diverge. This phase makes **one HTML/CSS renderer the single shared
+visual source** for preview, PDF and (structured) DOCX, then wires the export
+file to a digest gate so it is only produced for content that has actually
+been previewed.
+
+### Completed work
+
+- **One shared renderer** (`src/export/render-html.ts` + `render-html` in the
+  web): pure `DocumentModel → string`, zero runtime imports, populated with
+  `EXPORT_STYLES` (inline print-quality CSS, A4, Palatino/Georgia, doc-*
+  classes). `renderDocumentHtml(model)` is the complete self-contained page the
+  Puppeteer PDF uses; `renderDocumentBodyHtml(model)` is the body fragment the
+  preview shows. One visual source — preview and PDF cannot diverge.
+- **Preview returns `html`**: `ExportPreview` now carries `html` (shared
+  renderer body fragment). The web preview dialogs render it server-provided
+  (`dangerouslySetInnerHTML`) instead of the React `DocBlocks` layout, so the
+  preview is the exact document export produces.
+- **`puppeteer.service.ts`**: lazy shared Chromium browser (reused across
+  requests, killed on module destroy) `pdf(model)` → Buffer via the shared
+  renderer + `page.pdf`. Binary from `PUPPETEER_EXECUTABLE_PATH` →
+  `CHROME_PATH` → `/usr/bin/google-chrome`. `puppeteer-core` added (no bundled
+  Chromium; google-chrome is already on the machine and in the API image env).
+- **`PuppeteerService` wired into `ExportService`** (`sendPdf`) and the
+  controller routes: `export/content/...`, `assessment`, `paper-pattern`,
+  `question-bank` → `sendVerified` (async) — **pdf | docx**, with the
+  preview-hash gate preserved (409 on missing/stale hash — no export bypass).
+- **`pdfkit`/`@types/pdfkit` removed** from the API; DOCX stays the structured
+  `docx` renderer (`sendDoc` in `export.renderers.ts`).
+- **Native tests (no Nest runner needed)**: one shared source of truth — the
+  existing `node --test` suite (no tsx, no Jest) still passes because
+  `render-html` and the content-block tests run under Node's native type
+  stripping; a `pdf-smoke` test drives the same Puppeteer service to prove the
+  Chromium path renders a real `%PDF`.
+
+### Validation
+
+- `pnpm typecheck` clean in `apps/api` and `apps/web`; `pnpm lint` clean.
+- Native suite: 117 tests, 117 pass (incl. `export.renderers.test.ts`,
+  `export.service.test.ts`, paper-pattern tests, and `pdf-smoke.test.ts`
+  producing a `%PDF` via the shared renderer on the running Chromium).
+- API `nest build` and web `next build` both compile clean.
+
+### Known issues
+
+- Puppeteer launches Chromium on first PDF; if `google-chrome` is not present
+  at the configured path the export returns 500 (surfaced as an export error).
+  The OCR worker's own Chromium needs are separate (no conflict).
+
+### Recommended next task
+
+- Reconcile the preview dialogs' remaining `DocBlocks`-only preview consumers
+  (if any still render client-side blocks without the server `html`) and then
+  commit the new Phase 36 checkpoint, update `docs/tasks.md`, and push.
+
+---
 
 **Status: implemented, validated, committed.**
 
@@ -80,6 +143,7 @@ All unpushed until checkpoint push in progress.
 - Job Monitor still shows pre-fix "Unexpected generation failure" / "OCR service unreachable" on old failed jobs (died before saving real error).
 
 ### Exact recommended next task
+
 1. Push all Phase 34 commits to `origin/main` (the 4 earlier fixes + the new preview-gate feature).
 2. Verify the commit history in `git log --oneline -10` includes the full Phase 34 sequence and Phase 33 below it.
 3. Stop — no automatic progression beyond this checkpoint.
@@ -95,6 +159,7 @@ All unpushed until checkpoint push in progress.
 checkpoint history below). Pushed to `origin/main` (`catlium/EduTech`).
 
 **Validation status:**
+
 - API: `pnpm --filter @catlium/api typecheck` ✓, lint ✓, node:test **113/113 PASS** (incl.
   new `paper-selection.test.ts` 9 tests).
 - Workers: pytest **54 PASS** (question-bank / AI-reliability / aggregation /
@@ -126,7 +191,7 @@ checkpoint history below). Pushed to `origin/main` (`catlium/EduTech`).
   `insert_generated_questions` inserts `APPROVED`/`ACTIVE` (no mandatory
   confirmation gate; PENDING is now legacy-only); idempotent retry purge is
   `status='ACTIVE' AND source='AI_GENERATED' AND provenance->>'jobId'=%s AND
-  updated_by=created_by`; API `createQuestion` always `APPROVED`.
+updated_by=created_by`; API `createQuestion` always `APPROVED`.
 - **Web assessment detail:** pattern-coverage panel card; Auto-select button +
   shortages summary; Export dialog (Paper/Answer-key × PDF/DOCX); Preview
   link; add-dialog section `<Select>` per question; section badges on rows;
@@ -158,17 +223,20 @@ reflect code + automated validation, not UI journeys.
   select-only-my-hunk commit") to keep the paused OCR refactor out of history.
 
 ### Deferred
+
 - OCR-vs-export: user-functional validation (paper/answer-key render, attempt
   lines) pending browser journey.
 - Question versioning, question-set delete/merge (not requested yet).
 
 ### Latest checkpoint
+
 - **Phase 33 committed + pushed** (`12083df`, `6bb5616`, `c0f5e39`, `c8568e3`).
   Automated validation green (API 113 tests, typecheck, lint, web build,
   worker 54 tests). Remaining uncommitted: the paused monolith-OCR refactor
   (`config/consumer/db/ocr/processing.py`, `test_ocr_client.py`) — intentional.
 
 ### Exact recommended next task
+
 1. User browser journeys: assessment — pick pattern DRAFT, add questions per
    section (or Auto-select), watch coverage panel, Preview, Export paper +
    answer key; question bank — generate a batch and view Recent question sets.

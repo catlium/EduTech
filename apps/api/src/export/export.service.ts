@@ -1,4 +1,5 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import type { Response } from 'express';
 import { and, eq, inArray, isNull, or, asc } from 'drizzle-orm';
 import {
   contentItems,
@@ -17,12 +18,25 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { contentBlocks, questionDocBlock } from './export.content-blocks.js';
 import type { DocBlock, DocumentModel } from './export.content-blocks.js';
 import { paperPatternDoc } from './paper-pattern-doc.js';
+import { PuppeteerService } from './puppeteer.service.js';
 
 export type { DocBlock, DocumentModel };
 
 @Injectable()
 export class ExportService {
-  constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE_TOKEN) private readonly db: Database,
+    private readonly puppeteer: PuppeteerService,
+  ) {}
+
+  /** Send the document as PDF via the shared Puppeteer renderer — the same
+   * HTML/CSS the preview shows, so the file always matches the preview. */
+  async sendPdf(res: Response, model: DocumentModel, filename: string): Promise<void> {
+    const buffer = await this.puppeteer.pdf(model);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+    res.send(buffer);
+  }
 
   async buildContentDoc(instituteId: string, contentId: string): Promise<DocumentModel> {
     const [item] = await this.db
@@ -156,7 +170,9 @@ export class ExportService {
     }
 
     const bySection = (name: string) =>
-      links.filter((l) => (l.section || 'General') === name).sort((a, b) => a.sortOrder - b.sortOrder);
+      links
+        .filter((l) => (l.section || 'General') === name)
+        .sort((a, b) => a.sortOrder - b.sortOrder);
     const renderSection = (name: string, sectionMeta?: (typeof patternSections)[number]) => {
       const sectionLinks = bySection(name);
       if (sectionLinks.length === 0) return;
@@ -198,18 +214,17 @@ export class ExportService {
     if (general.length > 0) {
       blocks.push({ kind: 'heading', text: 'General' });
       blocks.push(
-        ...general.map(
-          (l): DocBlock =>
-            questionDocBlock({
-              stem: l.stem,
-              type: l.questionType,
-              difficulty: l.difficulty,
-              marks: l.marks,
-              payload: (l.payload ?? {}) as Record<string, unknown>,
-              explanation: l.explanation,
-              includeAnswers: scope === 'teacher',
-              scope,
-            }),
+        ...general.map((l): DocBlock =>
+          questionDocBlock({
+            stem: l.stem,
+            type: l.questionType,
+            difficulty: l.difficulty,
+            marks: l.marks,
+            payload: (l.payload ?? {}) as Record<string, unknown>,
+            explanation: l.explanation,
+            includeAnswers: scope === 'teacher',
+            scope,
+          }),
         ),
       );
     }

@@ -4,7 +4,16 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ArrowLeft, FileText, ExternalLink, Loader2, Sparkles, BookOpen, Eye } from 'lucide-react';
+import {
+  ArrowLeft,
+  FileText,
+  ExternalLink,
+  Loader2,
+  Sparkles,
+  BookOpen,
+  Eye,
+  RefreshCw,
+} from 'lucide-react';
 
 import { api, ApiError, waitForJob } from '@/lib/api';
 import { useTenant, canManage } from '@/lib/tenant';
@@ -57,6 +66,7 @@ export default function TopicPage() {
     batchId: string;
     status: GenerationBatchResponse | null;
   } | null>(null);
+  const [regenerating, setRegenerating] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -185,6 +195,31 @@ export default function TopicPage() {
     return resources
       .filter((r) => r.type === type)
       .sort((a, b) => b.currentVersion - a.currentVersion)[0];
+  }
+
+  async function regenerateResource(item: ContentListItem) {
+    setRegenerating((prev) => ({ ...prev, [item.id]: true }));
+    try {
+      const { regeneration } = await api<{ regeneration: { jobId: string } }>(
+        `/content/${item.id}/regenerate`,
+        { method: 'POST' },
+      );
+      await waitForJob(() => api<{ job: { status: string } }>(`/jobs/${regeneration.jobId}`));
+      setRegenerating((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      toast.success('Resource regenerated');
+      void load();
+    } catch (err) {
+      setRegenerating((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      toast.error(err instanceof ApiError ? err.message : 'Regeneration failed');
+    }
   }
 
   const batchStartPending =
@@ -319,13 +354,31 @@ export default function TopicPage() {
                     )}
                   </div>
                   {item && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => router.push(`/content/${item.id}`)}
-                    >
-                      <Eye className="mr-1 size-3.5" /> Open
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => router.push(`/content/${item.id}`)}
+                      >
+                        <Eye className="mr-1 size-3.5" /> Open
+                      </Button>
+                      {isTeacher && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={regenerating[item.id] || Boolean(batch?.status?.active)}
+                          onClick={() => void regenerateResource(item)}
+                          title="Regenerate from the latest topic materials"
+                        >
+                          {regenerating[item.id] ? (
+                            <Loader2 className="mr-1 size-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="mr-1 size-3.5" />
+                          )}
+                          {regenerating[item.id] ? 'Regenerating…' : 'Regenerate'}
+                        </Button>
+                      )}
+                    </>
                   )}
                 </li>
               );

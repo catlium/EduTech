@@ -60,7 +60,9 @@ export function docDigest(doc: DocumentModel): string {
 /** Preview = the exact document export would produce, plus its digest. The
  * export endpoints re-build the document and compare hashes, so exporting is
  * only possible for content that has actually been previewed: a missing or
- * stale hash returns 409 — no UI/API bypass. */
+ * stale hash returns 409 — no UI/API bypass.
+ * (The rendered `html` is composed by the controller so this module stays free
+ * of runtime imports — native node --test type-stripping can run it directly.) */
 export interface ExportPreview {
   hash: string;
   document: DocumentModel;

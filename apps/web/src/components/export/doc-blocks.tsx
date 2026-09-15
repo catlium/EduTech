@@ -36,10 +36,22 @@ export type DocBlock =
     }
   | { kind: 'example'; title?: string; content: string }
   | { kind: 'callout'; variant: string; content: string }
-  | { kind: 'timeline'; caption?: string; events: { period: string; title: string; description?: string }[] }
-  | { kind: 'diagram'; caption?: string; nodes: { id: string; label: string }[]; edges: { from: string; to: string; label?: string }[] }
+  | {
+      kind: 'timeline';
+      caption?: string;
+      events: { period: string; title: string; description?: string }[];
+    }
+  | {
+      kind: 'diagram';
+      caption?: string;
+      nodes: { id: string; label: string }[];
+      edges: { from: string; to: string; label?: string }[];
+    }
   | { kind: 'chart'; caption?: string; chartType: string; data: { label: string; value: number }[] }
-  | { kind: 'further-learning'; resources: { title: string; url: string; kind: string; note?: string }[] };
+  | {
+      kind: 'further-learning';
+      resources: { title: string; url: string; kind: string; note?: string }[];
+    };
 
 export interface DocumentModel {
   title: string;
@@ -185,7 +197,10 @@ export function DocBlocks({ model }: { model: DocumentModel }) {
             );
           case 'example':
             return (
-              <div key={i} className="rounded-md border-l-4 border-muted-foreground/40 py-1 pl-3 text-sm">
+              <div
+                key={i}
+                className="rounded-md border-l-4 border-muted-foreground/40 py-1 pl-3 text-sm"
+              >
                 {b.title && <p className="font-medium">{b.title}</p>}
                 <p className={b.title ? 'mt-0.5' : ''}>{b.content}</p>
               </div>
@@ -221,9 +236,7 @@ export function DocBlocks({ model }: { model: DocumentModel }) {
             return (
               <div key={i} className="space-y-1 text-sm">
                 {b.caption && <p className="font-medium">{b.caption}</p>}
-                <p className="text-muted-foreground">
-                  {b.nodes.map((n) => n.label).join(' · ')}
-                </p>
+                <p className="text-muted-foreground">{b.nodes.map((n) => n.label).join(' · ')}</p>
                 {b.edges.map((e, j) => (
                   <p key={j} className="text-xs text-muted-foreground">
                     {e.from} → {e.to}
@@ -239,7 +252,10 @@ export function DocBlocks({ model }: { model: DocumentModel }) {
                 {b.data.map((d, j) => (
                   <div key={j} className="flex items-center gap-2">
                     <span className="w-40 truncate text-xs">{d.label}</span>
-                    <div className="h-3 rounded bg-muted-foreground/30" style={{ width: `${Math.min(100, d.value)}%` }} />
+                    <div
+                      className="h-3 rounded bg-muted-foreground/30"
+                      style={{ width: `${Math.min(100, d.value)}%` }}
+                    />
                     <span className="text-xs tabular-nums">{d.value}</span>
                   </div>
                 ))}

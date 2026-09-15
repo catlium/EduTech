@@ -541,6 +541,59 @@ export class GenerationService {
     return this.getGenerationBatch(batchId, instituteId);
   }
 
+  /** Regenerate ONE existing derived resource. The item's topic is the
+   * generation source (derived resources are Topic-owned), so the job uses the
+   * latest topic/materials context and the worker re-resolves the sources at
+   * run time. The partial unique index on jobs dedupes concurrent requests for
+   * the same resource → 409 while one is already running. The old resource
+   * stays live until the worker bumps its version on success. */
+  async requestResourceRegeneration(
+    instituteId: string,
+    userId: string,
+    contentId: string,
+  ): Promise<{ jobId: string; contentId: string; type: string; status: 'QUEUED' }> {
+    const [item] = await this.db
+      .select({
+        id: contentItems.id,
+        type: contentItems.type,
+        topicId: contentItems.topicId,
+        source: contentItems.source,
+      })
+      .from(contentItems)
+      .where(and(eq(contentItems.id, contentId), eq(contentItems.instituteId, instituteId)))
+      .limit(1);
+
+    if (!item) throw new NotFoundException('Content item not found');
+    if (item.source !== 'AI_GENERATED' || !item.topicId) {
+      throw new ConflictException('Only AI-generated Topic-owned resources can be regenerated');
+    }
+
+    const operation = BATCH_TYPE_TO_OPERATION[item.type];
+    if (!operation) {
+      throw new ConflictException(`Resource type ${item.type} cannot be regenerated`);
+    }
+
+    const payload = {
+      operation,
+      source: { type: 'TOPIC' as const, id: item.topicId },
+      requestedBy: userId,
+      resourceType: item.type,
+      regenerationOf: contentId,
+    };
+
+    let job: Job;
+    try {
+      job = await this.jobs.issueJob(instituteId, operation, payload);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('A generation is already in progress for this resource');
+      }
+      throw error;
+    }
+
+    return { jobId: job.id, contentId, type: item.type, status: 'QUEUED' };
+  }
+
   private async assertGeneratableMaterial(instituteId: string, materialId: string): Promise<void> {
     const [material] = await this.db
       .select({

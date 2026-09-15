@@ -3,7 +3,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { contentBlocks, questionDocBlock, docDigest, buildPreview } from './export.content-blocks.ts';
+import {
+  contentBlocks,
+  questionDocBlock,
+  docDigest,
+  buildPreview,
+} from './export.content-blocks.ts';
 import type { DocBlock, DocumentModel } from './export.content-blocks.ts';
 
 test('NOTE payload maps blocks: heading, paragraph, list', () => {
@@ -111,7 +116,14 @@ test('docDigest is deterministic and content-sensitive', () => {
     title: 'T',
     blocks: [
       { kind: 'heading', text: 'H' },
-      { kind: 'question', stem: 'S?', type: 'MCQ', difficulty: 'EASY', choices: [], showAnswer: true },
+      {
+        kind: 'question',
+        stem: 'S?',
+        type: 'MCQ',
+        difficulty: 'EASY',
+        choices: [],
+        showAnswer: true,
+      },
     ],
   };
   const b: DocumentModel = { ...a, blocks: [...a.blocks, { kind: 'paragraph', text: 'more' }] };

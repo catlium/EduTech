@@ -116,6 +116,22 @@ export class GenerationController {
     return { batch };
   }
 
+  @Post(':contentId/regenerate')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async regenerateResource(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('contentId', ParseUUIDPipe) contentId: string,
+  ) {
+    const regeneration = await this.generationService.requestResourceRegeneration(
+      tenant.instituteId,
+      user.userId,
+      contentId,
+    );
+    return { regeneration };
+  }
+
   @Get('generation-batches/:batchId')
   @RequiredRoles(...WRITE_ROLES)
   async getBatch(
