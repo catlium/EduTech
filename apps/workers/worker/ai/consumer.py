@@ -27,9 +27,9 @@ connection reconnects with exponential backoff instead of dying (a broker
 restart must not strand the worker). On startup, AI jobs stuck in
 ``processing`` longer than ``WORKER_AI_STALE_PROCESSING_MINUTES`` (worker
 crash / connection loss left them non-terminal) are reset to ``queued`` and
-re-published before consumption starts, so stranded work resumes. A
-re-published job reuses its own jobId, which keeps question/content
-idempotency intact (purge-by-jobId / topic dedup).
+re-published before consumption starts, so stranded work resumes. Queued jobs
+that never started are also re-published (both re-use the job's own id, which
+keeps question/content idempotency intact via purge-by-jobId / topic dedup).
 """
 
 import json
@@ -131,7 +131,13 @@ def _consume_loop() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        connection.close()
+        try:
+            connection.close()
+        except Exception:
+            # The broker can force-close the connection (e.g. its own restart);
+            # closing an already-closed connection raises. The thread must
+            # still exit cleanly so _run_consumer_thread reconnects.
+            logger.info("AI consumer connection already closed; skipping close")
 
 
 def _publish(message: dict[str, Any], channel: BlockingChannel | None = None) -> None:
@@ -174,8 +180,8 @@ def _republish_stale_jobs() -> None:
             continue
         _publish(
             {
-                "jobId": row["id"],
-                "instituteId": row["institute_id"],
+                "jobId": str(row["id"]),
+                "instituteId": str(row["institute_id"]),
                 "type": row["type"],
                 "payload": row["payload"] or {},
             },
@@ -185,6 +191,35 @@ def _republish_stale_jobs() -> None:
     connection.close()
     if requeued:
         logger.warning("Stale processing sweep: requeued %d AI job(s)", requeued)
+
+
+def _republish_stale_queued_jobs() -> None:
+    """Re-publish AI jobs stranded in ``queued`` (never started, old enough).
+
+    The API inserts the row, then publishes. A broker restart that kills every
+    consumer strands those rows: the messages sit ready-but-unconsumed (or were
+    lost in the bounce) and the jobs never leave ``queued``. Re-publishing is
+    idempotent — every AI operation reuses its jobId, and workers purge or
+    dedupe by jobId — so a message still in the queue is a no-op.
+    """
+    rows = db.recover_stale_queued_ai_jobs(settings.ai_stale_processing_minutes)
+    if not rows:
+        return
+    connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
+    channel = connection.channel()
+    channel.queue_declare(queue=settings.ai_queue, durable=True)
+    for row in rows:
+        _publish(
+            {
+                "jobId": str(row["id"]),
+                "instituteId": str(row["institute_id"]),
+                "type": row["type"],
+                "payload": row["payload"] or {},
+            },
+            channel,
+        )
+    connection.close()
+    logger.warning("Stale queued sweep: republished %d AI job(s)", len(rows))
 
 
 def _run_consumer_thread() -> None:
@@ -203,6 +238,7 @@ def _run_consumer_thread() -> None:
 
 def start_ai_consumer() -> None:
     _republish_stale_jobs()
+    _republish_stale_queued_jobs()
     count = max(1, settings.ai_concurrency)
     threads = [
         threading.Thread(target=_run_consumer_thread, name=f"ai-consumer-{i}", daemon=True)

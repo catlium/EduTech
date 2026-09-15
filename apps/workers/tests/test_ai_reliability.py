@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 import httpx
 
 from worker import db
-from worker.ai import provider, service
+from worker.ai import consumer, provider, service
 
 INSTITUTE_ID = "22222222-2222-2222-2222-222222222222"
 TOPIC_ID = "11111111-1111-1111-1111-111111111111"
@@ -300,6 +300,64 @@ def test_stale_sweep_is_bounded_to_processing_ai_jobs(monkeypatch) -> None:
 
     sql, params = cursor.statements[0]
     assert "status = 'processing'" in sql
-    assert "type LIKE 'AI_%'" in sql
+    assert "type LIKE 'AI_%%'" in sql
     assert "started_at < now() - make_interval(mins => %s)" in sql
     assert params == (60,)
+
+
+def test_queued_sweep_is_bounded_to_unstarted_ai_jobs(monkeypatch) -> None:
+    cursor = FakeCursor([])
+    _fake_connect(monkeypatch, cursor)
+
+    db.recover_stale_queued_ai_jobs(older_than_minutes=60)
+
+    sql, params = cursor.statements[0]
+    assert "status = 'queued'" in sql
+    assert "started_at IS NULL" in sql
+    assert "type LIKE 'AI_%%'" in sql
+    assert "created_at < now() - make_interval(mins => %s)" in sql
+    assert params == (60,)
+
+
+def test_queued_sweep_republish_stringifies_uuid_ids(monkeypatch) -> None:
+    import json as _json
+    from uuid import UUID as _UUID
+
+    published: list[bytes] = []
+
+    class FakeChannel:
+        def queue_declare(self, **kwargs: object) -> None: ...
+
+        def basic_publish(
+            self, exchange: str, routing_key: str, body: bytes, properties: object
+        ) -> None:
+            published.append(body)
+
+    class FakeConn:
+        def __init__(self, url: object) -> None: ...
+
+        def channel(self) -> FakeChannel:
+            return FakeChannel()
+
+        def close(self) -> None: ...
+
+    monkeypatch.setattr(consumer.pika, "BlockingConnection", FakeConn)
+    monkeypatch.setattr(
+        consumer.db,
+        "recover_stale_queued_ai_jobs",
+        lambda _minutes: [
+            {
+                "id": _UUID("33333333-3333-3333-3333-333333333333"),
+                "institute_id": _UUID("22222222-2222-2222-2222-222222222222"),
+                "type": "AI_GENERATE_QUESTIONS",
+                "payload": {"operation": "AI_GENERATE_QUESTIONS"},
+            }
+        ],
+    )
+
+    consumer._republish_stale_queued_jobs()
+
+    assert len(published) == 1
+    message = _json.loads(published[0])
+    assert message["jobId"] == "33333333-3333-3333-3333-333333333333"
+    assert message["instituteId"] == "22222222-2222-2222-2222-222222222222"

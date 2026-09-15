@@ -64,8 +64,26 @@ export class JobsService {
     type: string,
     payload?: Record<string, unknown>,
   ): Promise<Job> {
+    return this.issueJob(instituteId, type, payload);
+  }
+
+  /** Insert a job row and publish it. If publishing fails the row is marked
+   * ``failed`` (never left silently ``queued``) and the error is rethrown so
+   * the caller surfaces a coherent failure instead of an orphaned job. */
+  async issueJob(
+    instituteId: string,
+    type: string,
+    payload?: Record<string, unknown>,
+  ): Promise<Job> {
     const job = await this.insertJob(instituteId, type, payload);
-    await this.publishJob(job);
+    try {
+      await this.publishJob(job);
+    } catch (error) {
+      await this.updateJobStatus(job.id, 'failed', undefined, {
+        message: 'Failed to enqueue job',
+      });
+      throw error;
+    }
     return job;
   }
 

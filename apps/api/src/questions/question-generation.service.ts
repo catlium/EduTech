@@ -214,11 +214,10 @@ export class QuestionGenerationService {
       const params: Record<string, unknown> = { ...child.payload.params };
       if (blueprint) params['blueprint'] = blueprint;
       try {
-        const job = await this.jobs.insertJob(instituteId, OPERATION, {
+        const job = await this.jobs.issueJob(instituteId, OPERATION, {
           ...child.payload,
           params,
         });
-        await this.jobs.publishJob(job);
         jobIds.push(job.id);
       } catch (error) {
         // The dedupKey slot is already active (or raced in) — skip, don't

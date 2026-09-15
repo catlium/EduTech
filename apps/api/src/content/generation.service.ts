@@ -382,8 +382,7 @@ export class GenerationService {
         this.hasExistingDerivedContent(instituteId, topicId, type),
       enqueueJob: async (operation, payload) => {
         try {
-          const job = await this.jobs.insertJob(instituteId, operation, payload);
-          await this.jobs.publishJob(job);
+          const job = await this.jobs.issueJob(instituteId, operation, payload);
           return { jobId: job.id, duplicate: false };
         } catch (error) {
           if (isUniqueViolation(error)) return { jobId: '', duplicate: true };

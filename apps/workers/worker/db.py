@@ -232,7 +232,7 @@ def recover_stale_ai_jobs(older_than_minutes: int) -> list[dict[str, Any]]:
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
         return conn.execute(
             "SELECT id, institute_id, type, payload FROM jobs"
-            " WHERE type LIKE 'AI_%' AND status = 'processing'"
+            " WHERE type LIKE 'AI_%%' AND status = 'processing'"
             " AND started_at IS NOT NULL"
             " AND started_at < now() - make_interval(mins => %s)",
             (older_than_minutes,),
@@ -250,6 +250,24 @@ def reset_job_to_queued(job_id: str) -> bool:
             (_now(), job_id),
         )
         return cur.fetchone() is not None
+
+
+def recover_stale_queued_ai_jobs(older_than_minutes: int) -> list[dict[str, Any]]:
+    """AI jobs left in ``queued`` that never started (started_at IS NULL).
+
+    A broker restart that kills every consumer strands the rows the API
+    already published: their messages sit unconsumed (or were lost in the
+    bounce) and the jobs stay ``queued`` forever. Re-publishing is idempotent —
+    every AI operation is keyed by jobId (purge-by-jobId / topic dedup) — so a
+    duplicate message that is still in the queue is a no-op.
+    """
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT id, institute_id, type, payload FROM jobs"
+            " WHERE type LIKE 'AI_%%' AND status = 'queued' AND started_at IS NULL"
+            " AND created_at < now() - make_interval(mins => %s)",
+            (older_than_minutes,),
+        ).fetchall()
 
 
 def get_topic_materials(topic_id: str, institute_id: str) -> list[dict[str, Any]]:
