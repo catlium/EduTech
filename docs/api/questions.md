@@ -49,10 +49,18 @@ Errors follow the global format:
 must be set. The database enforces this with the `questions_exactly_one_scope`
 CHECK constraint.
 
-**Approval rule (QBN-06/QBN-07):** a question created with `source: MANUAL` is
-immediately `approvalStatus: "APPROVED"`; a question created with `source:
-AI_GENERATED` begins `approvalStatus: "PENDING"`. Approval status is **always**
-computed server-side — it is never accepted from a request body.
+**Approval rule (QBN-06/QBN-07, updated Phase 33):** approval status is
+**always** computed server-side — it is never accepted from a request body. A
+question created with `source: MANUAL` is immediately `approvalStatus:
+"APPROVED"`. A question insert from the AI generation worker
+(`insert_generated_questions`) is also **immediately `APPROVED`** (`status:
+ACTIVE`) — there is **no mandatory confirmation gate**; generated questions
+are usable in the paper pattern selection workflow as soon as the batch
+completes. `PENDING` is now **legacy-only**: it only appears for rows written
+by older code paths; nothing in the current system creates a new `PENDING`
+question. Review remains a capability: `approvalStatus: REJECTED` /
+`status: ARCHIVED` still archive the row; an archived question can be
+re-approved through the existing review flow.
 
 ### Payload contracts
 
@@ -125,9 +133,10 @@ Body:
 ```
 
 `source` is required and is one of `MANUAL | AI_GENERATED`. The
-`approvalStatus` of the created question is server-computed: `source: MANUAL`
-→ `APPROVED`, `source: AI_GENERATED` → `PENDING` (QBN-06/QBN-07). `status`
-defaults to `ACTIVE`. `difficulty` defaults to `MEDIUM`.
+`approvalStatus` of the created question is server-computed and is **always
+`APPROVED`** (Phase 33: `source: AI_GENERATED` no longer creates `PENDING`;
+manual questions were already `APPROVED`). `status` defaults to `ACTIVE`.
+`difficulty` defaults to `MEDIUM`.
 
 `400` if zero or more than one academic scope is provided, if `payload` is not
 an object, or if the payload does not match the schema for `questionType`.
@@ -273,11 +282,13 @@ POST /questions/generate
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `202 Accepted`.
 
-Asynchronously generates objective questions from a topic's eligible
-(ACTIVE + READY + extracted-text) materials and stores each as a **PENDING**
-question (`source: AI_GENERATED`). Generation never auto-approves — every
-generated question begins PENDING and is editable/reviewable via the existing
-`PATCH`, `approve`/`reject`, and batch endpoints (AIGQ-08).
+Asynchronously generates questions from a topic's eligible (ACTIVE + READY +
+extracted-text) materials. The worker's `insert_generated_questions` stores
+each as **`APPROVED`/`ACTIVE`** (`source: AI_GENERATED`) — generated questions
+are immediately usable (AIGQ-08, updated Phase 33: no PENDING gate; the
+previous "begins PENDING and is editable/reviewable" flow is no longer the
+insert behavior). Review (REJECT/ARCHIVE) remains available via the existing
+`PATCH`, `approve`/`reject`, and batch endpoints.
 
 The generation is tracked as a job on the `ai_generation` queue (operation
 `AI_GENERATE_QUESTIONS`); its progress/result is polled via

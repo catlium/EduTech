@@ -1,5 +1,96 @@
 # Project Status
 
+## Phase 33 — Question Bank Sections, Auto-select, Preview/Export (2026-09-14)
+
+**Status: implemented, validated, aiming to commit.** Branch: feature-group for
+Paper Pattern → Question Selection → Preview → Export (Mode A system
+auto-select + Mode B manual with pattern-constraint feedback), derived-content
+lifecycle hardening (auto-approve), question-set visibility, Material Detail
+cleanup.
+
+**Validation status:**
+- API: `pnpm --filter @catlium/api typecheck` ✓, lint ✓, node:test **113/113 PASS** (incl.
+  new `paper-selection.test.ts` 9 tests).
+- Workers: pytest **54 PASS** (question-bank / AI-reliability / aggregation /
+  prerequisite suites); the 3 OCR-path failures (`test_ocr_client.py`,
+  `test_processing_failures.py`) are pre-existing in the paused,
+  uncommitted monolith-OCR refactor — untouched.
+- Web: typecheck ✓ (assessment detail + preview routes).
+- Not yet run live against dev containers; no manual user journey yet.
+
+### Completed work
+
+- **Section schema:** migration `0030_assessment_question_section.sql`
+  (`assessment_questions.section varchar(100) DEFAULT 'General'`), registered
+  in `_journal.json`, applied live via `pnpm db:migrate`; Drizzle schema col.
+- **Selection/coverage core (pure):** `apps/api/src/examinations/paper-selection.ts`
+  — `planAutoSelection` (type/count/difficulty allocation with honest
+  shortages, takenIds exclusivity, **attempt-N-of-M** optional sections) and
+  `computePatternCoverage` (OK/SHORT/EXCESS/TYPE_MISMATCH + Unassigned);
+  9 unit tests.
+- **Endpoints:** `POST /assessments/:id/select-from-pattern` (DRAFT +
+  blueprint + APPROVED pattern, county-APPROVED/ACTIVE candidates scoped to
+  pattern subjects/types, transacted insert), `GET /assessments/:id/pattern-coverage`;
+  `addQuestions` accepts optional `sections` override; `listQuestions` returns `section`.
+- **Export:** `questionDocBlock` with `scope: 'paper'|'teacher'` (student paper
+  hides answers/difficulty/explanations); `buildAssessmentDoc` section-grouped
+  with attempt-N-of-M lines; `?include=paper|answers` (default paper,
+  answer-key filename `-answer-key`).
+- **Auto-approve lifecycle:** `apps/workers/worker/db.py`
+  `insert_generated_questions` inserts `APPROVED`/`ACTIVE` (no mandatory
+  confirmation gate; PENDING is now legacy-only); idempotent retry purge is
+  `status='ACTIVE' AND source='AI_GENERATED' AND provenance->>'jobId'=%s AND
+  updated_by=created_by`; API `createQuestion` always `APPROVED`.
+- **Web assessment detail:** pattern-coverage panel card; Auto-select button +
+  shortages summary; Export dialog (Paper/Answer-key × PDF/DOCX); Preview
+  link; add-dialog section `<Select>` per question; section badges on rows;
+  student-facing `/assessments/:id/preview` route (sections, attempt lines).
+- **Question-set visibility:** `GET /questions/bank/sets` (recent AI
+  generation batches: status counts + generated total); `QuestionBankSets`
+  card on the Questions page (expandable per-set jobs).
+- **Material Detail cleanup:** obsolete "Generate resources for this Topic"
+  button → neutral "Open Topic workspace" link.
+
+### Work in progress — checkpoints pending (next)
+
+1. Docs: update `docs/api/questions.md` PENDING semantics (below), this file,
+   `docs/tasks.md` (Phase 33 entry added).
+2. Commits + push:
+   - API backend: `paper-selection.ts`, service/controller/DTOs, export
+     service, migration + journal + schema, contracts (Zod schemas).
+   - Worker: `apps/workers/worker/db.py` — **stage only the
+     `insert_generated_questions` hunk** (`git add -p`); the paused monolith
+     OCR refactor (config/consumer/db/ocr/processing) stays uncommitted.
+   - Web: assessment detail + preview + question-bank-sets + material detail.
+3. User manual validation (browser journeys), then final checkpoint report + STOP.
+
+### Known issues / decisions
+
+- **Login-redirect blip** reported earlier: user confirmed "not happening"
+  now — transient (OCR processing window + 15-min token expiry race); no code
+  change, recorded only.
+- **Drizzle `db:generate` is TTY-broken** in this env (needs interactive
+  prompt; `script -qc` pty hangs). Hand-write SQL migrations + register in
+  `_journal.json` + apply via `pnpm db:migrate`.
+- Worker commit must be **selective-hunk staged** (user approved "Edit +
+  select-only-my-hunk commit") to keep the paused OCR refactor out of history.
+
+### Deferred
+- OCR-vs-export: user-functional validation (paper/answer-key render, attempt
+  lines) pending browser journey.
+- Question versioning, question-set delete/merge (not requested yet).
+
+### Latest checkpoint
+- Phase 33 code-complete + automated validation green; docs/commits/push pending.
+
+### Exact recommended next task
+1. Update `docs/api/questions.md` PENDING semantics text.
+2. Commit + push the three groups (API backend, worker hunk, web).
+3. Run browser journeys J (assessment section select → preview → export), then
+   checkpoint report + STOP.
+
+---
+
 ## Continue OCR — distributed-worker implementation (2026-09-15)
 
 **Status: D7 committed (`e7a0bed`); D8 containers rebuilt + automated

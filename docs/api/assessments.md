@@ -212,10 +212,10 @@ GET /assessments/:assessmentId/questions
 ```
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns the linked questions with their
-per-assessment `marks` and `sortOrder`, ordered ascending by `sortOrder`.
-`404` if the assessment is not in the active institute. (Phase 14: this
-endpoint carries per-assessment question payloads with answer keys, so it is
-closed to students.)
+per-assessment `marks`, `section`, and `sortOrder`, ordered ascending by
+`sortOrder`. `404` if the assessment is not in the active institute.
+(Phase 14: this endpoint carries per-assessment question payloads with answer
+keys, so it is closed to students.)
 
 ## Add questions to assessment
 
@@ -227,16 +227,84 @@ Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Implemented in 08-02.) Returns `201` with
 the added link rows (`{ added: [...] }`, `sortOrder` 1-based, `marks` default
 1). An optional `marks` object (`Record<uuid, integer>`) overrides the default
 marks per question; each value must be an integer 1–1000, otherwise `400`.
-The `questionIds` array is required and must be a non-empty array of UUIDs,
-capped at 1000 IDs per request (08-06 WR-02 fix): a missing `questionIds`,
-an empty array, or an array of more than 1000 IDs returns `400` via the global
-validation pipe. Each referenced question is validated to exist in the active
-institute; a foreign-institute **questionId** returns `400` (`Question ...
-not found or not in this institute`) and a foreign-institute **assessmentId**
-returns `404`. An ARCHIVED (non-ACTIVE) in-institute questionId returns `400`
-(`Question ... is not ACTIVE`) — such a question can never be published, so it
-cannot be linked. Duplicate links are rejected by the
-`assessment_questions_unique` constraint with `409`.
+An optional `sections` object (`Record<uuid, string>`) (Phase 33) assigns each
+question to a paper section; a section value is a string 1–100 chars that is
+non-blank after trimming (blank values are `400`). Questions without a section
+entry default to `"General"`. The `questionIds` array is required and must be
+a non-empty array of UUIDs, capped at 1000 IDs per request (08-06 WR-02 fix):
+a missing `questionIds`, an empty array, or an array of more than 1000 IDs
+returns `400` via the global validation pipe. Each referenced question is
+validated to exist in the active institute; a foreign-institute **questionId**
+returns `400` (`Question ... not found or not in this institute`) and a
+foreign-institute **assessmentId** returns `404`. An ARCHIVED (non-ACTIVE)
+in-institute questionId returns `400` (`Question ... is not ACTIVE`) — such a
+question can never be published, so it cannot be linked. Duplicate links are
+rejected by the `assessment_questions_unique` constraint with `409`.
+
+## Get pattern coverage
+
+```
+GET /assessments/:assessmentId/pattern-coverage
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Phase 33.) Returns the live per-section
+coverage status of the linked questions against the assessment's blueprint
+paper pattern, grouped by blueprint section:
+
+```json
+{
+  "coverage": {
+    "patternTitle": "SSLC Mathematics",
+    "sections": [
+      {
+        "name": "Part A",
+        "questionType": "MCQ",
+        "requiredCount": 10,
+        "presentCount": 7,
+        "requiredMarks": 20,
+        "presentMarks": 14,
+        "attemptCount": 10,
+        "status": "SHORT",
+        "message": "Short by 3 questions (6 marks)"
+      }
+    ],
+    "unassigned": { "count": 2, "marks": 4 }
+  }
+}
+```
+
+`attemptCount` is the number of presented questions in an *optional* pattern
+section (e.g. 10 for "attempt any 4 of 10"); `presentCount` is how many the
+teacher has actually added. Returns `coverage: null` when the assessment has
+no blueprint (not pattern-based).
+
+## Auto-select from pattern
+
+```
+POST /assessments/:assessmentId/select-from-pattern
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`. (Phase 33, Mode A.) Requires a DRAFT
+assessment with a blueprint (`400` otherwise). For each blueprint section that
+is not yet satisfied, the service draws an appropriate count/difficulty mix
+from the institute's APPROVED/ACTIVE question bank scoped to the blueprint's
+subjects and question types, writes the missing sections' questions as links
+(marks per the pattern), and returns what was added plus honest shortages:
+
+```json
+{
+  "added": 12,
+  "totalMarks": 48,
+  "sections": [
+    {
+      "name": "Part A",
+      "requested": 10,
+      "found": 8,
+      "shortages": ["Available bank has only 8 ACTIVE MCQ questions for this pattern"]
+    }
+  ]
+}
+```
 
 ## Remove question from assessment
 

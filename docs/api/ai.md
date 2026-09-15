@@ -457,8 +457,14 @@ See `docs/api/questions.md`.
 ```
 GET /export/content/:contentId?format=pdf|docx
 GET /export/questions?topicId=...&format=pdf|docx
-GET /export/assessment/:assessmentId?format=pdf|docx
+GET /export/assessment/:assessmentId?format=pdf|docx&include=paper|answers
 ```
 
-Returns the rendered file (`format` defaults to `pdf`). Renderers intentionally
-omit answer keys. See `apps/api/src/export/`.
+Returns the rendered file (`format` defaults to `pdf`). Assessment export
+(Phase 33) takes `include` (default `paper`): the **student paper** omits
+answers, difficulty and explanations; the **teacher answer key**
+(`include=answers`, filename suffix `-answer-key`) adds correct answers,
+explanations and difficulty. Both render section-grouped with pattern
+"attempt any N of M" lines where the pattern declares optional sections.
+Content/question renderers intentionally omit answer keys.
+See `apps/api/src/export/`.

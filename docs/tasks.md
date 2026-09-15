@@ -1,5 +1,69 @@
 # Task Tracker
 
+## Phase 33 — Question Bank Sections, Auto-select & Preview/Export (2026-09-14)
+
+Pattern-based question bank section management, auto-select (Mode A) and
+manual with pattern-constraint feedback (Mode B), section-filtered list,
+student preview, paper/answer-key export, question-set visibility, and
+Material Detail cleanup. Derived questions are auto-approved on creation.
+
+### Goal: Section schema + pure selection/coverage logic
+
+- [x] Migration `0030_assessment_question_section.sql` (section varchar(100) DEFAULT 'General')
+- [x] `AssessmentQuestions.section` added to Drizzle schema
+- [x] `paper-selection.ts` — `planAutoSelection` (type/count/difficulty allocation, attempt-N-of-M, honest shortages)
+- [x] `paper-selection.ts` — `computePatternCoverage` (OK/SHORT/EXCESS/TYPE_MISMATCH)
+- [x] `paper-selection.test.ts` — 9 unit tests (pure, no DB)
+
+### Goal: Backend assessment paper selection endpoints
+
+- [x] `POST /assessments/:id/select-from-pattern` — Mode A auto-select from bank
+- [x] `GET /assessments/:id/pattern-coverage` — live section coverage status
+- [x] `addQuestions` accepts optional `sections` override
+- [x] Question list returns `section`
+
+### Goal: Export — paper vs answer-key, section-grouped
+
+- [x] `questionDocBlock` with `scope: 'paper'|'teacher'` (paper omits answers/difficulty/explanations)
+- [x] `buildAssessmentDoc` groups by section, includes attempt-N-of-M lines
+- [x] Controller `?include=paper|answers` query param (default paper)
+- [x] Answer key filename gets `-answer-key` suffix
+
+### Goal: Worker auto-approve on insert
+
+- [x] `insert_generated_questions` inserts `APPROVED`/`ACTIVE` (no PENDING gate)
+- [x] Idempotent retry purge: `status='ACTIVE' AND source='AI_GENERATED' AND provenance.jobId = %s AND updated_by = created_by`
+- [x] API `createQuestion` always sets `APPROVED`
+- [x] Commit stages only the `insert_generated_questions` hunk (git add -p); OCR refactor remains uncommitted
+
+### Goal: Web — assessment detail page + preview
+
+- [x] Pattern coverage panel card (section chips, status badges, attempt lines)
+- [x] Auto-select button (pattern-based DRAFT teacher)
+- [x] Export dialog (Paper / Answer Key × PDF / DOCX)
+- [x] Preview link to `/assessments/:id/preview`
+- [x] Add-dialog section `<Select>` per question (sends sections in POST)
+- [x] Section `<Badge>` on each question row
+- [x] Student-facing preview route `/assessments/:id/preview` (sections, attempt lines)
+
+### Goal: Question-set visibility
+
+- [x] `GET /questions/bank/sets` — recent AI generation batches with status counts + generated total
+- [x] `QuestionBankSets` component on Questions page (expandable per-set jobs)
+
+### Goal: Material Detail cleanup
+
+- [x] Remove "Generate resources for this Topic" button (Sparkles → neutral Open Topic workspace link)
+
+### Goal: Documentation
+
+- [ ] Update `docs/api/questions.md` — PENDING semantics: questions auto-approved on creation; PENDING is legacy-only, only via explicit REJECT → ARCHIVE; no AI-created question enters PENDING
+- [ ] Update `docs/tasks.md` with this phase entry
+- [ ] Update `docs/project-status.md` checkpoint
+- [ ] Commit + push + checkpoint report + STOP
+
+---
+
 ## Phase 32 — Generation Workflow & AI Reliability Correction (2026-09-14)
 
 User-directed corrective phase (post-Phase 31, continuation directive + the
