@@ -568,6 +568,20 @@ export type MaterialProcessingStatus = z.infer<typeof MaterialProcessingStatusEn
 export const MaterialStatusEnum = z.enum(['ACTIVE', 'ARCHIVED']);
 export type MaterialStatus = z.infer<typeof MaterialStatusEnum>;
 
+// Aggregate extraction progress written by the coordinator to
+// `materials.progress` alongside every chunk transition.
+export const OCRProgressSchema = z.object({
+  chunksCompleted: z.number().int().nonnegative(),
+  chunksTotal: z.number().int().positive(),
+  pagesProcessed: z.number().int().nonnegative(),
+  pagesTotal: z.number().int().positive(),
+  percent: z.number().min(0).max(100),
+  activeChunks: z.number().int().nonnegative(),
+  failedChunks: z.number().int().nonnegative(),
+  retryingChunks: z.number().int().nonnegative(),
+});
+export type OCRProgress = z.infer<typeof OCRProgressSchema>;
+
 export const CreateTextMaterialRequestSchema = z
   .object({
     title: z.string().min(1).max(255),
@@ -608,6 +622,7 @@ export const MaterialResponseSchema = z.object({
   storageKey: z.string().nullable(),
   textContent: z.string().nullable(),
   processingStatus: MaterialProcessingStatusEnum,
+  progress: OCRProgressSchema.nullable().optional(),
   status: MaterialStatusEnum,
   revision: z.number().int().positive(),
   createdBy: z.string().uuid(),
@@ -626,6 +641,137 @@ export const MaterialProcessResponseSchema = z.object({
   processingStatus: z.literal('QUEUED'),
 });
 export type MaterialProcessResponse = z.infer<typeof MaterialProcessResponseSchema>;
+
+// ── OCR Distributed Workers Contracts ────────
+//
+// The worker protocol is bearer-authenticated (no institute context): workers
+// claim page-range chunks, download source bytes, submit per-page OCR results,
+// or report failure. The admin/monitoring side (INSTITUTE_ADMIN) registers,
+// lists, disables, and rotates workers.
+
+export const OcrChunkStatusEnum = z.enum(['pending', 'claimed', 'submitted', 'failed', 'cancelled']);
+export type OcrChunkStatus = z.infer<typeof OcrChunkStatusEnum>;
+
+export const OcrWorkerCapabilitiesSchema = z.object({
+  engines: z.array(z.string()),
+  gpu: z.boolean(),
+  concurrency: z.number().int().positive(),
+});
+export type OcrWorkerCapabilities = z.infer<typeof OcrWorkerCapabilitiesSchema>;
+
+// Worker-status derivation (processing/idle/offline/disabled) is computed
+// server-side from heartbeat + current task; the wire schema carries the raw
+// kernel columns plus the derived status.
+export const WorkerSummarySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  status: z.enum(['processing', 'idle', 'offline', 'disabled']),
+  currentChunkId: z.string().uuid().nullable(),
+  currentChunkRange: z
+    .object({ index: z.number().int().positive(), startPage: z.number().int().positive(), endPage: z.number().int().positive() })
+    .nullable(),
+  lastHeartbeatAt: z.string().datetime().nullable(),
+  lastSeenAt: z.string().datetime().nullable(),
+  version: z.string().nullable(),
+  capabilities: OcrWorkerCapabilitiesSchema.nullable(),
+});
+export type WorkerSummary = z.infer<typeof WorkerSummarySchema>;
+
+export const WorkerListResponseSchema = z.object({
+  summary: z.object({
+    online: z.number().int().nonnegative(),
+    idle: z.number().int().nonnegative(),
+    processing: z.number().int().nonnegative(),
+    offline: z.number().int().nonnegative(),
+    disabled: z.number().int().nonnegative(),
+  }),
+  workers: z.array(WorkerSummarySchema),
+});
+export type WorkerListResponse = z.infer<typeof WorkerListResponseSchema>;
+
+export const RegisterWorkerRequestSchema = z.object({
+  name: z.string().min(1).max(200),
+  version: z.string().max(50).optional(),
+  capabilities: OcrWorkerCapabilitiesSchema.optional(),
+});
+export type RegisterWorkerRequest = z.infer<typeof RegisterWorkerRequestSchema>;
+
+export const RegisterWorkerResponseSchema = z.object({
+  workerId: z.string().uuid(),
+  apiKey: z.string().min(1),
+});
+export type RegisterWorkerResponse = z.infer<typeof RegisterWorkerResponseSchema>;
+
+export const UpdateWorkerRequestSchema = z.object({
+  enabled: z.boolean().optional(),
+  rotateToken: z.boolean().optional(),
+});
+export type UpdateWorkerRequest = z.infer<typeof UpdateWorkerRequestSchema>;
+
+export const UpdateWorkerResponseSchema = z.object({
+  workerId: z.string().uuid(),
+  enabled: z.boolean(),
+  apiKey: z.string().optional(), // present only when rotateToken
+});
+export type UpdateWorkerResponse = z.infer<typeof UpdateWorkerResponseSchema>;
+
+// Worker-facing claim/submit/fail payloads.
+export const WorkerClaimResponseSchema = z.object({
+  chunk: z.object({
+    id: z.string().uuid(),
+    index: z.number().int().positive(),
+    startPage: z.number().int().positive(),
+    endPage: z.number().int().positive(),
+    pageCount: z.number().int().positive(),
+    sourceType: z.enum(['MATERIAL', 'SYLLABUS']),
+    sourceId: z.string().uuid(),
+  }).nullable(),
+});
+export type WorkerClaimResponse = z.infer<typeof WorkerClaimResponseSchema>;
+
+export const WorkerHeartbeatRequestSchema = z.object({
+  status: z.enum(['idle', 'processing']),
+});
+export type WorkerHeartbeatRequest = z.infer<typeof WorkerHeartbeatRequestSchema>;
+
+export const WorkerPageSchema = z.object({
+  page: z.number().int().positive(),
+  source: z.enum(['pymupdf', 'paddleocr']),
+});
+export type WorkerPage = z.infer<typeof WorkerPageSchema>;
+
+export const WorkerChunkResultSchema = z.object({
+  pages: z.array(WorkerPageSchema),
+  text: z.string().min(1),
+  totalPages: z.number().int().positive().optional(),
+});
+export type WorkerChunkResult = z.infer<typeof WorkerChunkResultSchema>;
+
+export const WorkerChunkFailSchema = z.object({
+  error: z.string().min(1),
+  permanent: z.boolean().optional(),
+});
+export type WorkerChunkFail = z.infer<typeof WorkerChunkFailSchema>;
+
+// Per-chunk table for the material detail page.
+export const OcrChunkSchema = z.object({
+  id: z.string().uuid(),
+  chunkIndex: z.number().int().positive(),
+  startPage: z.number().int().positive(),
+  endPage: z.number().int().positive(),
+  status: OcrChunkStatusEnum,
+  attempts: z.number().int().nonnegative(),
+  claimedBy: z.string().uuid().nullable(),
+  error: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type OcrChunk = z.infer<typeof OcrChunkSchema>;
+
+export const OcrChunkListResponseSchema = z.object({
+  chunks: z.array(OcrChunkSchema),
+});
+export type OcrChunkListResponse = z.infer<typeof OcrChunkListResponseSchema>;
 
 // ── AI Generation Contracts ────────────────
 //
