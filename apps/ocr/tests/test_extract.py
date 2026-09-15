@@ -14,8 +14,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
-from app.extraction import normalize_text
 from app.main import app
+from ocr_engine import normalize_text
 
 client = TestClient(app)
 

@@ -33,7 +33,7 @@ requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "ocr_engine*"]
 
 [tool.ruff]
 target-version = "py312"
@@ -47,6 +47,19 @@ python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+# Third-party libs without stubs: keep full strictness elsewhere.
+[[tool.mypy.overrides]]
+module = ["pymupdf", "paddleocr"]
+ignore_missing_imports = true
+# pymupdf ships no py.typed; calls into it stay untyped-ignored.
+disable_error_code = ["no-untyped-call", "no-any-return", "attr-defined"]
+
+# pdf.py drives pymupdf Document objects directly; pymupdf ships no stubs so
+# the untyped-call/Any codes are noise here, not faults of this module.
+[[tool.mypy.overrides]]
+module = ["ocr_engine.pdf"]
+disable_error_code = ["no-untyped-call", "no-any-return", "attr-defined"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
