@@ -234,6 +234,12 @@ export class QuestionsController {
     return this.generationService.retryFailedBankBatch(batchId, tenant.instituteId);
   }
 
+  @Get('bank/sets')
+  @RequiredRoles(...WRITE_ROLES)
+  async bankSets(@Tenant() tenant: TenantContext) {
+    return this.generationService.listBankSets(tenant.instituteId);
+  }
+
   @Get('bank/stats')
   @RequiredRoles(...WRITE_ROLES)
   async bankStats(

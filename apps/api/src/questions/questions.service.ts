@@ -59,7 +59,10 @@ export class QuestionsService {
       input,
     );
 
-    const approvalStatus = input.source === 'MANUAL' ? 'APPROVED' : 'PENDING';
+    // AI-generated questions are derived content: available in the bank
+    // immediately (APPROVED) with no mandatory confirmation gate. Review stays
+    // available as a capability — any question can be REJECTED/ARCHIVED later.
+    const approvalStatus: QuestionApprovalStatus = 'APPROVED';
 
     const [question] = await this.db
       .insert(questions)
