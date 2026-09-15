@@ -1,6 +1,33 @@
 # Task Tracker
 
-## Phase 35 — Derived Resource Content Quality (2026-09-15)
+## Phase 36 — Shared Export Renderer, Preview == PDF, One Visual Source (2026-09-15)
+
+Make PDF/DOCX export and the web preview use ONE shared visual representation:
+a pure `DocumentModel → HTML` renderer whose inline export styles are the
+single source of truth, rendered by shared Chromium (Puppeteer) for the PDF,
+composed into the preview payload, and dropped into DOCX as the same blocks —
+so the preview, PDF and DOCX all show the identical layout.
+
+- [x] Pure shared renderer `render-html.ts`: `renderDocumentHtml` (full
+      self-contained page for Puppeteer) + `renderDocumentBodyHtml` (body
+      fragment the preview shows), inlined `EXPORT_STYLES` (A4 @page, shared
+      `doc-*` classes), escaping via `esc`.
+- [x] `PuppeteerService` (`puppeteer.service.ts`): lazy shared Chromium
+      (exec via `PUPPETEER_EXECUTABLE_PATH`/`CHROME_PATH`/google-chrome, no
+      bundled download), `pdf(model)` → Buffer; inlined-style page +
+      `page.pdf({ format:'A4', printBackground, preferCSSPageSize })`.
+- [x] `export.service.sendPdf(res, model, filename)` routes the PDF through
+      the shared renderer + PuppeteerService; controller export routes gate on
+      the preview hash (409 when missing/stale — no bypass).
+- [x] DOCX keeps the structured `docx` renderer (`sendDoc`); pdfkit removed.
+- [x] Web previews consume the server `html` fragment (single visual source):
+      `RenderDocHtml` in the export preview dialog + assessment preview page.
+- [x] Native tests (no Nest) for renderer, content-block digestion, and a PDF
+      smoke test driving the real Chromium (`%PDF`).
+- [x] Validation: `pnpm typecheck` clean (api + web), `pnpm lint` clean,
+      api build + web build pass, native suite
+      `node --test "src/**/*.test.ts"` green.
+- [x] Phase 36 checkpoint: docs updated, committed, pushed.
 
 Improve the resource-specific AI prompts for Topic-owned derived resources
 (Note, Summary, Flashcards, Concept, Cornell Note) so each generates a
