@@ -28,6 +28,7 @@ import { downloadFile } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
+import { QuestionBankSets } from '@/components/questions/question-bank-sets';
 import { PageHeader } from '@/components/app/page-header';
 import { ScopeCascade, FilterChip } from '@/components/app/scope-cascade';
 import { EmptyState } from '@/components/app/empty-state';
@@ -844,6 +845,10 @@ export default function QuestionsListPage() {
           topics={topics}
           onChanged={() => void refresh()}
         />
+      </div>
+
+      <div className="mb-4">
+        <QuestionBankSets />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

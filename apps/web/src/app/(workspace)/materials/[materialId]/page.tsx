@@ -5,12 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
+  ArrowUpRight,
   Play,
   RefreshCw,
   Archive,
   CheckCircle2,
   Loader2,
-  Sparkles,
   Pencil,
   AlertTriangle,
   Eye,
@@ -224,7 +224,7 @@ export default function MaterialDetailPage() {
                       router.push(`/subjects/${material.subjectId}/topics/${material.topicId}`)
                     }
                   >
-                    <Sparkles className="mr-1 size-3.5" /> Generate resources for this Topic
+                    <ArrowUpRight className="mr-1 size-3.5" /> Open Topic workspace
                   </Button>
                 )}
                 <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>

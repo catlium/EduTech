@@ -12,6 +12,10 @@ import {
   Pencil,
   Sparkles,
   Download,
+  Eye,
+  Wand2,
+  FileKey2,
+  Layers,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -54,6 +58,8 @@ import type {
   CreateAssessmentRequest,
   UpdateAssessmentRequest,
   QuestionListItem,
+  PatternCoverageResponse,
+  PaperAutoSelectResponse,
 } from '@catlium/contracts';
 import { CreateAssessmentRequestSchema, UpdateAssessmentRequestSchema } from '@catlium/contracts';
 
@@ -101,8 +107,20 @@ export default function AssessmentDetailPage() {
 
   const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
   const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
+  const [coverage, setCoverage] = useState<PatternCoverageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Pattern integration
+  const isPatternBased = !!assessment?.blueprintId;
+  const patternSections = (coverage?.sections ?? [])
+    .filter((s) => s.name !== 'Unassigned')
+    .map((s) => s.name);
+  const [autoSelecting, setAutoSelecting] = useState(false);
+  const [autoResult, setAutoResult] = useState<PaperAutoSelectResponse | null>(null);
+
+  // Export dialog
+  const [exportOpen, setExportOpen] = useState(false);
 
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
@@ -129,6 +147,7 @@ export default function AssessmentDetailPage() {
   const [marksMap, setMarksMap] = useState<Record<string, number | ''>>({});
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
+  const [sectionMap, setSectionMap] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
 
   const linkedIds = useRef(new Set(questions.map((q) => q.questionId)));
@@ -148,11 +167,17 @@ export default function AssessmentDetailPage() {
       api<{ questions: AssessmentQuestion[] }>(`/assessments/${params.assessmentId}/questions`, {
         signal: ctrl.signal,
       }),
+      api<{ coverage: PatternCoverageResponse | null }>(
+        `/assessments/${params.assessmentId}/pattern-coverage`,
+        { signal: ctrl.signal },
+      ).catch(() => ({ coverage: null })),
     ])
-      .then(([a, q]) => {
+      .then(([a, q, c]) => {
         if (!inFlight.current) return;
         setAssessment(a.assessment);
         setQuestions(q.questions);
+        setCoverage(c.coverage);
+        setAutoResult(null);
         linkedIds.current = new Set(q.questions.map((item) => item.questionId));
       })
       .catch((err) => {
@@ -257,6 +282,7 @@ export default function AssessmentDetailPage() {
     setBankLoading(true);
     setSelectedIds(new Set());
     setMarksMap({});
+    setSectionMap({});
     setSearch('');
     setTypeFilter('ALL');
     setAddOpen(true);
@@ -274,6 +300,11 @@ export default function AssessmentDetailPage() {
       if (next.has(id)) {
         next.delete(id);
         setMarksMap((m) => {
+          const n = { ...m };
+          delete n[id];
+          return n;
+        });
+        setSectionMap((m) => {
           const n = { ...m };
           delete n[id];
           return n;
@@ -328,9 +359,18 @@ export default function AssessmentDetailPage() {
         const v = marksMap[id];
         if (v !== undefined && v !== '' && v > 0) marks[id] = Number(v);
       });
+      const sections: Record<string, string> = {};
+      ids.forEach((id) => {
+        const s = sectionMap[id];
+        if (s && s !== 'General') sections[id] = s;
+      });
       await api(`/assessments/${params.assessmentId}/questions`, {
         method: 'POST',
-        body: { questionIds: ids, ...(Object.keys(marks).length > 0 ? { marks } : {}) },
+        body: {
+          questionIds: ids,
+          ...(Object.keys(marks).length > 0 ? { marks } : {}),
+          ...(Object.keys(sections).length > 0 ? { sections } : {}),
+        },
       });
       toast.success(`Added ${ids.length} question${ids.length !== 1 ? 's' : ''}`);
       setAddOpen(false);
@@ -354,6 +394,54 @@ export default function AssessmentDetailPage() {
       toast.error(err instanceof ApiError ? err.message : 'Failed to remove question');
     } finally {
       setWorking(false);
+    }
+  }
+
+  async function onAutoSelect() {
+    setAutoSelecting(true);
+    try {
+      const res = await api<{ result: PaperAutoSelectResponse }>(
+        `/assessments/${params.assessmentId}/select-from-pattern`,
+        { method: 'POST' },
+      );
+      setAutoResult(res.result);
+      const short = res.result.sections.filter((s) => s.shortages.length > 0);
+      if (short.length === 0) {
+        toast.success(`Auto-selected ${res.result.totalSelected} questions (${res.result.totalMarks} marks)`);
+      } else {
+        const totalShort =
+          short.reduce((sum, s) => sum + (s.requested - s.found), 0);
+        toast.warning(
+          `Added ${res.result.totalSelected} questions — ${totalShort} not found in the Question Bank`,
+          {
+            description: short
+              .slice(0, 2)
+              .map((s) => `${s.name}: ${s.shortages[0]}`)
+              .join(' · '),
+          },
+        );
+      }
+      fetchData();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Auto-select failed');
+    } finally {
+      setAutoSelecting(false);
+    }
+  }
+
+  async function onExport(format: 'pdf' | 'docx', include: 'paper' | 'answers') {
+    if (!assessment) return;
+    const suffix = include === 'answers' ? '-answer-key' : '';
+    try {
+      await downloadFile(
+        `/export/assessment/${assessment.id}?format=${format}&include=${include}`,
+        `${assessment.title.replace(/[^a-z0-9]+/gi, '-')}${suffix}.${format}`,
+      );
+      toast.success(`Exported ${include === 'answers' ? 'answer key' : 'paper'} (${format.toUpperCase()})`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Export failed');
+    } finally {
+      setExportOpen(false);
     }
   }
 
@@ -396,20 +484,6 @@ export default function AssessmentDetailPage() {
   }
 
   const editable = assessment.status === 'DRAFT' || assessment.status === 'PUBLISHED';
-  const assessmentId = assessment.id;
-  const assessmentTitle = assessment.title;
-
-  async function exportAssessment(format: 'pdf' | 'docx') {
-    try {
-      await downloadFile(
-        `/export/assessment/${assessmentId}?format=${format}`,
-        `${assessmentTitle.replace(/[^a-z0-9]+/gi, '-')}.${format}`,
-      );
-      toast.success(`Assessment exported as ${format.toUpperCase()}`);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Export failed');
-    }
-  }
 
   return (
     <div>
@@ -482,21 +556,18 @@ export default function AssessmentDetailPage() {
                   <ClipboardList className="mr-1 size-3.5" /> Results
                 </Link>
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void exportAssessment('pdf')}
-                disabled={working}
-              >
-                <Download className="mr-1 size-3.5" /> PDF
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/assessments/${assessment.id}/preview`}>
+                  <Eye className="mr-1 size-3.5" /> Preview
+                </Link>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void exportAssessment('docx')}
+                onClick={() => setExportOpen(true)}
                 disabled={working}
               >
-                <Download className="mr-1 size-3.5" /> DOCX
+                <Download className="mr-1 size-3.5" /> Export
               </Button>
             </div>
           )
@@ -541,6 +612,58 @@ export default function AssessmentDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Pattern coverage panel (Mode B guide / Mode A status) */}
+      {isPatternBased && coverage && (
+        <Card className="mb-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Layers className="size-4" /> Pattern coverage
+              </CardTitle>
+              <CardDescription>
+                Live per-section status against “{coverage.patternTitle}”. Satisfied
+                sections are ready for preview and export.
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {coverage.sections.map((s) => {
+              const tone =
+                s.status === 'OK'
+                  ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400'
+                  : s.status === 'SHORT'
+                    ? 'border-amber-500/40 text-amber-700 dark:text-amber-400'
+                    : 'border-destructive/40 text-destructive';
+              return (
+                <div key={s.name} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium">{s.name}</span>
+                  {s.questionType && (
+                    <Badge variant="secondary" className="text-xs">
+                      {s.questionType}
+                    </Badge>
+                  )}
+                  {s.attemptCount < s.requiredCount && (
+                    <Badge variant="outline" className="text-xs">
+                      attempt {s.attemptCount} of {s.requiredCount}
+                    </Badge>
+                  )}
+                  <span className="text-muted-foreground">
+                    {s.presentCount}/{s.requiredCount} added · {s.presentMarks}/
+                    {s.requiredMarks} marks
+                  </span>
+                  <Badge variant="outline" className={`ml-auto ${tone}`}>
+                    {s.status}
+                  </Badge>
+                  {s.message && (
+                    <p className="w-full text-xs text-muted-foreground">{s.message}</p>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Questions manager */}
       <Card className="mb-6">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -551,12 +674,49 @@ export default function AssessmentDetailPage() {
             </CardDescription>
           </div>
           {isTeacher && editable && (
-            <Button size="sm" variant="outline" onClick={openAddDialog}>
-              <Plus className="mr-1 size-3.5" /> Add Questions
-            </Button>
+            <div className="flex items-center gap-2">
+              {isPatternBased && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onAutoSelect()}
+                  disabled={working || autoSelecting}
+                >
+                  <Wand2 className="mr-1 size-3.5" />
+                  {autoSelecting ? 'Selecting...' : 'Auto-select from pattern'}
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={openAddDialog}>
+                <Plus className="mr-1 size-3.5" /> Add Questions
+              </Button>
+            </div>
           )}
         </CardHeader>
         <CardContent>
+          {autoResult && (
+            <div
+              className={`mb-4 rounded-md border p-3 text-sm ${
+                autoResult.sections.some((s) => s.shortages.length > 0)
+                  ? 'border-amber-500/40 bg-amber-500/5 text-amber-800 dark:text-amber-300'
+                  : 'border-emerald-500/40 bg-emerald-500/5 text-emerald-800 dark:text-emerald-300'
+              }`}
+            >
+              <p className="font-medium">
+                Auto-select added {autoResult.totalSelected} question
+                {autoResult.totalSelected !== 1 ? 's' : ''} ({autoResult.totalMarks} marks)
+                {autoResult.sections.some((s) => s.shortages.length > 0)
+                  ? ' — some sections are short'
+                  : ' — every section satisfied'}
+              </p>
+              {autoResult.sections
+                .filter((s) => s.shortages.length > 0)
+                .map((s) => (
+                  <p key={s.name} className="mt-1 text-xs">
+                    {s.name}: requested {s.requested}, found {s.found} — {s.shortages.join(', ')}
+                  </p>
+                ))}
+            </div>
+          )}
           {questions.length === 0 ? (
             <EmptyState
               icon={<ListOrdered className="size-8" />}
@@ -571,7 +731,7 @@ export default function AssessmentDetailPage() {
             </EmptyState>
           ) : (
             <div className="space-y-2">
-              {questions.map(({ id, questionId, sortOrder, marks, question }) => (
+              {questions.map(({ id, questionId, sortOrder, marks, section, question }) => (
                 <div key={id} className="flex items-start gap-3 rounded-lg border p-3 text-sm">
                   <span className="flex size-6 shrink-0 items-center justify-center rounded bg-muted text-xs font-medium">
                     {sortOrder}
@@ -579,6 +739,7 @@ export default function AssessmentDetailPage() {
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary">{question.questionType}</Badge>
+                      {section && <Badge variant="outline">{section}</Badge>}
                       <span className="text-muted-foreground">{marks} marks</span>
                       <StatusBadge status={question.approvalStatus} />
                     </div>
@@ -795,7 +956,7 @@ export default function AssessmentDetailPage() {
                     </div>
                     {selectedIds.has(q.id) && (
                       <div
-                        className="flex items-center gap-1 shrink-0"
+                        className="flex flex-col items-end gap-1 shrink-0"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Input
@@ -811,6 +972,26 @@ export default function AssessmentDetailPage() {
                             }))
                           }
                         />
+                        {isPatternBased && patternSections.length > 0 && (
+                          <Select
+                            value={sectionMap[q.id] ?? 'General'}
+                            onValueChange={(v) =>
+                              setSectionMap((m) => ({ ...m, [q.id]: v }))
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-40 text-xs">
+                              <SelectValue placeholder="Section" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="General">General</SelectItem>
+                              {patternSections.map((s) => (
+                                <SelectItem key={s} value={s}>
+                                  {s}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     )}
                   </label>
@@ -827,6 +1008,67 @@ export default function AssessmentDetailPage() {
               {adding
                 ? 'Adding...'
                 : `Add ${selectedCount || ''} Question${selectedCount !== 1 ? 's' : ''}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Export dialog ── */}
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Assessment</DialogTitle>
+            <DialogDescription>
+              The student paper never includes answers; the teacher answer key does.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">
+                <Eye className="mr-1.5 inline size-4 text-muted-foreground" />
+                Student paper
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Questions, marks and instructions — no answers or difficulty.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => void onExport('pdf', 'paper')}>
+                  PDF
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => void onExport('docx', 'paper')}>
+                  DOCX
+                </Button>
+              </div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">
+                <FileKey2 className="mr-1.5 inline size-4 text-muted-foreground" />
+                Teacher answer key
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Adds correct answers, explanations and difficulty — kept separate from the paper.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onExport('pdf', 'answers')}
+                >
+                  PDF
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onExport('docx', 'answers')}
+                >
+                  DOCX
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
