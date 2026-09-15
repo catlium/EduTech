@@ -2,11 +2,11 @@
 
 ## Phase 33 — Question Bank Sections, Auto-select, Preview/Export (2026-09-14)
 
-**Status: implemented, validated, aiming to commit.** Branch: feature-group for
-Paper Pattern → Question Selection → Preview → Export (Mode A system
-auto-select + Mode B manual with pattern-constraint feedback), derived-content
-lifecycle hardening (auto-approve), question-set visibility, Material Detail
-cleanup.
+**Status: implemented, validated, committed, pushed.** Commits:
+`12083df` (examinations backend — note: also carries the worker
+`insert_generated_questions` auto-approve hunk, staged first), `6bb5616`
+(questions auto-approve + bank/sets), `c0f5e39` (web), `c8568e3` (docs —
+checkpoint history below). Pushed to `origin/main` (`catlium/EduTech`).
 
 **Validation status:**
 - API: `pnpm --filter @catlium/api typecheck` ✓, lint ✓, node:test **113/113 PASS** (incl.
@@ -51,18 +51,14 @@ cleanup.
 - **Material Detail cleanup:** obsolete "Generate resources for this Topic"
   button → neutral "Open Topic workspace" link.
 
-### Work in progress — checkpoints pending (next)
+### Work in progress — user validation (manual journeys)
 
-1. Docs: update `docs/api/questions.md` PENDING semantics (below), this file,
-   `docs/tasks.md` (Phase 33 entry added).
-2. Commits + push:
-   - API backend: `paper-selection.ts`, service/controller/DTOs, export
-     service, migration + journal + schema, contracts (Zod schemas).
-   - Worker: `apps/workers/worker/db.py` — **stage only the
-     `insert_generated_questions` hunk** (`git add -p`); the paused monolith
-     OCR refactor (config/consumer/db/ocr/processing) stays uncommitted.
-   - Web: assessment detail + preview + question-bank-sets + material detail.
-3. User manual validation (browser journeys), then final checkpoint report + STOP.
+Post-commit automation is green; next is the user's browser journey:
+pattern-DRAFT assessment → add questions per section or Auto-select → coverage
+panel → Preview → Export (paper/answer-key); question bank → generate a batch
+→ Recent question sets. Per Phase 32 J1–J7 convention, browser journeys are the
+user's responsibility; the Phase 33 roads marked `[x]` in `docs/tasks.md`
+reflect code + automated validation, not UI journeys.
 
 ### Known issues / decisions
 
@@ -81,13 +77,16 @@ cleanup.
 - Question versioning, question-set delete/merge (not requested yet).
 
 ### Latest checkpoint
-- Phase 33 code-complete + automated validation green; docs/commits/push pending.
+- **Phase 33 committed + pushed** (`12083df`, `6bb5616`, `c0f5e39`, `c8568e3`).
+  Automated validation green (API 113 tests, typecheck, lint, web build,
+  worker 54 tests). Remaining uncommitted: the paused monolith-OCR refactor
+  (`config/consumer/db/ocr/processing.py`, `test_ocr_client.py`) — intentional.
 
 ### Exact recommended next task
-1. Update `docs/api/questions.md` PENDING semantics text.
-2. Commit + push the three groups (API backend, worker hunk, web).
-3. Run browser journeys J (assessment section select → preview → export), then
-   checkpoint report + STOP.
+1. User browser journeys: assessment — pick pattern DRAFT, add questions per
+   section (or Auto-select), watch coverage panel, Preview, Export paper +
+   answer key; question bank — generate a batch and view Recent question sets.
+2. Then checkpoint report + STOP.
 
 ---
 
