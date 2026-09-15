@@ -245,8 +245,22 @@ export function collectIssues(sections: Section[], labels?: Record<string, strin
         );
       }
     });
-    if (!s.compulsory && s.attemptCount == null) {
-      issues.push(`${name}: optional section must declare how many questions to attempt`);
+    if (!s.compulsory) {
+      const presented = s.rules.reduce(
+        (acc, r) =>
+          acc +
+          (r.questionType !== '' || r.count != null || r.marksPerQuestion != null
+            ? (r.count ?? 0)
+            : 0),
+        0,
+      );
+      if (s.attemptCount == null) {
+        issues.push(`${name}: optional section must declare how many questions to attempt`);
+      } else if (presented > 0 && s.attemptCount >= presented) {
+        issues.push(
+          `${name}: attempt ${s.attemptCount} must be fewer than the ${presented} questions available`,
+        );
+      }
     }
   }
   return issues;

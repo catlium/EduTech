@@ -63,7 +63,9 @@ export default function PaperPatternsListPage() {
   const filtered =
     subjectFilter === 'all'
       ? patterns
-      : patterns.filter((p) => p.subjectIds.includes(subjectFilter));
+      : patterns.filter(
+          (p) => p.subjectIds.length === 0 || p.subjectIds.includes(subjectFilter),
+        );
 
   function patternSubjects(pattern: PaperPattern) {
     if (pattern.subjectIds.length === 0)

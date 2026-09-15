@@ -234,8 +234,10 @@ export default function JobsPage() {
                     <CheckCircle2 className="size-3" /> {new Date(job.completedAt).toLocaleString()}
                   </span>
                 )}
-                {job.status === 'FAILED' && job.error && (
-                  <span className="text-red-600">{job.error}</span>
+                {job.status === 'failed' && job.error && (
+                  <span className="text-red-600" title={job.error}>
+                    {job.error}
+                  </span>
                 )}
                 {(job.status === 'failed' || job.status === 'cancelled') && (
                   <button

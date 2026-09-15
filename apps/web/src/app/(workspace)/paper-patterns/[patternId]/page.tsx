@@ -880,7 +880,20 @@ export default function PatternBuilderPage() {
                               })
                             }
                           />
-                          <span className="text-xs text-muted-foreground">questions</span>
+                          <span className="text-xs text-muted-foreground">
+                            of{' '}
+                            {sec.rules.reduce(
+                              (acc, r) =>
+                                acc +
+                                (r.questionType !== '' ||
+                                r.count != null ||
+                                r.marksPerQuestion != null
+                                  ? (r.count ?? 0)
+                                  : 0),
+                              0,
+                            )}{' '}
+                            questions shown
+                          </span>
                         </div>
                       )}
                     </div>
