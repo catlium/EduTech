@@ -1,8 +1,42 @@
 # Project Status
 
+## Phase 34 — AI Job Reliability, Question Bank Gating & Preview-before-Export (2026-09-15)
+
+**Status: implemented, validated, committed.** Commits:
+`9e2f4d7` (worker job reliability + stale-QUEUED sweep + starter UUID fix, amended),
+`259f123` (question bank generation gated behind usable topic material),
+`18aa9b6` (frontend general patterns, attempt-N-of-M, failure reasons),
+`f764e74` (bank generate accepts explicit buckets),
+`0aa0524` (preview-before-export gate, DocBlocks, ExportPreviewDialog).
+All unpushed until checkpoint push in progress.
+
+**Phase 33 status:** committed + pushed (`12083df`, `6bb5616`, `c0f5e39`, `c8568e3`).
+
+### Completed work
+
+- **AI job reliability:** `recover_stale_queued_ai_jobs` sweep (20-minute wait threshold, orphaned QUEUED → seed back to waiting, idempotent via dedup index); UUID serialization fix for psycopg uuid objects; `issueJob` helper for one-row insert + publish (prevents race-condition duplicate inserts on bank/auto-selection).
+- **Question Bank generation gate:** Material-less topics get a single `AI_GENERATE_STARTER_MATERIAL` job; its result feeds back `topicId/chapterId/subjectId/gradeId/strandId` for the planned QB children; starter job is queued BEFORE QB children (causal ordering); completion callback releases children only when starter completes. Verified live: batch `73a49ff6` → 2/2 completed.
+- **Frontend:** general paper patterns (empty subjectIds) now match all subject filters in list and QB panel; attempt input shows live "of M questions shown"; paper pattern builder enforces optional section attempt count < presented; set-creation accepts explicit `buckets` without `count` (DTO fix).
+- **Preview-before-export gate (non-negotiable):** Stateless, no DB. `docDigest` (sha256 of JSON-stringified DocumentModel). Preview endpoints return `{preview: {hash, document}}`. Every PDF/DOCX export endpoint re-renders the document, re-digests, and rejects with 409 `ConflictException` when `previewHash` is missing or stale. Shared client `DocBlocks` renderer mirrors the exact document structure in HTML, giving teachers pixel-for-pixel structural equivalence between preview and exported file. Question Bank / Paper Pattern / Assessment all gated; assessment preview renders student paper vs teacher answer key as separate tabs with separate hashes keyed to `assessment.updatedAt`.
+- **Worker:** `str()` wrapper for scope-chain IDs in `_generate_starter_material` result dict.
+
+### Known issues
+
+- `previewStorageKey` lives in `export-preview-dialog.tsx` (moved out of Next.js assessment preview page which can only default-export a component).
+- `.mjs` test scripts in `/tmp/opencode/` for browser polling and verification remain disposable.
+- Paused OCR worker files (`config/consumer/db/ocr/processing.py`, `test_ocr_client.py`) remain intentionally uncommitted.
+- Job Monitor still shows pre-fix "Unexpected generation failure" / "OCR service unreachable" on old failed jobs (died before saving real error).
+
+### Exact recommended next task
+1. Push all Phase 34 commits to `origin/main` (the 4 earlier fixes + the new preview-gate feature).
+2. Verify the commit history in `git log --oneline -10` includes the full Phase 34 sequence and Phase 33 below it.
+3. Stop — no automatic progression beyond this checkpoint.
+
+---
+
 ## Phase 33 — Question Bank Sections, Auto-select, Preview/Export (2026-09-14)
 
-**Status: implemented, validated, committed, pushed.** Commits:
+**Status: committed + pushed.** Commits:
 `12083df` (examinations backend — note: also carries the worker
 `insert_generated_questions` auto-approve hunk, staged first), `6bb5616`
 (questions auto-approve + bank/sets), `c0f5e39` (web), `c8568e3` (docs —

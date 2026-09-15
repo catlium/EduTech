@@ -1,5 +1,49 @@
 # Task Tracker
 
+## Phase 34 — AI Job Reliability, Question Bank Gating & Preview-before-Export (2026-09-15)
+
+Stabilization + product-rule enforcement over the Phase 33 question-bank/paper-pattern
+surface: never leave AI jobs orphaned QUEUED, gate bank generation behind usable
+materials, and require a live preview before any PDF/DOCX export.
+
+### Goal: AI job reliability (worker + API)
+
+- [x] Fix worker startup crash: psycopg literal `%` in `LIKE 'AI_%'` → `AI_%%` (client binding)
+- [x] New stale-QUEUED sweep: `recover_stale_queued_ai_jobs` (wait → queued seed)
+- [x] UUID-not-JSON-serializable in both sweeps → `str()` ids before `json.dumps`
+- [x] Add `issueJob` (one-row insert + publish; 500/409 on concurrent dup) and use it for bank/auto-selection flows
+- [x] Worker `AI_GENERATE_STARTER_MATERIAL` result serialization fix (str() scope-chain ids)
+- [x] Tests: `test_ai_reliability.py` (13 incl. queued-sweep UUID regression), API node:test 113+2
+- [x] Commit `9e2f4d7` (amended; `aaded13` earlier) — worker/API job fixes, unpushed until checkpoint
+
+### Goal: Question Bank silent/stuck generation root cause
+
+- [x] Root cause: worker `_resolve_materials` fails fast ("No eligible READY materials") for material-less topics; no QB dependency mechanism existed
+- [x] Material gate: `requestBankGeneration` issues ONE `AI_GENERATE_STARTER_MATERIAL` job whose `dependentResources` carry the planned QB children when no usable topic material exists
+- [x] Release stays idempotent: `jobs_active_generation_unique` + purge-by-jobId; dependents share batchId
+- [x] Verified live: material-less topic → starter completes → MCQ child released → both complete, batch monitor shows 2/2
+- [x] Job Monitor failure reasons now visible (dead `job.status === 'FAILED'` casing bug)
+- [x] Commit `259f123`
+- [-] Question Bank panel UX beyond the material gate (Issue 1) — deferred, superseded by preview-gate work
+
+### Goal: Frontend set-creation + filters fixes
+
+- [x] `POST /questions/bank/generate` accepts explicit buckets without redundant `count` (DTO count optional; 409 guard on shorthand path) — commit `f764e74`
+- [x] General (empty-subjectIds) paper patterns match any subject filter (list + QB panel)
+- [x] Pattern builder: validate optional-section attempt count < presented; Attempt input shows live "of M questions shown"
+- [x] Commit `18aa9b6`
+
+### Goal: Preview before export (non-negotiable product rule)
+
+- [x] API: preview endpoints (`/export/paper-pattern/:id/preview`, `/export/questions/preview`, `/export/assessment/:id/preview?include=`) return exact DocumentModel + sha256 digest
+- [x] API: all PDF/DOCX export endpoints require `previewHash`, rebuilt+compared, 409 when missing/stale — no bypass
+- [x] Shared client `DocBlocks` renderer (HTML mirrors PDF/DOCX structure) + `ExportPreviewDialog`
+- [x] Question Bank: Preview button per scope; PDF/DOCX disabled until current scope previewed; scope change invalidates
+- [x] Paper Pattern: Preview + Export dropdown; export disabled until current saved revision (updatedAt keyed) is previewed
+- [x] Assessment: preview page renders exact document with Student paper / Teacher answer key toggle (separate hashes); export buttons disabled until matching preview
+- [x] Tests: `docDigest` determinism/content-sensitivity + questionDocBlock paper/teacher parity (node:test)
+- [x] Commit `0aa0524`
+
 ## Phase 33 — Question Bank Sections, Auto-select & Preview/Export (2026-09-14)
 
 Pattern-based question bank section management, auto-select (Mode A) and
