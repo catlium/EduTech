@@ -737,6 +737,7 @@ export type WorkerHeartbeatRequest = z.infer<typeof WorkerHeartbeatRequestSchema
 export const WorkerPageSchema = z.object({
   page: z.number().int().positive(),
   source: z.enum(['pymupdf', 'paddleocr']),
+  text: z.string(),
 });
 export type WorkerPage = z.infer<typeof WorkerPageSchema>;
 
@@ -753,7 +754,7 @@ export const WorkerChunkFailSchema = z.object({
 });
 export type WorkerChunkFail = z.infer<typeof WorkerChunkFailSchema>;
 
-// Per-chunk table for the material detail page.
+// Per-chunk table + per-page inspection for the material detail/OCR pages.
 export const OcrChunkSchema = z.object({
   id: z.string().uuid(),
   chunkIndex: z.number().int().positive(),
@@ -768,10 +769,45 @@ export const OcrChunkSchema = z.object({
 });
 export type OcrChunk = z.infer<typeof OcrChunkSchema>;
 
-export const OcrChunkListResponseSchema = z.object({
-  chunks: z.array(OcrChunkSchema),
+export const OcrPageStatusEnum = z.enum(['pending', 'extracted', 'corrected', 'failed', 'missing']);
+export type OcrPageStatus = z.infer<typeof OcrPageStatusEnum>;
+
+// Per-page inspection row. `text` is the original OCR output (immutable from
+// the chunk result); `correctedText`/`correctedBy`/`correctedAt` are present
+// only when the page has been manually corrected. Status is derived:
+//   pending   — page is in a chunk that is pending/claimed (not yet OCR'd)
+//   extracted — page OCR'd, no correction
+//   corrected — correctedText exists (and wins downstream aggregation)
+//   failed    — page is inside a terminal-failed chunk
+//   missing   — chunk submitted but this page has no extracted text (coverage
+//               hole; never treat the material as complete while present)
+export const OcrPageDetailSchema = z.object({
+  page: z.number().int().positive(),
+  status: OcrPageStatusEnum,
+  source: z.enum(['pymupdf', 'paddleocr']).nullable(),
+  text: z.string().nullable(),
+  correctedText: z.string().nullable(),
+  correctedBy: z.string().uuid().nullable(),
+  correctedAt: z.string().datetime().nullable(),
 });
-export type OcrChunkListResponse = z.infer<typeof OcrChunkListResponseSchema>;
+export type OcrPageDetail = z.infer<typeof OcrPageDetailSchema>;
+
+export const OcrPageListResponseSchema = z.object({
+  documentPages: z.number().int().positive().nullable(),
+  chunks: z.array(OcrChunkSchema),
+  pages: z.array(OcrPageDetailSchema),
+});
+export type OcrPageListResponse = z.infer<typeof OcrPageListResponseSchema>;
+
+export const CreateOcrPageCorrectionRequestSchema = z.object({
+  text: z.string().min(1).max(1_000_000),
+});
+export type CreateOcrPageCorrectionRequest = z.infer<typeof CreateOcrPageCorrectionRequestSchema>;
+
+export const OcrPageDetailResponseSchema = z.object({
+  page: OcrPageDetailSchema,
+});
+export type OcrPageDetailResponse = z.infer<typeof OcrPageDetailResponseSchema>;
 
 // ── AI Generation Contracts ────────────────
 //

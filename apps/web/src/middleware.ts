@@ -12,6 +12,7 @@ const PROTECTED = [
   '/student',
   '/institute',
   '/users',
+  '/ocr',
   '/profile',
 ];
 
@@ -42,6 +43,7 @@ export const config = {
     '/student/:path*',
     '/institute/:path*',
     '/users/:path*',
+    '/ocr/:path*',
     '/profile/:path*',
   ],
 };

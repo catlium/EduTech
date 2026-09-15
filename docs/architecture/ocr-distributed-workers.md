@@ -1,9 +1,10 @@
 # OCR Distributed Worker Architecture
 
-**Status: D1–D6 implemented (D7 web worker monitoring next).**
-**HEAD: `ff0c2af` (D5).** The worker pull client (`apps/workers/ocr-worker`)
-and its standalone image are committed (D6). The paused monolith-OCR changes
-remain uncommitted and are design input only — nothing here is committed.
+**Status: D1–D7 implemented (D8 = rebuild containers + live E2E + retire old
+OCR flow).**
+**HEAD: `648da32` (D6).** D7 (addressed below) is uncommitted. The paused
+monolith-OCR changes remain uncommitted and are design input only —
+nothing here is committed.
 
 > Supersedes the in-progress monolith OCR workstream: internal chunking,
 > NDJSON `/extract` streaming, worker-side streaming progress, and the
@@ -198,9 +199,8 @@ RolesGuard(INSTITUTE_ADMIN)`:
 - `PATCH /ocr/workers/:id` — `{enabled?}`, `{rotateToken?}` → new key once.
 - Material progress already flows through `GET /materials` /
   `GET /materials/:id` via `materials.progress` (§5).
-- `GET /materials/:id/ocr-chunks` — per-chunk table for the detail page
-  (status, range, pages, attempts, worker, error). Added only when the detail
-  UI needs it; can ship in the same PR.
+- `GET /materials/:id/ocr-pages` — per-chunk + per-page table for the detail
+  page (status, range, pages, attempts, worker, error, page statuses; D7).
 
 **No new system is introduced for the "task store".** Chunks are rows in
 PostgreSQL owned by the coordinator — the same server-side store as jobs. The
@@ -410,3 +410,76 @@ apps/
 Each increment ends with the AGENTS.md checkpoint protocol (validate → docs →
 commit → push → report → STOP). No implementation begins before this design is
 accepted.
+
+## 15. D7 — Admin UI + per-page inspection & manual correction (implemented)
+
+Tasks 8 (web admin view + aggregate progress) of §14 landed together with
+per-page inspection and manual correction, per the product requirements.
+
+### 15.1 Per-page corrected text (`ocr_page_corrections`)
+
+Corrections are keyed by **`(source_type, source_id, page)`** — *not* chunk or
+job — so a correction survives a re-run (a retry creates a new job and new
+chunks, but the physical pages are the same). Migration `0029`; applied.
+
+- The extractor's original text stays immutable in the chunk's
+  `result.pages[]`. A correction overrides it only at aggregation time.
+- `correctedBy` (FK → users, RESTRICT) + `correctedAt` + `updatedAt` record the
+  who/when audit trail.
+- `WorkerPage` now carries per-page `text`, so the coordinator can store it in
+  `result.pages[].text`. Old results without per-page text render as
+  extracted-with-empty text, never as missing.
+- **Aggregation is correction-aware and page-ordered:** pages 1..N in order,
+  correction wins over original OCR text, pages joined with `\n\n`, blank pages
+  dropped. `finalizeReady` applies it on OCR completion; when the material is
+  already READY, `saveCorrection`/`clearCorrection` recompute `textContent` from
+  the **latest task's submitted chunks** and bump `revision` only when content
+  changes — downstream AI reading `materials.textContent` always sees the
+  corrected text, never a stale uncorrected aggregate.
+
+### 15.2 Page status derivation
+
+From the latest task's chunks + corrections (precedence high→low):
+
+| Status     | Meaning                                                     |
+| ---------- | ----------------------------------------------------------- |
+| `corrected`| a correction exists for the page                            |
+| `failed`   | page's covering chunk reached a terminal `failed` state     |
+| `missing`  | chunk `submitted` but the page has no extracted text        |
+| `extracted`| extracted text exists (original or corrected-empty parse)   |
+| `pending`  | no submitted chunk covers the page yet                      |
+
+A `missing`/`failed` result is never silently presented as complete: READY is
+gated on full coverage, and the web UI flags incomplete pages with an explicit
+banner.
+
+### 15.3 Endpoints (all tenant-scoped via `:materialId`; read for any member,
+writes for INSTITUTE_ADMIN/TEACHER)
+
+- `GET /materials/:materialId/ocr-pages` → `{ documentPages, chunks, pages }`
+  (supersedes the unused chunk-list response).
+- `PUT /materials/:materialId/ocr-pages/:page/correction`
+  `{ text }` — upsert correction; 400 when the page has no extracted text.
+- `DELETE /materials/:materialId/ocr-pages/:page/correction` — restore the
+  original; 404 when no correction exists.
+
+Pure derivation lives in `ocr-coordinator.util.ts` (`derivePageDetails`,
+`aggregatePagesText`) with a node:test suite (`ocr-page-inspection.test.ts`,
+6 tests; OCR node:test total 17 PASS).
+
+### 15.4 Web
+
+- **`(workspace)/ocr/workers`** (admin): summary cards (online/idle/processing/
+  offline/disabled), worker table (status, current chunk range, capabilities,
+  heartbeat age), register/rotate-key dialogs (copy-once), enable/disable; a
+  single ~3 s poll interval, aborted on unmount. Guarded by RoleGuard
+  `ADMIN_ONLY_PREFIXES` + middleware.
+- **Dashboard `MaterialProgress`** consumes the aggregate OCRProgress shape
+  (pages/chunks/percent), with a page-level 3 s re-fetch while any material is
+  processing.
+- **Material detail "OCR inspection" card** (UPLOAD source only): chunk table,
+  incomplete-OCR banner with Retry, status-grid page navigator, per-page panel
+  with original-vs-corrected and an editor (Save/Cancel/Restore-original).
+
+D8 (remaining): rebuild api/ocr-worker, live E2E, retire the old ocr
+service/worker path per §14 item 10.

@@ -24,6 +24,7 @@ import { EmptyState } from '@/components/app/empty-state';
 import { SectionHeader } from '@/components/app/section-header';
 import { StatCard } from '@/components/app/stat-card';
 import { StatusBadge } from '@/components/app/status-badge';
+import { MaterialProgress } from '@/components/app/material-progress';
 import { SkeletonCards, SkeletonRows } from '@/components/app/loading';
 import { ErrorState } from '@/components/app/error-state';
 import { Card, CardContent } from '@/components/ui/card';
@@ -85,6 +86,23 @@ export default function DashboardPage() {
     return () => ctrl.abort();
   }, [fetchData]);
 
+  const processingMaterials = materials.filter((m) => PROCESSING_STATUSES.has(m.processingStatus));
+  const hasProcessing = processingMaterials.length > 0;
+
+  useEffect(() => {
+    if (!institute || !hasProcessing) return;
+    const ctrl = new AbortController();
+    const id = setInterval(() => {
+      api<{ materials: MaterialResponse[] }>('/materials', { signal: ctrl.signal })
+        .then(({ materials }) => setMaterials(materials))
+        .catch(() => {});
+    }, 3000);
+    return () => {
+      ctrl.abort();
+      clearInterval(id);
+    };
+  }, [institute, hasProcessing]);
+
   if (loading) {
     return (
       <div>
@@ -105,9 +123,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  const processingMaterials = materials.filter((m) => PROCESSING_STATUSES.has(m.processingStatus));
-  const hasProcessing = processingMaterials.length > 0;
 
   const pendingQuestions = questions.filter((q) => q.approvalStatus === 'PENDING');
 
@@ -210,6 +225,7 @@ export default function DashboardPage() {
                     <p className="text-xs text-muted-foreground">
                       {formatDateTime(material.createdAt)}
                     </p>
+                    <MaterialProgress material={material} />
                   </div>
                   <StatusBadge status={material.processingStatus} />
                 </CardContent>

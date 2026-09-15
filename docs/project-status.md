@@ -2,11 +2,60 @@
 
 ## Continue OCR — distributed-worker implementation (2026-09-15)
 
-**Status: D6 complete (committed).** The redesigned
+**Status: D7 complete (uncommitted).** The redesigned
  distributed-worker OCR architecture (`docs/architecture/ocr-distributed-workers.md`)
- is being built; the old monolith OCR path stays paused/uncommitted.
+ is being built; the old monolith OCR path stays paused/uncommitted. D8 =
+ rebuild containers + live E2E + retire old OCR flow.
 
-- **D6 (committed):** external pull worker at `apps/workers/ocr-worker`
+- **D7 (uncommitted):** admin page + per-page inspection/manual correction.
+  - **Migration `0029_ocr_page_corrections.sql`** + `_journal.json` entry:
+    `ocr_page_corrections` table keyed by `source_type+source_id+page`
+    (NOT chunk/job, so corrections survive re-runs); `corrected_text`,
+    `corrected_by` (FK → users, cascade), `corrected_at`, `updated_at` +
+    `created_at`; unique index + page>=1 check. Applied to dev DB.
+  - **Contracts:** `WorkerPage` now carries per-page `text` (extracted text is
+    preserved immutably in `ocr_chunks.result`); unused `OcrChunkListResponse`
+    removed; added `OcrChunk`, `OcrPageStatus`, `OcrPageDetail`,
+    `OcrPageListResponse`, `CreateOcrPageCorrectionRequest`.
+  - **Coordinator:** `finalizeReady` aggregation is now **correction-aware** —
+    page-by-page in order, a correction wins over the original OCR output;
+    only `submitted` chunks contribute (coverage gate still blocks READY on
+    holes). New admin endpoints (all tenant-scoped):
+    - `GET /materials/:id/ocr-pages` → chunk table + per-page detail
+    - `PUT /materials/:id/ocr-pages/:page/correction` (upserts correction,
+      metadata `correctedBy`/`correctedAt`; when the material is READY the
+      aggregate `textContent` is recomputed with corrections applied and
+      `revision` bumped only if content actually changed — downstream AI
+      never reads stale uncorrected text)
+    - `DELETE /materials/:id/ocr-pages/:page/correction` (restore original)
+    Page status derived: **corrected > failed > missing > extracted >
+    pending** — a submitted-but-empty page renders `missing`, so an
+    incomplete result is never silently presented as complete.
+  - **Pure logic extracted** to `ocr-coordinator.util.ts` (`derivePageDetails`,
+    `aggregatePagesText`) + new `ocr-page-inspection.test.ts`
+    (6 tests; node:test OCR suite now **17 PASS**).
+  - **Worker:** submits per-page `text` in chunk results; worker tests updated
+    (**9 PASS**, ruff + mypy clean); OCR engine **21 PASS**.
+  - **Web:** new admin route **`(workspace)/ocr/workers`** (workers table,
+    online/idle/processing/offline/disabled summary cards, register +
+    copy-once API key, disable/enable, rotate key; **~3s polling with a single
+    interval, aborted + cleared on unmount**). Dashboard `MaterialProgress`
+    switched to the aggregate OCRProgress shape (pages/chunks/percent/
+    failed/retrying). Material detail page gains an **"OCR inspection"** card:
+    chunk table, incomplete-OCR banner with Retry (failed/missing pages),
+    page navigator grid (color-coded by status), editor with **Save/Cancel/
+    Restore-original**, original-vs-corrected display, correction metadata.
+    `/ocr/workers` wired into sidebar adminNav + breadcrumb +
+    `ADMIN_ONLY_PREFIXES` (RoleGuard) + middleware protected list.
+  - **Validation:** api typecheck + lint clean; contracts + database typecheck
+    clean; node:test **17 PASS**; worker pytest **9 PASS**, ruff + mypy clean;
+    OCR **21 PASS**; web typecheck clean + **`next build` green**;
+    migration **applied cleanly** to the live dev Postgres.
+  - **Not yet done (D8):** rebuild running api/ocr-worker containers with the
+    new code; live E2E (register worker → process → per-page correct →
+    re-aggregate textContent); retire the old monolith OCR service/worker and
+    the superseded `apps/workers/worker/*` material-OCR path.
+- **D6 (committed, `648da32`):** external pull worker at `apps/workers/ocr-worker`
   (computation-only HTTPS polling loop: heartbeat → claim → source → local
   page-range extraction → result/fail, graceful shutdown, transient-claim
   backoff, per-chunk fail reporting) + standalone image

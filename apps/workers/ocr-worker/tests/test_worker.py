@@ -174,9 +174,9 @@ async def test_process_chunk_submits_extracted_pages() -> None:
     result = next(r for r in requests if r.url.path.endswith("/chunks/c-1/result"))
     body = json.loads(result.content)
     assert body["pages"] == [
-        {"page": 1, "source": "fake-mock"},
-        {"page": 2, "source": "fake-mock"},
-        {"page": 3, "source": "fake-mock"},
+        {"page": 1, "source": "fake-mock", "text": "page 1"},
+        {"page": 2, "source": "fake-mock", "text": "page 2"},
+        {"page": 3, "source": "fake-mock", "text": "page 3"},
     ]
     assert body["text"] == "page 1\n\npage 2\n\npage 3"
 

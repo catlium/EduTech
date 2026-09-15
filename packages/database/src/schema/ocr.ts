@@ -5,6 +5,7 @@ import {
   boolean,
   integer,
   jsonb,
+  text,
   timestamp,
   check,
   uniqueIndex,
@@ -14,6 +15,7 @@ import { sql } from 'drizzle-orm';
 
 import { jobs } from './jobs.js';
 import { institutes } from './institutes.js';
+import { users } from './users.js';
 
 // Distributed OCR worker registry (platform-global, NOT tenant-scoped).
 //
@@ -80,5 +82,37 @@ export const ocrChunks = pgTable(
     // One chunk per index per job + a claim-serving index on (status, lease).
     uniqueIndex('ocr_chunks_job_chunk_unique').on(table.jobId, table.chunkIndex),
     index('ocr_chunks_claim_idx').on(table.status, table.leaseExpiresAt),
+  ],
+);
+
+// Manual per-page correction over the extracted text of a processed source.
+//
+// Keyed by (sourceType, sourceId, page) — NOT by chunk/job — so corrections
+// survive a re-run of the same material (a retry creates a new job + chunks
+// but addresses the same physical pages). Metadata preserves who corrected a
+// page and when; `corrected_text` is the corrected output, while the original
+// OCR output stays immutable in the owning chunk's `result.pages[].text`.
+export const ocrPageCorrections = pgTable(
+  'ocr_page_corrections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceType: varchar('source_type', { length: 20 }).notNull(),
+    sourceId: uuid('source_id').notNull(),
+    page: integer('page').notNull(),
+    correctedText: text('corrected_text').notNull(),
+    correctedBy: uuid('corrected_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    correctedAt: timestamp('corrected_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check('ocr_page_corrections_page_range', sql`${table.page} >= 1`),
+    uniqueIndex('ocr_page_corrections_source_page_unique').on(
+      table.sourceType,
+      table.sourceId,
+      table.page,
+    ),
   ],
 );

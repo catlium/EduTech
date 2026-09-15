@@ -17,6 +17,7 @@ import {
   Library,
   Activity,
   LogOut,
+  ScanText,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -61,6 +62,7 @@ const sharedNav = [{ href: '/practice', label: 'Practice', icon: Target }];
 const adminNav = [
   { href: '/institute', label: 'Institute', icon: Building2 },
   { href: '/users', label: 'Users', icon: Users },
+  { href: '/ocr/workers', label: 'OCR Workers', icon: ScanText },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -193,6 +195,7 @@ export function sideCrumb(pathname: string): { label: string; href: string } | n
     { href: '/practice', label: 'Practice' },
     { href: '/institute', label: 'Institute' },
     { href: '/users', label: 'Users' },
+    { href: '/ocr/workers', label: 'OCR Workers' },
   ];
   for (const item of map) {
     if (pathname === item.href || pathname.startsWith(item.href + '/')) {

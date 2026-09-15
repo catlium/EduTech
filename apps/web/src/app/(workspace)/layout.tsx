@@ -24,7 +24,7 @@ const TEACHER_ONLY_PREFIXES = [
   '/paper-patterns',
 ];
 
-const ADMIN_ONLY_PREFIXES = ['/institute', '/users'];
+const ADMIN_ONLY_PREFIXES = ['/institute', '/users', '/ocr/workers'];
 
 function isTeacherOnly(pathname: string): boolean {
   return TEACHER_ONLY_PREFIXES.some(

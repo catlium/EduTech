@@ -1,17 +1,22 @@
 import { Injectable, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { and, asc, eq, inArray, lt, or } from 'drizzle-orm';
 
-import { jobs, materials, ocrChunks, ocrWorkers } from '@catlium/database';
+import { jobs, materials, ocrChunks, ocrPageCorrections, ocrWorkers } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
 import { STORAGE_PROVIDER } from '../materials/storage/storage-provider.interface.js';
 import type { StorageProvider } from '../materials/storage/storage-provider.interface.js';
-import { validateChunkPages, isCompleteCoverage } from './ocr-coordinator.util.js';
+import { validateChunkPages, isCompleteCoverage, derivePageDetails, aggregatePagesText } from './ocr-coordinator.util.js';
+import type { ChunkLike, CorrectionLike } from './ocr-coordinator.util.js';
 import type {
   OCRProgress,
+  OcrChunkStatus,
+  OcrPageDetail,
+  OcrPageListResponse,
   WorkerChunkFail,
   WorkerChunkResult,
   WorkerClaimResponse,
@@ -409,8 +414,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       return;
     }
 
-    const ordered = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
-    const text = ordered.map((c) => this.chunkText(c)).filter((t) => t.length > 0).join('\n\n');
+    const text = await this.aggregateMaterialText(materialId, chunks);
 
     await this.db.transaction(async (tx) => {
       // Persist text BEFORE READY (crash-safe reuse on retry, as the old
@@ -424,6 +428,223 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       textLength: text.length,
       pages: documentPages,
     });
+  }
+
+  // ── Admin-facing page inspection / correction ─────────────────────────
+
+  public async listMaterialPages(instituteId: string, materialId: string): Promise<OcrPageListResponse> {
+    await this.assertMaterialScoped(instituteId, materialId);
+    const job = await this.jobsService.latestMaterialJob(instituteId, materialId);
+    if (!job || job.type !== 'MATERIAL_PROCESS') {
+      return { documentPages: null, chunks: [], pages: [] };
+    }
+
+    const chunks = await this.db
+      .select()
+      .from(ocrChunks)
+      .where(eq(ocrChunks.jobId, job.id))
+      .orderBy(asc(ocrChunks.chunkIndex));
+    const corrections = await this.correctionsFor(materialId);
+
+    const documentPages = this.documentPagesOf(chunks);
+    const pageCount = documentPages ?? Math.max(0, ...chunks.map((c) => c.endPage));
+
+    return {
+      documentPages,
+      chunks: chunks.map((c) => this.chunkSummaryOf(c)),
+      pages: derivePageDetails(
+        chunks.map((c) => this.chunkLikeOf(c)),
+        pageCount,
+        corrections,
+      ),
+    };
+  }
+
+  /** Upsert a manual correction for one page. Survives re-runs (keyed by
+   *  material+page, not chunk). When the material is already READY the
+   *  aggregate `textContent` is recomputed with the correction applied so
+   *  downstream AI never reads stale uncorrected text. */
+  public async saveCorrection(
+    instituteId: string,
+    materialId: string,
+    page: number,
+    text: string,
+    correctedBy: string,
+  ): Promise<OcrPageDetail> {
+    const material = await this.assertMaterialScoped(instituteId, materialId);
+    const chunks = await this.chunksOfLatestJob(instituteId, materialId);
+
+    const chunk = chunks.find((c) => c.startPage <= page && page <= c.endPage);
+    const pageIsExtracted = this.hasPageEntry(chunk, page);
+    if (!pageIsExtracted) {
+      throw new BadRequestException('Page has no extracted text yet; correct it after OCR completes');
+    }
+
+    await this.db
+      .insert(ocrPageCorrections)
+      .values({
+        sourceType: 'MATERIAL',
+        sourceId: materialId,
+        page,
+        correctedText: text,
+        correctedBy,
+        correctedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [ocrPageCorrections.sourceType, ocrPageCorrections.sourceId, ocrPageCorrections.page],
+        set: {
+          correctedText: text,
+          correctedBy,
+          correctedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+    if (material.processingStatus === 'READY') {
+      await this.reapplyAggregate(material, chunks);
+    }
+
+    const corrections = await this.correctionsFor(materialId);
+    return this.pageDetailOf(chunks, corrections, page);
+  }
+
+  /** Remove a correction; the page falls back to its original OCR output and
+   *  the aggregate `textContent` is recomputed (bumped only if it changed). */
+  public async clearCorrection(instituteId: string, materialId: string, page: number): Promise<OcrPageDetail> {
+    const material = await this.assertMaterialScoped(instituteId, materialId);
+    const [deleted] = await this.db
+      .delete(ocrPageCorrections)
+      .where(
+        and(
+          eq(ocrPageCorrections.sourceType, 'MATERIAL'),
+          eq(ocrPageCorrections.sourceId, materialId),
+          eq(ocrPageCorrections.page, page),
+        ),
+      )
+      .returning();
+    if (!deleted) {
+      throw new NotFoundException('No correction exists for this page');
+    }
+
+    const chunks = await this.chunksOfLatestJob(instituteId, materialId);
+    if (material.processingStatus === 'READY') {
+      await this.reapplyAggregate(material, chunks);
+    }
+    return this.pageDetailOf(chunks, await this.correctionsFor(materialId), page);
+  }
+
+  private async reapplyAggregate(
+    material: { id: string; textContent: string | null; revision: number },
+    chunks: ChunkRow[],
+  ): Promise<void> {
+    if (!chunks.length) return;
+    const text = await this.aggregateMaterialText(material.id, chunks);
+    if (text !== material.textContent) {
+      await this.db
+        .update(materials)
+        .set({ textContent: text, revision: material.revision + 1, updatedAt: new Date() })
+        .where(eq(materials.id, material.id));
+    }
+  }
+
+  private async assertMaterialScoped(instituteId: string, materialId: string) {
+    const [material] = await this.db
+      .select()
+      .from(materials)
+      .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
+      .limit(1);
+    if (!material) {
+      throw new NotFoundException('Material not found');
+    }
+    return material;
+  }
+
+  private async chunksOfLatestJob(instituteId: string, materialId: string): Promise<ChunkRow[]> {
+    const job = await this.jobsService.latestMaterialJob(instituteId, materialId);
+    if (!job) return [];
+    return this.db.select().from(ocrChunks).where(eq(ocrChunks.jobId, job.id));
+  }
+
+  private async correctionsFor(materialId: string): Promise<Map<number, CorrectionLike>> {
+    const rows = await this.db
+      .select()
+      .from(ocrPageCorrections)
+      .where(
+        and(
+          eq(ocrPageCorrections.sourceType, 'MATERIAL'),
+          eq(ocrPageCorrections.sourceId, materialId),
+        ),
+      );
+    return new Map(
+      rows.map((r) => [
+        r.page,
+        { correctedText: r.correctedText, correctedBy: r.correctedBy, correctedAt: r.correctedAt.toISOString() },
+      ]),
+    );
+  }
+
+  private chunkLikeOf(chunk: ChunkRow): ChunkLike {
+    return {
+      chunkIndex: chunk.chunkIndex,
+      startPage: chunk.startPage,
+      endPage: chunk.endPage,
+      status: chunk.status,
+      result: this.resultOf(chunk),
+    };
+  }
+
+  private hasPageEntry(chunk: ChunkRow | undefined, page: number): boolean {
+    if (!chunk || chunk.status !== 'submitted') return false;
+    const pages = (chunk.result as Record<string, unknown> | null)?.['pages'];
+    return (
+      Array.isArray(pages) &&
+      (pages as Array<Record<string, unknown>>).some(
+        (p) => p['page'] === page && typeof p['text'] === 'string' && (p['text'] as string).length > 0,
+      )
+    );
+  }
+
+  private pageDetailOf(
+    chunks: ChunkRow[],
+    corrections: Map<number, CorrectionLike>,
+    page: number,
+  ): OcrPageDetail {
+    const rows = derivePageDetails(
+      chunks.map((c) => this.chunkLikeOf(c)),
+      page,
+      corrections,
+    );
+    return rows[rows.length - 1]!;
+  }
+
+  private chunkSummaryOf(chunk: ChunkRow) {
+    const error = chunk.error;
+    return {
+      id: chunk.id,
+      chunkIndex: chunk.chunkIndex,
+      startPage: chunk.startPage,
+      endPage: chunk.endPage,
+      status: chunk.status as OcrChunkStatus,
+      attempts: chunk.attempts,
+      claimedBy: chunk.claimedBy,
+      error: error && typeof (error as { message?: unknown })['message'] === 'string'
+        ? ((error as { message: string }).message)
+        : null,
+      createdAt: chunk.createdAt.toISOString(),
+      updatedAt: chunk.updatedAt.toISOString(),
+    };
+  }
+
+  /** Full-document text with corrections applied (pure — see util). */
+  private async aggregateMaterialText(materialId: string, chunks: ChunkRow[]): Promise<string> {
+    const corrections = await this.correctionsFor(materialId);
+    const correctionsByPage = new Map<number, string>(
+      [...corrections.entries()].map(([page, c]) => [page, c.correctedText]),
+    );
+    return aggregatePagesText(
+      chunks.map((c) => this.chunkLikeOf(c)),
+      correctionsByPage,
+    );
   }
 
   // ── Progress ───────────────────────────────────────────────────────────
@@ -540,11 +761,6 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
   private pagesOf(chunk: ChunkRow): Array<{ page: number }> {
     const pages = this.resultOf(chunk)['pages'];
     return Array.isArray(pages) ? (pages as Array<{ page: number }>) : [];
-  }
-
-  private chunkText(chunk: ChunkRow): string {
-    const text = this.resultOf(chunk)['text'];
-    return typeof text === 'string' ? text : '';
   }
 
   private documentPagesOf(chunks: ChunkRow[]): number | null {

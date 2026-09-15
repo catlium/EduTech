@@ -38,6 +38,7 @@ import {
 } from '@/components/app/scope-cascade';
 import { ErrorState } from '@/components/app/error-state';
 import { ConfirmDialog } from '@/components/app/confirm-dialog';
+import { OcrInspection } from '@/components/app/ocr-inspection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -319,6 +320,23 @@ export default function MaterialDetailPage() {
           <SourceContent material={material} onProcess={processMaterial} onRetry={retryMaterial} />
         </CardContent>
       </Card>
+
+      {material.sourceType === 'UPLOAD' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">OCR inspection</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <OcrInspection
+              materialId={material.id}
+              processingStatus={material.processingStatus}
+              canEdit={isTeacher}
+              onRetry={retryMaterial}
+              onChanged={refresh}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

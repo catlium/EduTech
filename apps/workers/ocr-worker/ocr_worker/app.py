@@ -98,7 +98,7 @@ async def process_chunk(
 
         text = "\n\n".join(p.text for p in pages)
         payload: dict[str, Any] = {
-            "pages": [{"page": p.page, "source": p.source} for p in pages],
+            "pages": [{"page": p.page, "source": p.source, "text": p.text} for p in pages],
             "text": text,
         }
         if total_pages is not None:

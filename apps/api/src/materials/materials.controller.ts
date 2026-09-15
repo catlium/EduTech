@@ -3,6 +3,8 @@ import {
   Get,
   Post,
   Patch,
+  Put,
+  Delete,
   Param,
   Body,
   Query,
@@ -10,6 +12,7 @@ import {
   UseInterceptors,
   UseGuards,
   ParseUUIDPipe,
+  ParseIntPipe,
   ParseEnumPipe,
   HttpCode,
   HttpStatus,
@@ -18,8 +21,10 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { MaterialsService } from './materials.service.js';
+import { OcrCoordinatorService } from '../ocr/ocr-coordinator.service.js';
 import { CreateTextMaterialDto, UploadMaterialDto, UpdateMaterialDto } from './dto/material.dto.js';
 import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from './materials.constants.js';
+import type { CreateOcrPageCorrectionRequest } from '@catlium/contracts';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -34,7 +39,10 @@ const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
 @Controller('materials')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
 export class MaterialsController {
-  constructor(private readonly materialsService: MaterialsService) {}
+  constructor(
+    private readonly materialsService: MaterialsService,
+    private readonly ocrCoordinator: OcrCoordinatorService,
+  ) {}
 
   @Post('text')
   @HttpCode(HttpStatus.CREATED)
@@ -121,6 +129,42 @@ export class MaterialsController {
       topicId,
     });
     return { materials };
+  }
+
+  @Get(':materialId/ocr-pages')
+  async ocrPages(
+    @Tenant() tenant: TenantContext,
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+  ) {
+    return this.ocrCoordinator.listMaterialPages(tenant.instituteId, materialId);
+  }
+
+  @Put(':materialId/ocr-pages/:page/correction')
+  @RequiredRoles(...WRITE_ROLES)
+  async saveCorrection(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+    @Param('page', ParseIntPipe) page: number,
+    @Body() dto: CreateOcrPageCorrectionRequest,
+  ) {
+    return this.ocrCoordinator.saveCorrection(
+      tenant.instituteId,
+      materialId,
+      page,
+      dto.text,
+      user.userId,
+    );
+  }
+
+  @Delete(':materialId/ocr-pages/:page/correction')
+  @RequiredRoles(...WRITE_ROLES)
+  async clearCorrection(
+    @Tenant() tenant: TenantContext,
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+    @Param('page', ParseIntPipe) page: number,
+  ) {
+    return this.ocrCoordinator.clearCorrection(tenant.instituteId, materialId, page);
   }
 
   @Get(':materialId')
