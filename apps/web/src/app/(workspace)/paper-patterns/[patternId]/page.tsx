@@ -20,6 +20,8 @@ import {
 import { toast } from 'sonner';
 
 import { api, ApiError, downloadFile } from '@/lib/api';
+import { ExportPreviewDialog } from '@/components/export/export-preview-dialog';
+import type { ExportPreviewValue } from '@/components/export/export-preview-dialog';
 import { formatDate } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
@@ -137,6 +139,10 @@ export default function PatternBuilderPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const [assessmentOpen, setAssessmentOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  /* Preview is per content snapshot: its key is the pattern's updatedAt at
+   * preview time, so any later save/approve automatically stale-outs it. */
+  const [preview, setPreview] = useState<{ value: ExportPreviewValue; key: string } | null>(null);
   const [assessmentTitle, setAssessmentTitle] = useState('');
   const [creatingAssessment, setCreatingAssessment] = useState(false);
 
@@ -350,18 +356,32 @@ export default function PatternBuilderPage() {
     }
   }
 
-  /* ── export (teacher-facing PDF/DOCX) ── */
+  /* ── export (teacher-facing PDF/DOCX) — gated behind a current preview ── */
   async function onExport(format: 'pdf' | 'docx') {
     if (!pattern) return;
+    if (!preview || preview.key !== pattern.updatedAt) {
+      toast.error('Preview the current pattern first (the last preview is stale)');
+      return;
+    }
     try {
       await downloadFile(
-        `/export/paper-pattern/${pattern.id}?format=${format}`,
+        `/export/paper-pattern/${pattern.id}?format=${format}&previewHash=${preview.value.hash}`,
         `paper-pattern.${format}`,
       );
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Export failed');
     }
   }
+
+  const previewValid = pattern !== null && preview !== null && preview.key === pattern.updatedAt;
+
+  const loadPreview = useCallback(async (): Promise<ExportPreviewValue> => {
+    if (!pattern) throw new Error('Pattern not loaded');
+    const { preview } = await api<{ preview: ExportPreviewValue }>(
+      `/export/paper-pattern/${pattern.id}/preview`,
+    );
+    return preview;
+  }, [pattern]);
 
   /* ── analyze (unchanged behavior) ── */
   async function onAnalyze() {
@@ -600,9 +620,22 @@ export default function PatternBuilderPage() {
                       Create Assessment
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPreviewOpen(true)}
+                    title="Preview the exact export before downloading"
+                  >
+                    <Eye className="mr-1 size-3.5" /> Preview
+                  </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button size="sm" variant="outline">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!previewValid}
+                        title={previewValid ? 'Export the previewed pattern' : 'Preview first'}
+                      >
                         <Download className="mr-1 size-3.5" /> Export
                       </Button>
                     </DropdownMenuTrigger>
@@ -1441,6 +1474,17 @@ export default function PatternBuilderPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <ExportPreviewDialog
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          title="Paper Pattern Export Preview"
+          description="Shows the exact pattern configuration that will be exported. Export stays disabled until you preview the current saved version."
+          load={loadPreview}
+          onPreviewed={(value) => {
+            setPreview({ value, key: pattern?.updatedAt ?? '' });
+          }}
+        />
       </div>
     </TooltipProvider>
   );

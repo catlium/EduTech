@@ -3,8 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { contentBlocks } from './export.content-blocks.ts';
-import type { DocumentModel } from './export.content-blocks.ts';
+import { contentBlocks, questionDocBlock, docDigest, buildPreview } from './export.content-blocks.ts';
+import type { DocBlock, DocumentModel } from './export.content-blocks.ts';
 
 test('NOTE payload maps blocks: heading, paragraph, list', () => {
   const blocks = contentBlocks('NOTE', {
@@ -102,4 +102,59 @@ test('unknown type falls back to JSON dump', () => {
   };
   assert.equal(doc.blocks[0]?.kind, 'paragraph');
   assert.match(doc.blocks[0]?.text as string, /"foo"/);
+});
+
+/* Preview/export gate: the digest is deterministic per document and
+ * changes with any content, so a stale preview is always detected. */
+test('docDigest is deterministic and content-sensitive', () => {
+  const a: DocumentModel = {
+    title: 'T',
+    blocks: [
+      { kind: 'heading', text: 'H' },
+      { kind: 'question', stem: 'S?', type: 'MCQ', difficulty: 'EASY', choices: [], showAnswer: true },
+    ],
+  };
+  const b: DocumentModel = { ...a, blocks: [...a.blocks, { kind: 'paragraph', text: 'more' }] };
+  const c: DocumentModel = { ...a, blocks: [{ kind: 'heading', text: 'H' }] };
+  assert.equal(docDigest(a), docDigest({ ...a, blocks: a.blocks.map((blk) => ({ ...blk })) }));
+  assert.equal(docDigest(a), buildPreview(a).hash);
+  assert.notEqual(docDigest(a), docDigest(b));
+  assert.notEqual(docDigest(a), docDigest(c));
+});
+
+test('questionDocBlock: teacher shows the answer, paper hides it', () => {
+  const payload = {
+    choices: [
+      { id: 'c1', text: 'Paris' },
+      { id: 'c2', text: 'Rome' },
+    ],
+    correctChoiceId: 'c2',
+  };
+  const asQuestion = (b: DocBlock) => b as Extract<DocBlock, { kind: 'question' }>;
+  const teacher = asQuestion(
+    questionDocBlock({
+      stem: 'Capital of France?',
+      type: 'MCQ',
+      difficulty: 'EASY',
+      payload,
+      includeAnswers: true,
+    }),
+  );
+  const paper = asQuestion(
+    questionDocBlock({
+      stem: 'Capital of France?',
+      type: 'MCQ',
+      difficulty: 'EASY',
+      payload,
+      includeAnswers: false,
+      scope: 'paper',
+    }),
+  );
+  assert.equal(teacher.showAnswer, true);
+  assert.equal(teacher.answerNote, undefined);
+  assert.equal(teacher.choices?.[1]?.correct, true);
+  assert.equal(teacher.difficulty, 'EASY');
+  assert.equal(paper.showAnswer, false);
+  assert.equal(paper.difficulty, '');
+  assert.equal(paper.choices?.[1]?.correct, false);
 });

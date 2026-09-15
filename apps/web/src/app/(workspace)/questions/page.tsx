@@ -21,11 +21,13 @@ import {
   Trash2,
   X,
   Download,
+  Eye,
 } from 'lucide-react';
 
-import { api, ApiError } from '@/lib/api';
-import { downloadFile } from '@/lib/api';
+import { api, ApiError, downloadFile } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
+import { ExportPreviewDialog } from '@/components/export/export-preview-dialog';
+import type { ExportPreviewValue } from '@/components/export/export-preview-dialog';
 import { useTenant, canManage } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
 import { QuestionBankSets } from '@/components/questions/question-bank-sets';
@@ -377,6 +379,8 @@ export default function QuestionsListPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [createCascade, setCreateCascade] = useState<Cascade>(DEFAULT_CASCADE);
+  const [previewState, setPreviewState] = useState<ExportPreviewValue | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const [questionTypes, setQuestionTypes] = useState<QuestionTypeDefinition[]>([]);
 
@@ -445,7 +449,11 @@ export default function QuestionsListPage() {
 
   async function exportQuestions(format: 'pdf' | 'docx') {
     try {
-      const params = new URLSearchParams({ format });
+      if (!previewState) {
+        toast.error('Preview the current selection before exporting');
+        return;
+      }
+      const params = new URLSearchParams({ format, previewHash: previewState.hash });
       if (listCascade.subjectId) params.set('subjectId', listCascade.subjectId);
       if (listCascade.chapterId) params.set('chapterId', listCascade.chapterId);
       if (listCascade.topicId) params.set('topicId', listCascade.topicId);
@@ -455,6 +463,30 @@ export default function QuestionsListPage() {
       toast.error(err instanceof ApiError ? err.message : 'Export failed');
     }
   }
+
+  const scopeParams = () => {
+    const params = new URLSearchParams();
+    if (listCascade.subjectId) params.set('subjectId', listCascade.subjectId);
+    if (listCascade.chapterId) params.set('chapterId', listCascade.chapterId);
+    if (listCascade.topicId) params.set('topicId', listCascade.topicId);
+    return params.toString();
+  };
+
+  // Preview is tied to the export scope: any scope change invalidates it.
+  const loadPreview = useCallback(async (): Promise<ExportPreviewValue> => {
+    const { preview } = await api<{ preview: ExportPreviewValue }>(
+      `/export/questions/preview?${scopeParams()}`,
+    );
+    return preview;
+  }, [listCascade]);
+
+  const updateCascade = useCallback(
+    (next: Cascade | ((prev: Cascade) => Cascade)) => {
+      setPreviewState(null);
+      setListCascade(next);
+    },
+    [],
+  );
 
   const load = useCallback(() => {
     if (!institute) return;
@@ -824,10 +856,35 @@ export default function QuestionsListPage() {
         actions={
           isTeacher && (
             <>
-              <Button size="sm" variant="outline" onClick={() => exportQuestions('pdf')}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPreviewOpen(true)}
+                disabled={!listCascade.subjectId && !listCascade.chapterId && !listCascade.topicId}
+                title={
+                  listCascade.subjectId || listCascade.chapterId || listCascade.topicId
+                    ? 'Preview the exact export before downloading'
+                    : 'Select a subject, chapter or topic scope to preview'
+                }
+              >
+                <Eye className="mr-1 size-3.5" /> Preview
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => exportQuestions('pdf')}
+                disabled={!previewState}
+                title={previewState ? 'Export the previewed selection' : 'Preview first'}
+              >
                 <Download className="mr-1 size-3.5" /> PDF
               </Button>
-              <Button size="sm" variant="outline" onClick={() => exportQuestions('docx')}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => exportQuestions('docx')}
+                disabled={!previewState}
+                title={previewState ? 'Export the previewed selection' : 'Preview first'}
+              >
                 <Download className="mr-1 size-3.5" /> DOCX
               </Button>
               <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -913,7 +970,7 @@ export default function QuestionsListPage() {
           subjects={subjects}
           chapters={chapters}
           topics={topics}
-          onChange={setListCascade}
+          onChange={updateCascade}
         />
       </div>
 
@@ -929,20 +986,20 @@ export default function QuestionsListPage() {
             <FilterChip
               label={subjectName.get(listCascade.subjectId) ?? 'Subject'}
               onClear={() =>
-                setListCascade((c) => ({ ...c, subjectId: '', chapterId: '', topicId: '' }))
+                updateCascade((c) => ({ ...c, subjectId: '', chapterId: '', topicId: '' }))
               }
             />
           )}
           {listCascade.chapterId && (
             <FilterChip
               label={chapterName.get(listCascade.chapterId) ?? 'Chapter'}
-              onClear={() => setListCascade((c) => ({ ...c, chapterId: '', topicId: '' }))}
+              onClear={() => updateCascade((c) => ({ ...c, chapterId: '', topicId: '' }))}
             />
           )}
           {listCascade.topicId && (
             <FilterChip
               label={topicName.get(listCascade.topicId) ?? 'Topic'}
-              onClear={() => setListCascade((c) => ({ ...c, topicId: '' }))}
+              onClear={() => updateCascade((c) => ({ ...c, topicId: '' }))}
             />
           )}
           {search.trim() && (
@@ -971,7 +1028,7 @@ export default function QuestionsListPage() {
             variant="ghost"
             className="h-6 px-2 text-xs"
             onClick={() => {
-              setListCascade(DEFAULT_CASCADE);
+              updateCascade(DEFAULT_CASCADE);
               setSearch('');
               setTypeFilter('all');
               setDifficultyFilter('all');
@@ -1344,6 +1401,15 @@ export default function QuestionsListPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ExportPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title="Question Bank Export Preview"
+        description="Shows the exact ACTIVE+APPROVED questions and answers that will be exported for this scope. Export stays disabled until you preview the current selection."
+        load={loadPreview}
+        onPreviewed={setPreviewState}
+      />
     </div>
   );
 }

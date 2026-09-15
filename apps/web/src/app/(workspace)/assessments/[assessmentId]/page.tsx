@@ -22,6 +22,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 
 import { api, ApiError, downloadFile } from '@/lib/api';
+import { previewStorageKey } from '@/components/export/export-preview-dialog';
 import { formatDate, formatDuration } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
@@ -431,10 +432,15 @@ export default function AssessmentDetailPage() {
 
   async function onExport(format: 'pdf' | 'docx', include: 'paper' | 'answers') {
     if (!assessment) return;
+    const hash = previewHash(assessment.id, include);
+    if (!hash) {
+      toast.error(`Preview the ${include === 'answers' ? 'teacher answer key' : 'student paper'} first`);
+      return;
+    }
     const suffix = include === 'answers' ? '-answer-key' : '';
     try {
       await downloadFile(
-        `/export/assessment/${assessment.id}?format=${format}&include=${include}`,
+        `/export/assessment/${assessment.id}?format=${format}&include=${include}&previewHash=${hash}`,
         `${assessment.title.replace(/[^a-z0-9]+/gi, '-')}${suffix}.${format}`,
       );
       toast.success(`Exported ${include === 'answers' ? 'answer key' : 'paper'} (${format.toUpperCase()})`);
@@ -444,6 +450,17 @@ export default function AssessmentDetailPage() {
       setExportOpen(false);
     }
   }
+
+  const previewHash = useCallback((assessmentId: string, include: 'paper' | 'answers') => {
+    if (!assessment) return null;
+    try {
+      return (
+        localStorage.getItem(previewStorageKey(assessmentId, include, assessment.updatedAt)) ?? null
+      );
+    } catch {
+      return null;
+    }
+  }, [assessment]);
 
   // ── Render ──
 
@@ -1032,10 +1049,22 @@ export default function AssessmentDetailPage() {
                 Questions, marks and instructions — no answers or difficulty.
               </p>
               <div className="mt-2 flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => void onExport('pdf', 'paper')}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onExport('pdf', 'paper')}
+                  disabled={!previewHash(assessment?.id ?? '', 'paper')}
+                  title={previewHash(assessment?.id ?? '', 'paper') ? 'Export the previewed paper' : 'Preview the student paper first'}
+                >
                   PDF
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => void onExport('docx', 'paper')}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onExport('docx', 'paper')}
+                  disabled={!previewHash(assessment?.id ?? '', 'paper')}
+                  title={previewHash(assessment?.id ?? '', 'paper') ? 'Export the previewed paper' : 'Preview the student paper first'}
+                >
                   DOCX
                 </Button>
               </div>
@@ -1053,6 +1082,8 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onExport('pdf', 'answers')}
+                  disabled={!previewHash(assessment?.id ?? '', 'answers')}
+                  title={previewHash(assessment?.id ?? '', 'answers') ? 'Export the previewed answer key' : 'Preview the teacher answer key first'}
                 >
                   PDF
                 </Button>
@@ -1060,6 +1091,8 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onExport('docx', 'answers')}
+                  disabled={!previewHash(assessment?.id ?? '', 'answers')}
+                  title={previewHash(assessment?.id ?? '', 'answers') ? 'Export the previewed answer key' : 'Preview the teacher answer key first'}
                 >
                   DOCX
                 </Button>

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export type DocBlock =
   | { kind: 'heading'; text: string }
   | { kind: 'paragraph'; text: string }
@@ -47,6 +49,25 @@ export type DocBlock =
 export interface DocumentModel {
   title: string;
   blocks: DocBlock[];
+}
+
+/** Deterministic digest of a document — the exported file is regenerated from
+ * the same blocks, so a preview is valid only while its hash matches. */
+export function docDigest(doc: DocumentModel): string {
+  return createHash('sha256').update(JSON.stringify(doc)).digest('hex');
+}
+
+/** Preview = the exact document export would produce, plus its digest. The
+ * export endpoints re-build the document and compare hashes, so exporting is
+ * only possible for content that has actually been previewed: a missing or
+ * stale hash returns 409 — no UI/API bypass. */
+export interface ExportPreview {
+  hash: string;
+  document: DocumentModel;
+}
+
+export function buildPreview(doc: DocumentModel): ExportPreview {
+  return { hash: docDigest(doc), document: doc };
 }
 
 function str(x: unknown): string | undefined {
