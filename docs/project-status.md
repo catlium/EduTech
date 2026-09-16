@@ -342,6 +342,65 @@ Apply the `45f567fa` stored-totalMarks data fix (Section B LONG_ANSWER
 
 ---
 
+## Phase 38f — consistent wizard flow: pattern = types only, per-type counts on Generate (2026-09-16)
+
+**Status: implemented + validated (API 127/127, typecheck + root lint clean, web rebuilt, live E2E). Committed + pushed + graphify updated.**
+
+### Goal
+
+The Source step of the bank wizard was still not consistent between modes:
+manual selection showed per-type count inputs on Source, while pattern mode
+had none there — and both derived bucket sizes differently. Per the teacher,
+a paper pattern's job in the question bank is to determine the **question
+types** only (not bucket counts), so both modes should pick types on Source
+and let the Generate step decide **how many per type**, then preview/export
+respect those counts.
+
+### Completed work
+
+- **Source step = types only.** Manual mode's editable "Questions per type"
+  inputs are removed. Pattern mode (approved pattern picker) and manual mode
+  (type + difficulty toggles) now both stop at "which question types".
+  Pattern hint text now reads "the pattern sets the question types".
+- **Generate step owns the counts.** Step 2 renders editable per-type count
+  inputs for the active types (pattern mode: types from pattern structure;
+  manual mode: selected types), one number each. Counts default to the
+  pattern's per-type section totals (pattern mode) or 10 (manual mode), and
+  keep user edits.
+- **Shared bucket builder**: `manualBuckets`/`patternBuckets` replaced by a
+  single `buildTargets` in `question-bank-wizard.tsx` — for each active type
+  the count is split across difficulties by the pattern's section
+  `difficultyDistribution` (pattern mode) or an equal split (manual mode),
+  dropping zero-count difficulties.
+- **Data fix applied**: pattern `45f567fa` stored `totalMarks` 9 → 6 (Section
+  B LONG_ANSWER 3×3, attempt 2) and pattern total 13 → 10, via direct DB
+  UPDATE. `POST /paper-patterns/45f567fa…/assessment` now succeeds (DRAFT,
+  maxMarks 10), verified live and the test assessment deleted.
+
+### Validation
+
+- API 127/127, web typecheck clean, root lint 9 tasks 0 fail.
+- Web container rebuilt with the fresh image (`edutech-web` manifest
+  matches the running container) and serving the new bundle
+  (`Questions per type` present in the questions page chunk).
+- Live E2E via API: `/export/questions/preview` with a manual per-type bucket
+  set (5 MCQ split EASY 2 / MEDIUM 2 / HARD 1) returns 6 blocks (1 MCQ
+  heading + 5 capped questions); without `?buckets=` the full pool (469)
+  returns unchanged.
+
+### Known issues / deferred
+
+- The global `(type,difficulty)` slice noted in 38e remains; acceptable for a
+  bank-export preview, unaffected for QP/assessment flows.
+
+### Exact recommended next task
+
+Browser journey: open the questions page Wizard, pick a pattern (Source shows
+no counts), on Generate set 5 MCQ + 2 LONG_ANSWER, Check bank, then Preview
+and PDF/DOCX export — confirm the export contains exactly those counts.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 **Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**

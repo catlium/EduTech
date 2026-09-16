@@ -74,10 +74,11 @@ Teacher-reported follow-ups after the Phase 38 checkpoint:
 - [x] New-Assessment button fix (assessments page): broken `valueAsNumber`
       mapping made empty duration/marks become NaN → zod reject → silent
       no-op; now `setValueAs('' → undefined)` + inline field errors.
-- [ ] Known data note: live approved pattern `45f567fa` still stores
+- [ ] ~~Known data note: live approved pattern `45f567fa` still stores
       `totalMarks 9` for its optional LONG_ANSWER 3×3 attempt 2 section — the
       new computed value is 6. Re-approving/editing that pattern will flag it;
-      a small data fix (update stored totalMarks) is pending a decision.
+      a small data fix (update stored totalMarks) is pending a decision.~~
+      **Resolved in batch 5** (stored 9→6, 13→10 via direct DB update).
 - [x] Validation: API 127/127 tests (new xlsx writer tests + QP-doc header),
       typecheck (api/web) + api eslint clean, containers rebuilt, live E2E:
       generate-missing dry-run returns deficit buckets, QP preview header
@@ -180,6 +181,36 @@ Teacher-reported follow-ups after batch 3:
       exact targets (2 MCQ + 3 LONG_ANSWER → 5 questions, grouped under type
       headings), pattern-scoped with buckets shows section heading + cap, no
       param returns all (469). Docs + commit + push + graphify pending.
+
+### Follow-up batch 5 — consistent wizard flow: pattern = types only, per-type counts on Generate (2026-09-16)
+
+Teacher follow-ups after batch 4:
+
+- [x] Wizard Source step no longer has per-type count inputs for manual mode.
+      Pattern mode and manual mode are now consistent: Source step only
+      determines WHICH question types (pattern sections or manual toggle).
+      No counts are shown or editable on Source.
+- [x] Wizard Generate step now renders editable per-type count inputs for the
+      active types (pattern = types from pattern structure; manual = selected
+      types). Counts default to pattern section totals (pattern mode) or 10
+      (manual mode). Per-type count drives the bucket split (pattern
+      distribution or equal difficulty split). Check bank, deficit, batch, and
+      Generate all use these buckets.
+- [x] `buildTargets` replaces `manualBuckets`/`patternBuckets`: shared
+      type×difficulty target builder; for manual, equal split across selected
+      difficulties; for pattern, the section's `difficultyDistribution`.
+      Counts come from the `counts` state fed by the Generate step UI.
+- [x] Pattern hint text updated: "targets come from the pattern" → "the pattern
+      sets the question types".
+- [x] Known data note resolved: pattern `45f567fa` stored `totalMarks` 9 → 6
+      (Section B LONG_ANSWER 3×3, attempt 2 = 6) and 13 → 10 via direct DB
+      UPDATE; live-verified `POST /paper-patterns/45f567fa…/assessment` now
+      succeeds (DRAFT, maxMarks 10).
+- [x] Validation: API 127/127, web typecheck + root lint clean; web container
+      rebuilt with fresh image; live E2E — export preview with manually
+      constructed per-type bucket (5 MCQ across difficulties) returns 6 blocks
+      (1 heading + 5 questions); full bank still 469. Docs + commit + push +
+      graphify update.
 
 ---
 
