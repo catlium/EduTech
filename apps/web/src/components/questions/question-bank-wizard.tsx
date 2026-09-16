@@ -58,8 +58,6 @@ const STEPS = ['Scope', 'Source', 'Generate', 'Preview & Export'] as const;
 
 type Mode = 'pattern' | 'manual';
 
-type WizardBucket = GenerateBankBucket & { section?: string };
-
 interface WizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -83,24 +81,57 @@ function splitDifficulties(difficulties: QuestionDifficulty[]): Record<QuestionD
   return dist;
 }
 
-/* Manual targets: one count per type, split across the chosen difficulties. */
-function manualBuckets(
-  types: string[],
-  difficulties: QuestionDifficulty[],
+/* Percentage split for a type's difficulty distribution (pattern sections) —
+ * falls back to all-MEDIUM when the section has no distribution. */
+function patternDifficultySplit(
+  structure: PaperPattern['structure'] | null,
+  questionType: string,
+): Record<QuestionDifficulty, number> {
+  const section = structure?.sections.find((s) => s.questionType === questionType);
+  const dist = section?.difficultyDistribution;
+  const total = dist ? dist.EASY + dist.MEDIUM + dist.HARD : 0;
+  if (dist && total > 0) {
+    return { EASY: dist.EASY, MEDIUM: dist.MEDIUM, HARD: dist.HARD };
+  }
+  return { EASY: 0, MEDIUM: 100, HARD: 0 };
+}
+
+/* Type × difficulty targets shared by both modes. The Source step only decides
+ * WHICH types: pattern mode takes the pattern's section types, manual mode
+ * the chosen types. The per-type count comes from the Generate step and is
+ * split across difficulties by the pattern's distribution (pattern mode) or an
+ * equal split (manual mode). */
+function buildTargets(
+  mode: Mode,
+  structure: PaperPattern['structure'] | null,
+  selectedTypes: string[],
+  selectedDifficulties: QuestionDifficulty[],
   counts: Record<string, number>,
-): WizardBucket[] {
-  const dist = splitDifficulties(difficulties);
-  return types.flatMap((questionType) =>
-    difficulties.map((difficulty) => ({
-      questionType,
-      difficulty,
-      count: Math.max(1, Math.round(((counts[questionType] ?? 1) * dist[difficulty]) / 100)),
-    })),
-  );
+): GenerateBankBucket[] {
+  const types =
+    mode === 'manual'
+      ? selectedTypes
+      : [...new Set((structure?.sections ?? []).flatMap((s) => (s.questionType ? [s.questionType] : [])))];
+  const out: GenerateBankBucket[] = [];
+  for (const questionType of types) {
+    const dist =
+      mode === 'manual'
+        ? splitDifficulties(selectedDifficulties)
+        : patternDifficultySplit(structure, questionType);
+    const target = counts[questionType] ?? 0;
+    if (target <= 0) continue;
+    for (const difficulty of DIFFICULTIES) {
+      const pct = dist[difficulty] ?? 0;
+      if (pct <= 0) continue;
+      const n = Math.round((target * pct) / 100);
+      if (n > 0) out.push({ questionType, difficulty, count: n });
+    }
+  }
+  return out;
 }
 
 /* Merge duplicate (questionType, difficulty) keys by summing counts. */
-function mergeBuckets(buckets: WizardBucket[]): GenerateBankBucket[] {
+function mergeBuckets(buckets: GenerateBankBucket[]): GenerateBankBucket[] {
   const map = new Map<string, GenerateBankBucket>();
   for (const b of buckets) {
     const key = `${b.questionType}|${b.difficulty}`;
@@ -112,25 +143,6 @@ function mergeBuckets(buckets: WizardBucket[]): GenerateBankBucket[] {
     });
   }
   return [...map.values()];
-}
-
-/* Pattern targets: each section's count, split by its difficulty distribution. */
-function patternBuckets(structure: PaperPattern['structure']): WizardBucket[] {
-  const out: WizardBucket[] = [];
-  for (const section of structure?.sections ?? []) {
-    if (!section.questionType || !section.count) continue;
-    const dist = section.difficultyDistribution;
-    const total = dist ? dist.EASY + dist.MEDIUM + dist.HARD : 0;
-    if (dist && total > 0) {
-      for (const difficulty of DIFFICULTIES) {
-        const n = Math.round((section.count * (dist[difficulty] ?? 0)) / 100);
-        if (n > 0) out.push({ questionType: section.questionType, difficulty, count: n, section: section.name });
-      }
-    } else {
-      out.push({ questionType: section.questionType, difficulty: 'MEDIUM', count: section.count, section: section.name });
-    }
-  }
-  return out;
 }
 
 export function QuestionBankWizard({
@@ -215,11 +227,40 @@ export function QuestionBankWizard({
 
   const activePattern = patterns.find((p) => p.id === patternId) ?? null;
 
-  const buckets = useMemo<WizardBucket[]>(
+  /* The types this wizard run targets: pattern sections (pattern mode) or the
+   * manually chosen types. Counts are decided in the Generate step, not here. */
+  const activeTypes = useMemo(
     () =>
       mode === 'pattern'
-        ? patternBuckets(activePattern?.structure ?? null)
-        : manualBuckets(selectedTypes, selectedDifficulties, counts),
+        ? [...new Set((activePattern?.structure?.sections ?? []).flatMap((s) => (s.questionType ? [s.questionType] : [])))]
+        : selectedTypes,
+    [mode, activePattern, selectedTypes],
+  );
+
+  /* Seed per-type counts for the active types so the Generate step has a
+   * starting value (pattern total when available, otherwise 10). Keeps any
+   * already-entered counts. */
+  useEffect(() => {
+    setCounts((prev) => {
+      const next: Record<string, number> = { ...prev };
+      for (const t of activeTypes) {
+        if (next[t] === undefined) {
+          const total =
+            mode === 'pattern'
+              ? (activePattern?.structure?.sections ?? [])
+                  .filter((s) => s.questionType === t)
+                  .reduce((sum, s) => sum + (s.count ?? 0), 0)
+              : 10;
+          next[t] = Math.max(1, total);
+        }
+      }
+      return next;
+    });
+  }, [activeTypes, mode, activePattern]);
+
+  const buckets = useMemo<GenerateBankBucket[]>(
+    () =>
+      buildTargets(mode, activePattern?.structure ?? null, selectedTypes, selectedDifficulties, counts),
     [mode, activePattern, selectedTypes, selectedDifficulties, counts],
   );
 
@@ -444,7 +485,8 @@ export function QuestionBankWizard({
                     {activePattern?.structure && (
                       <p className="text-xs text-muted-foreground">
                         {activePattern.structure.sections.length} sections ·{' '}
-                        {activePattern.structure.totalMarks} marks — targets come from the pattern.
+                        {activePattern.structure.totalMarks} marks — the pattern sets the
+                        question types.
                       </p>
                     )}
                   </div>
@@ -507,33 +549,6 @@ export function QuestionBankWizard({
                       ))}
                     </div>
                   </div>
-                  <div className="grid gap-2">
-                    <Label>Questions per type</Label>
-                    <div className="flex flex-wrap gap-3">
-                      {selectedTypes.map((t) => (
-                        <label key={t} className="flex items-center gap-2 text-xs">
-                          {types.find((x) => x.code === t)?.name ?? t}
-                          <Input
-                            type="number"
-                            min={1}
-                            className="w-20"
-                            value={counts[t] ?? 1}
-                            onChange={(e) =>
-                              setCounts((prev) => ({
-                                ...prev,
-                                [t]: Math.max(1, Number(e.target.value) || 1),
-                              }))
-                            }
-                          />
-                        </label>
-                      ))}
-                      {selectedTypes.length === 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          Select at least one type.
-                        </span>
-                      )}
-                    </div>
-                  </div>
                 </>
               )}
             </div>
@@ -543,9 +558,7 @@ export function QuestionBankWizard({
           {step === 2 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
-                  {buckets.length} target bucket{buckets.length !== 1 ? 's' : ''}
-                </span>
+                <span className="text-sm font-medium">Questions per type</span>
                 <Button
                   size="sm"
                   variant="outline"
@@ -560,15 +573,23 @@ export function QuestionBankWizard({
                   Check bank
                 </Button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {buckets.map((b, i) => (
-                  <span
-                    key={`${b.section ?? ''}-${b.questionType}-${b.difficulty}-${i}`}
-                    className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
-                  >
-                    {b.section ? `${b.section}: ` : ''}
-                    {b.questionType} · {b.difficulty} · {b.count}
-                  </span>
+              <div className="flex flex-wrap gap-3">
+                {activeTypes.map((t) => (
+                  <label key={t} className="flex items-center gap-2 text-xs">
+                    {types.find((x) => x.code === t)?.name ?? t}
+                    <Input
+                      type="number"
+                      min={1}
+                      className="w-20"
+                      value={counts[t] ?? 1}
+                      onChange={(e) =>
+                        setCounts((prev) => ({
+                          ...prev,
+                          [t]: Math.max(1, Number(e.target.value) || 1),
+                        }))
+                      }
+                    />
+                  </label>
                 ))}
               </div>
 
