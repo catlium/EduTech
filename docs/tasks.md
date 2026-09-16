@@ -2,6 +2,14 @@
 
 ## Phase 36 — Shared Export Renderer, Preview == PDF, One Visual Source (2026-09-15)
 
+> Checkpoint 2026-09-16: derived-resource exports (Note/Summary/Flashcards/
+> Concept/Cornell) are single-visual-source, so they now send directly without
+> a preview-hash gate; the dead `previewHash` param was dropped (TS6133 broke
+> the api image). Preview-hash gate + `sendVerified` retained for Paper Pattern,
+> Question Bank and Assessment. Assessment page gained a Paper Pattern
+> PDF/DOCX export row behind the shared preview dialog. export tests 118/118,
+> api+web typecheck clean, checkpoint `74f32be`.
+
 Make PDF/DOCX export and the web preview use ONE shared visual representation:
 a pure `DocumentModel → HTML` renderer whose inline export styles are the
 single source of truth, rendered by shared Chromium (Puppeteer) for the PDF,
