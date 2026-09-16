@@ -931,7 +931,7 @@ export default function PatternBuilderPage() {
                         </p>
                       )}
                       {sec.rules.map((rule, rIdx) => {
-                        const sub = ruleSubtotal(rule);
+                        const sub = ruleSubtotal(rule, sec.compulsory ? null : sec.attemptCount);
                         const diffSum = difficultySum(rule.difficulty);
                         const diffComplete =
                           rule.difficulty.EASY !== '' &&
@@ -1263,7 +1263,10 @@ export default function PatternBuilderPage() {
                   (r) => r.questionType !== '' || r.count != null || r.marksPerQuestion != null,
                 );
                 if (configured.length === 0) return null;
-                const secSubtotal = configured.reduce((acc, r) => acc + (ruleSubtotal(r) ?? 0), 0);
+                const secSubtotal = configured.reduce(
+                  (acc, r) => acc + (ruleSubtotal(r, sec.compulsory ? null : sec.attemptCount) ?? 0),
+                  0,
+                );
                 return (
                   <div key={sec.id} className="space-y-1.5">
                     <div className="flex items-center justify-between border-b pb-1">
@@ -1277,7 +1280,7 @@ export default function PatternBuilderPage() {
                       </span>
                     </div>
                     {configured.map((r, i) => {
-                      const sub = ruleSubtotal(r);
+                      const sub = ruleSubtotal(r, sec.compulsory ? null : sec.attemptCount);
                       const title = questionTypeLabel(r.questionType, typeLabels);
                       const diffParts = [
                         r.difficulty.EASY,

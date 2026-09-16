@@ -389,6 +389,8 @@ export class ExportService {
       title: assessment.title,
       durationMinutes: assessment.durationMinutes,
       maxMarks: assessment.maxMarks,
+      subjects: [],
+      dateTime: {},
       instructions: assessment.instructions,
       links,
       patternSections,
@@ -397,7 +399,11 @@ export class ExportService {
     return { title: assessment.title, blocks };
   }
 
-  async buildQuestionPaperDoc(instituteId: string, paperId: string): Promise<DocumentModel> {
+  async buildQuestionPaperDoc(
+    instituteId: string,
+    paperId: string,
+    dateTime: { date?: string; time?: string } = {},
+  ): Promise<DocumentModel> {
     const [paper] = await this.db
       .select()
       .from(questionPapers)
@@ -426,16 +432,43 @@ export class ExportService {
       paper.blueprintId,
     );
 
+    const subjects = await this.subjectNamesForBlueprint(instituteId, paper.blueprintId);
+
     const blocks = exportPaperBlocks({
       title: paper.title,
       durationMinutes: paper.durationMinutes,
       maxMarks: paper.maxMarks,
+      subjects,
+      dateTime,
       instructions: paper.instructions,
       links,
       patternSections,
       scope: 'paper',
     });
     return { title: paper.title, blocks };
+  }
+
+  /** Subject display names for a paper-pattern blueprint (empty when none). */
+  private async subjectNamesForBlueprint(
+    instituteId: string,
+    blueprintId: string | null,
+  ): Promise<string[]> {
+    if (!blueprintId) return [];
+    const subjectIds = await this.db
+      .select({ subjectId: paperPatternSubjects.subjectId })
+      .from(paperPatternSubjects)
+      .where(eq(paperPatternSubjects.patternId, blueprintId));
+    if (subjectIds.length === 0) return [];
+    const rows = await this.db
+      .select({ name: subjects.name })
+      .from(subjects)
+      .where(
+        and(
+          inArray(subjects.id, subjectIds.map((r) => r.subjectId)),
+          eq(subjects.instituteId, instituteId),
+        ),
+      );
+    return rows.map((r) => r.name);
   }
 
   /** Section metadata (attempt N of M rendering) from a paper-pattern

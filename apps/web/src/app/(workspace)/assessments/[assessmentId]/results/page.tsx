@@ -28,9 +28,9 @@ export default function AssessmentResultsPage() {
   const [attempts, setAttempts] = useState<AttemptListItem[] | null>(null);
   const [analytics, setAnalytics] = useState<AssessmentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState<'pdf' | 'docx' | null>(null);
+  const [exporting, setExporting] = useState<'pdf' | 'docx' | 'xlsx' | null>(null);
 
-  async function onExport(format: 'pdf' | 'docx') {
+  async function onExport(format: 'pdf' | 'docx' | 'xlsx') {
     if (!params.assessmentId) return;
     try {
       setExporting(format);
@@ -101,6 +101,15 @@ export default function AssessmentResultsPage() {
               title="Export results sheet (DOCX)"
             >
               <Download className="mr-1 size-3.5" /> DOCX
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void onExport('xlsx')}
+              disabled={exporting !== null}
+              title="Export marks sheet (Excel)"
+            >
+              <Download className="mr-1 size-3.5" /> Excel
             </Button>
           </div>
         }

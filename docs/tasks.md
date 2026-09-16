@@ -38,6 +38,53 @@ anything is created.
       coverage OK, PDF+DOCX export, create assessment from QP (5 questions
       copied), delete QP. Docs + commit + push + graphify update.
 
+### Follow-up batch — marks accounting, QP generate-missing + date/subject, results XLSX, bank wizard (2026-09-16)
+
+Teacher-reported follow-ups after the Phase 38 checkpoint:
+
+- [x] Attempt-N-of-M marks fix everywhere: `paper-selection.ts` `requiredMarks`
+      = `attemptCount × marks`; `paper-patterns.validation.ts` computes
+      `attempted = attemptCount` for non-compulsory sections;
+      `paper-pattern-builder.ts` `ruleSubtotal(r, attempted)` + attempt-aware
+      `computeTotals`/`flattenSections`; pattern page subtotals pass
+      `sec.compulsory ? null : sec.attemptCount`. Tests: validation case
+      (3×3 attempt 2 → total 6, not 9) + `requiredMarks: 4` (2 attempts × 2).
+- [x] QP page "Generate Missing": backend `POST
+      /question-papers/:id/generate-missing` (`{buffer?, dryRun?}`) +
+      `patternShortageBuckets` (pattern subject scope, per-section
+      type×difficulty deficit distribution, keeps covered sections so the
+      buffer can add spares) calling the existing `generate-more` pipeline;
+      module imports `QuestionsModule`. Web dialog with buffer input,
+      dry-run shortage preview, queue + batch polling.
+- [x] QP export date/time + subject: `/export/question-paper/:paperId[/preview]`
+      accept `date`/`time` query params; `exportPaperBlocks` header renders
+      `Subject: …`, resolution of subject names from the blueprint pattern;
+      empty when not supplied. QP detail shows subject names (from
+      `getPaper`).
+- [x] Assessment results Excel export: added `xlsx` as a direct dep (was a
+      transitive of docx) + minimal `buildXlsxBuffer` (JSZip, one worksheet
+      per table block, named by heading) + `sendXlsx` + `xlsx` format on
+      `/export/assessment/:id/results`; web "Excel" button. Unit tests for the
+      writer (multi-sheet, escaping, empty).
+- [x] Question Bank Wizard (`/questions` header button):
+      subject/chapter/topic scope cascade → paper-pattern or manual
+      type×difficulty×count → check bank (dry-run) + Generate Missing (queues,
+      polls batch) → preview + PDF/DOCX export (pattern = arrangement, render
+      via existing `/export/questions`).
+- [x] New-Assessment button fix (assessments page): broken `valueAsNumber`
+      mapping made empty duration/marks become NaN → zod reject → silent
+      no-op; now `setValueAs('' → undefined)` + inline field errors.
+- [ ] Known data note: live approved pattern `45f567fa` still stores
+      `totalMarks 9` for its optional LONG_ANSWER 3×3 attempt 2 section — the
+      new computed value is 6. Re-approving/editing that pattern will flag it;
+      a small data fix (update stored totalMarks) is pending a decision.
+- [x] Validation: API 127/127 tests (new xlsx writer tests + QP-doc header),
+      typecheck (api/web) + api eslint clean, containers rebuilt, live E2E:
+      generate-missing dry-run returns deficit buckets, QP preview header
+      contains Subject + Date/Time, results `format=xlsx` produces a real
+      Excel 2007+ workbook with one sheet per analytics table, wizard backend
+      dry-run works. Commit + push + graphify update pending.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)

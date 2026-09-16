@@ -13,7 +13,11 @@ import {
 } from '@nestjs/common';
 
 import { QuestionPapersService } from './question-papers.service.js';
-import { CreateQuestionPaperDto, RenameQuestionPaperDto } from './dto/question-papers.dto.js';
+import {
+  CreateQuestionPaperDto,
+  RenameQuestionPaperDto,
+  GenerateMissingQuestionPaperDto,
+} from './dto/question-papers.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -119,6 +123,24 @@ export class QuestionPapersController {
       paperId,
     );
     return { coverage };
+  }
+
+  @Post(':paperId/generate-missing')
+  @RequiredRoles(...WRITE_ROLES)
+  async generateMissing(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('paperId', ParseUUIDPipe) paperId: string,
+    @Body() dto: GenerateMissingQuestionPaperDto,
+  ) {
+    const result = await this.questionPapersService.generateMissing(
+      tenant.instituteId,
+      user.userId,
+      paperId,
+      dto.buffer ?? 0,
+      dto.dryRun ?? false,
+    );
+    return { result };
   }
 
   @Post(':paperId/assessment')

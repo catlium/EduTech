@@ -11,12 +11,14 @@ import {
   paperPatterns,
   paperPatternSubjects,
   questions,
+  subjects,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import type { PaperPatternStructure } from '@catlium/contracts';
 import { PaperPatternStructureSchema } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
+import { QuestionGenerationService } from '../questions/question-generation.service.js';
 import {
   planAutoSelection,
   computePatternCoverage,
@@ -37,6 +39,7 @@ export class QuestionPapersService {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly examinations: ExaminationsService,
+    private readonly generation: QuestionGenerationService,
   ) {}
 
   // ── Create ────────────────────────────────
@@ -95,10 +98,11 @@ export class QuestionPapersService {
 
   async getPaper(instituteId: string, paperId: string) {
     const paper = await this.requirePaper(instituteId, paperId);
-    return paper;
+    const subjects = await this.paperSubjects(instituteId, paper.blueprintId);
+    return { ...paper, subjects };
   }
 
-  async renamePaper(instituteId: string, paperId: string, title: string) {
+async renamePaper(instituteId: string, paperId: string, title: string) {
     const existing = await this.requirePaper(instituteId, paperId);
     if (!title.trim()) {
       throw new BadRequestException('Title cannot be blank');
@@ -241,6 +245,103 @@ export class QuestionPapersService {
     };
   }
 
+  // ── Generate missing (shortage fill with buffer) ────────────────
+
+  /* Count APPROVED+ACTIVE questions in the pattern's subject scope per
+   * section (same filter the web builder's sectionPool uses: question type,
+   * then difficulty distribution). Returns the deficit buckets, letting the
+   * caller preview (dryRun) or queue. */
+  private async patternShortageBuckets(
+    instituteId: string,
+    paperId: string,
+  ): Promise<{ subjectId: string; buckets: { questionType: string; difficulty: Difficulty; count: number }[] }> {
+    const paper = await this.requirePaper(instituteId, paperId);
+    if (!paper.blueprintId) {
+      throw new BadRequestException('Question paper has no paper-pattern blueprint');
+    }
+    const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
+    const structure = pattern.structure as PaperPatternStructure;
+
+    const subjectRows = await this.db
+      .select({ subjectId: paperPatternSubjects.subjectId })
+      .from(paperPatternSubjects)
+      .where(eq(paperPatternSubjects.patternId, pattern.id));
+    const subjectIds = subjectRows.map((r) => r.subjectId);
+    const subjectId = subjectIds[0];
+    if (!subjectId) {
+      throw new BadRequestException('Paper pattern has no subject scope');
+    }
+
+    const scopeConditions = [
+      eq(questions.instituteId, instituteId),
+      eq(questions.approvalStatus, 'APPROVED'),
+      eq(questions.status, 'ACTIVE'),
+    ];
+    if (subjectIds.length > 0) scopeConditions.push(inArray(questions.subjectId, subjectIds));
+
+    const bank = await this.db
+      .select({ questionType: questions.questionType, difficulty: questions.difficulty })
+      .from(questions)
+      .where(and(...scopeConditions));
+
+    const DIFFS: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
+    const buckets: { questionType: string; difficulty: Difficulty; count: number }[] = [];
+    for (const section of structure.sections) {
+      const required = section.count ?? 0;
+      const type = section.questionType;
+      if (!type || required <= 0) continue;
+      const dist = section.difficultyDistribution;
+      const pool = bank.filter((q) => {
+        if (q.questionType !== type) return false;
+        if (!dist) return true;
+        return (dist[q.difficulty as keyof typeof dist] ?? 0) > 0;
+      });
+      const shortage = required - pool.length;
+      if (shortage < 0) continue;
+      const share = DIFFS.filter((d) => (dist && (dist[d] ?? 0) > 0) || !dist);
+      if (share.length === 0) {
+        buckets.push({ questionType: type, difficulty: 'MEDIUM', count: shortage });
+      } else {
+        for (const difficulty of share) {
+          const n = Math.round((shortage * ((dist && dist[difficulty]) ?? 0)) / 100);
+          buckets.push({ questionType: type, difficulty, count: n });
+        }
+      }
+    }
+
+    return { subjectId, buckets };
+  }
+
+  async generateMissing(
+    instituteId: string,
+    userId: string,
+    paperId: string,
+    buffer = 0,
+    dryRun = false,
+  ) {
+    const { subjectId, buckets } = await this.patternShortageBuckets(instituteId, paperId);
+    const buffered = buckets
+      .map((b) => ({ ...b, count: b.count + buffer }))
+      .filter((b) => b.count > 0);
+    if (buffered.length === 0) {
+      return {
+        generated: false,
+        batchId: null,
+        jobIds: null,
+        jobId: null,
+        status: 'NO_ACTION' as const,
+        buckets: [],
+        totalExisting: 0,
+        totalDeficit: 0,
+      };
+    }
+    return this.generation.computeDeficitsAndGenerateMore(instituteId, userId, {
+      subjectId,
+      buckets: buffered,
+      dryRun,
+    });
+  }
+
   // ── Convert to assessment ─────────────────
 
   async createAssessmentFromPaper(instituteId: string, userId: string, paperId: string) {
@@ -273,6 +374,25 @@ export class QuestionPapersService {
   }
 
   // ── Internals ─────────────────────────────
+
+  /** Subject names for a paper's blueprint (empty when none). */
+  private async paperSubjects(
+    instituteId: string,
+    blueprintId: string | null,
+  ): Promise<string[]> {
+    if (!blueprintId) return [];
+    const rows = await this.db
+      .select({ name: subjects.name })
+      .from(paperPatternSubjects)
+      .innerJoin(subjects, eq(paperPatternSubjects.subjectId, subjects.id))
+      .where(
+        and(
+          eq(paperPatternSubjects.patternId, blueprintId),
+          eq(subjects.instituteId, instituteId),
+        ),
+      );
+    return rows.map((r) => r.name);
+  }
 
   private async requirePaper(instituteId: string, paperId: string) {
     const [paper] = await this.db

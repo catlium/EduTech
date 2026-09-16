@@ -52,6 +52,8 @@ const input = {
   title: 'QP Test',
   durationMinutes: 30,
   maxMarks: 6,
+  subjects: ['Mathematics'],
+  dateTime: { date: '2026-03-14' },
   instructions: ['Show all working.'],
   links: [
     link('q1', 'Section A', 1, 1),
@@ -67,6 +69,11 @@ test('student scope: headings per section, attempt note, no answers', () => {
   const texts = blocks.map((b) => (b.kind === 'heading' ? b.text : null));
   assert.deepEqual(texts.filter(Boolean), ['Section A', 'Section B', 'General']);
   assert.ok(blocks.some((b) => b.kind === 'paragraph' && b.text.includes('Attempt any 1 of 2')));
+  assert.ok(
+    blocks.some(
+      (b) => b.kind === 'paragraph' && b.text.includes('Subject: Mathematics') && b.text.includes('2026-03-14'),
+    ),
+  );
   const flat = JSON.stringify(blocks);
   assert.ok(!flat.includes('xplain'), 'student paper must not contain the explanation');
 });

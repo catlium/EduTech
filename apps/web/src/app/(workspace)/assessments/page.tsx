@@ -155,14 +155,21 @@ export default function AssessmentsListPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="durationMinutes">Duration (minutes)</Label>
-                <Input
-                  id="durationMinutes"
-                  type="number"
-                  min={1}
-                  max={600}
-                  placeholder="Optional"
-                  {...form.register('durationMinutes', { valueAsNumber: true })}
-                />
+<Input
+                    id="durationMinutes"
+                    type="number"
+                    min={1}
+                    max={600}
+                    placeholder="Optional"
+                    {...form.register('durationMinutes', {
+                      setValueAs: (v: string) => (v === '' ? undefined : Number(v)),
+                    })}
+                  />
+                  {form.formState.errors.durationMinutes?.message && (
+                    <p className="text-sm text-destructive">
+                      {form.formState.errors.durationMinutes.message}
+                    </p>
+                  )}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="maxMarks">Max Marks</Label>
@@ -172,8 +179,13 @@ export default function AssessmentsListPage() {
                   min={1}
                   max={10000}
                   placeholder="Optional"
-                  {...form.register('maxMarks', { valueAsNumber: true })}
+                  {...form.register('maxMarks', {
+                    setValueAs: (v: string) => (v === '' ? undefined : Number(v)),
+                  })}
                 />
+                {form.formState.errors.maxMarks?.message && (
+                  <p className="text-sm text-destructive">{form.formState.errors.maxMarks.message}</p>
+                )}
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">

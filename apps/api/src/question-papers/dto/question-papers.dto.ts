@@ -1,4 +1,15 @@
-import { IsDefined, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsDefined,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateQuestionPaperDto {
   @IsUUID()
@@ -23,4 +34,16 @@ export class RenameQuestionPaperDto {
   @MinLength(1)
   @MaxLength(255)
   title!: string;
+}
+
+export class GenerateMissingQuestionPaperDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  buffer?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
 }

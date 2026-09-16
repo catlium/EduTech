@@ -83,9 +83,11 @@ export function buildInstructions(text: string): string[] {
     .filter(Boolean);
 }
 
-export function ruleSubtotal(r: Rule): number | null {
+export function ruleSubtotal(r: Rule, attempted?: number | null): number | null {
   if (r.count == null || r.marksPerQuestion == null) return null;
-  return r.count * r.marksPerQuestion;
+  // Attempt-N-of-M section: worth what a student can score (attemptCount × marks).
+  const qty = attempted && attempted > 0 ? attempted : r.count;
+  return qty * r.marksPerQuestion;
 }
 
 export function computeTotals(sections: Section[]) {
@@ -101,7 +103,7 @@ export function computeTotals(sections: Section[]) {
       hasRule = true;
       if (r.count == null || r.marksPerQuestion == null) uncertain = true;
       questions += r.count ?? 0;
-      marks += (r.count ?? 0) * (r.marksPerQuestion ?? 0);
+      marks += ruleSubtotal(r, !s.compulsory ? s.attemptCount : null) ?? 0;
     }
     if (hasRule) configuredSections += 1;
   }
@@ -158,7 +160,7 @@ export function flattenSections(sections: Section[]): BackendSection[] {
         questionType: r.questionType || undefined,
         count: r.count,
         marksPerQuestion: r.marksPerQuestion,
-        totalMarks: ruleSubtotal(r),
+        totalMarks: ruleSubtotal(r, s.compulsory ? null : s.attemptCount),
         compulsory: s.compulsory,
         attemptCount: s.attemptCount,
         difficultyDistribution: difficultyDone

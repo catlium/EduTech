@@ -44,13 +44,36 @@ import type {
   PatternCoverageResponse,
 } from '@catlium/contracts';
 
+interface PaperWithSubjects extends QuestionPaperResponse {
+  subjects: string[];
+}
+
+interface ShortageBucket {
+  questionType: string;
+  difficulty: string;
+  requested: number;
+  existing: number;
+  pending: number;
+  deficit: number;
+}
+
+interface GenerateMissingResult {
+  generated: boolean;
+  status: 'NO_ACTION' | 'QUEUED';
+  batchId: string | null;
+  jobIds: string[] | null;
+  buckets: ShortageBucket[];
+  totalExisting: number;
+  totalDeficit: number;
+}
+
 export default function QuestionPaperDetailPage() {
   const router = useRouter();
   const params = useParams<{ paperId: string }>();
   const { institute } = useTenant();
   const isTeacher = canManage(institute);
 
-  const [paper, setPaper] = useState<QuestionPaperResponse | null>(null);
+  const [paper, setPaper] = useState<PaperWithSubjects | null>(null);
   const [questions, setQuestions] = useState<QuestionPaperQuestion[]>([]);
   const [coverage, setCoverage] = useState<PatternCoverageResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,6 +88,15 @@ export default function QuestionPaperDetailPage() {
   const [createAssessOpen, setCreateAssessOpen] = useState(false);
   const [creatingAssess, setCreatingAssess] = useState(false);
 
+  const [genOpen, setGenOpen] = useState(false);
+  const [genBuffer, setGenBuffer] = useState(0);
+  const [genPreview, setGenPreview] = useState<GenerateMissingResult | null>(null);
+  const [genEffect, setGenEffect] = useState<GenerateMissingResult | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  const [exportDate, setExportDate] = useState('');
+  const [exportTime, setExportTime] = useState('');
+
   const isPatternBased = !!paper?.blueprintId;
   const patternSections = (coverage?.sections ?? []).filter((s) => s.requiredCount > 0);
   const uncoveredSections = patternSections.filter((s) => s.status !== 'OK');
@@ -76,7 +108,7 @@ export default function QuestionPaperDetailPage() {
     setError(null);
     try {
       const [{ paper: p }, { questions: q }, { coverage: c }] = await Promise.all([
-        api<{ paper: QuestionPaperResponse }>(`/question-papers/${params.paperId}`),
+        api<{ paper: PaperWithSubjects }>(`/question-papers/${params.paperId}`),
         api<{ questions: QuestionPaperQuestion[] }>(
           `/question-papers/${params.paperId}/questions`,
         ),
@@ -144,11 +176,14 @@ export default function QuestionPaperDetailPage() {
     }
   }
 
+  const dateTimeQuery = () =>
+    exportDate || exportTime ? `&date=${encodeURIComponent(exportDate)}&time=${encodeURIComponent(exportTime)}` : '';
+
   async function onExport(format: 'pdf' | 'docx') {
     setExporting(true);
     try {
       await downloadFile(
-        `/export/question-paper/${params.paperId}?format=${format}`,
+        `/export/question-paper/${params.paperId}?format=${format}${dateTimeQuery()}`,
         `question-paper-${params.paperId}.${format}`,
       );
       toast.success(`Exported as ${format.toUpperCase()}`);
@@ -161,10 +196,55 @@ export default function QuestionPaperDetailPage() {
 
   const loadPreview = useCallback(async (): Promise<ExportPreviewValue> => {
     const { preview } = await api<{ preview: ExportPreviewValue }>(
-      `/export/question-paper/${params.paperId}/preview`,
+      `/export/question-paper/${params.paperId}/preview${dateTimeQuery()}`,
     );
     return preview;
-  }, [params.paperId]);
+  }, [params.paperId, exportDate, exportTime]);
+
+  /* ── generate missing (shortage fill) ── */
+  async function previewGenerateMissing() {
+    setGenPreview(null);
+    setGenerating(true);
+    try {
+      const { result } = await api<{ result: GenerateMissingResult }>(
+        `/question-papers/${params.paperId}/generate-missing`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ buffer: genBuffer, dryRun: true }),
+        },
+      );
+      setGenPreview(result);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to preview shortages');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function onGenerateMissing() {
+    setGenerating(true);
+    try {
+      const { result } = await api<{ result: GenerateMissingResult }>(
+        `/question-papers/${params.paperId}/generate-missing`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ buffer: genBuffer, dryRun: false }),
+        },
+      );
+      setGenEffect(result);
+      if (result.totalDeficit === 0) {
+        toast.success('All sections fully covered — nothing to generate');
+      } else if (result.batchId) {
+        toast.success('Generation queued — questions will appear once approved');
+      }
+      await fetchPaper();
+      setGenOpen(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to generate questions');
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   /* ── render ── */
   if (loading) return <PageLoader />;
@@ -198,6 +278,7 @@ export default function QuestionPaperDetailPage() {
       <PageHeader
         title={paper.title}
         description={[
+          paper.subjects?.length > 0 ? `${paper.subjects.join(', ')}` : null,
           paper.durationMinutes && `${paper.durationMinutes} min`,
           paper.maxMarks && `${paper.maxMarks} marks`,
           `${questions.length} question${questions.length !== 1 ? 's' : ''}`,
@@ -207,6 +288,21 @@ export default function QuestionPaperDetailPage() {
         actions={
           isTeacher && (
             <div className="flex flex-wrap gap-2">
+              {isPatternBased && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setGenBuffer(0);
+                    setGenPreview(null);
+                    setGenEffect(null);
+                    setGenOpen(true);
+                  }}
+                  disabled={coverage === null || patternSections.length === 0}
+                >
+                  <Wand2 className="mr-1 size-3.5" /> Generate Missing
+                </Button>
+              )}
               {isPatternBased && (
                 <Button variant="outline" size="sm" onClick={() => void onAutoSelect()} disabled={autoSelecting}>
                   <Wand2 className="mr-1 size-3.5" />
@@ -242,7 +338,7 @@ export default function QuestionPaperDetailPage() {
             <CardDescription>
               {uncoveredSections.length === 0
                 ? 'All sections fully covered.'
-                : `${uncoveredSections.length} section${uncoveredSections.length !== 1 ? 's' : ''} with shortages — use Shuffle / Regenerate to re-select.`}
+                : `${uncoveredSections.length} section${uncoveredSections.length !== 1 ? 's' : ''} with shortages — Generate Missing creates the shortfall (with an optional buffer).`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -346,6 +442,26 @@ export default function QuestionPaperDetailPage() {
               The student paper never includes answers or difficulty labels.
             </DialogDescription>
           </DialogHeader>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs font-medium">
+              Date
+              <input
+                type="date"
+                value={exportDate}
+                onChange={(e) => setExportDate(e.target.value)}
+                className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="text-xs font-medium">
+              Time
+              <input
+                type="time"
+                value={exportTime}
+                onChange={(e) => setExportTime(e.target.value)}
+                className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -367,6 +483,72 @@ export default function QuestionPaperDetailPage() {
               Preview
             </Button>
             <Button variant="ghost" onClick={() => setExportOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Generate Missing dialog ── */}
+      <Dialog open={genOpen} onOpenChange={(open) => { setGenOpen(open); if (!open) setGenPreview(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Generate Missing Questions</DialogTitle>
+            <DialogDescription>
+              Detects questions the paper pattern requires but that are missing from the bank, and queues AI generation for the shortfall.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-end justify-between gap-3">
+            <label className="text-xs font-medium">
+              Extra buffer per bucket
+              <input
+                type="number"
+                min={0}
+                max={10}
+                value={genBuffer}
+                onChange={(e) => setGenBuffer(Number(e.target.value))}
+                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+              />
+            </label>
+            <Button variant="outline" size="sm" onClick={() => void previewGenerateMissing()} disabled={generating}>
+              {generating ? 'Checking…' : 'Preview shortage'}
+            </Button>
+          </div>
+
+          {genPreview && (
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">Bank status</p>
+              <p className="text-xs text-muted-foreground">
+                {genPreview.totalExisting} existing questions across the pattern scope ·{' '}
+                {genPreview.totalDeficit}{' '}
+                {genPreview.totalDeficit === 1 ? 'question short' : 'questions short'}
+              </p>
+              {genPreview.buckets.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs">
+                  {genPreview.buckets.map((b) => (
+                    <li key={`${b.questionType}-${b.difficulty}`}>
+                      {b.questionType} · {b.difficulty}: {b.existing} existing, {b.pending} pending, {b.deficit} short
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {genEffect && (
+            <p className="text-xs text-muted-foreground">
+              {genEffect.generated && genEffect.status === 'QUEUED'
+                ? 'Generation queued — once approved, use Shuffle / Regenerate to select from the new questions.'
+                : genEffect.totalDeficit === 0
+                  ? 'All sections fully covered — nothing to generate.'
+                  : 'Nothing was queued. Try the preview to see the shortage.'}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button onClick={() => void onGenerateMissing()} disabled={generating}>
+              {generating ? 'Queuing…' : 'Generate Missing'}
+            </Button>
+            <Button variant="ghost" onClick={() => setGenOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

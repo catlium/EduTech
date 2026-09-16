@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import { ExportService } from './export.service.js';
 import { buildPreview } from './export.content-blocks.js';
 import type { DocumentModel } from './export.content-blocks.js';
-import { sendDoc } from './export.renderers.js';
+import { sendDoc, sendXlsx } from './export.renderers.js';
 import { renderDocumentBodyHtml } from './render-html.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
@@ -13,7 +13,7 @@ import { RequiredRoles } from '../common/decorators/roles.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 
-const EXPORT_FORMATS = ['pdf', 'docx'] as const;
+const EXPORT_FORMATS = ['pdf', 'docx', 'xlsx'] as const;
 const EXPORT_INCLUDES = ['paper', 'answers'] as const;
 
 /* Preview payload = digest + document + the shared renderer's body HTML, so
@@ -49,6 +49,8 @@ export class ExportController {
   ): Promise<void> {
     if (format === 'pdf') {
       await this.exportService.sendPdf(res, document, filename);
+    } else if (format === 'xlsx') {
+      await sendXlsx(res, document, filename);
     } else {
       sendDoc(res, document, filename);
     }
@@ -217,8 +219,15 @@ export class ExportController {
     @Param('paperId', ParseUUIDPipe) paperId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
     format: (typeof EXPORT_FORMATS)[number] = 'pdf',
+    @Query('date') date?: string,
+    @Query('time') time?: string,
   ): Promise<void> {
-    const doc = await this.exportService.buildQuestionPaperDoc(tenant.instituteId, paperId);
+    const dateTime = date || time ? { date, time } : {};
+    const doc = await this.exportService.buildQuestionPaperDoc(
+      tenant.instituteId,
+      paperId,
+      dateTime,
+    );
     await this.send(res, doc, format, `question-paper-${paperId}`);
   }
 
@@ -227,8 +236,15 @@ export class ExportController {
   async previewQuestionPaper(
     @Tenant() tenant: TenantContext,
     @Param('paperId', ParseUUIDPipe) paperId: string,
+    @Query('date') date?: string,
+    @Query('time') time?: string,
   ): Promise<PreviewPayload> {
-    const doc = await this.exportService.buildQuestionPaperDoc(tenant.instituteId, paperId);
+    const dateTime = date || time ? { date, time } : {};
+    const doc = await this.exportService.buildQuestionPaperDoc(
+      tenant.instituteId,
+      paperId,
+      dateTime,
+    );
     return { preview: withHtml(buildPreview(doc)) };
   }
 }

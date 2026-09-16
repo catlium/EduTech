@@ -34,10 +34,16 @@ export function validatePaperPatternStructure(structure: PaperPatternStructure):
     const marks = section.marksPerQuestion ?? null;
     const total = section.totalMarks ?? null;
     if (count != null && marks != null) {
-      const computed = count * marks;
+      // Attempt-N-of-M: the marks a student can score, not what the paper
+      // presents. A 3×3 long-answer section attempted 2-of-3 is worth 6, not 9.
+      const attempted =
+        section.compulsory === false && section.attemptCount && section.attemptCount > 0
+          ? section.attemptCount
+          : count;
+      const computed = attempted * marks;
       if (total != null && total !== computed) {
         errors.push(
-          `"${label}": totalMarks ${total} does not match ${count} questions × ${marks} marks = ${computed}`,
+          `"${label}": totalMarks ${total} does not match ${attempted} questions × ${marks} marks = ${computed}`,
         );
       }
       declaredTotal += total ?? computed;

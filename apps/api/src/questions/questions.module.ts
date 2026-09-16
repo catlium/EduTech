@@ -10,5 +10,6 @@ import { JobsModule } from '../jobs/jobs.module.js';
   controllers: [QuestionsController, QuestionTypesController],
   providers: [QuestionsService, QuestionTypesService, QuestionGenerationService],
   imports: [JobsModule],
+  exports: [QuestionGenerationService],
 })
 export class QuestionsModule {}

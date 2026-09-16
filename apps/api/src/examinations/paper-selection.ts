@@ -246,7 +246,7 @@ export function computePatternCoverage(
       questionType: s.questionType ?? null,
       requiredCount,
       attemptCount,
-      requiredMarks: requiredCount * marks,
+      requiredMarks: attemptCount * marks,
       presentCount: present.length,
       presentMarks,
       status,

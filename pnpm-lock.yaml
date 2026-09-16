@@ -80,6 +80,9 @@ importers:
       drizzle-orm:
         specifier: ^0.44.7
         version: 0.44.7(@types/pg@8.21.0)(pg@8.23.0)
+      jszip:
+        specifier: ^3.10.2
+        version: 3.10.2
       puppeteer-core:
         specifier: ^25.11.0
         version: 25.11.0

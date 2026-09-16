@@ -1,5 +1,7 @@
 import { Response } from 'express';
 
+import { buildXlsxBuffer } from './export.xlsx.js';
+
 import {
   Document,
   Packer,
@@ -23,6 +25,18 @@ import type { DocBlock, DocumentModel } from './export.content-blocks.js';
  * shared Puppeteer/Chromium path in PuppeteerService — never a second layout. */
 export function sendDoc(res: Response, model: DocumentModel, filename: string): void {
   void sendDocx(res, model, filename);
+}
+
+// ── XLSX ──────────────────────────────────────────────────────────────
+
+export async function sendXlsx(res: Response, model: DocumentModel, filename: string): Promise<void> {
+  const buffer = await buildXlsxBuffer(model);
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+  res.send(buffer);
 }
 
 // ── DOCX ─────────────────────────────────────────────────────────────

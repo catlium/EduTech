@@ -31,6 +31,7 @@ import { ExportPreviewDialog } from '@/components/export/export-preview-dialog';
 import type { ExportPreviewValue } from '@/components/export/export-preview-dialog';
 import { useTenant, canManage } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
+import { QuestionBankWizard } from '@/components/questions/question-bank-wizard';
 import { QuestionBankSets } from '@/components/questions/question-bank-sets';
 import { QuestionPaperBuilder } from '@/components/questions/question-paper-builder';
 import { PageHeader } from '@/components/app/page-header';
@@ -385,6 +386,7 @@ export default function QuestionsListPage() {
   const [previewState, setPreviewState] = useState<ExportPreviewValue | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [include, setInclude] = useState<'paper' | 'answers'>('paper');
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const [questionTypes, setQuestionTypes] = useState<QuestionTypeDefinition[]>([]);
 
@@ -875,6 +877,9 @@ export default function QuestionsListPage() {
         actions={
           isTeacher && (
             <>
+              <Button size="sm" onClick={() => setWizardOpen(true)}>
+                <Sparkles className="mr-1 size-3.5" /> Wizard
+              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -937,6 +942,15 @@ export default function QuestionsListPage() {
           onChanged={() => void refresh()}
         />
       </div>
+
+      <QuestionBankWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        subjects={subjects}
+        chapters={chapters}
+        topics={topics}
+        onChanged={() => void refresh()}
+      />
 
       <div className="mb-4">
         <QuestionPaperBuilder

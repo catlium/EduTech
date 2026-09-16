@@ -133,6 +133,7 @@ test('optional "attempt N of M" fills the presented set (M) and still reports N'
   );
   assert.equal(coverage[0]!.requiredCount, 3);
   assert.equal(coverage[0]!.attemptCount, 2);
+  assert.equal(coverage[0]!.requiredMarks, 4); // attemptCount(2) × marks(2) — what a student can score
   assert.equal(coverage[0]!.status, 'OK');
 });
 

@@ -75,6 +75,82 @@ remaining Phase 37 export-semantics tests for pattern grouping + results doc.
 
 ---
 
+## Phase 38b — marks accounting, QP generate-missing + date/subject, results XLSX, bank wizard (2026-09-16)
+
+**Status: implemented + validated (API 127/127, typecheck/eslint clean, containers rebuilt, live E2E). Docs updated; commit + push + graphify update in progress.**
+
+### Goal
+
+Close the teacher-reported gaps on top of Phase 38: correct attempt-N-of-M
+marks accounting, let a Question Paper generate its missing questions directly
+(with an extra-buffer option), carry date/time + subject into QP exports, add
+an Excel (XLSX) marks export for assessment results, and provide a guided
+Question Bank wizard (scope → pattern/manual → generate shortages → preview →
+export). Also fix the broken New-Assessment button.
+
+### Completed work
+
+- **Attempt-N-of-M marks fix**: `paper-selection.ts` `requiredMarks =
+  attemptCount × marks` (was `requiredCount × marks`); validation computes
+  `attempted = attemptCount` for non-compulsory sections; web
+  `paper-pattern-builder.ts` gained `ruleSubtotal(r, attempted?)` and
+  attempt-aware totals in both `computeTotals` and `flattenSections`; pattern
+  detail subtotals pass `sec.compulsory ? null : sec.attemptCount`. New tests:
+  optional attempt-N-of-M validation (3×3 attempt 2 → 6 not 9) and
+  `requiredMarks: 4`.
+- **QP Generate Missing**: `POST /question-papers/:id/generate-missing`
+  (`{buffer?, dryRun?}`) → `patternShortageBuckets` resolves the pattern's
+  subjects, counts APPROVED+ACTIVE bank questions per section by
+  type×difficulty distribution, and passes deficit buckets (plus buffer spares,
+  kept even for covered sections) through the existing `generate-more`
+  pipeline; guarded empty-bucket NO_ACTION. `QuestionPapersModule` now imports
+  `QuestionsModule`. Web detail page: buffer input, dry-run shortage preview,
+  queue + batch polling.
+- **QP export date/time + subject**: `exportPaperBlocks` header renders
+  `Subject: …`, `Duration … · Max marks …`, `Date/Time: …`; QP export/preview
+  routes take `date`/`time` query params (empty when not supplied, per
+  request); subject names resolved from the blueprint pattern's subjects. QP
+  detail `getPaper` now returns `subjects`.
+- **Results XLSX**: `jszip` promoted to a direct api dep (already in the
+  lockfile via docx); `export.xlsx.ts` `buildXlsxBuffer` — minimal but valid
+  .xlsx, one worksheet per table block named after the nearest heading;
+  `sendXlsx` + `xlsx` added to `EXPORT_FORMATS` on the results route only on
+  the web "Excel" button. Writer unit tests (multi-sheet, XML escaping,
+  empty-doc fallback).
+- **Question Bank Wizard**: new `QuestionBankWizard` dialog mounted from the
+  `/questions` header. Steps: scope cascade (subject/chapter/topic) → source
+  (approved paper pattern OR manual type×difficulty×per-type count) → check
+  bank (dry-run) + Generate Missing (queue + poll) → Preview + PDF/DOCX export
+  (reuses `/export/questions[?patternId=...]`, so pattern mode renders as an
+  arranged paper and manual stays a flat pool). No pattern or QP entity is
+  created for manual mode — the generated bank is the output.
+- **New-Assessment button fix**: `valueAsNumber` on empty inputs produced NaN
+  → zod rejected → `handleSubmit` silently never called `onCreate`; replaced
+  with `setValueAs('' → undefined)` + inline field errors.
+- Known open item: live approved pattern `45f567fa` stores `totalMarks 9` for
+  its optional LONG_ANSWER 3×3 attempt 2 section (new computed value: 6); will
+  surface if that pattern is edited/re-approved — data-fix decision pending.
+
+### Validation
+
+- API native suite 127/127 (adds xlsx writer tests + QP-doc Subject/Date-Time
+  header assertions), api typecheck + eslint clean, web typecheck clean.
+- Containers rebuilt (api + web); live E2E: generate-missing dry-run returns
+  correct deficit buckets (DEFINITION EASY/HARD short), QP preview header
+  contains `Subject: Artificial Intelligence` + `Date/Time`, results
+  `?format=xlsx` yields a real Excel 2007+ workbook with one sheet per
+  analytics table (Attempts/Score distribution/Question performance/Topic
+  performance/Difficulty performance), wizard check-bank path (dry-run
+  `generate-more`) works, QP detail + related routes return 200.
+
+### Exact recommended next task
+
+Commit + push this batch (on top of `c0ab928`), run `rtk graphify update .`,
+then either resolve the stored `45f567fa` totalMarks data fix or pick up the
+Phase 37 resource-layout polish.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 **Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**

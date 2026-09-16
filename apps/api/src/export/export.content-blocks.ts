@@ -319,6 +319,8 @@ export function exportPaperBlocks(input: {
   title: string;
   durationMinutes: number | null;
   maxMarks: number | null;
+  subjects: string[];
+  dateTime: { date?: string; time?: string };
   instructions: unknown;
   links: Array<{
     stem: string;
@@ -333,10 +335,19 @@ export function exportPaperBlocks(input: {
   patternSections: PaperPatternStructure['sections'];
   scope: 'paper' | 'teacher';
 }): DocBlock[] {
+  const dateTimeParts = [input.dateTime?.date || null, input.dateTime?.time || null].filter(
+    (x): x is string => !!x,
+  );
   const blocks: DocBlock[] = [
     {
       kind: 'paragraph',
-      text: `Duration: ${input.durationMinutes ?? '—'} minutes  ·  Max marks: ${input.maxMarks ?? '—'}`,
+      text: [
+        input.subjects.length > 0 ? `Subject: ${input.subjects.join(', ')}` : null,
+        `Duration: ${input.durationMinutes ?? '—'} minutes  ·  Max marks: ${input.maxMarks ?? '—'}`,
+        dateTimeParts.length > 0 ? `Date/Time: ${dateTimeParts.join(' ')}` : null,
+      ]
+        .filter((x): x is string => !!x)
+        .join('\n'),
     },
   ];
   const rawInstructions = input.instructions as string[] | { text: string } | null;

@@ -58,6 +58,42 @@ test('section total that does not match count x marks is rejected', () => {
   assert.match(errors[0]!, /99 does not match 10/);
 });
 
+test('optional attempt-N-of-M total is worth attemptCount x marks, not count x marks', () => {
+  // 3 long answers at 3 marks, attempt 2 of 3 → section worth 6, not 9.
+  const s = structure({
+    totalMarks: 10,
+    sections: [
+      section(`${UUID}1`, 'A', { count: 2, marksPerQuestion: 2, totalMarks: 4 }),
+      section(`${UUID}2`, 'B', {
+        questionType: 'LONG_ANSWER',
+        count: 3,
+        marksPerQuestion: 3,
+        totalMarks: 9,
+        compulsory: false,
+        attemptCount: 2,
+      }),
+    ],
+  });
+  const errors = validatePaperPatternStructure(s);
+  assert.ok(errors.some((e) => /Total marks 10.*section totals \(9\)|9 does not match 2/.test(e)));
+  // Correcting the stored total to attemptCount x marks (6) makes it pass.
+  const fixed = structure({
+    totalMarks: 10,
+    sections: [
+      section(`${UUID}1`, 'A', { count: 2, marksPerQuestion: 2, totalMarks: 4 }),
+      section(`${UUID}2`, 'B', {
+        questionType: 'LONG_ANSWER',
+        count: 3,
+        marksPerQuestion: 3,
+        totalMarks: 6,
+        compulsory: false,
+        attemptCount: 2,
+      }),
+    ],
+  });
+  assert.deepEqual(validatePaperPatternStructure(fixed), []);
+});
+
 test('pattern total that does not match the sum of sections is rejected', () => {
   const s = structure({ totalMarks: 999 });
   const errors = validatePaperPatternStructure(s);
