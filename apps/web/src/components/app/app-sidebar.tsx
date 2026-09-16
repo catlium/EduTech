@@ -47,6 +47,7 @@ const teacherNav = [
   { href: '/content', label: 'Learning Content', icon: BookMarked },
   { href: '/questions', label: 'Question Bank', icon: HelpCircle },
   { href: '/assessments', label: 'Assessments', icon: ClipboardList },
+  { href: '/question-papers', label: 'Question Papers', icon: FileText },
   { href: '/paper-patterns', label: 'Paper Patterns', icon: ScrollText },
   { href: '/jobs', label: 'Job Monitor', icon: Activity },
 ];
@@ -187,6 +188,7 @@ export function sideCrumb(pathname: string): { label: string; href: string } | n
     { href: '/content', label: 'Learning Content' },
     { href: '/questions', label: 'Question Bank' },
     { href: '/assessments', label: 'Assessments' },
+    { href: '/question-papers', label: 'Question Papers' },
     { href: '/paper-patterns', label: 'Paper Patterns' },
     { href: '/jobs', label: 'Job Monitor' },
     { href: '/student/dashboard', label: 'Dashboard' },

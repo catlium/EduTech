@@ -7,6 +7,8 @@ import {
   questions,
   assessments,
   assessmentQuestions,
+  questionPapers,
+  questionPaperQuestions,
   paperPatterns,
   paperPatternSubjects,
   subjects,
@@ -20,7 +22,7 @@ import {
 import type { Database } from '@catlium/database';
 import type { PaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
-import { contentBlocks, questionDocBlock } from './export.content-blocks.js';
+import { contentBlocks, questionDocBlock, exportPaperBlocks } from './export.content-blocks.js';
 import type { DocBlock, DocumentModel } from './export.content-blocks.js';
 import { paperPatternDoc } from './paper-pattern-doc.js';
 import { buildAnalytics } from '../attempts/analytics.js';
@@ -378,102 +380,85 @@ export class ExportService {
       .where(eq(assessmentQuestions.assessmentId, assessmentId))
       .orderBy(asc(assessmentQuestions.sortOrder));
 
-    // Section metadata from the assessment's paper pattern (attempt N of M
-    // rendering) when a blueprint is attached.
-    let patternSections: PaperPatternStructure['sections'] = [];
-    if (assessment.blueprintId) {
-      const [pattern] = await this.db
-        .select({ structure: paperPatterns.structure })
-        .from(paperPatterns)
-        .where(
-          and(
-            eq(paperPatterns.id, assessment.blueprintId),
-            eq(paperPatterns.instituteId, instituteId),
-          ),
-        )
-        .limit(1);
-      if (pattern?.structure) {
-        patternSections = (pattern.structure as PaperPatternStructure).sections;
-      }
-    }
-
-    const blocks: DocBlock[] = [
-      {
-        kind: 'paragraph',
-        text: `Duration: ${assessment.durationMinutes ?? '—'} minutes  ·  Max marks: ${assessment.maxMarks ?? '—'}`,
-      },
-    ];
-    const rawInstructions = assessment.instructions as string[] | { text: string } | null;
-    const instructionLines = Array.isArray(rawInstructions)
-      ? rawInstructions.filter((i): i is string => typeof i === 'string')
-      : rawInstructions && typeof rawInstructions['text'] === 'string'
-        ? [rawInstructions['text']]
-        : [];
-    if (instructionLines.length > 0) {
-      blocks.push({ kind: 'bullets', items: instructionLines });
-    }
-
-    const bySection = (name: string) =>
-      links
-        .filter((l) => (l.section || 'General') === name)
-        .sort((a, b) => a.sortOrder - b.sortOrder);
-    const renderSection = (name: string, sectionMeta?: (typeof patternSections)[number]) => {
-      const sectionLinks = bySection(name);
-      if (sectionLinks.length === 0) return;
-      blocks.push({ kind: 'heading', text: name });
-      if (
-        scope === 'paper' &&
-        sectionMeta &&
-        !sectionMeta.compulsory &&
-        sectionMeta.attemptCount &&
-        sectionMeta.count
-      ) {
-        blocks.push({
-          kind: 'paragraph',
-          text: `Attempt any ${sectionMeta.attemptCount} of ${sectionMeta.count} questions in this section.`,
-        });
-      }
-      blocks.push(
-        ...sectionLinks.map((l): DocBlock =>
-          questionDocBlock({
-            stem: l.stem,
-            type: l.questionType,
-            difficulty: l.difficulty,
-            marks: l.marks,
-            payload: (l.payload ?? {}) as Record<string, unknown>,
-            explanation: l.explanation,
-            includeAnswers: scope === 'teacher',
-            scope,
-          }),
-        ),
-      );
-    };
-
-    for (const sectionMeta of patternSections) {
-      renderSection(sectionMeta.name, sectionMeta);
-    }
-    const general = links.filter(
-      (l) => !patternSections.some((s) => s.name === (l.section || 'General')),
+    const patternSections = await this.patternSectionsForBlueprint(
+      instituteId,
+      assessment.blueprintId,
     );
-    if (general.length > 0) {
-      blocks.push({ kind: 'heading', text: 'General' });
-      blocks.push(
-        ...general.map((l): DocBlock =>
-          questionDocBlock({
-            stem: l.stem,
-            type: l.questionType,
-            difficulty: l.difficulty,
-            marks: l.marks,
-            payload: (l.payload ?? {}) as Record<string, unknown>,
-            explanation: l.explanation,
-            includeAnswers: scope === 'teacher',
-            scope,
-          }),
-        ),
-      );
-    }
 
+    const blocks = exportPaperBlocks({
+      title: assessment.title,
+      durationMinutes: assessment.durationMinutes,
+      maxMarks: assessment.maxMarks,
+      instructions: assessment.instructions,
+      links,
+      patternSections,
+      scope,
+    });
     return { title: assessment.title, blocks };
+  }
+
+  async buildQuestionPaperDoc(instituteId: string, paperId: string): Promise<DocumentModel> {
+    const [paper] = await this.db
+      .select()
+      .from(questionPapers)
+      .where(and(eq(questionPapers.id, paperId), eq(questionPapers.instituteId, instituteId)))
+      .limit(1);
+    if (!paper) throw new NotFoundException('Question paper not found');
+
+    const links = await this.db
+      .select({
+        stem: questions.stem,
+        questionType: questions.questionType,
+        difficulty: questions.difficulty,
+        payload: questions.payload,
+        explanation: questions.explanation,
+        marks: questionPaperQuestions.marks,
+        sortOrder: questionPaperQuestions.sortOrder,
+        section: questionPaperQuestions.section,
+      })
+      .from(questionPaperQuestions)
+      .innerJoin(questions, eq(questionPaperQuestions.questionId, questions.id))
+      .where(eq(questionPaperQuestions.paperId, paperId))
+      .orderBy(asc(questionPaperQuestions.sortOrder));
+
+    const patternSections = await this.patternSectionsForBlueprint(
+      instituteId,
+      paper.blueprintId,
+    );
+
+    const blocks = exportPaperBlocks({
+      title: paper.title,
+      durationMinutes: paper.durationMinutes,
+      maxMarks: paper.maxMarks,
+      instructions: paper.instructions,
+      links,
+      patternSections,
+      scope: 'paper',
+    });
+    return { title: paper.title, blocks };
+  }
+
+  /** Section metadata (attempt N of M rendering) from a paper-pattern
+   * blueprint, when one is attached. */
+  private async patternSectionsForBlueprint(
+    instituteId: string,
+    blueprintId: string | null,
+  ): Promise<PaperPatternStructure['sections']> {
+    if (!blueprintId) return [];
+    const [pattern] = await this.db
+      .select({ structure: paperPatterns.structure })
+      .from(paperPatterns)
+      .where(
+        and(
+          eq(paperPatterns.id, blueprintId),
+          eq(paperPatterns.instituteId, instituteId),
+        ),
+      )
+      .limit(1);
+    if (pattern?.structure) {
+      return (pattern.structure as PaperPatternStructure).sections;
+    }
+    return [];
   }
 
   async buildPaperPatternDoc(instituteId: string, patternId: string): Promise<DocumentModel> {

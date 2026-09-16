@@ -1,5 +1,80 @@
 # Project Status
 
+## Phase 38 — Standalone Question Paper entity + shortage wizard (2026-09-16)
+
+**Status: implemented + validated (API 123/123, typecheck/eslint clean, live E2E). Committed + pushed.**
+
+### Goal
+
+Make Question Paper a separate entity from Assessment: its own table, API,
+list + builder + export pages, and an explicit "Create Assessment from QP"
+step. The builder's shortage wizard shows the deficit per pattern section,
+previews (dry-run) the AI generation of missing questions, confirms with the
+teacher, queues the real generation, and refreshes the bank when done —
+nothing is created before the teacher confirms.
+
+### Completed work
+
+- **DB**: `question_papers` (instituteId, title, description, blueprintId →
+  `paper_patterns` SET NULL, durationMinutes, maxMarks, instructions jsonb,
+  createdBy/updatedBy, timestamps) + `question_paper_questions` junction
+  (paperId → cascade, questionId → cascade, sortOrder, marks, section,
+  UNIQUE(paperId, questionId)). Schema in
+  `packages/database/src/schema/question-papers.ts`, exported from
+  `schema/index.ts` + `src/index.ts`.
+- **Migration `0032_question_papers.sql`** (hand-written per repo convention;
+  `drizzle-kit generate` unusable non-interactively). Applied + recorded in
+  Postgres manually (catlium_postgres / catlium_dev).
+- **Contracts**: QuestionPaperResponse, QuestionPaperListItem (+questionCount),
+  CreateQuestionPaperRequest, QuestionPaperQuestion schemas.
+- **API module `question-papers`**: create from approved pattern (snapshots
+  duration/marks/instructions), list with questionCount, get, rename, delete,
+  listQuestions, select-from-pattern (reuses `planAutoSelection`, replace
+  semantics), pattern-coverage (reuses `computePatternCoverage`),
+  POST `:paperId/assessment` (explicit Create-Assessment-from-QP step via
+  examinations.createAssessment + addQuestions). Registered in app.module.
+- **Export**: `exportPaperBlocks` (pure, moved to `export.content-blocks.ts`,
+  shared by assessment + QP renderers) + `buildQuestionPaperDoc`; routes
+  `GET /export/question-paper/:paperId?format=pdf|docx` and `/preview`.
+  New unit test `qp-doc.test.ts` (student scope hides explanation + shows
+  attempt-N-of-M; teacher scope includes answers).
+- **Web**: `/question-papers` list page + `/question-papers/[paperId]` builder
+  page (pattern coverage panel, sectioned question rows, shuffle/regenerate,
+  export preview + PDF/DOCX, delete, Create-Assessment-from-QP with confirm).
+  Sidebar entries (teacher nav + cmd-k).
+- **Shortage wizard** (QuestionPaperBuilder): when a section is short, an AI
+  panel appears → dry-run `POST /questions/generate-more` previews the exact
+  deficit buckets → teacher confirms → real generate queues the batch → poll
+  `/questions/bank/batches/:batchId` → `onGenerated` refreshes the bank.
+- **Rewired Generate-QP flows**: pattern page `onCreateAssessment` and
+  questions page `generatePaper` now POST `/question-papers` +
+  select-from-pattern then land on `/question-papers/:id` (no longer create
+  an assessment silently).
+
+### Validation
+
+- API native suite 123/123 (new: `exportPaperBlocks` student/teacher scopes).
+- `pnpm typecheck` clean (api + web), api eslint clean.
+- Containers rebuilt; live E2E: create QP from approved pattern (13 marks, 45
+  min), select-from-pattern → 5 selected / 7 marks with per-section SHORT
+  status, coverage reports 2/6 + 1/3 + 2/2, PDF (1 page) + DOCX export both
+  200, Create-Assessment-from-QP copies 5 questions into a draft assessment,
+  delete QP + assessment cleaned up. Containers: all 10 healthy.
+
+### Known issues
+
+- `pnpm typecheck` at root (turbo) still fails to parse diagnostics in some
+  shells; per-package `tsc --noEmit` was used and is clean.
+- Migration 0032 was recorded in the drizzle table without the tables when
+  first applied to this DB; the SQL was re-run directly and verified.
+
+### Exact recommended next task
+
+Resource-specific polished document layouts (Phase 37, 10 layouts) or the
+remaining Phase 37 export-semantics tests for pattern grouping + results doc.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 **Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**

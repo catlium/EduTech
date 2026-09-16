@@ -9,6 +9,7 @@ export { materials } from './materials.js';
 export { questions } from './questions.js';
 export { questionTypes } from './question-types.js';
 export { assessments, assessmentQuestions } from './examinations.js';
+export { questionPapers, questionPaperQuestions } from './question-papers.js';
 export { paperPatterns, paperPatternSubjects } from './paper-patterns.js';
 export { syllabi } from './syllabus.js';
 export { attempts, attemptQuestions, attemptResponses } from './attempts.js';

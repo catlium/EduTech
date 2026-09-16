@@ -208,4 +208,27 @@ export class ExportController {
     const doc = await this.exportService.buildPaperPatternDoc(tenant.instituteId, patternId);
     return { preview: withHtml(buildPreview(doc)) };
   }
+
+  @Get('question-paper/:paperId')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  async exportQuestionPaper(
+    @Tenant() tenant: TenantContext,
+    @Res() res: Response,
+    @Param('paperId', ParseUUIDPipe) paperId: string,
+    @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
+    format: (typeof EXPORT_FORMATS)[number] = 'pdf',
+  ): Promise<void> {
+    const doc = await this.exportService.buildQuestionPaperDoc(tenant.instituteId, paperId);
+    await this.send(res, doc, format, `question-paper-${paperId}`);
+  }
+
+  @Get('question-paper/:paperId/preview')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  async previewQuestionPaper(
+    @Tenant() tenant: TenantContext,
+    @Param('paperId', ParseUUIDPipe) paperId: string,
+  ): Promise<PreviewPayload> {
+    const doc = await this.exportService.buildQuestionPaperDoc(tenant.instituteId, paperId);
+    return { preview: withHtml(buildPreview(doc)) };
+  }
 }

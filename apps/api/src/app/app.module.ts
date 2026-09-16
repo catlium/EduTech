@@ -14,6 +14,7 @@ import { QuestionsModule } from '../questions/questions.module.js';
 import { ExaminationsModule } from '../examinations/examinations.module.js';
 import { SyllabusModule } from '../syllabus/syllabus.module.js';
 import { PaperPatternsModule } from '../paper-patterns/paper-patterns.module.js';
+import { QuestionPapersModule } from '../question-papers/question-papers.module.js';
 import { AttemptsModule } from '../attempts/attempts.module.js';
 import { ExportModule } from '../export/export.module.js';
 import { PracticeModule } from '../practice/practice.module.js';
@@ -51,6 +52,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     ExaminationsModule,
     SyllabusModule,
     PaperPatternsModule,
+    QuestionPapersModule,
     AttemptsModule,
     PracticeModule,
     UsersModule,

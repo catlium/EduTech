@@ -472,19 +472,20 @@ export default function QuestionsListPage() {
     return params.toString();
   };
 
-  /* Generate Question Paper: create a draft assessment from the approved
-   * pattern, then auto-select (shuffle) questions per section from the bank.
-   * The draft paper is fixed and can be edited or published as an assessment. */
+  /* Generate Question Paper: create a standalone question paper from the
+   * approved pattern, then auto-select (shuffle) questions per section from
+   * the bank. The paper is a separate entity from assessments; it can later
+   * be exported or built into an assessment via an explicit step. */
   async function generatePaper(patternId: string, title: string) {
     if (!institute) return;
     try {
-      const { assessment } = await api<{ assessment: { id: string } }>(
-        `/paper-patterns/${patternId}/assessment`,
-        { method: 'POST', body: { title } },
-      );
-      await api(`/assessments/${assessment.id}/select-from-pattern`, { method: 'POST' });
+      const { paper } = await api<{ paper: { id: string } }>('/question-papers', {
+        method: 'POST',
+        body: { patternId, title },
+      });
+      await api(`/question-papers/${paper.id}/select-from-pattern`, { method: 'POST' });
       toast.success('Question paper generated — questions left fixed');
-      router.push(`/assessments/${assessment.id}`);
+      router.push(`/question-papers/${paper.id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to generate question paper');
     }
@@ -942,6 +943,7 @@ export default function QuestionsListPage() {
           subjectId={listCascade.subjectId}
           questions={questions}
           onGeneratePaper={generatePaper}
+          onGenerated={() => void refresh()}
         />
       </div>
 

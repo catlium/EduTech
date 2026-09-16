@@ -1,5 +1,45 @@
 # Task Tracker
 
+## Phase 38 — Standalone Question Paper entity + shortage wizard (2026-09-16)
+
+Question Paper becomes a separate entity from Assessment: its own table, API,
+list + builder/export pages, and an explicit "Create Assessment from QP" step.
+The paper builder's shortage wizard previews the deficit per pattern section,
+AI-generates missing questions via the existing `generate-more` pipeline, and
+re-checks coverage before the paper is generated. Teacher confirms before
+anything is created.
+
+- [x] DB: `question_papers` + `question_paper_questions` tables (schema +
+      maps) — `packages/database/src/schema/question-papers.ts`, exports in
+      `schema/index.ts` + `src/index.ts`.
+- [x] Migration `0032_question_papers.sql` (hand-written per the drizzle-kit
+      non-interactive limitation), journal entry + applied to Postgres
+      (catlium_postgres / catlium_dev).
+- [x] Shared contracts: QuestionPaperResponse/ListItem/CreateRequest/
+      QuestionPaperQuestion schemas in `packages/contracts`.
+- [x] API module `question-papers` (create from approved pattern, list w/
+      questionCount, get, rename, delete, listQuestions, select-from-pattern,
+      pattern-coverage, assessment-from-paper) + registered in app.module.
+- [x] Export: `buildQuestionPaperDoc` + `exportPaperBlocks` (shared helper)
+      + controller routes (`/export/question-paper/:paperId[/preview]`).
+- [x] Web list page `/question-papers` + detail/builder page
+      `/question-papers/[paperId]` (coverage panel, sectioned questions,
+      shuffle, export preview/PDF/DOCX, delete, Create Assessment from QP).
+- [x] Shortage wizard in QuestionPaperBuilder: per-section deficit preview
+      (dry-run `generate-more`), confirm → queue real generation → poll batch
+      → refresh bank.
+- [x] Rewire Generate-QP buttons (pattern page `onCreateAssessment`, questions
+      page `generatePaper`) to POST /question-papers + select-from-pattern →
+      `/question-papers/:id`; sidebar entries (teacher + cmd-k search).
+- [x] Validation: API tests 123/123 (incl. new `exportPaperBlocks` QP-doc
+      test on student/teacher scope), typecheck (api/web) + api eslint clean,
+      containers rebuilt; live E2E verify: create QP from approved pattern,
+      select-from-pattern (5 selected, 7 marks, SHORT per section reported),
+      coverage OK, PDF+DOCX export, create assessment from QP (5 questions
+      copied), delete QP. Docs + commit + push + graphify update.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 > Checkpoint 2026-09-16: resolved + committed the paused OCR worker batch

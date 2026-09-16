@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import type { PaperPatternStructure } from '@catlium/contracts';
+
 export type DocBlock =
   | { kind: 'heading'; text: string }
   | { kind: 'paragraph'; text: string }
@@ -307,4 +309,107 @@ export function contentBlocks(type: string, payload: Record<string, unknown>): D
     default:
       return [{ kind: 'paragraph', text: JSON.stringify(payload, null, 2) }];
   }
+}
+
+/** Shared block builder for any fixed question paper (assessment QP or a
+ * standalone Question Paper entity): header, instructions, then questions
+ * grouped under pattern sections (attempt-N-of-M respected for student
+ * papers). */
+export function exportPaperBlocks(input: {
+  title: string;
+  durationMinutes: number | null;
+  maxMarks: number | null;
+  instructions: unknown;
+  links: Array<{
+    stem: string;
+    questionType: string;
+    difficulty: string;
+    payload: unknown;
+    explanation: string | null;
+    marks: number;
+    sortOrder: number;
+    section: string;
+  }>;
+  patternSections: PaperPatternStructure['sections'];
+  scope: 'paper' | 'teacher';
+}): DocBlock[] {
+  const blocks: DocBlock[] = [
+    {
+      kind: 'paragraph',
+      text: `Duration: ${input.durationMinutes ?? '—'} minutes  ·  Max marks: ${input.maxMarks ?? '—'}`,
+    },
+  ];
+  const rawInstructions = input.instructions as string[] | { text: string } | null;
+  const instructionLines = Array.isArray(rawInstructions)
+    ? rawInstructions.filter((i): i is string => typeof i === 'string')
+    : rawInstructions && typeof rawInstructions['text'] === 'string'
+      ? [rawInstructions['text']]
+      : [];
+  if (instructionLines.length > 0) {
+    blocks.push({ kind: 'bullets', items: instructionLines });
+  }
+
+  const bySection = (name: string) =>
+    input.links
+      .filter((l) => (l.section || 'General') === name)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  const renderSection = (name: string, sectionMeta?: (typeof input.patternSections)[number]) => {
+    const sectionLinks = bySection(name);
+    if (sectionLinks.length === 0) return;
+    blocks.push({ kind: 'heading', text: name });
+    if (
+      input.scope === 'paper' &&
+      sectionMeta &&
+      !sectionMeta.compulsory &&
+      sectionMeta.attemptCount &&
+      sectionMeta.count
+    ) {
+      blocks.push({
+        kind: 'paragraph',
+        text: `Attempt any ${sectionMeta.attemptCount} of ${sectionMeta.count} questions in this section.`,
+      });
+    }
+    blocks.push(
+      ...sectionLinks.map(
+        (l): DocBlock =>
+          questionDocBlock({
+            stem: l.stem,
+            type: l.questionType,
+            difficulty: l.difficulty,
+            marks: l.marks,
+            payload: (l.payload ?? {}) as Record<string, unknown>,
+            explanation: l.explanation,
+            includeAnswers: input.scope === 'teacher',
+            scope: input.scope,
+          }),
+      ),
+    );
+  };
+
+  for (const sectionMeta of input.patternSections) {
+    renderSection(sectionMeta.name, sectionMeta);
+  }
+  const general = input.links.filter(
+    (l) => !input.patternSections.some((s) => s.name === (l.section || 'General')),
+  );
+  if (general.length > 0) {
+    blocks.push({ kind: 'heading', text: 'General' });
+    blocks.push(
+      ...general.map(
+        (l): DocBlock =>
+          questionDocBlock({
+            stem: l.stem,
+            type: l.questionType,
+            difficulty: l.difficulty,
+            marks: l.marks,
+            payload: (l.payload ?? {}) as Record<string, unknown>,
+            explanation: l.explanation,
+            includeAnswers: input.scope === 'teacher',
+            scope: input.scope,
+          }),
+      ),
+    );
+  }
+
+  return blocks;
 }

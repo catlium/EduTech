@@ -484,23 +484,23 @@ export default function PatternBuilderPage() {
   }
 
   /* ── generate question paper ──
-     Creates a draft assessment from the approved pattern and immediately
-     auto-selects (shuffles) matching bank questions per section, so the paper
-     is fixed in one step. The teacher can then edit the selection or build it
-     into an online assessment. */
+     Creates a standalone question paper from the approved pattern and
+     immediately auto-selects (shuffles) matching bank questions per section,
+     so the paper is fixed in one step. The teacher can then export it or build
+     it into an online assessment via an explicit step. */
   async function onCreateAssessment() {
     if (!pattern) return;
     setCreatingAssessment(true);
     try {
       const body: Record<string, unknown> = {};
       if (assessmentTitle.trim()) body.title = assessmentTitle.trim();
-      const { assessment } = await api<{ assessment: { id: string } }>(
-        `/paper-patterns/${pattern.id}/assessment`,
-        { method: 'POST', body },
-      );
-      await api(`/assessments/${assessment.id}/select-from-pattern`, { method: 'POST' });
+      const { paper } = await api<{ paper: { id: string } }>('/question-papers', {
+        method: 'POST',
+        body: { ...body, patternId: pattern.id },
+      });
+      await api(`/question-papers/${paper.id}/select-from-pattern`, { method: 'POST' });
       toast.success('Question paper generated — questions left fixed');
-      router.push(`/assessments/${assessment.id}`);
+      router.push(`/question-papers/${paper.id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to generate question paper');
     } finally {

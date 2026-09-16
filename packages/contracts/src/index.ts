@@ -1502,8 +1502,6 @@ export const AddQuestionsRequestSchema = z.object({
   questionIds: z.array(z.string().uuid()).min(1),
 });
 export type AddQuestionsRequest = z.infer<typeof AddQuestionsRequestSchema>;
-
-// A link row on the assessment_questions join table with the nested question.
 export const AssessmentQuestionSchema = z.object({
   id: z.string().uuid(),
   assessmentId: z.string().uuid(),
@@ -1574,6 +1572,60 @@ export const PaperAutoSelectResponseSchema = z.object({
   sections: z.array(PaperAutoSelectSectionResultSchema),
 });
 export type PaperAutoSelectResponse = z.infer<typeof PaperAutoSelectResponseSchema>;
+
+// ── Question Paper Contracts ────────────────
+//
+// A Question Paper is a fixed, teacher-selected paper built from an approved
+// paper pattern. It is a SEPARATE entity from an Assessment: creating one never
+// touches assessments. Converting a question paper into an online assessment is
+// an explicit "Create assessment from this paper" step.
+
+export const QuestionPaperResponseSchema = z.object({
+  id: z.string().uuid(),
+  instituteId: z.string().uuid(),
+  title: z.string(),
+  description: z.string().nullable(),
+  blueprintId: z.string().uuid().nullable(),
+  durationMinutes: z.number().int().nullable(),
+  maxMarks: z.number().int().nullable(),
+  instructions: z.record(z.string(), z.unknown()).nullable(),
+  createdBy: z.string().uuid(),
+  updatedBy: z.string().uuid().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type QuestionPaperResponse = z.infer<typeof QuestionPaperResponseSchema>;
+
+export const QuestionPaperListItemSchema = QuestionPaperResponseSchema.extend({
+  questionCount: z.number(),
+});
+export type QuestionPaperListItem = z.infer<typeof QuestionPaperListItemSchema>;
+
+export const CreateQuestionPaperRequestSchema = z.object({
+  patternId: z.string().uuid(),
+  title: z.string().min(1).max(255).optional(),
+  description: z.string().max(5000).optional(),
+});
+export type CreateQuestionPaperRequest = z.infer<typeof CreateQuestionPaperRequestSchema>;
+
+export const QuestionPaperAutoSelectResponseSchema = PaperAutoSelectResponseSchema.extend({
+  paperId: z.string().uuid(),
+}).omit({ assessmentId: true });
+export type QuestionPaperAutoSelectResponse = z.infer<
+  typeof QuestionPaperAutoSelectResponseSchema
+>;
+
+// A link row on the question_paper_questions join table with the nested question.
+export const QuestionPaperQuestionSchema = z.object({
+  id: z.string().uuid(),
+  paperId: z.string().uuid(),
+  questionId: z.string().uuid(),
+  sortOrder: z.number(),
+  marks: z.number(),
+  section: z.string().max(100),
+  question: QuestionResponseSchema,
+});
+export type QuestionPaperQuestion = z.infer<typeof QuestionPaperQuestionSchema>;
 
 // ── Syllabus Contracts ─────────────────────
 //

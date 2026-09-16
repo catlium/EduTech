@@ -1,12 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Dice5, Loader2, PenLine, ShieldCheck, Clock, Wand2 } from 'lucide-react';
+import { Dice5, Loader2, PenLine, ShieldCheck, Clock, Wand2, Sparkles } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
-import type { PaperPattern, QuestionListItem } from '@catlium/contracts';
+import type {
+  PaperPattern,
+  QuestionListItem,
+  QuestionBankBatchResponse,
+  GenerateMoreQuestionsResponse,
+  QuestionDifficulty,
+} from '@catlium/contracts';
 import { PaperPatternStructureSchema } from '@catlium/contracts';
 import { useTenant, canManage } from '@/lib/tenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -39,10 +45,12 @@ export function QuestionPaperBuilder({
   subjectId,
   questions,
   onGeneratePaper,
+  onGenerated,
 }: {
   subjectId: string;
   questions: QuestionListItem[];
   onGeneratePaper: (patternId: string, title: string) => Promise<void>;
+  onGenerated?: () => void;
 }) {
   const { institute } = useTenant();
   const isTeacher = canManage(institute);
@@ -52,6 +60,20 @@ export function QuestionPaperBuilder({
   const [loadingPatterns, setLoadingPatterns] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [confirmGenerate, setConfirmGenerate] = useState(false);
+
+  /* Shortage wizard state */
+  const [shortagePreview, setShortagePreview] = useState<GenerateMoreQuestionsResponse | null>(null);
+  const [checkingShortage, setCheckingShortage] = useState(false);
+  const [generatingShortage, setGeneratingShortage] = useState(false);
+  const [batch, setBatch] = useState<QuestionBankBatchResponse | null>(null);
+  const unmounted = useRef(false);
+
+  useEffect(() => {
+    unmounted.current = false;
+    return () => {
+      unmounted.current = true;
+    };
+  }, []);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -101,6 +123,109 @@ export function QuestionPaperBuilder({
       if (dist) return (dist[q.difficulty as keyof typeof dist] ?? 0) > 0;
       return true;
     });
+
+  /* Shortage targets per section: split the per-section deficit across the
+   * section's difficulty split (difficultyDistribution percentages). Bullet
+   * loans the same bucketing the bank panel uses per scope. */
+  const shortSections = useMemo(() => {
+    if (!structure) return [];
+    return structure.sections
+      .map((section) => {
+        const required = section.count ?? 0;
+        const available = sectionPool(section).length;
+        return { section, shortage: Math.max(0, required - available) };
+      })
+      .filter((s) => s.shortage > 0);
+  }, [structure, usableQuestions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const totalShortage = shortSections.reduce((sum, s) => sum + s.shortage, 0);
+
+  function shortageBuckets() {
+    if (!structure) return [];
+    return structure.sections.flatMap((section) => {
+      const required = section.count ?? 0;
+      const available = sectionPool(section).length;
+      const shortage = required - available;
+      if (shortage <= 0 || !section.questionType) return [];
+      const dist = (section.difficultyDistribution ?? {}) as Record<QuestionDifficulty, number>;
+      const share = (
+        ['EASY', 'MEDIUM', 'HARD'] as QuestionDifficulty[]
+      ).filter((d) => (dist[d] ?? 0) > 0);
+      if (share.length === 0) return [{ questionType: section.questionType, difficulty: 'MEDIUM' as QuestionDifficulty, count: shortage }];
+      return share.map((difficulty) => {
+        const n = Math.round((shortage * (dist[difficulty] ?? 0)) / 100);
+        return {
+          questionType: section.questionType!,
+          difficulty,
+          count: Math.max(1, n),
+        };
+      });
+    });
+  }
+
+  async function previewShortage() {
+    setCheckingShortage(true);
+    setShortagePreview(null);
+    try {
+      const resp = await api<GenerateMoreQuestionsResponse>('/questions/generate-more', {
+        method: 'POST',
+        body: { subjectId, buckets: shortageBuckets(), dryRun: true },
+      });
+      setShortagePreview(resp);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to check bank');
+    } finally {
+      setCheckingShortage(false);
+    }
+  }
+
+  async function runShortageGeneration() {
+    if (!shortagePreview) return;
+    setGeneratingShortage(true);
+    try {
+      const resp = await api<GenerateMoreQuestionsResponse>('/questions/generate-more', {
+        method: 'POST',
+        body: {
+          subjectId,
+          buckets: shortagePreview.buckets
+            .filter((b) => b.deficit > 0)
+            .map((b) => ({ questionType: b.questionType, difficulty: b.difficulty, count: b.deficit })),
+        },
+      });
+      if (resp.batchId) {
+        const batchResp = await api<QuestionBankBatchResponse>(
+          `/questions/bank/batches/${resp.batchId}`,
+        );
+        setBatch(batchResp);
+        pollBatch(resp.batchId);
+        toast.success('Question generation queued');
+      } else if (resp.status === 'NO_ACTION') {
+        toast.info('No generation needed');
+      }
+      setShortagePreview(null);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to queue generation');
+    } finally {
+      setGeneratingShortage(false);
+    }
+  }
+
+  const pollBatch = async (batchId: string) => {
+    try {
+      const resp = await api<QuestionBankBatchResponse>(`/questions/bank/batches/${batchId}`);
+      if (unmounted.current) return;
+      setBatch(resp);
+      if (resp.active > 0) {
+        setTimeout(() => void pollBatch(batchId), 3000);
+      } else {
+        toast.success(resp.failed === 0 ? 'Missing questions generated' : `${resp.failed} generation job(s) failed`);
+        onGenerated?.();
+      }
+    } catch {
+      if (unmounted.current) return;
+      setTimeout(() => void pollBatch(batchId), 3000);
+    }
+  };
 
   if (!isTeacher) return null;
 
@@ -224,6 +349,45 @@ export function QuestionPaperBuilder({
               })}
             </div>
 
+            {/* Shortage wizard — surface at pattern level only when
+                bank-approved questions fall short of the paper requirements */}
+            {totalShortage > 0 ? (
+              <div className="rounded-lg border border-amber-300/60 bg-amber-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-start gap-3 text-sm">
+                    <Sparkles className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="font-medium">
+                        {totalShortage} question{totalShortage !== 1 ? 's' : ''} short
+                        {shortSections.length > 1
+                          ? ` across ${shortSections.length} sections`
+                          : ` in "${shortSections[0]?.section.name}"`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        AI can generate missing questions from the pattern before you build the
+                        paper. You approve the exact deficit first.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void previewShortage()}
+                    disabled={checkingShortage || generatingShortage || !subjectId}
+                  >
+                    {checkingShortage && <Loader2 className="mr-1 size-3.5 animate-spin" />}
+                    Review shortage to generate
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              pattern && (
+                <p className="flex items-center gap-1.5 text-xs text-emerald-600">
+                  <ShieldCheck className="size-3.5" /> Bank-approved questions cover every section.
+                </p>
+              )
+            )}
+
             {/* Generate Question Paper — primary action */}
             <div className="rounded-lg border bg-muted/20 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -325,6 +489,72 @@ export function QuestionPaperBuilder({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Shortage preview / confirm dialog */}
+      <Dialog
+        open={shortagePreview !== null || generatingShortage}
+        onOpenChange={(open) => {
+          if (!open && !generatingShortage) setShortagePreview(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Generate Missing Questions (AI)</DialogTitle>
+            <DialogDescription>
+              Once queued, the AI generates questions only for the deficient buckets. Each new
+              question requires your approval before it enters the Question Bank.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-60 space-y-1 overflow-y-auto rounded-md border p-3 text-sm">
+            {shortagePreview?.buckets.map((b, i) => (
+              <div key={i} className="flex items-center justify-between gap-2 py-0.5">
+                <span className="text-xs">
+                  {b.questionType} · {b.difficulty}
+                </span>
+                <span className="tabular-nums text-xs">
+                  {b.requested} requested · {b.existing} exist · {b.pending > 0 ? `${b.pending} pending · ` : ''}
+                  {b.deficit > 0 ? (
+                    <span className="font-semibold text-amber-600">{b.deficit} to generate</span>
+                  ) : (
+                    <span className="text-muted-foreground">0 — covered</span>
+                  )}
+                </span>
+              </div>
+            ))}
+            {shortagePreview && shortagePreview.totalDeficit === 0 && (
+              <p className="py-2 text-center text-xs text-muted-foreground">
+                The bank already covers every bucket — no generation needed.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setShortagePreview(null)}
+              disabled={generatingShortage}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                generatingShortage || !shortagePreview || shortagePreview.totalDeficit === 0
+              }
+              onClick={() => void runShortageGeneration()}
+            >
+              {generatingShortage && <Loader2 className="mr-1 size-3.5 animate-spin" />}
+              {generatingShortage ? 'Generating…' : 'Queue generation'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Active generation badge */}
+      {batch && batch.active > 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" />
+          Generating batch… {batch.completed + batch.failed}/{batch.total}
+        </div>
+      )}
     </Card>
   );
 }
