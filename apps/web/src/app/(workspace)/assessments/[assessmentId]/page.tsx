@@ -22,7 +22,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 
 import { api, ApiError, downloadFile } from '@/lib/api';
-import { previewStorageKey } from '@/components/export/export-preview-dialog';
+import {
+  ExportPreviewDialog,
+  type ExportPreviewValue,
+  previewStorageKey,
+} from '@/components/export/export-preview-dialog';
 import { formatDate, formatDuration } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
@@ -122,6 +126,11 @@ export default function AssessmentDetailPage() {
 
   // Export dialog
   const [exportOpen, setExportOpen] = useState(false);
+  // Paper Pattern (pattern-based assessments only) — reuses the shared
+  // preview-hash gate exactly like the paper-patterns page.
+  const [patternPreviewOpen, setPatternPreviewOpen] = useState(false);
+  const [patternPreview, setPatternPreview] = useState<ExportPreviewValue | null>(null);
+  const [patternExporting, setPatternExporting] = useState(false);
 
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
@@ -449,6 +458,23 @@ export default function AssessmentDetailPage() {
     } finally {
       setExportOpen(false);
     }
+  }
+
+  async function onPatternExport(format: 'pdf' | 'docx') {
+    if (!assessment || !assessment.blueprintId) return;
+    try {
+      await downloadFile(
+        `/export/paper-pattern/${assessment.blueprintId}?format=${format}&previewHash=${patternPreview?.hash}`,
+        `paper-pattern-${assessment.blueprintId.slice(0, 8)}.${format}`,
+      );
+      toast.success(`Exported paper pattern (${format.toUpperCase()})`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Paper pattern export failed');
+    }
+  }
+
+  async   function onPatternPreviewed(value: ExportPreviewValue) {
+    setPatternPreview(value);
   }
 
   const previewHash = useCallback((assessmentId: string, include: 'paper' | 'answers') => {
@@ -1096,9 +1122,50 @@ export default function AssessmentDetailPage() {
                 >
                   DOCX
                 </Button>
-              </div>
             </div>
           </div>
+
+          {assessment?.blueprintId && (
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium">
+                <FileKey2 className="mr-1.5 inline size-4 text-muted-foreground" />
+                Paper Pattern
+              </p>
+              <p className="text-xs text-muted-foreground">
+                The blueprint this assessment was generated from — export exactly what was previewed.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPatternPreviewOpen(true)}
+                  disabled={patternExporting}
+                  title="Preview the paper pattern first"
+                >
+                  <Eye className="mr-1 size-3.5" /> Preview
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onPatternExport('pdf')}
+                  disabled={!patternPreview?.hash || patternExporting}
+                  title={patternPreview?.hash ? 'Export the previewed paper pattern (PDF)' : 'Preview the paper pattern first'}
+                >
+                  PDF
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onPatternExport('docx')}
+                  disabled={!patternPreview?.hash || patternExporting}
+                  title={patternPreview?.hash ? 'Export the previewed paper pattern (DOCX)' : 'Preview the paper pattern first'}
+                >
+                  DOCX
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setExportOpen(false)}>
               Close

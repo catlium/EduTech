@@ -50,6 +50,24 @@ const withHtml = (raw: ReturnType<typeof buildPreview>): PreviewPayload['preview
 export class ExportController {
   constructor(private readonly exportService: ExportService) {}
 
+  /* Bare sender shared by every route: PDF via the Puppeteer renderer (same
+   * HTML the previews render), DOCX via the structured renderer. */
+  private async send(
+    res: Response,
+    document: DocumentModel,
+    format: (typeof EXPORT_FORMATS)[number],
+    filename: string,
+  ): Promise<void> {
+    if (format === 'pdf') {
+      await this.exportService.sendPdf(res, document, filename);
+    } else {
+      sendDoc(res, document, filename);
+    }
+  }
+
+  /* Gate for exports that go through the preview dialog (Paper Pattern,
+   * Question Bank, Assessment). Exported file must always match exactly what
+   * was previewed — missing / stale hash → 409. */
   private async sendVerified(
     res: Response,
     document: DocumentModel,
@@ -62,11 +80,7 @@ export class ExportController {
         'This export is stale or was never previewed — preview the current selection first',
       );
     }
-    if (format === 'pdf') {
-      await this.exportService.sendPdf(res, document, filename);
-    } else {
-      sendDoc(res, document, filename);
-    }
+    await this.send(res, document, format, filename);
   }
 
   @Get('content/:contentId')
@@ -76,10 +90,13 @@ export class ExportController {
     @Param('contentId', ParseUUIDPipe) contentId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
     format: (typeof EXPORT_FORMATS)[number] = 'pdf',
-    @Query('previewHash') previewHash?: string,
   ): Promise<void> {
     const doc = await this.exportService.buildContentDoc(tenant.instituteId, contentId);
-    await this.sendVerified(res, doc, format, `content-${contentId}`, previewHash);
+    /* Derived resources are single-visual-source: the topic grid renders them
+     * live (the exact server document), so the file always matches what the
+     * user is looking at — no preview dialog, no hash. Only Paper Pattern and
+     * Question Bank go through a preview-dialog hash gate. */
+    await this.send(res, doc, format, `content-${contentId}`);
   }
 
   @Get('content/:contentId/preview')
