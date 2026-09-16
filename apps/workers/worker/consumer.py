@@ -12,6 +12,7 @@ Message shape (matches the API RabbitMQService publish contract):
 
 import json
 import logging
+import time
 from typing import Any
 from uuid import UUID
 
@@ -132,7 +133,7 @@ def _handle_syllabus(
         channel.basic_ack(delivery_tag=delivery_tag)
 
 
-def start_consumer() -> None:
+def _consume_loop() -> None:
     connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
     channel = connection.channel()
     channel.queue_declare(queue=settings.queue, durable=True)
@@ -145,3 +146,78 @@ def start_consumer() -> None:
         pass
     finally:
         connection.close()
+
+
+def _publish(message: dict[str, Any]) -> None:
+    connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
+    channel = connection.channel()
+    channel.queue_declare(queue=settings.queue, durable=True)
+    try:
+        channel.basic_publish(
+            exchange="",
+            routing_key=settings.queue,
+            body=json.dumps(message),
+            properties=pika.BasicProperties(delivery_mode=2),
+        )
+    finally:
+        channel.close()
+        connection.close()
+
+
+def _settle_stale_syllabus_cancels() -> None:
+    """Cancel syllabus jobs stranded in `cancelling` (API set it, a dead worker
+    never acknowledged it) so the job is not stuck PROCESSING forever and a
+    retry is allowed again.
+
+    MATERIAL_PROCESS is excluded: the NestJS OCR coordinator owns material
+    cancels in the distributed architecture."""
+    rows = db.recover_stale_cancelling_syllabus_jobs(settings.material_stale_processing_minutes)
+    for row in rows:
+        db.mark_job_cancelled(row["id"])
+        logger.info("Settled stale cancelling syllabus job %s", row["id"])
+
+
+def _republish_stale_syllabus_jobs() -> None:
+    """Re-queue syllabus processing jobs stranded in `processing` by a worker
+    crash / connection loss (the original outage root cause: the consumer had
+    no reconnect, so a dead worker left jobs stuck forever). Stale jobs are
+    reset to `queued` and re-published with their own jobId before consumption
+    starts. MATERIAL_PROCESS is excluded — material OCR is coordinator-owned
+    and must never be re-routed by the worker."""
+    rows = db.recover_stale_syllabus_jobs(settings.material_stale_processing_minutes)
+    requeued = 0
+    for row in rows:
+        if not db.reset_job_to_queued(row["id"]):
+            logger.info("Skipping syllabus job no longer processing: %s", row["id"])
+            continue
+        _publish(
+            {
+                "jobId": row["id"],
+                "instituteId": row["institute_id"],
+                "type": row["type"],
+                "payload": row["payload"] or {},
+            }
+        )
+        requeued += 1
+    if requeued:
+        logger.warning("Stale processing sweep: requeued %d syllabus job(s)", requeued)
+
+
+def _run_consumer_loop() -> None:
+    """Run the consume loop forever, reconnecting with backoff on failure."""
+    backoff = 1.0
+    while True:
+        try:
+            _consume_loop()
+        except pika.exceptions.AMQPConnectionError:
+            logger.warning("Worker lost its RabbitMQ connection; reconnecting")
+        except Exception:
+            logger.exception("Worker consumer failed; reconnecting")
+        time.sleep(backoff)
+        backoff = min(backoff * 2, 60.0)
+
+
+def start_consumer() -> None:
+    _settle_stale_syllabus_cancels()
+    _republish_stale_syllabus_jobs()
+    _run_consumer_loop()

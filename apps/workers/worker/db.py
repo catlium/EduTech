@@ -112,6 +112,15 @@ def update_material_status(material_id: str, status: str) -> None:
         )
 
 
+def update_material_text(material_id: str, text_content: str) -> None:
+    """Persist extracted text BEFORE READY (crash-safe reuse on retry)."""
+    with psycopg.connect(settings.database_url) as conn:
+        conn.execute(
+            "UPDATE materials SET text_content = %s, updated_at = %s WHERE id = %s",
+            (text_content, _now(), material_id),
+        )
+
+
 def update_material_ready(material_id: str, text_content: str) -> None:
     with psycopg.connect(settings.database_url) as conn:
         conn.execute(
@@ -239,19 +248,6 @@ def recover_stale_ai_jobs(older_than_minutes: int) -> list[dict[str, Any]]:
         ).fetchall()
 
 
-def reset_job_to_queued(job_id: str) -> bool:
-    """Race-safe reset: only a row still ``processing`` is reset to ``queued``
-    (started_at cleared). A live worker that finished the job in the meantime
-    is never clobbered. Returns whether a row was reset."""
-    with psycopg.connect(settings.database_url) as conn:
-        cur = conn.execute(
-            "UPDATE jobs SET status = 'queued', started_at = NULL, updated_at = %s"
-            " WHERE id = %s AND status = 'processing' RETURNING id",
-            (_now(), job_id),
-        )
-        return cur.fetchone() is not None
-
-
 def recover_stale_queued_ai_jobs(older_than_minutes: int) -> list[dict[str, Any]]:
     """AI jobs left in ``queued`` that never started (started_at IS NULL).
 
@@ -268,6 +264,61 @@ def recover_stale_queued_ai_jobs(older_than_minutes: int) -> list[dict[str, Any]
             " AND created_at < now() - make_interval(mins => %s)",
             (older_than_minutes,),
         ).fetchall()
+
+
+def recover_stale_syllabus_jobs(older_than_minutes: int) -> list[dict[str, Any]]:
+    """SYLLABUS processing jobs stuck in ``processing`` past the threshold,
+    stranded by a worker crash or connection loss. The consumer resets them to
+    ``queued`` and re-publishes so work always resumes after a restart (the
+    original outage root cause).
+
+    MATERIAL_PROCESS is deliberately excluded: in the distributed OCR
+    architecture the NestJS coordinator owns material OCR state end-to-end
+    (enqueue/claim/lease/aggregate/READY), so the worker must never re-route a
+    material job away from it.
+    """
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT id, institute_id, type, payload FROM jobs"
+            " WHERE type = 'PROCESS_SYLLABUS'"
+            " AND status = 'processing' AND started_at IS NOT NULL"
+            " AND started_at < now() - make_interval(mins => %s)",
+            (older_than_minutes,),
+        ).fetchall()
+
+
+def recover_stale_cancelling_syllabus_jobs(older_than_minutes: int) -> list[dict[str, Any]]:
+    """SYLLABUS processing jobs stuck in ``cancelling`` past the threshold.
+
+    A cancel issued while the worker was dead can never be acknowledged
+    (status ``cancelling`` set by the API, worker gone). The consumer settles
+    them to ``cancelled`` on startup so the syllabus is not stuck PROCESSING
+    forever and a retry is allowed again.
+
+    MATERIAL_PROCESS is excluded for the same reason as
+    :func:`recover_stale_syllabus_jobs` (coordinator-owned).
+    """
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT id, type, payload FROM jobs"
+            " WHERE type = 'PROCESS_SYLLABUS'"
+            " AND status = 'cancelling' AND updated_at IS NOT NULL"
+            " AND updated_at < now() - make_interval(mins => %s)",
+            (older_than_minutes,),
+        ).fetchall()
+
+
+def reset_job_to_queued(job_id: str) -> bool:
+    """Race-safe reset: only a row still ``processing`` is reset to ``queued``
+    (started_at cleared). A live worker that finished the job in the meantime
+    is never clobbered. Returns whether a row was reset."""
+    with psycopg.connect(settings.database_url) as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET status = 'queued', started_at = NULL, updated_at = %s"
+            " WHERE id = %s AND status = 'processing' RETURNING id",
+            (_now(), job_id),
+        )
+        return cur.fetchone() is not None
 
 
 def get_topic_materials(topic_id: str, institute_id: str) -> list[dict[str, Any]]:

@@ -1,4 +1,10 @@
-"""Minimal client for the CatLium OCR service (internal infrastructure)."""
+"""Minimal client for the CatLium OCR service (internal infrastructure).
+
+The `/extract` endpoint computes the full document locally and returns one JSON
+payload ``{"text": ..., "metadata": {"pages": ..., "sources": ...}}``.
+Transport failures and non-2xx responses are surfaced as :class:`OcrError`;
+4xx/5xx bodies are parsed for FastAPI's ``detail`` where present.
+"""
 
 from typing import Any, cast
 
@@ -21,7 +27,10 @@ def extract_text(data: bytes, mime_type: str, file_name: str | None = None) -> d
             f"{settings.ocr_url}/extract",
             files=files,
             headers=headers,
-            timeout=60.0,
+            timeout=httpx.Timeout(
+                settings.ocr_read_timeout_seconds,
+                connect=settings.ocr_connect_timeout_seconds,
+            ),
         )
     except httpx.HTTPError as exc:
         raise OcrError("OCR service unreachable") from exc

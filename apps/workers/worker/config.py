@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # material processing stays on the single-threaded `jobs` consumer (its
     # REPROCESS/OCR flow is deliberately serial).
     ai_concurrency: int = 2
+    # Syllabus processing jobs stuck in `processing` this long (worker crash,
+    # connection loss, container restart — the original outage root cause) are
+    # reset to `queued` and re-published on consumer startup. Generous default:
+    # a large handwritten OCR run alone can legitimately take ~1 hour.
+    material_stale_processing_minutes: int = 60
     ai_max_context_chars: int = 40_000
     # Character budget for AI input chunking. Large documents are split on
     # semantic boundaries into chunks of this size (with overlap) before any
@@ -55,6 +60,12 @@ class Settings(BaseSettings):
     # single request. Provider-agnostic: characters, not an LLM token limit.
     ai_chunk_size_chars: int = 12_000
     ai_chunk_overlap_chars: int = 400
+
+    # OCR extraction client timeouts. The single `/extract` HTTP call may take
+    # minutes for large handwritten documents — the read timeout must allow
+    # that. Connect stays short.
+    ocr_connect_timeout_seconds: float = 10.0
+    ocr_read_timeout_seconds: float = 300.0
 
     model_config = {"env_prefix": "WORKER_", "env_file": ".env"}
 
