@@ -76,6 +76,7 @@ export class ExportService {
     instituteId: string,
     scope: { subjectId?: string; chapterId?: string; topicId?: string; patternId?: string } = {},
     include: 'paper' | 'answers' = 'paper',
+    buckets?: Array<{ questionType: string; difficulty: string; count: number }>,
   ): Promise<DocumentModel> {
     const includeAnswers = include === 'answers';
 
@@ -106,10 +107,31 @@ export class ExportService {
       .where(and(...conditions))
       .orderBy(questions.createdAt);
 
+    // Buckets cap the export to the wizard's targets: for every
+    // (questionType, difficulty) pair, keep at most `count` questions. This
+    // makes preview/export match the "what's missing" view instead of dumping
+    // the whole approved pool.
+    let selected = rows;
+    if (buckets && buckets.length > 0) {
+      const used = new Map<string, number>();
+      const picked: (typeof rows)[] = [];
+      for (const b of buckets) {
+        const key = `${b.questionType}|${b.difficulty}`;
+        const have = used.get(key) ?? 0;
+        const matching = rows.filter(
+          (q) => q.questionType === b.questionType && q.difficulty === b.difficulty,
+        );
+        const take = matching.slice(have, have + b.count);
+        picked.push(take);
+        used.set(key, have + take.length);
+      }
+      selected = picked.flat();
+    }
+
     // A pattern-scoped bank export renders as a paper: the pattern is the
     // arrangement rule (section order, per-question marks, attempt N of M),
     // and the generated bank questions fill it. Without a pattern it stays a
-    // flat practice pool.
+    // flat practice pool grouped by question type.
     let pattern: (typeof paperPatterns.$inferSelect) | undefined;
     let sections: PaperPatternStructure['sections'] = [];
     if (scope.patternId) {
@@ -150,7 +172,9 @@ export class ExportService {
     if (sections.length > 0) {
       // Group the bank by the pattern's sections (matching on questionType).
       for (const section of sections) {
-        const sectionQuestions = rows.filter((q) => q.questionType === section.questionType);
+        const sectionQuestions = selected.filter(
+          (q) => q.questionType === section.questionType,
+        );
         if (sectionQuestions.length === 0) continue;
         blocks.push({ kind: 'heading', text: section.name });
         if (
@@ -170,13 +194,24 @@ export class ExportService {
           ),
         );
       }
-      const general = rows.filter((q) => !sections.some((s) => s.questionType === q.questionType));
+      const general = selected.filter(
+        (q) => !sections.some((s) => s.questionType === q.questionType),
+      );
       if (general.length > 0) {
         blocks.push({ kind: 'heading', text: 'General' });
         blocks.push(...general.map((q) => questionBlock(q)));
       }
+    } else if (buckets && buckets.length > 0) {
+      // Bucket-driven export (wizard): group by question type.
+      const typeOrder = [...new Set(buckets.map((b) => b.questionType))];
+      for (const type of typeOrder) {
+        const typeQuestions = selected.filter((q) => q.questionType === type);
+        if (typeQuestions.length === 0) continue;
+        blocks.push({ kind: 'heading', text: type });
+        blocks.push(...typeQuestions.map((q) => questionBlock(q)));
+      }
     } else {
-      blocks.push(...rows.map((q) => questionBlock(q)));
+      blocks.push(...selected.map((q) => questionBlock(q)));
     }
 
     return {

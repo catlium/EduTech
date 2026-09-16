@@ -152,6 +152,35 @@ Teacher-reported follow-ups after batch 2:
       accepts the wizard's merged absolute-count bucket payload. Docs +
       commit + push + graphify update pending.
 
+### Follow-up batch 4 — wizard bucket-driven export, question-type sections, Generate step simplified (2026-09-16)
+
+Teacher-reported follow-ups after batch 3:
+
+- [x] Export bucket cap: `buildQuestionsDoc` now accepts an optional `buckets`
+      array (JSON `?buckets=` query param on `/export/questions` and
+      `/export/questions/preview`). When provided, the export selects at most
+      `count` questions per `(questionType, difficulty)` pair from the approved
+      pool — preview/export now show exactly the targeted questions instead of
+      the entire bank. Without the param, all questions are still returned
+      (existing QP/assessment flows unchanged).
+- [x] Export grouped by question type: when buckets are present and no
+      pattern is used, the export places questions under a question-type
+      heading (e.g. "MCQ", "LONG_ANSWER"). Pattern-scoped exports still use
+      the pattern's section headings. Empty sections are omitted.
+- [x] Wizard preview/export now sends buckets: `exportParams` serializes
+      `mergedBuckets` as `?buckets=[...]`, so the Preview and PDF/DOCX
+      export buttons respect the Source step's counts.
+- [x] Generate step simplified: the per-bucket editable count list added in
+      batch 3 is removed. The Generate step now shows a compact read-only
+      bucket summary (section + type + difficulty + count chips), the Check
+      bank button, deficit list, batch status, and Generate missing. All
+      bucket sizing lives in the Source step where it was always presented.
+- [x] Validation: API 127/127, api + web typecheck, root lint (9 tasks 0 fail)
+      clean; containers rebuilt; live E2E — preview with `?buckets=` caps to
+      exact targets (2 MCQ + 3 LONG_ANSWER → 5 questions, grouped under type
+      headings), pattern-scoped with buckets shows section heading + cap, no
+      param returns all (469). Docs + commit + push + graphify pending.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)

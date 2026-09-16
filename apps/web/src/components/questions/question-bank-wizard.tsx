@@ -223,20 +223,7 @@ export function QuestionBankWizard({
     [mode, activePattern, selectedTypes, selectedDifficulties, counts],
   );
 
-  const [bucketCounts, setBucketCounts] = useState<Record<number, number>>({});
-
-  useEffect(() => {
-    setBucketCounts((prev) => {
-      const next: Record<number, number> = {};
-      for (let i = 0; i < buckets.length; i++) next[i] = prev[i] ?? buckets[i]!.count;
-      return next;
-    });
-  }, [buckets]);
-
-  const mergedBuckets = useMemo(
-    () => mergeBuckets(buckets.map((b, i) => ({ ...b, count: bucketCounts[i] ?? b.count }))),
-    [buckets, bucketCounts],
-  );
+  const mergedBuckets = useMemo(() => mergeBuckets(buckets), [buckets]);
 
   const scopePayload = useMemo(
     () => ({
@@ -253,9 +240,10 @@ export function QuestionBankWizard({
     if (cascade.chapterId) p.set('chapterId', cascade.chapterId);
     if (cascade.topicId) p.set('topicId', cascade.topicId);
     if (mode === 'pattern' && patternId) p.set('patternId', patternId);
+    if (mergedBuckets.length > 0) p.set('buckets', JSON.stringify(mergedBuckets));
     p.set('include', include);
     return p.toString();
-  }, [cascade, mode, patternId, include]);
+  }, [cascade, mode, patternId, include, mergedBuckets]);
 
   const reset = useCallback(() => {
     setStep(0);
@@ -265,7 +253,6 @@ export function QuestionBankWizard({
     setSelectedTypes(['MCQ']);
     setSelectedDifficulties(['EASY', 'MEDIUM']);
     setCounts({ MCQ: 10 });
-    setBucketCounts({});
     setInclude('paper');
     setDeficit(null);
     setBatch(null);
@@ -573,38 +560,16 @@ export function QuestionBankWizard({
                   Check bank
                 </Button>
               </div>
-
-              <div className="max-h-72 space-y-1.5 overflow-y-auto rounded-md border p-3">
-                <p className="text-xs text-muted-foreground">
-                  Set how many questions to target for each type and difficulty level
-                  {mode === 'pattern' ? ' per section' : ''} — the bank supplies the existing ones.
-                </p>
+              <div className="flex flex-wrap gap-1.5">
                 {buckets.map((b, i) => (
-                  <label
+                  <span
                     key={`${b.section ?? ''}-${b.questionType}-${b.difficulty}-${i}`}
-                    className="flex items-center justify-between gap-2 text-xs"
+                    className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
                   >
-                    <span className="min-w-0">
-                      {b.section && <span className="font-medium">{b.section}: </span>}
-                      {b.questionType} · {b.difficulty}
-                    </span>
-                    <Input
-                      type="number"
-                      min={0}
-                      className="h-7 w-20"
-                      value={bucketCounts[i] ?? b.count}
-                      onChange={(e) =>
-                        setBucketCounts((prev) => ({
-                          ...prev,
-                          [i]: Math.max(0, Number(e.target.value) || 0),
-                        }))
-                      }
-                    />
-                  </label>
+                    {b.section ? `${b.section}: ` : ''}
+                    {b.questionType} · {b.difficulty} · {b.count}
+                  </span>
                 ))}
-                {buckets.length === 0 && (
-                  <p className="text-xs text-muted-foreground">No targets.</p>
-                )}
               </div>
 
               {deficit && (

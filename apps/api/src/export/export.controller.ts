@@ -16,6 +16,26 @@ import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 const EXPORT_FORMATS = ['pdf', 'docx', 'xlsx'] as const;
 const EXPORT_INCLUDES = ['paper', 'answers'] as const;
 
+/* Optional ?buckets=[{"questionType":"MCQ","difficulty":"EASY","count":5}] —
+ * JSON array capping the wizard's export to its per-bucket targets. */
+const parseBucketsParam = (raw?: string): Array<{ questionType: string; difficulty: string; count: number }> | undefined => {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Array<{ questionType: string; difficulty: string; count: number }>;
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.filter(
+      (b) =>
+        b &&
+        typeof b.questionType === 'string' &&
+        typeof b.difficulty === 'string' &&
+        typeof b.count === 'number' &&
+        b.count > 0,
+    );
+  } catch {
+    return undefined;
+  }
+};
+
 /* Preview payload = digest + document + the shared renderer's body HTML, so
  * the web preview (dangerouslySetInnerHTML) shows the exact representation the
  * Puppeteer PDF produces — one visual source, never a second layout. */
@@ -87,6 +107,7 @@ export class ExportController {
     @Query('chapterId') chapterId?: string,
     @Query('topicId') topicId?: string,
     @Query('patternId') patternId?: string,
+    @Query('buckets') buckets?: string,
     @Query('include', new ParseEnumPipe(EXPORT_INCLUDES, { optional: true }))
     include: (typeof EXPORT_INCLUDES)[number] = 'paper',
   ): Promise<void> {
@@ -94,6 +115,7 @@ export class ExportController {
       tenant.instituteId,
       { subjectId, chapterId, topicId, patternId },
       include,
+      parseBucketsParam(buckets),
     );
     await this.send(res, doc, format, 'question-bank-export');
   }
@@ -105,6 +127,7 @@ export class ExportController {
     @Query('chapterId') chapterId?: string,
     @Query('topicId') topicId?: string,
     @Query('patternId') patternId?: string,
+    @Query('buckets') buckets?: string,
     @Query('include', new ParseEnumPipe(EXPORT_INCLUDES, { optional: true }))
     include: (typeof EXPORT_INCLUDES)[number] = 'paper',
   ): Promise<PreviewPayload> {
@@ -112,6 +135,7 @@ export class ExportController {
       tenant.instituteId,
       { subjectId, chapterId, topicId, patternId },
       include,
+      parseBucketsParam(buckets),
     );
     return { preview: withHtml(buildPreview(doc)) };
   }

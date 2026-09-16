@@ -280,6 +280,68 @@ pattern in the browser and close the follow-up batch.
 
 ---
 
+## Phase 38e — wizard bucket-driven export, question-type sections, Generate step simplified (2026-09-16)
+
+**Status: implemented + validated (API 127/127, typecheck + root lint clean, containers rebuilt, live E2E). Committed + pushed + graphify updated.**
+
+### Goal
+
+The bank wizard's preview and PDF/DOCX export showed every approved question
+in scope regardless of the Source step's type/difficulty/count selection —
+"the bucket size is not applying on the preview and export". Also the Generate
+step's per-bucket editable count list (added in 38d) was duplicating the Source
+step's controls and needed simplifying.
+
+### Completed work
+
+- **Export bucket cap**: `ExportService.buildQuestionsDoc` accepts an optional
+  `buckets` array (JSON `?buckets=` query param on `GET /export/questions` and
+  `GET /export/questions/preview`). When provided the export caps the pool at
+  `count` questions per `(questionType, difficulty)` pair, so preview/export
+  show exactly the wizard's targets. Without the param (QP, assessment, or
+  standalone bank exports) all questions are still returned.
+- **Question-type sections**: when buckets are present and no pattern is used
+  the export renders under a question-type heading (`MCQ`, `LONG_ANSWER`, etc.)
+  instead of a flat list. Pattern-scoped exports keep their pattern section
+  headings unchanged.
+- **Wizard sends buckets**: `exportParams` now serializes `mergedBuckets` as
+  `?buckets=[...]` so the Preview and PDF/DOCX buttons on the Wizard's Step 3
+  respect the Source step's counts.
+- **Generate step simplified**: the per-bucket editable count list (batch 3) is
+  removed. Step 2 now shows a compact read-only bucket summary (section +
+  type + difficulty + count chips), the Check bank button, deficit breakdown,
+  batch status, and Generate missing. All sizing decisions live in the Source
+  step where they were always presented.
+
+### Validation
+
+- API 127/127, api + web typecheck, root lint (9 tasks, 0 fail) clean.
+- Containers rebuilt (api + web, `--no-deps` to avoid the compose migrate
+  race); both healthy.
+- Live E2E via API: `GET /export/questions/preview?subjectId=7e660ca6…
+  &buckets=[{MCQ,EASY,2},{LONG_ANSWER,HARD,3}]` returns exactly 5 questions
+  (2 MCQ + 3 LONG_ANSWER) under type headings. Pattern-scoped
+  `&patternId=928234e7…&buckets=[{MCQ,EASY,2}]` returns 2 questions under the
+  pattern's section heading. Without `?buckets=` the full pool (469) is
+  returned unchanged.
+
+### Known issues / deferred
+
+- Pattern `45f567fa` totalMarks 9 vs computed 6 data fix still pending.
+- The bucket cap in `buildQuestionsDoc` slices by `(type, difficulty)` globally
+  and the section loop then groups the capped pool — if multiple pattern
+  sections share the same `questionType` they draw from the same pool, not
+  independent per-section quotas. Acceptable for a bank-export preview; the
+  QP/assessment flows use their own exact selection and are unaffected.
+
+### Exact recommended next task
+
+Apply the `45f567fa` stored-totalMarks data fix (Section B LONG_ANSWER
+3×3 attempt 2 → `totalMarks 6`), then re-verify the full wizard flow
+(Scope → Source → Generate → Preview/Export) in the browser.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 **Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**
