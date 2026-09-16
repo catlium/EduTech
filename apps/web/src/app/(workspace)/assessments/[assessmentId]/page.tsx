@@ -93,7 +93,7 @@ function toLocalInput(dt?: string | null): string | undefined {
 function workflowHint(status: AssessmentResponse['status']): string | null {
   switch (status) {
     case 'DRAFT':
-      return 'Add questions, then Publish.';
+      return 'This draft is the offline Question Paper. Once the selection is final, Publish to build it into an online Assessment.';
     case 'PUBLISHED':
       return 'Activate when ready for the attempt window.';
     case 'ACTIVE':
@@ -656,7 +656,7 @@ export default function AssessmentDetailPage() {
               </CardTitle>
               <CardDescription>
                 Live per-section status against “{coverage.patternTitle}”. Satisfied
-                sections are ready for preview and export.
+                sections are ready for the fixed question paper.
               </CardDescription>
             </div>
           </CardHeader>
@@ -715,9 +715,10 @@ export default function AssessmentDetailPage() {
                   variant="outline"
                   onClick={() => void onAutoSelect()}
                   disabled={working || autoSelecting}
+                  title="Randomly re-select questions from the bank per pattern section"
                 >
                   <Wand2 className="mr-1 size-3.5" />
-                  {autoSelecting ? 'Selecting...' : 'Auto-select from pattern'}
+                  {autoSelecting ? 'Shuffling…' : 'Shuffle / Regenerate from pattern'}
                 </Button>
               )}
               <Button size="sm" variant="outline" onClick={openAddDialog}>

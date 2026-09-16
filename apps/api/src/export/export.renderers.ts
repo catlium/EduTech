@@ -12,6 +12,7 @@ import {
   Header,
   Footer,
   AlignmentType,
+  TabStopType,
   SimpleField,
   PageBreak,
 } from 'docx';
@@ -27,7 +28,11 @@ export function sendDoc(res: Response, model: DocumentModel, filename: string): 
 // ── DOCX ─────────────────────────────────────────────────────────────
 
 async function sendDocx(res: Response, model: DocumentModel, filename: string): Promise<void> {
-  const children = model.blocks.flatMap(docxBlock);
+  let qNo = 0;
+  const children = model.blocks.flatMap((b) => {
+    if (b.kind === 'question' && !b.showAnswer) qNo += 1;
+    return docxBlock(b, qNo);
+  });
   const doc = new Document({
     sections: [
       {
@@ -74,7 +79,7 @@ async function sendDocx(res: Response, model: DocumentModel, filename: string): 
   res.send(buffer);
 }
 
-function docxBlock(block: DocBlock): (Paragraph | Table)[] {
+function docxBlock(block: DocBlock, qNo: number): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = [];
   switch (block.kind) {
     case 'heading':
@@ -100,16 +105,39 @@ function docxBlock(block: DocBlock): (Paragraph | Table)[] {
       );
       break;
     case 'question': {
-      out.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: `Q: ${block.stem}`, bold: true }),
+      if (!block.showAnswer) {
+        /* Student paper: plain numbered row with marks right-aligned (via a
+         * right tab stop); no type/difficulty chrome (mirrors the HTML). */
+        const pops: TextRun[] = [
+          new TextRun({ text: `${qNo}. `, bold: true }),
+          new TextRun({ text: block.stem }),
+        ];
+        if (block.marks != null) {
+          pops.push(new TextRun({ text: '\t' }));
+          pops.push(
             new TextRun({
-              text: ` (${block.type}${block.difficulty ? `, ${block.difficulty}` : ''}${block.marks != null ? ` — ${block.marks} mark${block.marks === 1 ? '' : 's'}` : ''})`,
+              text: `${block.marks} mark${block.marks === 1 ? '' : 's'}`,
             }),
-          ],
-        }),
-      );
+          );
+        }
+        out.push(
+          new Paragraph({
+            tabStops: [{ type: TabStopType.RIGHT, position: 9072 }],
+            children: pops,
+          }),
+        );
+      } else {
+        out.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `Q: ${block.stem}`, bold: true }),
+              new TextRun({
+                text: ` (${block.type}${block.difficulty ? `, ${block.difficulty}` : ''}${block.marks != null ? ` — ${block.marks} mark${block.marks === 1 ? '' : 's'}` : ''})`,
+              }),
+            ],
+          }),
+        );
+      }
       block.choices?.forEach((c, i) => {
         out.push(
           new Paragraph({

@@ -58,7 +58,34 @@ export interface DocumentModel {
   blocks: DocBlock[];
 }
 
-function QuestionBlock({ b }: { b: DocBlockQuestion }) {
+function QuestionBlock({ b, number }: { b: DocBlockQuestion; number: number }) {
+  /* Student paper: numbered row, no card chrome.
+   * Teacher answer-key: annotated card with type/difficulty + answers. */
+  if (!b.showAnswer) {
+    return (
+      <div className="flex items-start gap-2 py-1.5">
+        <span className="shrink-0 font-semibold tabular-nums">{number}.</span>
+        <div className="min-w-0 flex-1">
+          <p className="whitespace-pre-wrap text-sm">{b.stem}</p>
+          {b.choices && b.choices.length > 0 && (
+            <div className="mt-1.5 space-y-1">
+              {b.choices.map((c) => (
+                <div key={c.id} className="flex items-start gap-2 text-sm">
+                  <span>•</span>
+                  <span>{c.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {typeof b.marks === 'number' && (
+          <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+            {b.marks} mark{b.marks !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="rounded-md border bg-card p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -98,10 +125,12 @@ function QuestionBlock({ b }: { b: DocBlockQuestion }) {
 }
 
 export function DocBlocks({ model }: { model: DocumentModel }) {
+  let qNo = 0;
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">{model.title}</h3>
       {model.blocks.map((b, i) => {
+        if (b.kind === 'question' && !b.showAnswer) qNo += 1;
         switch (b.kind) {
           case 'heading':
             return (
@@ -146,7 +175,7 @@ export function DocBlocks({ model }: { model: DocumentModel }) {
               </div>
             );
           case 'question':
-            return <QuestionBlock key={i} b={b} />;
+            return <QuestionBlock key={i} b={b} number={qNo} />;
           case 'table':
             return (
               <div key={i} className="overflow-x-auto rounded-md border">

@@ -2,7 +2,7 @@
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
-**Status: core semantics implemented + validated + committed (unpushed); layouts, regeneration verify, and final docs pending.**
+**Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**
 
 ### Goal
 
@@ -306,6 +306,13 @@ reflect code + automated validation, not UI journeys.
 
 ### Latest checkpoint
 
+- **Phase 37 current session (uncommitted):** shuffle in the Question Paper
+  builder replaces the selection (verified live: two select-from-pattern calls
+  → 11 questions / 13 marks, zero overlapping IDs); student paper render
+  (HTML+DOCX+web) shows `N.` number-left / stem / marks-right, no card, no
+  type/difficulty badges; pattern Attempt-N-of-M visible for every section,
+  disabled+dimmer when compulsory. API tests 121/121, api+web typecheck and
+  eslint clean, api+web containers rebuilt.
 - **Phase 33 committed + pushed** (`12083df`, `6bb5616`, `c0f5e39`, `c8568e3`).
   Automated validation green (API 113 tests, typecheck, lint, web build,
   worker 54 tests). Remaining uncommitted: the paused monolith-OCR refactor

@@ -105,30 +105,31 @@ function pickForSection(
   const remainingPool = [...pool];
 
   weights.forEach(({ d }) => {
-      const limit = allocated[d];
-      let picked = 0;
-      for (let idx = 0; idx < remainingPool.length; ) {
-        const q = remainingPool[idx]!;
-        if (allocated[q.difficulty] > 0) {
-          selected.push(q.id);
-          allocated[q.difficulty] -= 1;
-          remainingPool.splice(idx, 1);
-          picked += 1;
-          if (picked >= limit) break;
-        } else {
-          idx += 1;
-        }
+    const limit = allocated[d];
+    let picked = 0;
+    /* Only this difficulty may satisfy this bucket; the per-difficulty pass
+     * must not consume questions meant for a later bucket. */
+    for (let idx = 0; idx < remainingPool.length && picked < limit; ) {
+      const q = remainingPool[idx]!;
+      if (q.difficulty !== d) {
+        idx += 1;
+        continue;
       }
-      if (picked < limit) {
-        shortages.push(`${s.questionType} ${d}: only ${picked} of ${limit} available`);
-        for (let idx = 0; idx < remainingPool.length && picked < limit; ) {
-          selected.push(remainingPool[idx]!.id);
-          remainingPool.splice(idx, 1);
-          picked += 1;
-          shortages.push('filled with different difficulty than requested');
-        }
+      selected.push(q.id);
+      remainingPool.splice(idx, 1);
+      picked += 1;
+      if (picked >= limit) break;
+    }
+    if (picked < limit) {
+      shortages.push(`${s.questionType} ${d}: only ${picked} of ${limit} available`);
+      for (let idx = 0; idx < remainingPool.length && picked < limit; ) {
+        selected.push(remainingPool[idx]!.id);
+        remainingPool.splice(idx, 1);
+        picked += 1;
+        shortages.push('filled with different difficulty than requested');
       }
-    });
+    }
+  });
     {
       const limit = needed - selected.length;
       if (limit > 0) {

@@ -63,6 +63,47 @@ test('difficulty distribution is honored with per-difficulty allocation', () => 
   assert.deepEqual(plan.sections[0]!.shortages, []);
 });
 
+test('interleaved difficulty pools still respect the allocation (regression)', () => {
+  const pool = [
+    { id: 'h1', questionType: 'MCQ', difficulty: 'HARD' },
+    { id: 'e1', questionType: 'MCQ', difficulty: 'EASY' },
+    { id: 'h2', questionType: 'MCQ', difficulty: 'HARD' },
+    { id: 'e2', questionType: 'MCQ', difficulty: 'EASY' },
+    { id: 'h3', questionType: 'MCQ', difficulty: 'HARD' },
+    { id: 'e3', questionType: 'MCQ', difficulty: 'EASY' },
+  ];
+  const plan = planAutoSelection(
+    [
+      section({
+        count: 4,
+        difficultyDistribution: { EASY: 50, HARD: 50 },
+      }),
+    ],
+    pool as CandidateQuestion[],
+  );
+  assert.equal(plan.totalSelected, 4);
+  assert.deepEqual(plan.sections[0]!.shortages, []);
+  const picked = plan.sections[0]!.selected;
+  assert.equal(picked.filter((id) => id.startsWith('e')).length, 2);
+  assert.equal(picked.filter((id) => id.startsWith('h')).length, 2);
+});
+
+test('zero-weight difficulty must not be overshot (regression)', () => {
+  const plan = planAutoSelection(
+    [section({ count: 3, difficultyDistribution: { EASY: 50, MEDIUM: 50, HARD: 0 } })],
+    [
+      { id: 'e1', questionType: 'MCQ', difficulty: 'EASY' },
+      { id: 'm1', questionType: 'MCQ', difficulty: 'MEDIUM' },
+      { id: 'h1', questionType: 'MCQ', difficulty: 'HARD' },
+      { id: 'e2', questionType: 'MCQ', difficulty: 'EASY' },
+      { id: 'm2', questionType: 'MCQ', difficulty: 'MEDIUM' },
+    ] as CandidateQuestion[],
+  );
+  assert.equal(plan.sections[0]!.found, 3);
+  assert.deepEqual(plan.sections[0]!.shortages, []);
+  assert.equal(plan.sections[0]!.selected.includes('h1'), false);
+});
+
 test('thin bank reports an honest shortage and fills from fallback difficulties', () => {
   const plan = planAutoSelection(
     [section({ count: 4, difficultyDistribution: { EASY: 100 } })],

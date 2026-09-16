@@ -12,6 +12,7 @@ import {
   Layers,
   ListChecks,
   CircleDollarSign,
+  Dice5,
   Eye,
   Loader2,
   Plus,
@@ -482,7 +483,11 @@ export default function PatternBuilderPage() {
     }
   }
 
-  /* ── create assessment ── */
+  /* ── generate question paper ──
+     Creates a draft assessment from the approved pattern and immediately
+     auto-selects (shuffles) matching bank questions per section, so the paper
+     is fixed in one step. The teacher can then edit the selection or build it
+     into an online assessment. */
   async function onCreateAssessment() {
     if (!pattern) return;
     setCreatingAssessment(true);
@@ -493,10 +498,11 @@ export default function PatternBuilderPage() {
         `/paper-patterns/${pattern.id}/assessment`,
         { method: 'POST', body },
       );
-      toast.success('Assessment created');
+      await api(`/assessments/${assessment.id}/select-from-pattern`, { method: 'POST' });
+      toast.success('Question paper generated — questions left fixed');
       router.push(`/assessments/${assessment.id}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to create assessment');
+      toast.error(err instanceof ApiError ? err.message : 'Failed to generate question paper');
     } finally {
       setCreatingAssessment(false);
     }
@@ -600,15 +606,14 @@ export default function PatternBuilderPage() {
                   {pattern.status === 'APPROVED' && (
                     <Button
                       size="sm"
-                      variant="outline"
                       onClick={() => {
                         setAssessmentTitle(
-                          pattern.title ? `${pattern.title} — Assessment` : 'Assessment',
+                          pattern.title ? `${pattern.title} — Question Paper` : 'Question Paper',
                         );
                         setAssessmentOpen(true);
                       }}
                     >
-                      Create Assessment
+                      <Dice5 className="mr-1 size-3.5" /> Generate Question Paper
                     </Button>
                   )}
                   <Button
@@ -884,15 +889,15 @@ export default function PatternBuilderPage() {
                         />
                         Compulsory
                       </label>
-                      {!sec.compulsory && (
-                        <div className="flex items-center gap-2">
-                          <Label className="text-xs">Attempt</Label>
+                      <div className={`flex items-center gap-2 ${sec.compulsory ? 'opacity-60' : ''}`}>
+                        <Label className="text-xs">Attempt</Label>
                           <Input
                             type="number"
                             min={1}
                             className="w-20"
                             value={sec.attemptCount ?? ''}
                             placeholder="N of M"
+                            disabled={sec.compulsory}
                             onChange={(e) =>
                               updateSection(sIdx, {
                                 attemptCount: e.target.value ? Number(e.target.value) : null,
@@ -900,21 +905,22 @@ export default function PatternBuilderPage() {
                             }
                           />
                           <span className="text-xs text-muted-foreground">
-                            of{' '}
-                            {sec.rules.reduce(
-                              (acc, r) =>
-                                acc +
-                                (r.questionType !== '' ||
-                                r.count != null ||
-                                r.marksPerQuestion != null
-                                  ? (r.count ?? 0)
-                                  : 0),
-                              0,
-                            )}{' '}
-                            questions shown
+                            {sec.compulsory
+                              ? 'of all questions (compulsory — students attempt every one)'
+                              : `of ${
+                                  sec.rules.reduce(
+                                    (acc, r) =>
+                                      acc +
+                                      (r.questionType !== '' ||
+                                      r.count != null ||
+                                      r.marksPerQuestion != null
+                                        ? (r.count ?? 0)
+                                        : 0),
+                                    0,
+                                  )
+                                } questions shown`}
                           </span>
                         </div>
-                      )}
                     </div>
 
                     {/* rules */}
@@ -1417,16 +1423,18 @@ export default function PatternBuilderPage() {
           onConfirm={onApprove}
         />
 
-        {/* ── Create Assessment dialog ── */}
+        {/* ── Generate Question Paper dialog ── */}
         <Dialog
           open={assessmentOpen}
           onOpenChange={(o) => !creatingAssessment && setAssessmentOpen(o)}
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Create Assessment</DialogTitle>
+              <DialogTitle>Generate Question Paper</DialogTitle>
               <DialogDescription>
-                Generate an assessment from this approved pattern.
+                Randomly select questions for each section of this approved pattern from the
+                Question Bank. The paper is fixed after generation and can be edited or built into
+                an online assessment.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -1455,7 +1463,7 @@ export default function PatternBuilderPage() {
               </Button>
               <Button onClick={onCreateAssessment} disabled={creatingAssessment}>
                 {creatingAssessment && <Loader2 className="mr-1 size-3 animate-spin" />}
-                Create
+                Generate
               </Button>
             </DialogFooter>
           </DialogContent>

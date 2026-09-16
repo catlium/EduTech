@@ -549,13 +549,12 @@ export class ExaminationsService {
       taken,
     );
 
-    // Append only what the bank actually satisfied, in section order.
+    // Replace the current selection (shuffle/regenerate), in section order.
     await this.db.transaction(async (tx) => {
-      const [agg] = await tx
-        .select({ maxSort: max(assessmentQuestions.sortOrder) })
-        .from(assessmentQuestions)
+      await tx
+        .delete(assessmentQuestions)
         .where(eq(assessmentQuestions.assessmentId, assessmentId));
-      let base = agg?.maxSort ?? 0;
+      let base = 0;
       for (const sec of plan.sections) {
         for (const questionId of sec.selected) {
           base += 1;

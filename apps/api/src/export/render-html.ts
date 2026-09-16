@@ -17,7 +17,7 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function renderBlock(b: DocBlock): string {
+function renderBlock(b: DocBlock, qNo: number): string {
   switch (b.kind) {
     case 'heading':
       return `<h2 class="doc-heading">${esc(b.text)}</h2>`;
@@ -30,6 +30,19 @@ function renderBlock(b: DocBlock): string {
     case 'flashcard':
       return `<div class="doc-flashcard"><div class="doc-flashcard-front"><strong>Q:</strong> ${esc(b.front)}</div><div class="doc-flashcard-back"><strong>A:</strong> ${esc(b.back)}</div></div>`;
     case 'question': {
+      const choices =
+        b.choices && b.choices.length > 0
+          ? `<ol class="doc-choices">${b.choices.map((c) => `<li${b.showAnswer && c.correct ? ' class="correct"' : ''}>${esc(c.text)}${b.showAnswer && c.correct ? ' ✓' : ''}</li>`).join('')}</ol>`
+          : '';
+
+      /* Student paper: clean numbered row, no type/difficulty card chrome.
+       * Teacher answer-key: annotated card with meta + answer + explanation. */
+      if (!b.showAnswer) {
+        const marks =
+          typeof b.marks === 'number' ? `${b.marks} mark${b.marks === 1 ? '' : 's'}` : '';
+        return `<div class="doc-q-row"><span class="doc-q-num">${qNo}.</span><div class="doc-q-body"><p class="doc-question-stem">${esc(b.stem)}</p>${choices}</div>${marks ? `<span class="doc-q-marks">${esc(marks)}</span>` : ''}</div>`;
+      }
+
       const meta = [
         b.type,
         b.difficulty,
@@ -37,16 +50,12 @@ function renderBlock(b: DocBlock): string {
       ]
         .filter(Boolean)
         .join(' · ');
-      const choices =
-        b.choices && b.choices.length > 0
-          ? `<ol class="doc-choices">${b.choices.map((c) => `<li${b.showAnswer && c.correct ? ' class="correct"' : ''}>${esc(c.text)}${b.showAnswer && c.correct ? ' ✓' : ''}</li>`).join('')}</ol>`
-          : '';
       const answer =
-        b.showAnswer && b.answerNote
+        b.answerNote
           ? `<p class="doc-answer"><strong>Answer:</strong> ${esc(b.answerNote)}</p>`
           : '';
       const expl =
-        b.showAnswer && b.explanation
+        b.explanation
           ? `<p class="doc-explanation"><strong>Explanation:</strong> ${esc(b.explanation)}</p>`
           : '';
       return `<div class="doc-question"><p class="doc-question-stem">${esc(b.stem)}</p>${meta ? `<p class="doc-question-meta">${esc(meta)}</p>` : ''}${choices}${answer}${expl}</div>`;
@@ -112,10 +121,15 @@ export function renderDocumentHtml(model: DocumentModel): string {
  *  the web preview (dangerouslySetInnerHTML) renders the exact same visual
  *  representation as the Puppeteer PDF, from one CSS source. */
 export function renderDocumentBodyHtml(model: DocumentModel): string {
+  let qNo = 0;
+  const blocks = model.blocks.map((b) => {
+    if (b.kind === 'question' && !b.showAnswer) qNo += 1;
+    return renderBlock(b, qNo);
+  });
   return `<style>${EXPORT_STYLES}</style>
 <div class="doc-page">
   <h1 class="doc-title">${esc(model.title)}</h1>
-  ${model.blocks.map(renderBlock).join('\n')}
+  ${blocks.join('\n')}
 </div>`;
 }
 
@@ -253,6 +267,39 @@ body {
   font-size: 9pt;
   color: #666;
   margin: 0 0 0.3em;
+}
+
+/* ── Student paper question row (number | stem | marks) ─────────────── */
+
+.doc-q-row {
+  display: flex;
+  gap: 0.6em;
+  align-items: flex-start;
+  margin: 0.6em 0;
+  page-break-inside: avoid;
+}
+
+.doc-q-num {
+  font-weight: 600;
+  min-width: 2em;
+  flex-shrink: 0;
+}
+
+.doc-q-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-q-body .doc-question-stem {
+  margin: 0;
+  font-weight: normal;
+}
+
+.doc-q-marks {
+  flex-shrink: 0;
+  color: #555;
+  font-size: 9.5pt;
+  white-space: nowrap;
 }
 
 .doc-choices {

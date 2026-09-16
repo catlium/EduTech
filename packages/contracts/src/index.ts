@@ -1224,6 +1224,9 @@ export const QuestionResponseSchema = z.object({
   source: QuestionSourceEnum,
   approvalStatus: QuestionApprovalStatusEnum,
   status: z.string(),
+  // Provenance: the paper pattern this question was generated for (null when
+  // added to the bank manually or outside a pattern-driven generation).
+  sourcePatternId: z.string().uuid().nullable(),
   createdBy: z.string().uuid(),
   updatedBy: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),

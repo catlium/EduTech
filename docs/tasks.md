@@ -13,6 +13,17 @@
 > Paper → Assessment exports now run off the Paper Pattern semantics, the
 > assessment results sheet export is wired E2E, and the preview-before-export
 > hard gate was removed (preview is now a convenience representation only).
+>
+> Checkpoint 2026-09-16 (this session, uncommitted): shuffle in the Question
+> Paper builder now REPLACES the selection instead of appending
+> (`autoSelectFromPattern` deletes existing assessment_questions then inserts
+> the plan; regression-verified live — two select-from-pattern calls return
+> exactly 11/13 marks, zero overlapping question IDs); the paper renderer
+> (HTML preview, DOCX, web preview) shows the student-facing question row as
+> `N.` number left / stem / marks right with no card and no type/difficulty
+> badges; pattern builder shows Attempt-N-of-M for every section (disabled +
+> dimmed when compulsory). API tests 121/121, api+web typecheck clean, api
+> eslint clean; api+web containers rebuilt and restarted.
 > Migration 0031 (hand-written per the drizzle-kit non-interactive limitation)
 > + worker provenance retention + API tests 119/119 clean.
 
@@ -184,8 +195,9 @@ Material Detail cleanup. Derived questions are auto-approved on creation.
 - [x] Migration `0030_assessment_question_section.sql` (section varchar(100) DEFAULT 'General')
 - [x] `AssessmentQuestions.section` added to Drizzle schema
 - [x] `paper-selection.ts` — `planAutoSelection` (type/count/difficulty allocation, attempt-N-of-M, honest shortages)
+- [x] `paper-selection.ts` — fix: per-difficulty passes must only consume matching difficulty (`q.difficulty !== d`) and must cap at `picked < limit` so a zero-weight difficulty cannot overshoot; removes misleading `no matching difficulty available` message
 - [x] `paper-selection.ts` — `computePatternCoverage` (OK/SHORT/EXCESS/TYPE_MISMATCH)
-- [x] `paper-selection.test.ts` — 9 unit tests (pure, no DB)
+- [x] `paper-selection.test.ts` — 11 unit tests (pure, no DB)
 
 ### Goal: Backend assessment paper selection endpoints
 

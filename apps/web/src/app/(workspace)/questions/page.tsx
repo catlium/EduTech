@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -31,6 +32,7 @@ import type { ExportPreviewValue } from '@/components/export/export-preview-dial
 import { useTenant, canManage } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
 import { QuestionBankSets } from '@/components/questions/question-bank-sets';
+import { QuestionPaperBuilder } from '@/components/questions/question-paper-builder';
 import { PageHeader } from '@/components/app/page-header';
 import { ScopeCascade, FilterChip } from '@/components/app/scope-cascade';
 import { EmptyState } from '@/components/app/empty-state';
@@ -358,6 +360,7 @@ function FibEditor({
 export default function QuestionsListPage() {
   const { institute } = useTenant();
   const isTeacher = canManage(institute);
+  const router = useRouter();
 
   const [questions, setQuestions] = useState<QuestionListItem[]>([]);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
@@ -468,6 +471,24 @@ export default function QuestionsListPage() {
     if (listCascade.topicId) params.set('topicId', listCascade.topicId);
     return params.toString();
   };
+
+  /* Generate Question Paper: create a draft assessment from the approved
+   * pattern, then auto-select (shuffle) questions per section from the bank.
+   * The draft paper is fixed and can be edited or published as an assessment. */
+  async function generatePaper(patternId: string, title: string) {
+    if (!institute) return;
+    try {
+      const { assessment } = await api<{ assessment: { id: string } }>(
+        `/paper-patterns/${patternId}/assessment`,
+        { method: 'POST', body: { title } },
+      );
+      await api(`/assessments/${assessment.id}/select-from-pattern`, { method: 'POST' });
+      toast.success('Question paper generated — questions left fixed');
+      router.push(`/assessments/${assessment.id}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to generate question paper');
+    }
+  }
 
   // Preview is tied to the export scope: any scope change invalidates it.
   const loadPreview = useCallback(async (): Promise<ExportPreviewValue> => {
@@ -913,6 +934,14 @@ export default function QuestionsListPage() {
           chapters={chapters}
           topics={topics}
           onChanged={() => void refresh()}
+        />
+      </div>
+
+      <div className="mb-4">
+        <QuestionPaperBuilder
+          subjectId={listCascade.subjectId}
+          questions={questions}
+          onGeneratePaper={generatePaper}
         />
       </div>
 
