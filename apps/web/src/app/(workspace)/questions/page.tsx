@@ -1,7 +1,7 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -21,19 +21,14 @@ import {
   Sparkles,
   Trash2,
   X,
-  Download,
-  Eye,
 } from 'lucide-react';
 
-import { api, ApiError, downloadFile } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
-import { ExportPreviewDialog } from '@/components/export/export-preview-dialog';
-import type { ExportPreviewValue } from '@/components/export/export-preview-dialog';
 import { useTenant, canManage } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
 import { QuestionBankWizard } from '@/components/questions/question-bank-wizard';
 import { QuestionBankSets } from '@/components/questions/question-bank-sets';
-import { QuestionPaperBuilder } from '@/components/questions/question-paper-builder';
 import { PageHeader } from '@/components/app/page-header';
 import { ScopeCascade, FilterChip } from '@/components/app/scope-cascade';
 import { EmptyState } from '@/components/app/empty-state';
@@ -361,7 +356,6 @@ function FibEditor({
 export default function QuestionsListPage() {
   const { institute } = useTenant();
   const isTeacher = canManage(institute);
-  const router = useRouter();
 
   const [questions, setQuestions] = useState<QuestionListItem[]>([]);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
@@ -383,9 +377,6 @@ export default function QuestionsListPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [createCascade, setCreateCascade] = useState<Cascade>(DEFAULT_CASCADE);
-  const [previewState, setPreviewState] = useState<ExportPreviewValue | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [include, setInclude] = useState<'paper' | 'answers'>('paper');
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const [questionTypes, setQuestionTypes] = useState<QuestionTypeDefinition[]>([]);
@@ -453,57 +444,8 @@ export default function QuestionsListPage() {
       .catch(() => {});
   }, [institute]);
 
-  async function exportQuestions(format: 'pdf' | 'docx') {
-    try {
-      const params = new URLSearchParams({ format, include: include });
-      if (listCascade.subjectId) params.set('subjectId', listCascade.subjectId);
-      if (listCascade.chapterId) params.set('chapterId', listCascade.chapterId);
-      if (listCascade.topicId) params.set('topicId', listCascade.topicId);
-      await downloadFile(`/export/questions?${params.toString()}`, `question-bank-export.${format}`);
-      toast.success(`Question bank exported as ${format.toUpperCase()}`);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Export failed');
-    }
-  }
-
-  const scopeParams = () => {
-    const params = new URLSearchParams({ include });
-    if (listCascade.subjectId) params.set('subjectId', listCascade.subjectId);
-    if (listCascade.chapterId) params.set('chapterId', listCascade.chapterId);
-    if (listCascade.topicId) params.set('topicId', listCascade.topicId);
-    return params.toString();
-  };
-
-  /* Generate Question Paper: create a standalone question paper from the
-   * approved pattern, then auto-select (shuffle) questions per section from
-   * the bank. The paper is a separate entity from assessments; it can later
-   * be exported or built into an assessment via an explicit step. */
-  async function generatePaper(patternId: string, title: string) {
-    if (!institute) return;
-    try {
-      const { paper } = await api<{ paper: { id: string } }>('/question-papers', {
-        method: 'POST',
-        body: { patternId, title },
-      });
-      await api(`/question-papers/${paper.id}/select-from-pattern`, { method: 'POST' });
-      toast.success('Question paper generated — questions left fixed');
-      router.push(`/question-papers/${paper.id}`);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to generate question paper');
-    }
-  }
-
-  // Preview is tied to the export scope: any scope change invalidates it.
-  const loadPreview = useCallback(async (): Promise<ExportPreviewValue> => {
-    const { preview } = await api<{ preview: ExportPreviewValue }>(
-      `/export/questions/preview?${scopeParams()}`,
-    );
-    return preview;
-  }, [listCascade, include]);
-
   const updateCascade = useCallback(
     (next: Cascade | ((prev: Cascade) => Cascade)) => {
-      setPreviewState(null);
       setListCascade(next);
     },
     [],
@@ -880,52 +822,6 @@ export default function QuestionsListPage() {
               <Button size="sm" onClick={() => setWizardOpen(true)}>
                 <Sparkles className="mr-1 size-3.5" /> Wizard
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPreviewOpen(true)}
-                disabled={!listCascade.subjectId && !listCascade.chapterId && !listCascade.topicId}
-                title={
-                  listCascade.subjectId || listCascade.chapterId || listCascade.topicId
-                    ? 'Preview the exact export before downloading'
-                    : 'Select a subject, chapter or topic scope to preview'
-                }
-              >
-                <Eye className="mr-1 size-3.5" /> Preview
-              </Button>
-              <Select defaultValue="paper" onValueChange={(v) => setInclude(v as 'paper' | 'answers')}>
-                <SelectTrigger size="sm" className="w-40">
-                  <SelectValue placeholder="Includes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="paper">Student paper</SelectItem>
-                  <SelectItem value="answers">Teacher answer key</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => exportQuestions('pdf')}
-                title={
-                  listCascade.subjectId || listCascade.chapterId || listCascade.topicId
-                    ? 'Export to PDF'
-                    : 'Select a subject, chapter or topic scope to export'
-                }
-              >
-                <Download className="mr-1 size-3.5" /> PDF
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => exportQuestions('docx')}
-                title={
-                  listCascade.subjectId || listCascade.chapterId || listCascade.topicId
-                    ? 'Export to DOCX'
-                    : 'Select a subject, chapter or topic scope to export'
-                }
-              >
-                <Download className="mr-1 size-3.5" /> DOCX
-              </Button>
               <Button size="sm" onClick={() => setCreateOpen(true)}>
                 <Plus className="mr-1 size-3.5" /> Add Question
               </Button>
@@ -953,17 +849,19 @@ export default function QuestionsListPage() {
       />
 
       <div className="mb-4">
-        <QuestionPaperBuilder
-          subjectId={listCascade.subjectId}
-          questions={questions}
-          onGeneratePaper={generatePaper}
-          onGenerated={() => void refresh()}
-        />
-      </div>
-
-      <div className="mb-4">
         <QuestionBankSets />
       </div>
+
+      {isTeacher && (
+        <div className="mb-4 flex flex-wrap items-center justify-between rounded-lg border border-dashed bg-muted/20 px-4 py-3 text-sm">
+          <span>
+            Build a Question Paper from a Paper Pattern.
+          </span>
+          <Button size="sm" variant="ghost" asChild>
+            <Link href="/question-papers">Go to Question Papers</Link>
+          </Button>
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative">
@@ -1458,15 +1356,6 @@ export default function QuestionsListPage() {
           </form>
         </DialogContent>
       </Dialog>
-
-      <ExportPreviewDialog
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        title="Question Bank Export Preview"
-        description={`Shows the exact ${include === 'paper' ? 'student paper' : 'teacher answer key'} that will be exported for this scope.`}
-        load={loadPreview}
-        onPreviewed={setPreviewState}
-      />
     </div>
   );
 }

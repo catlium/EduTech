@@ -256,7 +256,7 @@ services:
       WORKER_AI_PROVIDER_URL: http://omniroute:20128/v1
       # Independent jobs run in parallel up to this many worker threads
       # (each its own RabbitMQ connection, prefetch 1).
-      WORKER_AI_CONCURRENCY: ${WORKER_AI_CONCURRENCY:-2}
+      WORKER_AI_CONCURRENCY: ${WORKER_AI_CONCURRENCY:-5}
       # OmniRoute endpoint key (issued in the OmniRoute dashboard). Sent
       # to the gateway as `Authorization: Bearer <key>`.
       WORKER_AI_API_KEY: ${WORKER_AI_API_KEY:-}

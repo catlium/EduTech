@@ -813,15 +813,17 @@ export class QuestionGenerationService {
     instituteId: string,
     input: { subjectId?: string; chapterId?: string; topicId?: string },
   ): Promise<{ kind: 'subject' | 'chapter' | 'topic'; id: string }> {
+    // A cascade may provide 1-3 ids; the most specific one wins (topic >
+    // chapter > subject). Selecting all three is not required.
     const provided: Array<{ kind: 'subject' | 'chapter' | 'topic'; id: string }> = [
-      input.subjectId ? { kind: 'subject' as const, id: input.subjectId } : null,
-      input.chapterId ? { kind: 'chapter' as const, id: input.chapterId } : null,
       input.topicId ? { kind: 'topic' as const, id: input.topicId } : null,
+      input.chapterId ? { kind: 'chapter' as const, id: input.chapterId } : null,
+      input.subjectId ? { kind: 'subject' as const, id: input.subjectId } : null,
     ].filter((x): x is { kind: 'subject' | 'chapter' | 'topic'; id: string } => x !== null);
 
-    if (provided.length !== 1) {
+    if (provided.length === 0) {
       throw new BadRequestException(
-        'Exactly one of subjectId, chapterId, topicId must be provided',
+        'at least one of subjectId, chapterId, topicId must be provided',
       );
     }
     const scope = provided[0]!;

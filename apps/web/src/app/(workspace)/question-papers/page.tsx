@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
@@ -11,6 +11,8 @@ import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { ErrorState } from '@/components/app/error-state';
 import { SkeletonRows } from '@/components/app/loading';
+import { NewQuestionPaperDialog } from '@/components/questions/new-question-paper-dialog';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { QuestionPaperListItem } from '@catlium/contracts';
 
@@ -20,6 +22,7 @@ export default function QuestionPapersListPage() {
   const [papers, setPapers] = useState<QuestionPaperListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const fetchPapers = () => {
     if (!institute) return;
@@ -47,7 +50,16 @@ export default function QuestionPapersListPage() {
       <PageHeader
         title="Question Papers"
         description={`${papers.length} paper${papers.length !== 1 ? 's' : ''}`}
+        actions={
+          isTeacher && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1 size-3.5" /> New Question Paper
+            </Button>
+          )
+        }
       />
+
+      <NewQuestionPaperDialog open={createOpen} onOpenChange={setCreateOpen} />
 
       {loading ? (
         <SkeletonRows />
@@ -60,12 +72,9 @@ export default function QuestionPapersListPage() {
           description="Generate a question paper from an approved Paper Pattern to get started."
         >
           {isTeacher && (
-            <Link
-              href="/paper-patterns"
-              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
-            >
-              Go to Paper Patterns
-            </Link>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1 size-3.5" /> New Question Paper
+            </Button>
           )}
         </EmptyState>
       ) : (

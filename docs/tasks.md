@@ -85,6 +85,43 @@ Teacher-reported follow-ups after the Phase 38 checkpoint:
       Excel 2007+ workbook with one sheet per analytics table, wizard backend
       dry-run works. Commit + push + graphify update pending.
 
+### Follow-up batch 2 — wizard scope rule, pattern export, QP-driven assessment creation, AI concurrency (2026-09-16)
+
+Teacher-reported follow-ups after the first follow-up batch:
+
+- [x] Wizard "Check bank" 400 root cause: `generate-more` required *exactly
+      one* of subjectId/chapterId/topicId but the cascade sends all that are
+      selected. `resolveScopeOrThrow` now accepts 1-3 ids and uses the most
+      specific (topic > chapter > subject); selecting all three is no longer
+      required.
+- [x] Wizard export/preview empty root cause: `buildQuestionsDoc` filtered
+      pattern-scoped exports by `questions.source_pattern_id`, but nothing in
+      the codebase ever writes that column (introduced in Phase 37, writer
+      never landed) — every pattern export returned zero rows. A `patternId`
+      is now treated as the *arrangement rule* only; selection is by scope
+      (subject/chapter/topic) and questions are grouped under the pattern's
+      sections.
+- [x] Create Assessment reworked: the assessments page no longer creates a
+      bare assessment directly. "New Assessment" now opens the pattern picker,
+      creates a question paper from an approved pattern, populates it
+      (select-from-pattern), and lands on the QP page — the QP page's explicit
+      "Create Assessment from QP" step converts it, matching the QP flow.
+- [x] Question Paper builder moved home: it was embedded in the question bank
+      page (`QuestionPaperBuilder`); removed from `/questions` (now a link to
+      the QP page) and the `/question-papers` page gained a "New Question
+      Paper" header action + empty state via the shared
+      `NewQuestionPaperDialog` (subject filter + approved pattern picker).
+- [x] Question bank header export controls removed (Preview / Includes / PDF /
+      DOCX): the Wizard owns preview + export now.
+- [x] AI generation parallelism raised from 2 to 5 threads (worker
+      `ai_concurrency`, compose `WORKER_AI_CONCURRENCY` default, `.env.example`
+      documented).
+- [x] Validation: API 127/127 + typecheck (api/web) clean, containers rebuilt
+      and live-checked: `generate-more` with subject+chapter+topic returns
+      deficit buckets (no 400), pattern-mode and manual-mode question-bank
+      previews render full documents, QP list/assessments pages serve. Docs +
+      commit + push + graphify update pending.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)

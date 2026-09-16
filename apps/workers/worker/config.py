@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # connection, prefetch 1). Independent jobs run in parallel up to this cap;
     # material processing stays on the single-threaded `jobs` consumer (its
     # REPROCESS/OCR flow is deliberately serial).
-    ai_concurrency: int = 2
+    ai_concurrency: int = 5
     # Syllabus processing jobs stuck in `processing` this long (worker crash,
     # connection loss, container restart — the original outage root cause) are
     # reset to `queued` and re-published on consumer startup. Generous default:

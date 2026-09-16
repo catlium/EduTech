@@ -86,7 +86,10 @@ export class ExportService {
         eq(questions.status, 'ACTIVE'),
       ),
     ];
-    if (scope.patternId) conditions.push(eq(questions.sourcePatternId, scope.patternId));
+    // A pattern is the *arrangement rule* for the bank export, not a filter:
+    // generated bank questions carry no provenance stamp, so pattern-scoped
+    // exports select by scope (subject/chapter/topic) and group by the
+    // pattern's sections below.
     if (scope.subjectId) conditions.push(eq(questions.subjectId, scope.subjectId));
     if (scope.chapterId) conditions.push(eq(questions.chapterId, scope.chapterId));
     if (scope.topicId) conditions.push(eq(questions.topicId, scope.topicId));

@@ -151,6 +151,66 @@ Phase 37 resource-layout polish.
 
 ---
 
+## Phase 38c — wizard scope rule, pattern export, QP-driven assessment creation, AI concurrency (2026-09-16)
+
+**Status: implemented + validated (API 127/127, typecheck clean, containers rebuilt, live checks). Docs updated; commit + push + graphify in progress.**
+
+### Goal
+
+Fix the four teacher-visible regressions in the follow-up wizard/export work:
+(1) the bank wizard's "Check bank" failed with `Exactly one of subjectId,
+chapterId, topicId must be provided` because the scope cascade sends every
+selected id; (2) the wizard's preview/export was empty; (3) "New Assessment"
+created a bare assessment instead of the paper-pattern → question-paper flow;
+(4) the question-paper builder still lived inside the question bank page even
+though QPs have their own page. Also raise AI generation parallelism from 2
+to 5.
+
+### Completed work
+
+- **Scope rule relaxed**: `QuestionGenerationService.resolveScopeOrThrow` now
+  accepts 1-3 of subjectId/chapterId/topicId and resolves to the most specific
+  one (topic > chapter > subject). Drafting all three is fine; none is a 400.
+- **Pattern export fixed**: `ExportService.buildQuestionsDoc` no longer filters
+  pattern-scoped exports by `questions.source_pattern_id` — a column that was
+  declared in the schema but never written anywhere, which made every
+  `?patternId=` export return zero rows (the wizard's empty preview). A
+  `patternId` is now purely the arrangement rule: selection stays scoped by
+  subject/chapter/topic and questions are grouped under the pattern's sections
+  (with a General bucket for leftovers).
+- **Create Assessment ⇒ QP flow**: the assessments list page drops the direct
+  assessment form. "New Assessment" opens the pattern picker
+  (`NewQuestionPaperDialog`), creates the question paper from an approved
+  pattern, populates it via select-from-pattern, and navigates to the QP page
+  where the explicit "Create Assessment from QP" step finishes the job.
+- **QP builder relocated**: `QuestionPaperBuilder` removed from the
+  `/questions` bank page (replaced by a link to the QP page); the
+  `/question-papers` list page gained a "New Question Paper" header action +
+  empty-state CTA backed by the shared `NewQuestionPaperDialog` (optional
+  subject filter + approved-pattern picker).
+- **Question bank header slimmed**: Preview / Includes / PDF / DOCX controls
+  removed from the header — the Wizard owns preview and export now.
+- **AI concurrency 2 → 5**: worker `ai_concurrency` default, the compose
+  `WORKER_AI_CONCURRENCY` default, and `.env.example` all bumped; the running
+  container starts 5 consumer threads (verified in logs).
+
+### Validation
+
+- API 127/127, api + web typecheck clean.
+- Containers rebuilt (api/web/worker-ai); live: `generate-more` with
+  subject+chapter+topic returns deficit buckets (no 400); manual-mode and
+  pattern-mode `/export/questions/preview` both render full documents for a
+  populated subject; QP list + assessments pages serve; worker-ai logs 5
+  concurrent consumers.
+
+### Exact recommended next task
+
+Commit + push (on top of `ffb0ba9`), run `rtk graphify update .`, then resolve
+the stored `45f567fa` totalMarks data fix or start the Phase 37
+resource-layout polish.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 **Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**
