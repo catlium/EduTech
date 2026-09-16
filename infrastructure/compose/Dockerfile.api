@@ -48,6 +48,12 @@ FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
+# PDF export renders via puppeteer-core + a system Chromium (alpine's apk
+# package). Without it every PDF export 500s; PUPPETEER_EXECUTABLE_PATH is
+# left as a knob for operators who supply their own browser.
+RUN apk add --no-cache chromium ttf-freefont font-noto-cjk font-noto-extra
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 COPY --from=build /app /app
 
 # The API start script is `node dist/main` (relative to apps/api).
