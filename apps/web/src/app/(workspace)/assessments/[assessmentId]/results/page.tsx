@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, downloadFile } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import { useTenant } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
@@ -28,6 +28,23 @@ export default function AssessmentResultsPage() {
   const [attempts, setAttempts] = useState<AttemptListItem[] | null>(null);
   const [analytics, setAnalytics] = useState<AssessmentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState<'pdf' | 'docx' | null>(null);
+
+  async function onExport(format: 'pdf' | 'docx') {
+    if (!params.assessmentId) return;
+    try {
+      setExporting(format);
+      await downloadFile(
+        `/export/assessment/${params.assessmentId}/results?format=${format}`,
+        `assessment-${params.assessmentId.slice(0, 8)}-results.${format}`,
+      );
+      toast.success(`Results exported as ${format.toUpperCase()}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  }
 
   useEffect(() => {
     if (!institute || !params.assessmentId) return;
@@ -65,6 +82,28 @@ export default function AssessmentResultsPage() {
       <PageHeader
         title="Attempt results"
         description="Scores populated automatically after each attempt is submitted or expires."
+        actions={
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void onExport('pdf')}
+              disabled={exporting !== null}
+              title="Export results sheet (PDF)"
+            >
+              <Download className="mr-1 size-3.5" /> PDF
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void onExport('docx')}
+              disabled={exporting !== null}
+              title="Export results sheet (DOCX)"
+            >
+              <Download className="mr-1 size-3.5" /> DOCX
+            </Button>
+          </div>
+        }
       />
 
       {loading ? (

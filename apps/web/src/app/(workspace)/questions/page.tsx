@@ -381,6 +381,7 @@ export default function QuestionsListPage() {
   const [createCascade, setCreateCascade] = useState<Cascade>(DEFAULT_CASCADE);
   const [previewState, setPreviewState] = useState<ExportPreviewValue | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [include, setInclude] = useState<'paper' | 'answers'>('paper');
 
   const [questionTypes, setQuestionTypes] = useState<QuestionTypeDefinition[]>([]);
 
@@ -449,15 +450,11 @@ export default function QuestionsListPage() {
 
   async function exportQuestions(format: 'pdf' | 'docx') {
     try {
-      if (!previewState) {
-        toast.error('Preview the current selection before exporting');
-        return;
-      }
-      const params = new URLSearchParams({ format, previewHash: previewState.hash });
+      const params = new URLSearchParams({ format, include: include });
       if (listCascade.subjectId) params.set('subjectId', listCascade.subjectId);
       if (listCascade.chapterId) params.set('chapterId', listCascade.chapterId);
       if (listCascade.topicId) params.set('topicId', listCascade.topicId);
-      await downloadFile(`/export/questions?${params.toString()}`, `question-bank.${format}`);
+      await downloadFile(`/export/questions?${params.toString()}`, `question-bank-export.${format}`);
       toast.success(`Question bank exported as ${format.toUpperCase()}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Export failed');
@@ -465,7 +462,7 @@ export default function QuestionsListPage() {
   }
 
   const scopeParams = () => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ include });
     if (listCascade.subjectId) params.set('subjectId', listCascade.subjectId);
     if (listCascade.chapterId) params.set('chapterId', listCascade.chapterId);
     if (listCascade.topicId) params.set('topicId', listCascade.topicId);
@@ -478,7 +475,7 @@ export default function QuestionsListPage() {
       `/export/questions/preview?${scopeParams()}`,
     );
     return preview;
-  }, [listCascade]);
+  }, [listCascade, include]);
 
   const updateCascade = useCallback(
     (next: Cascade | ((prev: Cascade) => Cascade)) => {
@@ -869,12 +866,24 @@ export default function QuestionsListPage() {
               >
                 <Eye className="mr-1 size-3.5" /> Preview
               </Button>
+              <Select defaultValue="paper" onValueChange={(v) => setInclude(v as 'paper' | 'answers')}>
+                <SelectTrigger size="sm" className="w-40">
+                  <SelectValue placeholder="Includes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="paper">Student paper</SelectItem>
+                  <SelectItem value="answers">Teacher answer key</SelectItem>
+                </SelectContent>
+              </Select>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => exportQuestions('pdf')}
-                disabled={!previewState}
-                title={previewState ? 'Export the previewed selection' : 'Preview first'}
+                title={
+                  listCascade.subjectId || listCascade.chapterId || listCascade.topicId
+                    ? 'Export to PDF'
+                    : 'Select a subject, chapter or topic scope to export'
+                }
               >
                 <Download className="mr-1 size-3.5" /> PDF
               </Button>
@@ -882,8 +891,11 @@ export default function QuestionsListPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => exportQuestions('docx')}
-                disabled={!previewState}
-                title={previewState ? 'Export the previewed selection' : 'Preview first'}
+                title={
+                  listCascade.subjectId || listCascade.chapterId || listCascade.topicId
+                    ? 'Export to DOCX'
+                    : 'Select a subject, chapter or topic scope to export'
+                }
               >
                 <Download className="mr-1 size-3.5" /> DOCX
               </Button>
@@ -1406,7 +1418,7 @@ export default function QuestionsListPage() {
         open={previewOpen}
         onOpenChange={setPreviewOpen}
         title="Question Bank Export Preview"
-        description="Shows the exact ACTIVE+APPROVED questions and answers that will be exported for this scope. Export stays disabled until you preview the current selection."
+        description={`Shows the exact ${include === 'paper' ? 'student paper' : 'teacher answer key'} that will be exported for this scope.`}
         load={loadPreview}
         onPreviewed={setPreviewState}
       />

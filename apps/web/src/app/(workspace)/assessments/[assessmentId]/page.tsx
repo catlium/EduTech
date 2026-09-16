@@ -25,7 +25,6 @@ import { api, ApiError, downloadFile } from '@/lib/api';
 import {
   ExportPreviewDialog,
   type ExportPreviewValue,
-  previewStorageKey,
 } from '@/components/export/export-preview-dialog';
 import { formatDate, formatDuration } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
@@ -441,15 +440,10 @@ export default function AssessmentDetailPage() {
 
   async function onExport(format: 'pdf' | 'docx', include: 'paper' | 'answers') {
     if (!assessment) return;
-    const hash = previewHash(assessment.id, include);
-    if (!hash) {
-      toast.error(`Preview the ${include === 'answers' ? 'teacher answer key' : 'student paper'} first`);
-      return;
-    }
     const suffix = include === 'answers' ? '-answer-key' : '';
     try {
       await downloadFile(
-        `/export/assessment/${assessment.id}?format=${format}&include=${include}&previewHash=${hash}`,
+        `/export/assessment/${assessment.id}?format=${format}&include=${include}`,
         `${assessment.title.replace(/[^a-z0-9]+/gi, '-')}${suffix}.${format}`,
       );
       toast.success(`Exported ${include === 'answers' ? 'answer key' : 'paper'} (${format.toUpperCase()})`);
@@ -464,7 +458,7 @@ export default function AssessmentDetailPage() {
     if (!assessment || !assessment.blueprintId) return;
     try {
       await downloadFile(
-        `/export/paper-pattern/${assessment.blueprintId}?format=${format}&previewHash=${patternPreview?.hash}`,
+        `/export/paper-pattern/${assessment.blueprintId}?format=${format}`,
         `paper-pattern-${assessment.blueprintId.slice(0, 8)}.${format}`,
       );
       toast.success(`Exported paper pattern (${format.toUpperCase()})`);
@@ -473,20 +467,17 @@ export default function AssessmentDetailPage() {
     }
   }
 
-  async   function onPatternPreviewed(value: ExportPreviewValue) {
+  async function onPatternPreviewed(value: ExportPreviewValue) {
     setPatternPreview(value);
   }
 
-  const previewHash = useCallback((assessmentId: string, include: 'paper' | 'answers') => {
-    if (!assessment) return null;
-    try {
-      return (
-        localStorage.getItem(previewStorageKey(assessmentId, include, assessment.updatedAt)) ?? null
-      );
-    } catch {
-      return null;
-    }
-  }, [assessment]);
+  const loadPatternPreview = useCallback(async (): Promise<ExportPreviewValue> => {
+    if (!assessment?.blueprintId) throw new Error('No paper pattern on this assessment');
+    const { preview } = await api<{ preview: ExportPreviewValue }>(
+      `/export/paper-pattern/${assessment.blueprintId}/preview`,
+    );
+    return preview;
+  }, [assessment?.blueprintId]);
 
   // ── Render ──
 
@@ -1079,8 +1070,7 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onExport('pdf', 'paper')}
-                  disabled={!previewHash(assessment?.id ?? '', 'paper')}
-                  title={previewHash(assessment?.id ?? '', 'paper') ? 'Export the previewed paper' : 'Preview the student paper first'}
+                  title="Export the student paper to PDF"
                 >
                   PDF
                 </Button>
@@ -1088,8 +1078,7 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onExport('docx', 'paper')}
-                  disabled={!previewHash(assessment?.id ?? '', 'paper')}
-                  title={previewHash(assessment?.id ?? '', 'paper') ? 'Export the previewed paper' : 'Preview the student paper first'}
+                  title="Export the student paper to DOCX"
                 >
                   DOCX
                 </Button>
@@ -1108,8 +1097,7 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onExport('pdf', 'answers')}
-                  disabled={!previewHash(assessment?.id ?? '', 'answers')}
-                  title={previewHash(assessment?.id ?? '', 'answers') ? 'Export the previewed answer key' : 'Preview the teacher answer key first'}
+                  title="Export the teacher answer key to PDF"
                 >
                   PDF
                 </Button>
@@ -1117,8 +1105,7 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onExport('docx', 'answers')}
-                  disabled={!previewHash(assessment?.id ?? '', 'answers')}
-                  title={previewHash(assessment?.id ?? '', 'answers') ? 'Export the previewed answer key' : 'Preview the teacher answer key first'}
+                  title="Export the teacher answer key to DOCX"
                 >
                   DOCX
                 </Button>
@@ -1132,7 +1119,7 @@ export default function AssessmentDetailPage() {
                 Paper Pattern
               </p>
               <p className="text-xs text-muted-foreground">
-                The blueprint this assessment was generated from — export exactly what was previewed.
+                The blueprint this assessment was generated from.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button
@@ -1140,7 +1127,7 @@ export default function AssessmentDetailPage() {
                   variant="outline"
                   onClick={() => setPatternPreviewOpen(true)}
                   disabled={patternExporting}
-                  title="Preview the paper pattern first"
+                  title="Preview the paper pattern"
                 >
                   <Eye className="mr-1 size-3.5" /> Preview
                 </Button>
@@ -1148,8 +1135,8 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onPatternExport('pdf')}
-                  disabled={!patternPreview?.hash || patternExporting}
-                  title={patternPreview?.hash ? 'Export the previewed paper pattern (PDF)' : 'Preview the paper pattern first'}
+                  disabled={patternExporting}
+                  title="Export the paper pattern (PDF)"
                 >
                   PDF
                 </Button>
@@ -1157,8 +1144,8 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onPatternExport('docx')}
-                  disabled={!patternPreview?.hash || patternExporting}
-                  title={patternPreview?.hash ? 'Export the previewed paper pattern (DOCX)' : 'Preview the paper pattern first'}
+                  disabled={patternExporting}
+                  title="Export the paper pattern (DOCX)"
                 >
                   DOCX
                 </Button>
@@ -1173,6 +1160,16 @@ export default function AssessmentDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Preview is optional — the export above does not depend on it. */}
+      <ExportPreviewDialog
+        open={patternPreviewOpen}
+        onOpenChange={setPatternPreviewOpen}
+        title="Paper Pattern Preview"
+        description="The blueprint this assessment was generated from."
+        load={loadPatternPreview}
+        onPreviewed={onPatternPreviewed}
+      />
 
       {/* ── Confirm dialogs ── */}
       <ConfirmDialog

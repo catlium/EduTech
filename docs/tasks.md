@@ -1,5 +1,58 @@
 # Task Tracker
 
+## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
+
+> Checkpoint 2026-09-16: resolved + committed the paused OCR worker batch
+> (`8e3fc16`, syllabus-only stale recovery, reconnect, crash-safe OCR text)
+> and fixed the API export 500 root cause (`2d12bc9`, Chromium installed in
+> the `node:24-alpine` runtime image — every PDF export 500'd because
+> puppeteer-core ships no browser). Worker pytest 79 passed, OCR engine 21
+> passed, API 118/118, ruff/mypy/typecheck clean. Both pushed to origin/main.
+>
+> Checkpoint 2026-09-16 (this session, unpushed): Question Bank → Question
+> Paper → Assessment exports now run off the Paper Pattern semantics, the
+> assessment results sheet export is wired E2E, and the preview-before-export
+> hard gate was removed (preview is now a convenience representation only).
+> Migration 0031 (hand-written per the drizzle-kit non-interactive limitation)
+> + worker provenance retention + API tests 119/119 clean.
+
+Resolve the report that Question Bank export returns HTTP 500 (and other
+export paths), then correct the Paper Pattern / Question Bank / Question
+Paper / Assessment product semantics, add Assessment result export, make
+Preview == Export the single representation with student/teacher separation,
+polish the document layouts per resource, and validate everything.
+
+- [x] Resolve uncommitted OCR worker batch; worker tests + ruff + mypy; commit
+      (`8e3fc16`, pushed).
+- [x] Diagnose + fix export 500 root cause (missing Chromium in API runtime
+      image, `2d12bc9`, pushed).
+- [x] Correct Paper Pattern / Question Bank / Question Paper / Assessment
+      semantics (pattern retained in Question Banks via nullable
+      `questions.source_pattern_id` FK + SET NULL; fixed, ordered selection
+      for the Question Paper; same selection drives the Assessment).
+- [x] Schema + migration `0031_question_bank_pattern_provenance.sql`
+      (hand-written append; `drizzle-kit generate` unusable non-interactively
+      because meta snapshots stop at 0023). Applied to Postgres manually.
+- [x] Worker retains provenance: `insert_generated_questions` writes
+      `source_pattern_id` from `params.blueprint.patternId` on both legacy and
+      bank generation paths; worker tests 81 passed.
+- [x] Add Assessment result export (teacher: attempt results for an
+      assessment) — `buildAssessmentResultsDoc` + `computeAssessmentAnalytics`
+      (aggregates only, never answer keys/per-student answers), controller
+      routes `GET /export/assessment/:id/results[/preview]`, web results-page
+      PDF/DOCX buttons.
+- [x] Preview == export representation + student/teacher separation:
+      Question Bank and Assessment exports accept `include=paper|answers`
+      (default paper), drop the 409 `sendVerified` hard gate so export never
+      requires a preview; the `/preview` pages + preview dialogs remain as a
+      representation of the exact same server document.
+- [ ] Resource-specific polished document layouts (10 layouts).
+- [ ] Verify regeneration capability exists (Phase 35) — reuse existing jobs.
+- [ ] Tests: export/assessment/result/pattern semantics + validation suite.
+- [ ] Update docs/tasks.md + project-status.md; commit + push export checkpoint.
+
+---
+
 ## Phase 36 — Shared Export Renderer, Preview == PDF, One Visual Source (2026-09-15)
 
 > Checkpoint 2026-09-16: derived-resource exports (Note/Summary/Flashcards/

@@ -18,11 +18,9 @@ import type { DocumentModel } from '@/components/export/doc-blocks';
 import { RenderDocHtml } from '@/components/export/render-doc-html';
 
 /* Assessment preview: renders EXACTLY the document the export endpoints
- * produce (paper = student-facing, answers = teacher key) and remembers the
- * preview hash so the assessment page can enable its export buttons. */
-
-const previewStorageKey = (assessmentId: string, include: 'paper' | 'answers', rev: string) =>
-  `catlium:export-preview:${assessmentId}:${include}:${rev}`;
+ * produce (paper = student-facing, answers = teacher key). Preview is a
+ * convenience — exporting never requires it — but it never drifts from the
+ * file because both are built from the same server document. */
 
 interface PreviewPayload {
   hash: string;
@@ -34,7 +32,6 @@ export default function AssessmentPreviewPage() {
   const params = useParams<{ assessmentId: string }>();
   const [include, setInclude] = useState<'paper' | 'answers'>('paper');
   const [preview, setPreview] = useState<PreviewPayload | null>(null);
-  const [rev, setRev] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,27 +43,7 @@ export default function AssessmentPreviewPage() {
       `/export/assessment/${params.assessmentId}/preview?include=${include}`,
       { signal: ctrl.signal },
     )
-      .then(async ({ preview }) => {
-        setPreview(preview);
-        let revNow = rev;
-        if (!revNow) {
-          // The assessment id + current updatedAt are needed to key the hash.
-          const a = await api<{ assessment: { updatedAt: string } }>(
-            `/assessments/${params.assessmentId}`,
-            { signal: ctrl.signal },
-          );
-          revNow = a.assessment.updatedAt;
-          setRev(revNow);
-        }
-        try {
-          localStorage.setItem(
-            previewStorageKey(params.assessmentId, include, revNow),
-            preview.hash,
-          );
-        } catch {
-          // storage unavailable — preview still displays, export will 409.
-        }
-      })
+      .then(({ preview }) => setPreview(preview))
       .catch((err) => {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setError(err instanceof ApiError ? err.message : 'Failed to build preview');
@@ -76,7 +53,6 @@ export default function AssessmentPreviewPage() {
         if (!ctrl.signal.aborted) setLoading(false);
       });
     return () => ctrl.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.assessmentId, include]);
 
   useEffect(() => {

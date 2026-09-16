@@ -1,5 +1,81 @@
 # Project Status
 
+## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
+
+**Status: core semantics implemented + validated + committed (unpushed); layouts, regeneration verify, and final docs pending.**
+
+### Goal
+
+Fix the Question Bank export 500, then correct the Paper Pattern → Question
+Bank → Question Paper → Assessment product semantics (pattern retained in the
+generated bank; fixed, ordered selection for the student paper; same selection
+drives the Assessment), add an Assessment result sheet export, make Preview ==
+Export a single representation with student/teacher separation (Preview
+optional, never a hard gate), polish 10 document layouts, verify Phase 35
+regeneration, validate, and checkpoint.
+
+### Completed work
+
+- **Export 500 root cause fixed** (`2d12bc9`, pushed): API runtime image was
+  `node:24-alpine` without Chromium; Dockerfile now installs
+  chromium/ttf-freefont/font-noto and sets `PUPPETEER_EXECUTABLE_PATH`.
+- **Schema: bank → pattern provenance.** `questions.source_pattern_id`
+  (nullable uuid FK → `paper_patterns`, `ON DELETE set null`, btree index) —
+  the generated Question Bank retains which Paper Pattern it fills, so a
+  pattern-scoped bank exports as a Question Paper.
+- **Migration `0031_question_bank_pattern_provenance.sql`** (hand-written per
+  repo convention — `drizzle-kit generate` is unusable non-interactively
+  because `meta/` snapshots stop at 0023 while `_journal.json` has 30
+  entries). Journal entry appended, applied + recorded in Postgres manually.
+- **Worker provenance retention**: `insert_generated_questions` writes
+  `source_pattern_id` from `params.blueprint.patternId` on both the legacy and
+  bank generation paths (`_blueprint_pattern_id` helper). Worker tests 78→81.
+- **Question Bank export becomes a Question Paper when pattern-scoped**:
+  `buildQuestionsDoc` accepts `patternId`; filters by `sourcePatternId`,
+  renders Duration/Max marks, groups the bank by pattern sections (matched on
+  question type) with `Attempt any N of M` for optional non-compulsory
+  sections, "General" group for unmatched, per-section marks.
+- **Assessment result export (teacher-only)**: `buildAssessmentResultsDoc` +
+  `computeAssessmentAnalytics` (evaluated attempts ledger + aggregate analysis
+  from `buildAnalytics` — never answer keys or per-student answers). Routes
+  `GET /export/assessment/:id/results[/preview]` behind
+  `INSTITUTE_ADMIN|TEACHER`; web results page gains PDF/DOCX buttons.
+- **Preview == Export, gate removed.** Ctrl routes now take `include=paper|
+  answers` (student paper = no answers; teacher answer key = answers +
+  explanations + difficulty). `sendVerified`/409 preview-hash hard gate removed
+  — every export sends directly; preview endpoints remain as an exact
+  representation of the same server document (render-html single source). Web:
+  Question Bank page adds Student paper / Teacher answer key toggle + ungated
+  PDF/DOCX; Assessment page ungated export; Assessment/Paper Pattern / Query
+  Bank preview dialogs remain; dead `previewStorageKey`, `previewValid`, hash
+  props removed.
+- **Policy test**: `paper-pattern-policy.test.ts` asserts the 0031 FK is
+  `ON DELETE set null` (not cascade) so deleting a pattern must not delete the
+  questions that reference it. 18/18 pass.
+
+### Validation
+
+- `pnpm typecheck` 10/10 tasks clean (api + web) after all edits.
+- `pnpm lint` clean; API native suite 119/119 pass; worker pytest 81 +
+  ruff + mypy clean (from earlier checkpoint); OCR engine 21/21.
+- Migration 0031 applied to Postgres and verified (`\d questions` shows
+  column, FK, index).
+
+### Known issues
+
+- `drizzle-kit generate` cannot run non-interactively (prompts about
+  `ocr_chunks` rename vs create because snapshots lag the journal); migrations
+  must be hand-written + journal-appended per the established convention.
+- 10 polished document layouts and Phase 35 regeneration re-verification
+  remain for this phase.
+
+### Recommended next task
+
+1. Resource-specific polished document layouts (10 layouts) in
+   `render-html.ts` EXPORT_STYLES via DocumentModel `layout` field.
+2. Verify Phase 35 regeneration reuses the provenance-carrying worker jobs.
+3. Update `docs/tasks.md` + `docs/project-status.md`; commit + push.
+
 ## Phase 36 — Shared Export Renderer, Preview == PDF, One Visual Source (2026-09-15)
 
 **Status: implemented, validated, committed.**

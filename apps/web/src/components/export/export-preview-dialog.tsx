@@ -22,28 +22,20 @@ export interface ExportPreviewValue {
   html: string;
 }
 
-/** localStorage key for an assessment preview hash — the assessment page
- * reads this to enable its export buttons only for the previewed revision. */
-export const previewStorageKey = (
-  assessmentId: string,
-  include: 'paper' | 'answers',
-  rev: string,
-) => `catlium:export-preview:${assessmentId}:${include}:${rev}`;
-
 interface ExportPreviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
   load: () => Promise<ExportPreviewValue>;
-  /* Called with the freshly built preview so the page can store the hash. */
-  onPreviewed: (preview: ExportPreviewValue) => void;
+  /* Optional — used by pages that tracked a preview hash in the old gate. */
+  onPreviewed?: (preview: ExportPreviewValue) => void;
 }
 
 /* Shared preview surface used by Paper Pattern and Question Bank export. The
- * preview is rebuilt from the server on every open and returns the document
- * hash — export is only allowed with a hash that still matches, so the file
- * always reflects exactly what was previewed. */
+ * preview is rebuilt from the server on every open and shows the exact
+ * document the export produces — a convenience representation, never a
+ * prerequisite for exporting. */
 export function ExportPreviewDialog({
   open,
   onOpenChange,
@@ -65,7 +57,7 @@ export function ExportPreviewDialog({
       .current()
       .then((p) => {
         setPreview(p);
-        onPreviewed(p);
+        onPreviewed?.(p);
       })
       .catch((err) => {
         setPreview(null);

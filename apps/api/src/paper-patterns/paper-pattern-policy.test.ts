@@ -114,3 +114,16 @@ test('pattern deletion leaves no orphaned relationships (junction cascades, blue
   assert.match(subjects, /ON DELETE cascade/g);
   assert.match(assessments, /ON DELETE set null/);
 });
+
+test('generated bank questions retain provenance across pattern deletion (SET NULL, not CASCADE)', () => {
+  const migration = readFileSync(join(drizzleDir, '0031_question_bank_pattern_provenance.sql'), 'utf8');
+  assert.match(migration, /questions_source_pattern_id_paper_patterns_id_fk/);
+  assert.match(
+    migration,
+    /REFERENCES "public"\."paper_patterns"\("id"\) ON DELETE set null/,
+  );
+  assert.doesNotMatch(
+    migration,
+    /questions_source_pattern_id_paper_patterns_id_fk.*ON DELETE cascade/s,
+  );
+});

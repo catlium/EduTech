@@ -1,18 +1,8 @@
-import {
-  ConflictException,
-  Controller,
-  Get,
-  Param,
-  Query,
-  Res,
-  UseGuards,
-  ParseUUIDPipe,
-  ParseEnumPipe,
-} from '@nestjs/common';
+import { Controller, Get, Param, Query, Res, UseGuards, ParseUUIDPipe, ParseEnumPipe } from '@nestjs/common';
 import type { Response } from 'express';
 
 import { ExportService } from './export.service.js';
-import { buildPreview, docDigest } from './export.content-blocks.js';
+import { buildPreview } from './export.content-blocks.js';
 import type { DocumentModel } from './export.content-blocks.js';
 import { sendDoc } from './export.renderers.js';
 import { renderDocumentBodyHtml } from './render-html.js';
@@ -41,10 +31,9 @@ const withHtml = (raw: ReturnType<typeof buildPreview>): PreviewPayload['preview
   html: renderDocumentBodyHtml(raw.document),
 });
 
-/* Every export requires a preview first: the server re-builds the document
- * and compares the previewHash the client gives back. A missing or stale
- * hash → 409 Conflict, so PDF/DOCX can never be produced straight from a
- * selection/generation screen (and the file always matches the preview). */
+/* Every export sends directly. The preview endpoints stay — they render the
+ * exact same document the file contains (one shared renderer) — but a preview
+ * is a convenience preview, never a prerequisite for exporting. */
 @Controller('export')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
 export class ExportController {
@@ -65,24 +54,6 @@ export class ExportController {
     }
   }
 
-  /* Gate for exports that go through the preview dialog (Paper Pattern,
-   * Question Bank, Assessment). Exported file must always match exactly what
-   * was previewed — missing / stale hash → 409. */
-  private async sendVerified(
-    res: Response,
-    document: DocumentModel,
-    format: (typeof EXPORT_FORMATS)[number],
-    filename: string,
-    previewHash: string | undefined,
-  ): Promise<void> {
-    if (!previewHash || docDigest(document) !== previewHash) {
-      throw new ConflictException(
-        'This export is stale or was never previewed — preview the current selection first',
-      );
-    }
-    await this.send(res, document, format, filename);
-  }
-
   @Get('content/:contentId')
   async exportContent(
     @Tenant() tenant: TenantContext,
@@ -92,10 +63,6 @@ export class ExportController {
     format: (typeof EXPORT_FORMATS)[number] = 'pdf',
   ): Promise<void> {
     const doc = await this.exportService.buildContentDoc(tenant.instituteId, contentId);
-    /* Derived resources are single-visual-source: the topic grid renders them
-     * live (the exact server document), so the file always matches what the
-     * user is looking at — no preview dialog, no hash. Only Paper Pattern and
-     * Question Bank go through a preview-dialog hash gate. */
     await this.send(res, doc, format, `content-${contentId}`);
   }
 
@@ -117,14 +84,16 @@ export class ExportController {
     @Query('subjectId') subjectId?: string,
     @Query('chapterId') chapterId?: string,
     @Query('topicId') topicId?: string,
-    @Query('previewHash') previewHash?: string,
+    @Query('patternId') patternId?: string,
+    @Query('include', new ParseEnumPipe(EXPORT_INCLUDES, { optional: true }))
+    include: (typeof EXPORT_INCLUDES)[number] = 'paper',
   ): Promise<void> {
-    const doc = await this.exportService.buildQuestionsDoc(tenant.instituteId, {
-      subjectId,
-      chapterId,
-      topicId,
-    });
-    await this.sendVerified(res, doc, format, 'question-bank-export', previewHash);
+    const doc = await this.exportService.buildQuestionsDoc(
+      tenant.instituteId,
+      { subjectId, chapterId, topicId, patternId },
+      include,
+    );
+    await this.send(res, doc, format, 'question-bank-export');
   }
 
   @Get('questions/preview')
@@ -133,12 +102,15 @@ export class ExportController {
     @Query('subjectId') subjectId?: string,
     @Query('chapterId') chapterId?: string,
     @Query('topicId') topicId?: string,
+    @Query('patternId') patternId?: string,
+    @Query('include', new ParseEnumPipe(EXPORT_INCLUDES, { optional: true }))
+    include: (typeof EXPORT_INCLUDES)[number] = 'paper',
   ): Promise<PreviewPayload> {
-    const doc = await this.exportService.buildQuestionsDoc(tenant.instituteId, {
-      subjectId,
-      chapterId,
-      topicId,
-    });
+    const doc = await this.exportService.buildQuestionsDoc(
+      tenant.instituteId,
+      { subjectId, chapterId, topicId, patternId },
+      include,
+    );
     return { preview: withHtml(buildPreview(doc)) };
   }
 
@@ -152,21 +124,19 @@ export class ExportController {
     // Paper = student-facing (no answers/difficulty), answers = teacher key.
     @Query('include', new ParseEnumPipe(EXPORT_INCLUDES, { optional: true }))
     include: (typeof EXPORT_INCLUDES)[number] = 'paper',
-    @Query('previewHash') previewHash?: string,
   ): Promise<void> {
     const doc = await this.exportService.buildAssessmentDoc(
       tenant.instituteId,
       assessmentId,
       include === 'answers' ? 'teacher' : 'paper',
     );
-    await this.sendVerified(
+    await this.send(
       res,
       doc,
       format,
       include === 'answers'
         ? `assessment-${assessmentId}-answer-key`
         : `assessment-${assessmentId}`,
-      previewHash,
     );
   }
 
@@ -185,6 +155,37 @@ export class ExportController {
     return { preview: withHtml(buildPreview(doc)) };
   }
 
+  /* Teacher-only result sheet: attempts ledger + aggregate analytics. This is
+   * the ONLY assessment resource that exposes marks — never answer keys. */
+  @Get('assessment/:assessmentId/results')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  async exportAssessmentResults(
+    @Tenant() tenant: TenantContext,
+    @Res() res: Response,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+    @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
+    format: (typeof EXPORT_FORMATS)[number] = 'pdf',
+  ): Promise<void> {
+    const doc = await this.exportService.buildAssessmentResultsDoc(
+      tenant.instituteId,
+      assessmentId,
+    );
+    await this.send(res, doc, format, `assessment-${assessmentId}-results`);
+  }
+
+  @Get('assessment/:assessmentId/results/preview')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  async previewAssessmentResults(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+  ): Promise<PreviewPayload> {
+    const doc = await this.exportService.buildAssessmentResultsDoc(
+      tenant.instituteId,
+      assessmentId,
+    );
+    return { preview: withHtml(buildPreview(doc)) };
+  }
+
   @Get('paper-pattern/:patternId')
   @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async exportPaperPattern(
@@ -193,10 +194,9 @@ export class ExportController {
     @Param('patternId', ParseUUIDPipe) patternId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
     format: (typeof EXPORT_FORMATS)[number] = 'pdf',
-    @Query('previewHash') previewHash?: string,
   ): Promise<void> {
     const doc = await this.exportService.buildPaperPatternDoc(tenant.instituteId, patternId);
-    await this.sendVerified(res, doc, format, `paper-pattern-${patternId}`, previewHash);
+    await this.send(res, doc, format, `paper-pattern-${patternId}`);
   }
 
   @Get('paper-pattern/:patternId/preview')
