@@ -122,6 +122,36 @@ Teacher-reported follow-ups after the first follow-up batch:
       previews render full documents, QP list/assessments pages serve. Docs +
       commit + push + graphify update pending.
 
+### Follow-up batch 3 — "New Assessment" creates an Assessment (not a QP); wizard per-bucket counts (2026-09-16)
+
+Teacher-reported follow-ups after batch 2:
+
+- [x] Resource mismatch fixed: both pages used the shared
+      `NewQuestionPaperDialog`, which always created a **Question Paper**.
+      The dialog now takes a `kind` prop: the assessments page passes
+      `kind="assessment"` and its "New Assessment" button creates an
+      **Assessment directly from the approved pattern**
+      (`POST /paper-patterns/:patternId/assessment` →
+      `POST /assessments/:id/select-from-pattern`) and lands on the
+      assessment page. The QP page keeps `kind="paper"` (creates a QP);
+      pattern page + QP page "Create Assessment from QP" unchanged. Neither
+      action creates the other resource anymore.
+- [x] Wizard per-bucket targets: the Generate step used to auto-size every
+      bucket from the pattern/manual split and generate the full deficit
+      ("it just takes all available and creates the bank"). It now renders an
+      editable count per bucket (section + question type + difficulty for
+      pattern mode; type × difficulty for manual mode), defaulting to the
+      pattern/manual value, `0` = skip. Duplicate (type, difficulty) buckets
+      are merged by summing counts before hitting `generate-more`, and the
+      generate action still pulls exactly the deficit toward the edited
+      targets.
+- [x] Validation: web typecheck clean; rebuilt web; live E2E via API —
+      `POST /paper-patterns/928234e7…/assessment` created a DRAFT assessment
+      (title `${pattern.title} — Blueprint`), `select-from-pattern` populated
+      it (3 questions / 3 marks), DELETE afterwards; `generate-more` dry-run
+      accepts the wizard's merged absolute-count bucket payload. Docs +
+      commit + push + graphify update pending.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)

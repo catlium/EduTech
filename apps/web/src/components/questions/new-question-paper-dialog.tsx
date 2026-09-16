@@ -28,11 +28,13 @@ import {
 export function NewQuestionPaperDialog({
   open,
   onOpenChange,
+  kind = 'paper',
   title = 'New Question Paper',
   description = 'Pick an approved Paper Pattern — the paper is created and populated from your question bank in one step.',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  kind?: 'paper' | 'assessment';
   title?: string;
   description?: string;
 }) {
@@ -42,6 +44,7 @@ export function NewQuestionPaperDialog({
   const [subjectId, setSubjectId] = useState('');
   const [patternId, setPatternId] = useState('');
   const [creating, setCreating] = useState(false);
+  const isAssessment = kind === 'assessment';
 
   useEffect(() => {
     if (!open) return;
@@ -69,16 +72,33 @@ export function NewQuestionPaperDialog({
     if (!patternId) return;
     setCreating(true);
     try {
-      const { paper } = await api<{ paper: { id: string } }>('/question-papers', {
-        method: 'POST',
-        body: { patternId },
-      });
-      await api(`/question-papers/${paper.id}/select-from-pattern`, { method: 'POST' });
-      toast.success('Question paper generated — questions left fixed');
-      onOpenChange(false);
-      router.push(`/question-papers/${paper.id}`);
+      if (isAssessment) {
+        const { assessment } = await api<{ assessment: { id: string } }>(
+          `/paper-patterns/${patternId}/assessment`,
+          { method: 'POST', body: {} },
+        );
+        await api(`/assessments/${assessment.id}/select-from-pattern`, { method: 'POST' });
+        toast.success('Assessment created from pattern — questions selected');
+        onOpenChange(false);
+        router.push(`/assessments/${assessment.id}`);
+      } else {
+        const { paper } = await api<{ paper: { id: string } }>('/question-papers', {
+          method: 'POST',
+          body: { patternId },
+        });
+        await api(`/question-papers/${paper.id}/select-from-pattern`, { method: 'POST' });
+        toast.success('Question paper generated — questions left fixed');
+        onOpenChange(false);
+        router.push(`/question-papers/${paper.id}`);
+      }
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to generate question paper');
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : isAssessment
+            ? 'Failed to create assessment'
+            : 'Failed to generate question paper',
+      );
     } finally {
       setCreating(false);
     }
@@ -134,12 +154,7 @@ export function NewQuestionPaperDialog({
             Cancel
           </Button>
           <Button onClick={() => void createPaper()} disabled={!patternId || creating}>
-            {creating ? (
-              <Loader2 className="mr-1 size-3.5 animate-spin" />
-            ) : (
-              <Plus className="mr-1 size-3.5" />
-            )}
-            {creating ? 'Creating…' : 'Create Question Paper'}
+            {creating ? 'Creating…' : isAssessment ? 'Create Assessment' : 'Create Question Paper'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -77,8 +77,9 @@ export default function AssessmentsListPage() {
       <NewQuestionPaperDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        kind="assessment"
         title="New Assessment — pick a Paper Pattern"
-        description="An assessment is built from a Question Paper. Choose an approved Paper Pattern to create the paper first — you convert it into the assessment from the paper page."
+        description="An assessment is created directly from an approved Paper Pattern and populated from your question bank — no question paper involved."
       />
 
       {loading ? (

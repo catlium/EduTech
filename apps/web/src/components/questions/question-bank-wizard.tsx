@@ -58,6 +58,8 @@ const STEPS = ['Scope', 'Source', 'Generate', 'Preview & Export'] as const;
 
 type Mode = 'pattern' | 'manual';
 
+type WizardBucket = GenerateBankBucket & { section?: string };
+
 interface WizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -86,7 +88,7 @@ function manualBuckets(
   types: string[],
   difficulties: QuestionDifficulty[],
   counts: Record<string, number>,
-): GenerateBankBucket[] {
+): WizardBucket[] {
   const dist = splitDifficulties(difficulties);
   return types.flatMap((questionType) =>
     difficulties.map((difficulty) => ({
@@ -97,9 +99,24 @@ function manualBuckets(
   );
 }
 
+/* Merge duplicate (questionType, difficulty) keys by summing counts. */
+function mergeBuckets(buckets: WizardBucket[]): GenerateBankBucket[] {
+  const map = new Map<string, GenerateBankBucket>();
+  for (const b of buckets) {
+    const key = `${b.questionType}|${b.difficulty}`;
+    const existing = map.get(key);
+    map.set(key, {
+      questionType: b.questionType,
+      difficulty: b.difficulty,
+      count: (existing?.count ?? 0) + b.count,
+    });
+  }
+  return [...map.values()];
+}
+
 /* Pattern targets: each section's count, split by its difficulty distribution. */
-function patternBuckets(structure: PaperPattern['structure']): GenerateBankBucket[] {
-  const out: GenerateBankBucket[] = [];
+function patternBuckets(structure: PaperPattern['structure']): WizardBucket[] {
+  const out: WizardBucket[] = [];
   for (const section of structure?.sections ?? []) {
     if (!section.questionType || !section.count) continue;
     const dist = section.difficultyDistribution;
@@ -107,10 +124,10 @@ function patternBuckets(structure: PaperPattern['structure']): GenerateBankBucke
     if (dist && total > 0) {
       for (const difficulty of DIFFICULTIES) {
         const n = Math.round((section.count * (dist[difficulty] ?? 0)) / 100);
-        if (n > 0) out.push({ questionType: section.questionType, difficulty, count: n });
+        if (n > 0) out.push({ questionType: section.questionType, difficulty, count: n, section: section.name });
       }
     } else {
-      out.push({ questionType: section.questionType, difficulty: 'MEDIUM', count: section.count });
+      out.push({ questionType: section.questionType, difficulty: 'MEDIUM', count: section.count, section: section.name });
     }
   }
   return out;
@@ -198,12 +215,27 @@ export function QuestionBankWizard({
 
   const activePattern = patterns.find((p) => p.id === patternId) ?? null;
 
-  const buckets = useMemo(
+  const buckets = useMemo<WizardBucket[]>(
     () =>
       mode === 'pattern'
         ? patternBuckets(activePattern?.structure ?? null)
         : manualBuckets(selectedTypes, selectedDifficulties, counts),
     [mode, activePattern, selectedTypes, selectedDifficulties, counts],
+  );
+
+  const [bucketCounts, setBucketCounts] = useState<Record<number, number>>({});
+
+  useEffect(() => {
+    setBucketCounts((prev) => {
+      const next: Record<number, number> = {};
+      for (let i = 0; i < buckets.length; i++) next[i] = prev[i] ?? buckets[i]!.count;
+      return next;
+    });
+  }, [buckets]);
+
+  const mergedBuckets = useMemo(
+    () => mergeBuckets(buckets.map((b, i) => ({ ...b, count: bucketCounts[i] ?? b.count }))),
+    [buckets, bucketCounts],
   );
 
   const scopePayload = useMemo(
@@ -233,6 +265,7 @@ export function QuestionBankWizard({
     setSelectedTypes(['MCQ']);
     setSelectedDifficulties(['EASY', 'MEDIUM']);
     setCounts({ MCQ: 10 });
+    setBucketCounts({});
     setInclude('paper');
     setDeficit(null);
     setBatch(null);
@@ -256,7 +289,7 @@ export function QuestionBankWizard({
     try {
       const resp = await api<GenerateMoreQuestionsResponse>('/questions/generate-more', {
         method: 'POST',
-        body: { ...scopePayload, buckets, dryRun: true },
+        body: { ...scopePayload, buckets: mergedBuckets, dryRun: true },
       });
       setDeficit(resp);
       if (resp.totalDeficit === 0) toast.info('The bank already covers these targets');
@@ -539,6 +572,39 @@ export function QuestionBankWizard({
                   )}
                   Check bank
                 </Button>
+              </div>
+
+              <div className="max-h-72 space-y-1.5 overflow-y-auto rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">
+                  Set how many questions to target for each type and difficulty level
+                  {mode === 'pattern' ? ' per section' : ''} — the bank supplies the existing ones.
+                </p>
+                {buckets.map((b, i) => (
+                  <label
+                    key={`${b.section ?? ''}-${b.questionType}-${b.difficulty}-${i}`}
+                    className="flex items-center justify-between gap-2 text-xs"
+                  >
+                    <span className="min-w-0">
+                      {b.section && <span className="font-medium">{b.section}: </span>}
+                      {b.questionType} · {b.difficulty}
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      className="h-7 w-20"
+                      value={bucketCounts[i] ?? b.count}
+                      onChange={(e) =>
+                        setBucketCounts((prev) => ({
+                          ...prev,
+                          [i]: Math.max(0, Number(e.target.value) || 0),
+                        }))
+                      }
+                    />
+                  </label>
+                ))}
+                {buckets.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No targets.</p>
+                )}
               </div>
 
               {deficit && (

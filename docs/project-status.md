@@ -211,6 +211,75 @@ resource-layout polish.
 
 ---
 
+## Phase 38d — "New Assessment" creates an Assessment, wizard per-bucket counts (2026-09-16)
+
+**Status: implemented + validated (web typecheck clean, containers rebuilt, live API E2E). Committed + pushed + graphify updated.**
+
+### Goal
+
+Two teacher-reported bugs on top of the 38c checkpoint: (1) the shared
+`NewQuestionPaperDialog` made "New Question Paper" and "New Assessment" create
+the *same resource* — a Question Paper, so assessments were silently created
+as QPs; (2) the Question Bank Wizard's Generate step auto-sized every bucket
+from the pattern/manual split and just generated the full deficit, offering no
+way to choose how many questions per section / question type / difficulty.
+
+### Completed work
+
+- **Resource mismatch fixed**: `NewQuestionPaperDialog` now takes a `kind:
+  'paper' | 'assessment'` prop. The QP page keeps creating a Question Paper
+  (unchanged, subject filter + approved-pattern picker). The assessments page
+  passes `kind="assessment"`, and its "New Assessment" button now creates an
+  **Assessment directly from the approved pattern**:
+  `POST /paper-patterns/:patternId/assessment` (title defaults to
+  `${pattern.title} — Blueprint`) then
+  `POST /assessments/:id/select-from-pattern` populates it from the bank, and
+  the user lands on `/assessments/:id`. The pattern page "Generate Question
+  Paper" and the QP page's explicit "Create Assessment from QP" step are
+  untouched — each entry point now produces exactly its own resource.
+- **Wizard per-bucket targets**: the Generate step renders one editable count
+  input per bucket — for pattern mode each is labelled with its section name
+  (section + question type + difficulty), for manual mode type × difficulty;
+  the default is the pattern/manual computed value and `0` skips the bucket.
+  Duplicate (questionType, difficulty) buckets across sections are merged by
+  summing counts (`mergeBuckets`) before the `generate-more` call, and the
+  generate action still queues exactly the deficit toward the edited targets.
+  Bucket edits persist across stepping and reset with the dialog.
+
+### Validation
+
+- `pnpm --filter @catlium/web typecheck` clean; web image rebuilt and the
+  service recreated (compose `migrate` was racing postgres at the same time —
+  a one-off `run --rm migrate` applied cleanly and `up -d --no-deps api web`
+  brought both up healthy).
+- Live E2E via API (fresh login, demo institute): 
+  `POST /paper-patterns/928234e7-…/assessment` returned a DRAFT assessment
+  (`Approve Crash Test — Blueprint`); `POST
+  /assessments/:id/select-from-pattern` populated 3 questions / 3 marks;
+  test assessment deleted afterwards (204). The structurally-invalid approved
+  pattern `45f567fa` correctly rejects assessment creation with the
+  `totalMarks 9 ≠ 6` validation message (the pending data-fix note below).
+- `POST /questions/generate-more` dry-run accepts the wizard's merged
+  absolute-count bucket payload (`MCQ|EASY 5`, `LONG_ANSWER|HARD 5` →
+  existing 60, deficit 0).
+
+### Known issues / deferred
+
+- Pattern `45f567fa` (demo data) still stores `totalMarks 9` for its optional
+  LONG_ANSWER 3×3 attempt-2 section; computed value is 6. Re-approving/editing
+  flags it. Small data fix is the recommended next task.
+- Compose `migrate` exited 1 twice today while postgres restarted around the
+  build; standalone `run --rm migrate` exits 0. Likely a startup race in
+  `healthcheck`→`migrate` ordering; re-check on the next full stack rebuild.
+
+### Exact recommended next task
+
+Apply the `45f567fa` stored-totalMarks data fix (Section B LONG_ANSWER
+3×3 attempt 2 → `totalMarks 6`), then re-verify "New Assessment" from that
+pattern in the browser and close the follow-up batch.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 **Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**
