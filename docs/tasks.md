@@ -49,7 +49,11 @@ polish the document layouts per resource, and validate everything.
 - [ ] Resource-specific polished document layouts (10 layouts).
 - [ ] Verify regeneration capability exists (Phase 35) — reuse existing jobs.
 - [ ] Tests: export/assessment/result/pattern semantics + validation suite.
-- [ ] Update docs/tasks.md + project-status.md; commit + push export checkpoint.
+      (Done so far: paper-pattern-policy SET-NULL FK test 18/18; API 119/119;
+      worker 81. Remaining: export-semantics tests for pattern grouping +
+      results doc.)
+- [x] Update docs/tasks.md + project-status.md; commit + push export checkpoint
+      (`5f52e00`, `1a11a13`, pushed to origin/main).
 
 ---
 
