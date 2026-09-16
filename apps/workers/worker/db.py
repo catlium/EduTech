@@ -517,6 +517,7 @@ def insert_generated_questions(
     topic_id: str | None,
     created_by: str,
     provenance: dict[str, Any] | None = None,
+    source_pattern_id: str | None = None,
 ) -> list[str]:
     """Persist AI-generated questions as APPROVED, ACTIVE rows in the ``questions`` table.
 
@@ -550,9 +551,10 @@ def insert_generated_questions(
                 "INSERT INTO questions"
                 " (institute_id, subject_id, chapter_id, topic_id, stem, question_type,"
                 "  answer_format, difficulty, explanation, payload, source,"
-                "  approval_status, status, created_by, updated_by, provenance)"
+                "  approval_status, status, created_by, updated_by, provenance,"
+                "  source_pattern_id)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'AI_GENERATED',"
-                "  'APPROVED', 'ACTIVE', %s, %s, %s)"
+                "  'APPROVED', 'ACTIVE', %s, %s, %s, %s)"
                 " RETURNING id",
                 (
                     institute_id,
@@ -568,6 +570,7 @@ def insert_generated_questions(
                     created_by,
                     created_by,
                     Jsonb(provenance) if provenance is not None else None,
+                    source_pattern_id,
                 ),
             )
             row = cur.fetchone()

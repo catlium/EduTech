@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 
 import { institutes } from './institutes.js';
 import { subjects, chapters, topics } from './academic.js';
+import { paperPatterns } from './paper-patterns.js';
 import { users } from './users.js';
 
 export const questions = pgTable(
@@ -28,6 +29,14 @@ export const questions = pgTable(
     // AI-generation provenance: operation, jobId, provider, model, generatedAt,
     // source reference (filled by the worker for AI_GENERATED questions).
     provenance: jsonb('provenance'),
+    // Paper-pattern provenance: the approved paper pattern a bank generation
+    // was governed by, when the question was generated from a blueprint. This
+    // is how a Question Bank retains the pattern that produced it (the pattern
+    // itself stays authoritative in paper_patterns; only the reference lives
+    // here, remaining questions survive DRAFT->APPROVED->DELETE of the pattern).
+    sourcePatternId: uuid('source_pattern_id').references(() => paperPatterns.id, {
+      onDelete: 'set null',
+    }),
     approvalStatus: varchar('approval_status', { length: 20 }).notNull().default('PENDING'),
     status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
     createdBy: uuid('created_by')

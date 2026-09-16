@@ -24,6 +24,7 @@ INSTITUTE_ID = "22222222-2222-2222-2222-222222222222"
 TOPIC_ID = "11111111-1111-1111-1111-111111111111"
 SOURCE = {"type": "TOPIC", "id": TOPIC_ID}
 JOB_ID = "33333333-3333-3333-3333-333333333333"
+PATTERN_ID = "44444444-4444-4444-4444-444444444444"
 NOTE_PAYLOAD = {"operation": "AI_GENERATE_NOTE", "source": SOURCE}
 VALID_NOTE = '{"title": "T", "blocks": [{"id": "b1", "type": "paragraph", "content": "hi"}]}'
 
@@ -278,6 +279,42 @@ def test_no_purge_when_no_job_id(monkeypatch) -> None:
 
     assert "DELETE FROM questions" not in cursor.statements[0][0]
     assert "INSERT INTO questions" in cursor.statements[0][0]
+
+
+def test_bank_question_insert_retains_source_pattern_id(monkeypatch) -> None:
+    cursor = FakeCursor(["q-1"])
+    _fake_connect(monkeypatch, cursor)
+
+    db.insert_generated_questions(
+        INSTITUTE_ID,
+        questions=[
+            {
+                "questionType": "MCQ",
+                "difficulty": "MEDIUM",
+                "stem": "s1",
+                "payload": {"answers": []},
+            }
+        ],
+        subject_id=None,
+        chapter_id=None,
+        topic_id=TOPIC_ID,
+        created_by="user-1",
+        provenance={"operation": "AI_GENERATE_QUESTIONS", "jobId": JOB_ID},
+        source_pattern_id=PATTERN_ID,
+    )
+
+    sql = cursor.statements[1][0]
+    params = cursor.statements[1][1]
+    assert "source_pattern_id" in sql
+    assert params[-1] == PATTERN_ID
+
+
+def test_blueprint_pattern_id_extracts_blueprint_reference() -> None:
+    assert service._blueprint_pattern_id({"blueprint": {"patternId": PATTERN_ID}}) == PATTERN_ID
+    assert service._blueprint_pattern_id({"blueprint": {"patternId": ""}}) is None
+    assert service._blueprint_pattern_id({"blueprint": {}}) is None
+    assert service._blueprint_pattern_id({"buckets": []}) is None
+    assert service._blueprint_pattern_id({}) is None
 
 
 def test_reset_job_to_queued_only_touches_processing_rows(monkeypatch) -> None:

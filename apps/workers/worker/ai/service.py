@@ -665,6 +665,7 @@ def _generate_questions(
         operation.aggregate(outputs, count_int)
     ).model_dump()
     provenance = _build_question_provenance(job_id, source, materials, context_meta)
+    pattern_id = _blueprint_pattern_id(params)
     _check_cancelled(job_id)
     question_ids = db.insert_generated_questions(
         institute_id,
@@ -674,6 +675,7 @@ def _generate_questions(
         topic_id=scope["topicId"],
         created_by=source["requestedBy"],
         provenance=provenance,
+        source_pattern_id=pattern_id,
     )
     result: dict[str, Any] = {
         "count": len(question_ids),
@@ -706,8 +708,10 @@ def _generate_bank_questions(
     buckets: list[dict[str, Any]],
 ) -> None:
     """Bank mode: generate per-bucket question quotas via a single provider call per chunk."""
-    types_map = payload.get("params") or {} if isinstance(payload.get("params"), dict) else {}
-    types_map = types_map.get("types") or {} if isinstance(types_map, dict) else {}
+    params = payload.get("params")
+    if not isinstance(params, dict):
+        params = {}
+    types_map = params.get("types") or {}
 
     bucket_specs: list[dict[str, Any]] = []
     for b in buckets:
@@ -787,6 +791,7 @@ def _generate_bank_questions(
         raise GenerationError("AI generated no valid questions for the requested buckets")
 
     provenance = _build_question_provenance(job_id, source, materials, context_meta)
+    pattern_id = _blueprint_pattern_id(params)
     _check_cancelled(job_id)
     question_ids = db.insert_generated_questions(
         institute_id,
@@ -796,6 +801,7 @@ def _generate_bank_questions(
         topic_id=scope["topicId"],
         created_by=source["requestedBy"],
         provenance=provenance,
+        source_pattern_id=pattern_id,
     )
     db.update_job_status(
         job_id,
@@ -812,6 +818,22 @@ def _generate_bank_questions(
         },
     )
     logger.info("AI bank questions generated: job=%s count=%s", job_id, len(question_ids))
+
+
+def _blueprint_pattern_id(params: dict[str, Any]) -> str | None:
+    """Pattern that governed a bank generation, if the job was blueprint-driven.
+
+    The API attaches ``params.blueprint = {patternId, structure}`` to
+    pattern-driven bank jobs; the worker persists the reference on each
+    generated question so a Question Bank retains the paper pattern that
+    produced it.
+    """
+    blueprint = params.get("blueprint")
+    if isinstance(blueprint, dict):
+        pattern_id = blueprint.get("patternId")
+        if isinstance(pattern_id, str) and pattern_id:
+            return pattern_id
+    return None
 
 
 def _build_question_provenance(
