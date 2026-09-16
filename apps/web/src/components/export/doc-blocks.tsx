@@ -130,6 +130,7 @@ export function DocBlocks({ model }: { model: DocumentModel }) {
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">{model.title}</h3>
       {model.blocks.map((b, i) => {
+        if (b.kind === 'heading') qNo = 0;
         if (b.kind === 'question' && !b.showAnswer) qNo += 1;
         switch (b.kind) {
           case 'heading':

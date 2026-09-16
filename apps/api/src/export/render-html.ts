@@ -123,6 +123,7 @@ export function renderDocumentHtml(model: DocumentModel): string {
 export function renderDocumentBodyHtml(model: DocumentModel): string {
   let qNo = 0;
   const blocks = model.blocks.map((b) => {
+    if (b.kind === 'heading') qNo = 0;
     if (b.kind === 'question' && !b.showAnswer) qNo += 1;
     return renderBlock(b, qNo);
   });

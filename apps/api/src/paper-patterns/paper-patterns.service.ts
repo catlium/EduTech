@@ -268,7 +268,7 @@ export class PaperPatternsService {
       .where(and(eq(paperPatterns.id, patternId), eq(paperPatterns.instituteId, instituteId)))
       .returning();
 
-    return approved!;
+    return (await this.attachSubjectIds([approved!]))[0]!;
   }
 
   // ── Assessment creation ───────────────────

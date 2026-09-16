@@ -30,6 +30,7 @@ export function sendDoc(res: Response, model: DocumentModel, filename: string): 
 async function sendDocx(res: Response, model: DocumentModel, filename: string): Promise<void> {
   let qNo = 0;
   const children = model.blocks.flatMap((b) => {
+    if (b.kind === 'heading') qNo = 0;
     if (b.kind === 'question' && !b.showAnswer) qNo += 1;
     return docxBlock(b, qNo);
   });

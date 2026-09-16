@@ -14,7 +14,7 @@
 > assessment results sheet export is wired E2E, and the preview-before-export
 > hard gate was removed (preview is now a convenience representation only).
 >
-> Checkpoint 2026-09-16 (this session, uncommitted): shuffle in the Question
+> Checkpoint 2026-09-16 (committed `78c86db`, pushed): shuffle in the Question
 > Paper builder now REPLACES the selection instead of appending
 > (`autoSelectFromPattern` deletes existing assessment_questions then inserts
 > the plan; regression-verified live — two select-from-pattern calls return
@@ -24,6 +24,14 @@
 > badges; pattern builder shows Attempt-N-of-M for every section (disabled +
 > dimmed when compulsory). API tests 121/121, api+web typecheck clean, api
 > eslint clean; api+web containers rebuilt and restarted.
+>
+> Checkpoint 2026-09-16 (this session, uncommitted): bug-fix pass — approve
+> no longer crashes the pattern detail page (service returned a
+> raw row without `subjectIds`; now wraps with `attachSubjectIds` like the
+> other reads), question numbering restarts per section/question type in all
+> three renderers (HTML, DOCX, web preview) instead of running 1..N across
+> sections. Verified live: fresh pattern approved returns `subjectIds: []`,
+> paper preview numbers Section A **1,2** and Section B **1**.
 > Migration 0031 (hand-written per the drizzle-kit non-interactive limitation)
 > + worker provenance retention + API tests 119/119 clean.
 
