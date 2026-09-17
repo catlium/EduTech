@@ -9,6 +9,7 @@ import { users, authSessions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { normalizeEmail } from '@catlium/shared';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { decideRefreshRace } from './refresh-race.js';
 
 export interface TokenPair {
   accessToken: string;
@@ -75,21 +76,24 @@ export class AuthService {
       throw new UnauthorizedException('Session not found');
     }
 
-    if (session.revokedAt) {
+    const decision = decideRefreshRace(session, await bcryptjs.compare(refreshToken, session.refreshTokenHash));
+
+    if (decision === 'revoked') {
       throw new UnauthorizedException('Session revoked');
     }
 
-    if (new Date() > session.expiresAt) {
+    if (decision === 'expired') {
       throw new UnauthorizedException('Session expired');
     }
 
-    const tokenValid = await bcryptjs.compare(refreshToken, session.refreshTokenHash);
-
-    if (!tokenValid) {
+    if (decision === 'token-mismatch') {
       await this.revokeSession(session.id);
       throw new UnauthorizedException('Invalid refresh token');
     }
 
+    // 'rotate' covers both the normal rotation and a just-revoked session being
+    // re-rotated by a concurrent refresh that shared the same token. revoke is
+    // idempotent on an already-revoked row, so both paths converge.
     await this.revokeSession(session.id);
 
     const tokens = await this.createSession(payload.sub);

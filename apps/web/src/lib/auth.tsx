@@ -1,9 +1,9 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { api, setActiveInstituteId } from './api';
+import { api, ApiError, setActiveInstituteId } from './api';
 import type { MembershipListItem, UserResponse } from '@catlium/contracts';
 
 interface AuthState {
@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [memberships, setMemberships] = useState<MembershipListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const hasIdentity = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -28,13 +29,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         api<{ user: UserResponse }>('/auth/me'),
         api<{ memberships: MembershipListItem[] }>('/memberships'),
       ]);
+      hasIdentity.current = true;
       setUser(user);
       setMemberships(membershipsResult.memberships ?? []);
-    } catch {
-      setUser(null);
-      setMemberships([]);
-    } finally {
       setLoading(false);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        // The refresh endpoint itself rejected the session (401/403) — the
+        // session is genuinely gone, so a logout redirect is correct.
+        hasIdentity.current = false;
+        setUser(null);
+        setMemberships([]);
+        setLoading(false);
+      } else {
+        // Transient failure (network / 5xx). The cookies may still be valid —
+        // never log an authenticated user out on a blip. If we never had an
+        // identity yet, stay on the loader so AuthGuard can't bounce a valid
+        // session to /login; any later refresh() call recovers.
+        if (hasIdentity.current) setLoading(false);
+      }
     }
   }, []);
 

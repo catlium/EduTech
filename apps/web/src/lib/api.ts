@@ -32,23 +32,38 @@ function onUnauthorized() {
   }
 }
 
-let refreshPromise: Promise<boolean> | null = null;
+let refreshPromise: Promise<RefreshOutcome> | null = null;
 
-async function refreshSession(): Promise<boolean> {
-  if (!refreshPromise) {
-    const csrf = readCookie('csrf_token');
-    refreshPromise = fetch(`${API_URL}/auth/refresh`, {
+type RefreshOutcome = 'ok' | 'unauthorized' | 'unavailable';
+
+/**
+ * Rotate the session. Outcome is tri-state on purpose:
+ *  - 'ok':           a new access+refresh pair was issued, the caller may retry.
+ *  - 'unauthorized': the server positively rejected the refresh (401/403) —
+ *                    the session is genuinely dead and a logout is correct.
+ *  - 'unavailable':  the refresh could not be answered reliably (network error,
+ *                    5xx, 429). The session may still be perfectly valid, so
+ *                    callers MUST NOT treat this as a logout.
+ */
+async function refreshSession(): Promise<RefreshOutcome> {
+  const csrf = readCookie('csrf_token');
+  const outcome =
+    refreshPromise ??
+    (refreshPromise = fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
       headers: csrf ? { 'x-csrf-token': csrf } : {},
     })
-      .then((r) => r.ok)
-      .catch(() => false)
+      .then((r): RefreshOutcome => {
+        if (r.ok) return 'ok';
+        if (r.status === 401 || r.status === 403) return 'unauthorized';
+        return 'unavailable';
+      })
+      .catch((): RefreshOutcome => 'unavailable')
       .finally(() => {
         refreshPromise = null;
-      });
-  }
-  return refreshPromise;
+      }));
+  return outcome;
 }
 
 function parseMessage(message: unknown): string {
@@ -94,12 +109,22 @@ export async function api<T>(
 
   let response = await doRequest();
   if (response.status === 401 && path !== '/auth/refresh') {
-    if (await refreshSession()) {
+    const outcome = await refreshSession();
+    if (outcome === 'ok') {
       response = await doRequest();
+      // Rotated yet the retry is STILL 401 — the request itself is denied.
+      if (response.status === 401) onUnauthorized();
+    } else if (outcome === 'unauthorized') {
+      // The refresh endpoint positively rejected the session — genuine logout.
+      onUnauthorized();
+    } else {
+      // Refresh was not answered reliably (network / 5xx / 429). The session
+      // may be fine — a transient infrastructure blip must never log the user
+      // out, so surface it as a retryable error instead of a 401.
+      throw new ApiError(503, 'Session check temporarily unavailable — please retry');
     }
-  }
-
-  if (response.status === 401) {
+  } else if (response.status === 401) {
+    // Direct /auth/refresh 401 = the session is genuinely gone.
     onUnauthorized();
   }
 
@@ -132,10 +157,13 @@ export async function downloadFile(path: string, filename: string): Promise<void
   };
   let response = await doRequest();
   if (response.status === 401) {
-    if (await refreshSession()) {
+    const outcome = await refreshSession();
+    if (outcome === 'ok') {
       response = await doRequest();
-    } else {
+    } else if (outcome === 'unauthorized') {
       onUnauthorized();
+    } else {
+      throw new ApiError(503, 'Session check temporarily unavailable — please retry');
     }
   }
   if (!response.ok) {
