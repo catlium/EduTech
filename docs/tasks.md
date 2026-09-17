@@ -455,6 +455,64 @@ for running the OCR worker standalone on other devices.
       6 app images: **19 s** warm. Live stack re-verified (api/web healthy,
       worker imports + prompt constants live).
 
+### Follow-up batch 12 — Cloudflare Tunnel ingress + auth session redirect fix (2026-09-17)
+
+Two hardening items: (a) add a Cloudflare Tunnel integration so a production
+deployment can serve ONLY `web` + `api` through a public edge while internal
+services stay private; (b) fix the "logged in for a while, then the frontend
+redirects to /login even though cookies are present" auth bug end-to-end.
+
+- [x] **`docker-compose.tunnel.yml`** — production-only override that layers on
+      base+prod: runs the official `cloudflare/cloudflared` image in
+      remote-managed mode (`tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}`);
+      removes the api/web host port publishes (`ports: !override []`, compose 2
+      `!override` tag — a plain `[]` silently merges and keeps the ports) so the
+      tunnel is the ONLY public boundary. Internal services already have no host
+      ports in prod. Validated: `docker compose config` exits 0 for base+dev,
+      base+prod, base+prod+tunnel; merged config shows 0 published ports.
+- [x] **`.env.example` tunnel/cookie docs** — `TUNNEL_TOKEN` (never committed),
+      production `NEXT_PUBLIC_API_URL=https://app.example.com/api/v1` +
+      `COOKIE_SECURE=true` / `COOKIE_SAMESITE=lax` / empty `COOKIE_DOMAIN` for
+      the same-origin HTTPS origin.
+- [x] **`docs/architecture/cloudflare-tunnel.md`** — deployment procedure:
+      tunnel creation + token, the two same-host public hostname routes
+      (`app.example.com/*` → `http://web:3001`, `app.example.com/api/*` →
+      `http://api:3000`), build-time `NEXT_PUBLIC_API_URL`, cookie/HTTPS
+      posture, WS/forwarded-header notes, verification commands, and the
+      locally-managed ingress fallback.
+- [x] **Auth redirect root-cause analysis.** Traced browser → cookies →
+      `api.ts` fetch wrapper → `/auth/refresh` → `AuthService.refresh`
+      (rotation + reuse detection) → response handling → redirect-to-login
+      paths (middleware `access_token` presence, `AuthGuard` `!user`,
+      `catlium:unauthorized`). Two genuine root causes found:
+      1) **Refresh-rotation race**: two refresh requests sharing one refresh
+         token (two tabs, or an in-flight refresh racing a page reload) — the
+         second loads the already-revoked session and got a hard 401 "Session
+         revoked" → frontend logged the user out while every cookie was
+         present. Root-cause fix: keep the token↔hash comparison (the real
+         theft detector) and let a matching token re-rotate within a 60s
+         completion window (`decideRefreshRace` in
+         `apps/api/src/identity/refresh-race.ts`); spent-token replay outside
+         the window is still denied.
+      2) **Transient refresh failure = logout**: `api.ts` treated ANY refresh
+         failure (network error, 5xx, 429) as a session rejection and fired
+         `catlium:unauthorized`, and `AuthProvider.refresh()` cleared `user` on
+         any `/auth/me` error → `AuthGuard` redirected. Fix: tri-state refresh
+         outcome (`ok` / `unauthorized` / `unavailable`) — only a definitive
+         401/403 from the refresh endpoint logs the user out; `unavailable`
+         surfaces as a retryable 503 and never fires the logout event;
+         `AuthProvider` preserves the current identity on transient failures
+         (keeps the loader until an identity is established).
+- [x] **Tests.** `apps/api/src/identity/refresh-race.test.ts` (6 cases:
+      clean rotate, mismatch deny, expired, concurrent re-rotate, wrong-token
+      denied in-window, spent-token replay denied outside window);
+      `apps/web/src/lib/api.test.ts` (6 cases: 200 no-refresh, 401+refresh
+      retries, 401+rejected = logout event, 401+503 unavailable = NO logout,
+      401+network error = NO logout, concurrent 401s share ONE refresh).
+      API native suite **137/137** (was 131), api + web `tsc --noEmit` clean,
+      api eslint clean on src/identity.
+- [x] Validation + docs + commit + push.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)

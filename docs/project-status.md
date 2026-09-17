@@ -2,14 +2,113 @@
 
 ## Current test inventory (verified 2026-09-17)
 
-- API native suite: **131/131** across 17 node:test files in `apps/api/src`.
+- API native suite: **137/137** across 18 node:test files in `apps/api/src`.
 - Worker AI/material: **81** pytest (12 files) + ruff + mypy clean
   (`apps/workers/tests`).
 - OCR engine: **21** (`apps/ocr/ocr_engine`), ocr-worker: **10**
   (`apps/workers/ocr-worker/tests/test_worker.py`).
-- Web: **4** (`apps/web/src/lib/paper-pattern-builder.test.ts`).
+- Web: **10** (`apps/web/src/lib/paper-pattern-builder.test.ts` +
+  `apps/web/src/lib/api.test.ts`).
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
+
+## Phase 39 — Cloudflare Tunnel ingress + auth session redirect fix (2026-09-17)
+
+**Status: implemented + validated (API 137/137, api+web tsc clean, api eslint
+clean, all three compose merges validate via `docker compose config`). Docs
+updated; commit + push pending.**
+
+### Goal
+
+Two hardening items: (a) give the stack an optional Cloudflare Tunnel
+integration so a production deployment serves ONLY the web app and the API
+through a public edge — never the internal services; (b) fix the "after being
+logged in for some time, the frontend redirects to /login even though the
+session cookies are still present" bug.
+
+### Completed work — Cloudflare Tunnel (Part 1)
+
+- **`docker-compose.tunnel.yml`** (production-only override, layered on
+  base+prod): `tunnel` service on the official `cloudflare/cloudflared` image,
+  remote-managed mode `tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}` —
+  the token embeds the tunnel credentials so no secret is committed.
+  `ports: !override []` on api/web removes the host port publishes (a plain
+  `ports: []` silently re-merges and keeps them — verified) so the tunnel is
+  the ONLY public boundary; Postgres/Redis/RabbitMQ/OmniRoute/OCR/workers
+  remain private-network-only (they already publish nothing in prod).
+- **`.env.example`**: `TUNNEL_TOKEN` (empty = tunnel disabled), and the
+  production cookie/HTTPS posture — `NEXT_PUBLIC_API_URL=https://app.example.com/api/v1`
+  (build-time), `COOKIE_SECURE=true`, `COOKIE_SAMESITE=lax`, empty
+  `COOKIE_DOMAIN`, same-origin through the tunnel.
+- **`docs/architecture/cloudflare-tunnel.md`**: one-time Cloudflare setup
+  (create tunnel → token; public hostname routes `app.example.com/*` →
+  `http://web:3001`, `app.example.com/api/*` → `http://api:3000`), the
+  build-time public API URL, cookie/HTTPS notes, WebSocket/forwarded-header
+  behavior, verification commands, and a locally-managed ingress fallback.
+- **AGENTS.md**: §6 notes the optional tunnel override; Commands gains the
+  `-f docker-compose.tunnel.yml` production run.
+- **Validation**: `docker compose config` exits 0 for base+dev, base+prod,
+  and base+prod+tunnel; merged tunnel config reports **0 published ports** and
+  the token-derived `run --token` command.
+
+### Completed work — auth session redirect fix (Part 2)
+
+Root cause traced through the full lifecycle (browser cookies → frontend auth
+state → `api.ts` fetch wrapper → `/auth/refresh` → `AuthService.refresh`
+rotation/reuse detection → response handling → redirect-to-login paths:
+middleware `access_token` presence, workspace `AuthGuard` `!user`, and the
+`catlium:unauthorized` event). The cookie was NOT the problem; two real bugs
+were:
+
+1. **Refresh-rotation race (server)** — two refresh requests sharing one
+   refresh token (two tabs, or an in-flight refresh racing a reload): the
+   first rotates (revokes + issues a new session), the second loads the
+   already-revoked session and answered a hard 401 "Session revoked" → the
+   losing tab redirected to /login with every cookie still present. The
+   theft-detection property is really the token↔hash comparison, not the
+   revocation flag. Fix: keep the comparison and let a token that still
+   matches the stored hash re-rotate within a 60 s completion window
+   (`apps/api/src/identity/refresh-race.ts` `decideRefreshRace`, wired into
+   `AuthService.refresh`); spent-token replay outside the window is still
+   denied.
+2. **Transient refresh failure = logout (client)** — `api.ts` mapped ANY
+   `/auth/refresh` failure (network error, 5xx, 429) to a session rejection and
+   fired `catlium:unauthorized`, and `AuthProvider.refresh()` cleared `user` on
+   any `/auth/me` error, so `AuthGuard` redirected even though the cookies were
+   valid. Fix: tri-state `refreshSession()` (`ok` / `unauthorized` /
+   `unavailable`) — only a definitive 401/403 from the refresh endpoint logs
+   the user out; `unavailable` surfaces as a retryable 503 and never fires the
+   logout event; `AuthProvider` preserves the established identity on
+   transient failures (keeps the loader until an identity is first
+   established). `downloadFile` shares the same policy.
+
+### Validation
+
+- `apps/api/src/identity/refresh-race.test.ts` (6 cases) + API native suite
+  **137/137**.
+- `apps/web/src/lib/api.test.ts` (6 cases: no-refresh on 200, 401+refresh
+  retries, 401+rejected = logout event, 401+503 unavailable = NO logout,
+  401+network error = NO logout, concurrent 401s share one refresh).
+- api + web `tsc --noEmit` clean; api eslint clean on `src/identity`.
+- Compose merges validate (`docker compose config` exit 0); merged tunnel
+  config has 0 published ports.
+
+### Known issues / deferred
+
+- Tunnel route configuration lives in the Cloudflare dashboard (remote-managed
+  mode); the locally-managed ingress fallback is documented in
+  cloudflare-tunnel.md if ingress must be version-controlled.
+- The grace window accepts a replayed `refresh_token` that matches the stored
+  hash within 60 s of rotation — a deliberate, bounded trade-off aligned with
+  industry practice; reuse later than the window is still treated as theft.
+
+### Exact recommended next task
+
+None — Phase 39 complete. Commit + push, then the next teacher/infra request
+(e.g. Phase 37 resource-layout polish or registry-host roll of the versioned
+images).
+
+---
 
 ## Phase 38 — Standalone Question Paper entity + shortage wizard (2026-09-16)
 
