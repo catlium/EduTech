@@ -317,7 +317,49 @@ to **no answer in the file**.
       default `include` to `paper` and only then pass scope=teacher.
 - [x] Validation: api+web `tsc --noEmit` clean; api `node --test` 38 passed
       (15 questions + 23 export); worker pytest 81 passed.
-- [ ] Rebuild containers, docs + commit + push + graphify.
+- [x] Rebuild containers, docs + commit + push + graphify.
+
+### Follow-up batch 9 — stale-generated cleanup, frontend answers for every type (2026-09-17)
+
+Teacher follow-ups after batch 8: (a) the previously generated questions were
+produced by the OLD prompt (stale worker images — the worker imports a
+pip-installed site-packages copy, so "up" ≠ current) → delete them all; (b)
+the question bank list expanded card only showed answers for
+MCQ/TRUE_FALSE/FILL_IN_BLANK — every other type fell through to "Answer stored
+in payload"; (c) add an AGENTS.md rule guaranteeing containers are rebuilt and
+verified running after code changes.
+
+- [x] **Root cause of "still not self-contained": stale worker images.** The
+      worker ran `edutech-worker-ai`/`-material` images built BEFORE the
+      batch-8 prompt edit; `_QUALITY_INSTRUCTIONS` in the running container was
+      the old text. Rebuilt `worker-ai worker-material` (and `web`); verified
+      the new prompt bytes are live in the container.
+- [x] **Stale data cleaned.** Deleted all 270 `AI_GENERATED` questions (the
+      whole bank — every one came from the old prompt). Backed up to
+      `/tmp/stale_questions_backup_*.csv` first. No dependent rows existed
+      (attempt_questions / question_paper_questions / assessment_questions = 0).
+- [x] **Frontend answers for every type.** `QuestionPreview`
+      (`apps/web/src/app/(workspace)/questions/page.tsx`) previously rendered
+      MCQ / TRUE_FALSE / FILL_IN_BLANK and a "stored in payload" placeholder
+      for everything else. Now also renders **MATCHING** (left → right pairs
+      via `MatchingFormatPayloadSchema`), **NUMERICAL** (modelAnswer ±
+      tolerance), and **TEXT** (modelAnswer) via `safeParse` against the
+      existing contract schemas. Answers stay hidden until "Show answer" —
+      collapsed cards show stems only.
+- [x] **Export answer option reachable in wizard.** Wizard Step 3 "Include"
+      select offers Student paper (no answers, default) / Teacher answer key
+      (with answers) → threads `include` into preview + export. Banks export
+      with answers only when explicitly chosen.
+- [x] **AGENTS.md constraint added** ("Container Rule — Restart + Verify After
+      Every Code Change"): after touching api/web/workers, rebuild the affected
+      services, verify `docker compose ps` healthy, and confirm the live
+      container actually carries the change (worker: exec + print the new
+      constant) — "Up (healthy)" is not proof of current code.
+- [x] **Live E2E.** Workers/web rebuilt; `POST /questions/bank/starter` on
+      Mathematics Minor → batch `5345a614-5f20-46e8-a9d1-642d857bcc34`, 9/9
+      jobs completed 0 failed, 50 questions regenerated under the NEW prompt.
+      Scanned all 50 stems: **0 banned phrases**, **50/50 unique stems**,
+      payload answers present for MCQ/TRUE_FALSE/FILL_IN_BLANK.
 
 ---
 

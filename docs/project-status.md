@@ -596,6 +596,78 @@ question, then commit + push + graphify.
 
 ---
 
+## Phase 38j — stale-generated cleanup, frontend answers for every type, container rule (2026-09-17)
+
+**Status: implemented + validated + live E2E; committed + pushed.**
+
+### Goal
+
+Three follow-ups after 38i: (a) questions were STILL not self-contained in the
+running system — root cause was stale worker images (the worker imports a
+pip-installed site-packages copy, never the mounted source), and the existing
+AI-generated bank was produced by that old prompt → delete all of it; (b) the
+Question Bank list's expanded card showed answers only for
+MCQ/TRUE_FALSE/FILL_IN_BLANK — every other type fell through to an "Answer
+stored in payload" placeholder; (c) prevent recurrence by adding an
+AGENTS.md rule that forces container rebuild + restart verification after any
+code change.
+
+### Completed work
+
+- **Stale worker images rebuilt.** `worker-ai`/`worker-material` had been "up
+  2 hours" — running the pre-38i prompt. Rebuilt `worker-ai worker-material`
+  and `web` with `--build`; exec'd into `worker-ai` and verified the bundled
+  `_QUALITY_INSTRUCTIONS` is now the strictly-self-contained text (a naive
+  `open(__file__).read()` check can lie — the runtime constant is the truth).
+- **Stale data deleted.** All 270 `AI_GENERATED` questions removed (the entire
+  bank — every question came from the old prompt). Backed up first to
+  `/tmp/stale_questions_backup_*.csv` (664 B header + 438.7 KiB rows). No
+  dependent rows existed (`attempt_questions`, `question_paper_questions`,
+  `assessment_questions` all empty), so no cascade side effects.
+- **Frontend answers for every type** (`questions/page.tsx` `QuestionPreview`).
+  Now `safeParse`s the payload against the existing contract schemas:
+  MATCHING → left → right pairs, NUMERICAL → modelAnswer ± tolerance, TEXT →
+  modelAnswer; preserved MCQ / TRUE_FALSE / FILL_IN_BLANK rendering. The
+  "stored in payload" fallback now only fires for genuinely unparseable
+  payloads. Answers remain behind the "Show answer" toggle — the collapsed
+  card never leaks them.
+- **Export answer option already reachable.** Wizard Step 3 "Include" selects
+  Student paper (no answers, default) vs Teacher answer key (with answers);
+  `include` threads into preview + export URLs. Nothing leaks answers by
+  default.
+- **AGENTS.md "Container Rule — Restart + Verify After Every Code Change"**
+  added under Commands: rebuild affected services
+  (`docker compose up -d --build api web worker-ai worker-material`), confirm
+  `docker compose ps` fully healthy, and exec into the running container to
+  prove the new code is live ("Up (healthy)" is not proof). Warns that stale
+  container output = stale data and must be flagged/removed.
+
+### Validation
+
+- api + web `tsc --noEmit` clean.
+- api `node --test` 38 passed; worker pytest 81 passed.
+- **Live E2E under the new prompt**: `POST /questions/bank/starter` on
+  Mathematics Minor → batch `5345a614-5f20-46e8-a9d1-642d857bcc34`, 9 jobs
+  (MCQ 7/7/6, TRUE_FALSE 5/5/5, FILL_IN_BLANK 5/5/5), **9/9 completed,
+  0 failed**. Scanned all 50 regenerated stems: **0 banned-phrase hits**,
+  **50/50 unique stems**; payload answers verified present for MCQ
+  (`correctChoiceId`), TRUE_FALSE (`correctAnswer`), FILL_IN_BLANK
+  (`acceptableAnswers`).
+- Containers: api/web/workers rebuilt, `docker compose ps` all healthy.
+
+### Known issues / deferred
+
+- Regenerated bank has only the 50 starter questions (MCQ / TRUE_FALSE /
+  FILL_IN_BLANK at per-type min); other types (SHORT_ANSWER, LONG_ANSWER,
+  NUMERICAL, MATCHING) regenerate on demand from the wizard/topics.
+
+### Exact recommended next task
+
+None — 38j complete. Next: export ERROR/short-answer-heavy paper generation, or
+whatever the teacher requests next.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 **Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**
