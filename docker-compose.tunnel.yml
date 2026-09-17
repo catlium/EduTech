@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech - CLOUDFLARE TUNNEL Compose override
+# ─────────────────────────────────────────────────────────────
+#
+# OPT-IN production override that makes a Cloudflare Tunnel the ONLY public
+# entry point to the platform. It layers on the base + prod files:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  -f docker-compose.tunnel.yml up -d --build
+#
+# ⚠️  NEVER combine with docker-compose.dev.yml (loopback publishes) or
+#     docker-compose.demo.yml (mock AI).
+#
+# WHAT IT DOES
+#   * Runs `cloudflared tunnel run --token` — a REMOTELY-MANAGED tunnel. The
+#     tunnel credentials live in the token, so nothing secret is committed;
+#     the token is read from the `TUNNEL_TOKEN` env var (set in the root .env).
+#   * Removes the host port publishes on `api`/`web` (ports: []) so the tunnel
+#     is the ONLY public boundary. Postgres/Redis/RabbitMQ/OmniRoute/OCR/workers
+#     were already private (base file has no host ports for them in prod).
+#
+# THE REQUIRED CLOUDFLARE SETUP (one-time, dashboard — see
+# docs/architecture/cloudflare-tunnel.md):
+#   1. Zero Trust → Networks → Tunnels → create a tunnel (get its token).
+#   2. Add ONE public hostname with TWO routes on your app domain:
+#        app.example.com/*       -> http://web:3001      (the Next.js app)
+#        app.example.com/api/*   -> http://api:3000      (the NestJS API)
+#      The web app must be built with NEXT_PUBLIC_API_URL=https://app.example.com/api/v1
+#      so the browser talks to the SAME public origin (same-origin cookies +
+#      CSRF), and COOKIE_SECURE=true + COOKIE_SAMESITE=lax in production.
+#   3. Run:  TUNNEL_TOKEN=<token> docker compose <...> up -d --build
+#
+# The api/web containers stay EXACTLY as configured by base+prod; this file
+# only overrides their `ports` and adds the `tunnel` service.
+# ─────────────────────────────────────────────────────────────
+
+services:
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: catlium-tunnel
+    restart: unless-stopped
+    init: true
+    # Remote-managed mode: the token embeds the tunnel credentials + secret.
+    # The token NEVER appears in the repo — set TUNNEL_TOKEN in the root .env.
+    command: ['tunnel', '--no-autoupdate', 'run', '--token', '${TUNNEL_TOKEN}']
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  api:
+    # !override (compose 2.x) replaces the base file's published ports with the
+    # empty list — without it, `ports: []` would be merged and the host ports
+    # would survive. After this, api/web are reachable ONLY via the tunnel.
+    ports: !override []
+
+  web:
+    ports: !override []

@@ -91,7 +91,10 @@ These are the planned logical modules for the API. Do NOT implement them now:
 
 - The NestJS API (`/api/v1`) and the Next.js web app `apps/web` (served on
   :3001) are the only public entry points. The browser talks to the web app,
-  which talks only to the API.
+  which talks only to the API. In production these two may be reached through
+  a Cloudflare Tunnel override (`docker-compose.tunnel.yml`) that removes their
+  host port publishes and makes the tunnel the only ingress — see
+  `docs/architecture/cloudflare-tunnel.md`.
 - Postgres, Redis, RabbitMQ, the OCR service, the async workers, and the
   OmniRoute AI gateway are INTERNAL, reachable only over the private Docker
   network. Their ports are never published on the host except in the
@@ -176,6 +179,11 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml \
 
 # Production (single build + run; NEVER combine with dev/demo overrides):
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Production with a Cloudflare Tunnel as the ONLY public ingress (removes the
+# api/web host port publishes; TUNNEL_TOKEN from .env; ingress routes must be
+# configured in CF Zero Trust — see docs/architecture/cloudflare-tunnel.md):
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+               -f docker-compose.tunnel.yml up -d --build
 # Tag & push the 5 app images for registry-based deploys. Only api/web/
 # worker-ai/worker-material/ocr are retagged (postgres/redis/rabbitmq/omniroute
 # stay upstream and are NOT pushed):
