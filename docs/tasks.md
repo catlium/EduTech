@@ -409,6 +409,50 @@ pattern structure is already present").
       LONG_ANSWER modelAnswers **1000–2100 chars** (multiparagraph), SHORT_ANSWER
       **250–340 chars** (focused) — type-proportional depth confirmed live.
 
+### Follow-up batch 11 — Docker build-time optimization, production compose, standalone OCR worker manual (2026-09-17)
+
+Teacher infra follow-ups: (a) docker builds were too slow — the heavy paddle
+layers re-downloaded every build (`PIP_NO_CACHE_DIR=1`) and the resolver was
+flaky (sporadic "ResolutionImpossible"); (b) need a production-ready compose
+"final single build" while the plain dev build stays untouched; (c) a manual
+for running the OCR worker standalone on other devices.
+
+- [x] **Python deps locked + layered Dockerfiles.** New
+      `infrastructure/compose/requirements.in` (union of ocr/workers/
+      ocr-worker direct deps) compiled to `requirements.lock` via pip-tools
+      (paddlepaddle 3.3.1, paddleocr 3.7.0, uvicorn 0.53.0, pika 1.4.4, …).
+      `Dockerfile.python` + `Dockerfile.ocr-worker` now: apt → lock-only
+      `pip install -r requirements.lock` (heavy layer, cached until the lock
+      changes) with a `/root/.cache/pip` cache mount → `pip install --no-deps
+      ./ocr ./worker` (source edits = seconds, no network/resolver).
+- [x] **`Dockerfile.api` manifest-first + turbo cache.** `pnpm install` runs
+      on manifests+lockfile first (pnpm store on a `/pnpm-store` cache mount),
+      then `COPY . .` + `pnpm build` with `TURBO_CACHE_DIR=/turbo-cache` on a
+      cache mount — unchanged workspaces restore from cache instead of
+      recompiling. Same dev build flow, just fast.
+- [x] **`docker-compose.prod.yml`** production override: `restart` policies
+      (workers `on-failure:10`, others `unless-stopped`), `init`, mem/cpu
+      limits, json-file log rotation, `image: ${IMAGE_PREFIX}/<svc>:${VERSION}`
+      tags (build → push → pull on any host). Single command:
+      `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
+      Dev (`docker-compose.dev.yml`) still publishes loopback ports and sets
+      NO restart policy (`restart: no` default). Validated with
+      `docker compose config` for base+dev, base+prod, base+dev+demo.
+- [x] **`docs/architecture/ocr-standalone-device.md`** manual: what the image
+      contains, build, transfer (registry / docker save/load), one-time worker
+      registration (`POST /ocr/workers` → `{workerId, apiKey}` shown once),
+      required/optional env, `docker run` (no `-p`), verification, firewalled
+      networking, multi-device scaling, troubleshooting. Cross-checks the
+      existing `ocr-distributed-workers.md` §6/§7/§10.
+- [x] **Cleanup.** All app containers recreated on fresh images per the
+      Container Rule; old exited containers and stale/intermediary images
+      pruned (build-base images kept so future builds stay fast).
+- [x] **Measured wins.** worker-ai rebuild with a real source edit: **29 s**
+      (was ~10 min, the paddle re-download); ocr-worker standalone: **27 s**;
+      web+ocr+worker-material repro: **34 s**; full **production** build of all
+      6 app images: **19 s** warm. Live stack re-verified (api/web healthy,
+      worker imports + prompt constants live).
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)

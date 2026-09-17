@@ -173,7 +173,33 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d   # dev
 # Demo (seed + mock AI on top of dev):
 docker compose -f docker-compose.yml -f docker-compose.dev.yml \
                -f docker-compose.demo.yml up --build
+
+# Production (single build + run; NEVER combine with dev/demo overrides):
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Tag & push the same images for registry-based deploys:
+docker compose -f docker-compose.yml -f docker-compose.prod.yml push
 ```
+
+#### Docker build caching (keep it fast)
+
+The Dockerfiles are dependency-first — heavy layers rebuild only when their
+manifests change:
+
+- `Dockerfile.api` (api/web/migrate): manifest-first `pnpm install` with the
+  store AND `TURBO_CACHE_DIR` on BuildKit cache mounts. Unchanged workspaces
+  are restored from the turbo cache instead of recompiled.
+- `Dockerfile.python` / `Dockerfile.ocr-worker` (ocr/workers/standalone OCR
+  worker): third-party deps come pinned from
+  `infrastructure/compose/requirements.lock` (regenerate the lock, don't hand
+  edit it — see the header comment), installed on a pip cache mount. Source
+  edits only re-run `pip install --no-deps` (seconds — never the ~200 MB
+  paddle download). Whole-stack rebuilds are ~30 s with a warm cache.
+- Keep `infrastructure/compose/requirements.in` in sync when you add a Python
+  dependency, then recompile the lock.
+
+Standalone OCR worker on another device: see
+`docs/architecture/ocr-standalone-device.md` (build → docker save/push → run
+with `WORKER_OCR_SERVER_URL` / `WORKER_OCR_WORKER_ID` / `WORKER_OCR_API_KEY`).
 
 ### Container Rule — Restart + Verify After Every Code Change
 

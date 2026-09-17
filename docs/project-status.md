@@ -668,6 +668,95 @@ whatever the teacher requests next.
 
 ---
 
+## Phase 38l — Docker build-time optimization, production compose, standalone OCR worker manual (2026-09-17)
+
+**Status: implemented + measured + verified live; committed + pushed.**
+
+### Goal
+
+(a) Docker builds were far too slow: every python build re-downloaded the
+~200 MB paddlepaddle wheel because `PIP_NO_CACHE_DIR=1` disabled caching and
+the deps live in the SAME layer as the source copy, so any edit to
+`apps/workers` or `apps/ocr` re-ran the whole install (and the flaky PyPI
+resolver intermittently failed whole builds). (b) Add a production-ready
+compose for a "final single production build" while the dev build/flow stays
+exactly as it is (and dev containers keep NO restart policy). (c) Write the
+ops manual for running the OCR worker standalone on other devices.
+
+### Completed work
+
+- **Python deps pinned via a lock.** `infrastructure/compose/requirements.in`
+  (union of the three Python packages' direct deps) compiled with pip-tools →
+  `requirements.lock` (paddlepaddle 3.3.1, paddleocr 3.7.0, uvicorn 0.53.0,
+  fastapi 0.141.1, pika 1.4.4, psycopg 3.3.5, …). Header comment documents how
+  to regenerate and the keep-it-in-sync rule. Resolves the flaky
+  "ResolutionImpossible" failures (fully pinned).
+- **`Dockerfile.python` + `Dockerfile.ocr-worker` restructured** into three
+  cache-friendly layers: apt libs (unchanged instruction → cached) →
+  `pip install -r requirements.lock` with `--mount=type=cache,
+  target=/root/.cache/pip` (the heavy paddle/OpenCV layer — rebuilt ONLY when
+  the lock changes) → `COPY apps/*` + `pip install --no-deps ./ocr ./worker`
+  (rebuilt on every source edit but takes seconds, no network, no resolver).
+  Dropped `PIP_NO_CACHE_DIR`.
+- **`Dockerfile.api` (api/web/migrate) restructured** into the canonical pnpm
+  monorepo pattern: manifests + `pnpm-lock.yaml` + `pnpm-workspace.yaml` first
+  → `pnpm install --frozen-lockfile` with the pnpm store on a `/pnpm-store`
+  cache mount → `COPY . .` → `pnpm build` with `TURBO_CACHE_DIR=/turbo-cache`
+  on a cache mount (unchanged workspaces restore from turbo cache; var leaks
+  invalidate correctly by file hash). Same dev flow/CMD, just warm-cached.
+- **`docker-compose.prod.yml`** (production override, merged with the base):
+  `restart` policies (workers `on-failure:10`; api/web/ocr/infra
+  `unless-stopped`), `init: true`, mem_limit/cpus limits, json-file log
+  rotation (20m × 5), and `image: ${IMAGE_PREFIX}/<svc>:${VERSION}` tags so a
+  single `up -d --build` builds AND versions for a registry push/pull flow.
+  Dev (`docker-compose.dev.yml`) keeps loopback port publishes and NO restart
+  policy; prod MUST never be combined with dev/demo overrides. All three merge
+  combos validated via `docker compose config`.
+- **`docs/architecture/ocr-standalone-device.md`** — the standalone-OCR manual:
+  image contents, build, transfer paths (registry / `docker save|load`),
+  one-time worker registration (`POST /ocr/workers` → `{workerId, apiKey}`
+  shown once), required + optional env table (verified against
+  `ocr_worker/config.py`), `docker run` with no `-p`, verification steps,
+  firewalled-labs networking, multi-device scaling, and a troubleshooting
+  table (incl. the api-side `WORKER_OCR_LEASE_SECONDS` reuse knob).
+- **`.dockerignore`**: added `graphify-out` (regenerated, large) so build
+  contexts stay small.
+- **Cleanup**: rebuilt + recreated every app container on fresh images per the
+  Container Rule (worker prompt constants re-verified live through the new
+  images); pruned exited containers and stale/intermediary images; deliberately
+  KEPT the `node:24-alpine` / `python:3.12-slim` build bases so future builds
+  stay fast.
+- **AGENTS.md**: expanded the Commands block with the production commands, a
+  "Docker build caching" section (lock-first python, manifest-first api,
+  regenerate-the-lock rule), and a pointer to the standalone-OCR manual.
+
+### Validation
+
+- `docker compose config` exits 0 for base+dev, base+prod, and
+  base+dev+demo — no YAML/merge errors.
+- Fresh-image rebuild timings (warm cache, real source edit for the python
+  case): worker-ai **29 s** (was ~10 min), standalone `Dockerfile.ocr-worker`
+  **27 s**, web+ocr+worker-material repro **34 s**, full production build of
+  all 6 app images **19 s**.
+- Live stack re-verified: api `/api/v1/health` ok, web `/login` 200, worker
+  imports and `_TEACHER_ANSWER_RULES`/`_ANSWER_DEPTH_RULES` present in the
+  running image (new images, pruned old ones).
+
+### Known issues / deferred
+
+- `worker-ai` still carries the OCR deps (it shares `Dockerfile.python`
+  single-image-for-all design). A lean `worker-ai` image would cut its size
+  further; not needed for the time budget, revisit if size matters.
+- Runtime stage ships the full workspace incl. dev deps (existing ponytail
+  note) — size reduction deferred.
+
+### Exact recommended next task
+
+None — 38l complete. Next: a registry push of the versioned images for a real
+second-host roll, or the next teacher request.
+
+---
+
 ## Phase 38k — teacher-grade AI answers (depth + ASCII art), quality batch limits, objective-first ordering (2026-09-17)
 
 **Status: implemented + validated + live E2E; committed + pushed.**
