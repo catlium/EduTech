@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   UseGuards,
@@ -68,6 +69,16 @@ export class AcademicController {
   ) {
     const subject = await this.academicService.updateSubject(tenant.instituteId, subjectId, dto);
     return { subject };
+  }
+
+  @Delete('subjects/:subjectId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequiredRoles(...WRITE_ROLES)
+  async deleteSubject(
+    @Tenant() tenant: TenantContext,
+    @Param('subjectId', ParseUUIDPipe) subjectId: string,
+  ) {
+    await this.academicService.deleteSubject(tenant.instituteId, subjectId);
   }
 
   // ── Chapters ─────────────────────────────

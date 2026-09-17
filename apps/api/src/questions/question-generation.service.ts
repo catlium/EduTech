@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
-import { eq, and, sql, asc, type SQL } from 'drizzle-orm';
+import { eq, and, sql, asc, inArray, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
   topics,
@@ -818,6 +818,175 @@ export class QuestionGenerationService {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────
+
+  /** Full-coverage gate for paper/assessment generation. Selection only ever
+   * takes APPROVED+ACTIVE questions, so "covered" means the approved bank
+   * fully supplies every (questionType, difficulty, count) the pattern needs.
+   * PENDING questions cannot be selected — they are treated as already
+   * addressed to avoid duplicate generation, but still block creation until
+   * approved. On a real deficit it queues exactly the shortfall via the normal
+   * bank generator. */
+  async ensurePatternCoverage(
+    instituteId: string,
+    userId: string,
+    blueprintId: string,
+    options: { dryRun?: boolean } = {},
+  ) {
+    const pattern = await this.loadApprovedPattern(instituteId, blueprintId);
+    const rawSections = (pattern.structure as { sections?: unknown }).sections;
+    const requested = buildBucketsFromBlueprint(
+      (Array.isArray(rawSections) ? rawSections : []) as Parameters<
+        typeof buildBucketsFromBlueprint
+      >[0],
+    );
+
+    const covered = {
+      covered: true as const,
+      status: 'COVERED' as const,
+      totalDeficit: 0,
+      totalExisting: 0,
+      buckets: [] as Array<{
+        questionType: string;
+        difficulty: string;
+        requested: number;
+        existing: number;
+        pending: number;
+        deficit: number;
+      }>,
+      batchId: null as string | null,
+      jobIds: null as string[] | null,
+    };
+    if (requested.length === 0) return covered;
+
+    const subjectIds = pattern.subjectIds;
+    const [approved, pending] = await Promise.all([
+      this.countPatternBank(instituteId, subjectIds, requested, 'APPROVED'),
+      this.countPatternBank(instituteId, subjectIds, requested, 'PENDING'),
+    ]);
+
+    const buckets = requested.map((b) => {
+      const key = `${b.questionType}|${b.difficulty}`;
+      const have = approved.get(key) ?? 0;
+      const inFlight = pending.get(key) ?? 0;
+      return {
+        questionType: b.questionType,
+        difficulty: b.difficulty,
+        requested: b.count,
+        existing: have,
+        pending: inFlight,
+        deficit: Math.max(0, b.count - have),
+      };
+    });
+    const totalExisting = buckets.reduce((s, b) => s + b.existing, 0);
+    const totalDeficit = buckets.reduce((s, b) => s + b.deficit, 0);
+
+    if (totalDeficit === 0) return { ...covered, buckets, totalExisting };
+
+    // PENDING covers every gap → generation already produced what the bank
+    // needs, but it is still awaiting teacher approval before selection.
+    const everyGapPending = buckets.every((b) => b.existing + b.pending >= b.requested);
+    if (everyGapPending) {
+      return {
+        covered: false as const,
+        status: 'AWAITING_APPROVAL' as const,
+        totalDeficit,
+        totalExisting,
+        buckets,
+        batchId: null,
+        jobIds: null,
+      };
+    }
+
+    // A General (0 subjects) or multi-subject pattern has no single generation
+    // scope, so the shortfall cannot be auto-filled — report it for blocking.
+    if (options.dryRun || subjectIds.length !== 1) {
+      return {
+        covered: false as const,
+        status: subjectIds.length === 1 ? ('INSUFFICIENT' as const) : ('NO_SUBJECT' as const),
+        totalDeficit,
+        totalExisting,
+        buckets,
+        batchId: null,
+        jobIds: null,
+      };
+    }
+
+    const deficitBuckets = buckets
+      .filter((b) => b.deficit > 0)
+      .map((b) => ({
+        questionType: b.questionType,
+        difficulty: b.difficulty as BankBucket['difficulty'],
+        count: Math.max(0, b.requested - b.existing - b.pending),
+      }))
+      .filter((b) => b.count > 0);
+    const generation = await this.requestBankGeneration(
+      instituteId,
+      userId,
+      {
+        subjectId: subjectIds[0],
+        count: deficitBuckets.reduce((s, b) => s + b.count, 0),
+        blueprintId: pattern.id,
+      },
+      deficitBuckets,
+    );
+
+    return {
+      covered: false as const,
+      status: 'GENERATING' as const,
+      totalDeficit,
+      totalExisting,
+      buckets,
+      batchId: generation.batchId,
+      jobIds: generation.jobIds,
+    };
+  }
+
+  /** Count bank questions per (type, difficulty) bucket across a set of
+   * subjects (empty set = the whole institute, matching a General pattern's
+   * selection scope). */
+  private async countPatternBank(
+    instituteId: string,
+    subjectIds: string[],
+    buckets: BankBucket[],
+    approvalStatus: 'APPROVED' | 'PENDING',
+  ): Promise<Map<string, number>> {
+    const conditions: SQL[] = [
+      eq(questions.instituteId, instituteId),
+      eq(questions.approvalStatus, approvalStatus),
+      eq(questions.status, 'ACTIVE'),
+    ];
+    if (subjectIds.length > 0) conditions.push(inArray(questions.subjectId, subjectIds));
+
+    const types = [...new Set(buckets.map((b) => b.questionType))];
+    const diffs = [...new Set(buckets.map((b) => b.difficulty))];
+    const rows = await this.db
+      .select({
+        questionType: questions.questionType,
+        difficulty: questions.difficulty,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(questions)
+      .where(
+        and(
+          ...conditions,
+          sql`${questions.questionType} IN (${sql.join(
+            types.map((t) => sql`${t}`),
+            sql`,`,
+          )})`,
+          sql`${questions.difficulty} IN (${sql.join(
+            diffs.map((d) => sql`${d}`),
+            sql`,`,
+          )})`,
+        ),
+      )
+      .groupBy(questions.questionType, questions.difficulty);
+
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      map.set(`${row.questionType}|${row.difficulty}`, row.count);
+    }
+    return map;
+  }
 
   private async resolveScopeOrThrow(
     instituteId: string,

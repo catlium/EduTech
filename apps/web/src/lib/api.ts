@@ -184,6 +184,7 @@ export async function downloadFile(path: string, filename: string): Promise<void
 }
 
 export async function waitForJob<T extends { job: { status: string } }>(
+
   fetchJob: () => Promise<T>,
   {
     timeoutMs = 5 * 60 * 1000,
@@ -211,3 +212,21 @@ export async function waitForJob<T extends { job: { status: string } }>(
   }
   return last;
 }
+
+/** Poll a question-bank generation batch until it has no active jobs left.
+ * Returns the final batch so callers can inspect failures. */
+export async function waitForBankBatch(
+  batchId: string,
+  { timeoutMs = 5 * 60 * 1000, intervalMs = 3000 } = {},
+): Promise<{ active: number; failed: number }> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const batch = await api<{ active: number; failed: number }>(
+      `/questions/bank/batches/${batchId}`,
+    );
+    if (batch.active === 0) return batch;
+    if (Date.now() > deadline) throw new ApiError(408, 'Question generation timed out');
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+

@@ -372,8 +372,8 @@ export default function SyllabusDetailPage() {
           <CheckCircle2 className="mr-1 size-3.5" /> Confirm structure
         </Button>
       )}
-      {actionable && syllabus.processingStatus === 'READY' && (
-        <Button size="sm" variant="outline" onClick={openEdit}>
+      {actionable && !processing && !analyzing && (
+        <Button size="sm" variant="outline" onClick={openEdit} disabled={busy !== null}>
           <Pencil className="mr-1 size-3.5" /> Edit
         </Button>
       )}

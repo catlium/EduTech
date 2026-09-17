@@ -170,12 +170,11 @@ export class PaperPatternsController {
     @Param('patternId', ParseUUIDPipe) patternId: string,
     @Body() dto: CreateAssessmentFromBlueprintDto,
   ) {
-    const assessment = await this.paperPatternsService.createAssessmentFromBlueprint(
+    return this.paperPatternsService.createAssessmentFromBlueprint(
       tenant.instituteId,
       user.userId,
       patternId,
       dto,
     );
-    return { assessment };
   }
 }

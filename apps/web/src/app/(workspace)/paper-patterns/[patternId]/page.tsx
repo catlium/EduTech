@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { api, ApiError, downloadFile } from '@/lib/api';
+import { api, ApiError, downloadFile, waitForBankBatch } from '@/lib/api';
 import { ExportPreviewDialog } from '@/components/export/export-preview-dialog';
 import type { ExportPreviewValue } from '@/components/export/export-preview-dialog';
 import { formatDate } from '@/lib/utils';
@@ -96,6 +96,10 @@ interface PatternStructure {
   instructions: string[];
   sections: BackendSection[];
 }
+
+type CreatePaperResponse =
+  | { paper: { id: string } }
+  | { status: 'GENERATING'; batchId: string | null; totalDeficit: number };
 
 /* ────────────────────────────────────────────── */
 
@@ -494,13 +498,27 @@ export default function PatternBuilderPage() {
     try {
       const body: Record<string, unknown> = {};
       if (assessmentTitle.trim()) body.title = assessmentTitle.trim();
-      const { paper } = await api<{ paper: { id: string } }>('/question-papers', {
-        method: 'POST',
-        body: { ...body, patternId: pattern.id },
-      });
-      await api(`/question-papers/${paper.id}/select-from-pattern`, { method: 'POST' });
-      toast.success('Question paper generated — questions left fixed');
-      router.push(`/question-papers/${paper.id}`);
+
+      // The API refuses to create a paper the bank cannot fully supply. It
+      // queues the missing questions and returns their batch instead; wait for
+      // generation to finish, then try again (bounded, so a bad batch cannot loop).
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const res = await api<CreatePaperResponse>('/question-papers', {
+          method: 'POST',
+          body: { ...body, patternId: pattern.id },
+        });
+
+        if ('paper' in res) {
+          await api(`/question-papers/${res.paper.id}/select-from-pattern`, { method: 'POST' });
+          toast.success('Question paper generated — questions left fixed');
+          router.push(`/question-papers/${res.paper.id}`);
+          return;
+        }
+
+        if (!res.batchId) break;
+        await waitForBankBatch(res.batchId);
+      }
+      toast.error('Question generation is taking longer than expected — try again shortly.');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to generate question paper');
     } finally {

@@ -52,6 +52,30 @@ export class QuestionPapersService {
     const pattern = await this.requireApprovedPattern(instituteId, input.patternId);
     const structure = pattern.structure as PaperPatternStructure;
 
+    // Never create a paper the bank cannot fully supply. If questions are
+    // missing we queue generation and report back; the caller polls and retries.
+    const coverage = await this.generation.ensurePatternCoverage(instituteId, createdBy, pattern.id);
+    if (!coverage.covered) {
+      if (coverage.status === 'GENERATING') {
+        return {
+          status: coverage.status,
+          patternId: pattern.id,
+          totalDeficit: coverage.totalDeficit,
+          totalExisting: coverage.totalExisting,
+          buckets: coverage.buckets,
+          batchId: coverage.batchId,
+          jobIds: coverage.jobIds,
+        };
+      }
+      throw new BadRequestException(
+        coverage.status === 'NO_SUBJECT'
+          ? 'This pattern has no subject scope, so missing questions cannot be generated automatically. Link the pattern to a subject or add questions to the bank.'
+          : coverage.status === 'AWAITING_APPROVAL'
+            ? `${coverage.totalDeficit} generated question${coverage.totalDeficit === 1 ? ' is' : 's are'} still awaiting approval — approve them in the Question Bank, then generate the paper again.`
+            : 'The question bank has too few questions for this pattern to generate the missing ones automatically.',
+      );
+    }
+
     const [paper] = await this.db
       .insert(questionPapers)
       .values({
@@ -67,7 +91,7 @@ export class QuestionPapersService {
       })
       .returning();
 
-    return paper!;
+    return { paper: paper! };
   }
 
   // ── Read ──────────────────────────────────

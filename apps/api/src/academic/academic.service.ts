@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { eq, and, asc } from 'drizzle-orm';
-import { subjects, chapters, topics } from '@catlium/database';
+import { eq, and, asc, count } from 'drizzle-orm';
+import { subjects, chapters, topics, questions, materials, contentItems, syllabi, paperPatternSubjects } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 
@@ -91,6 +91,48 @@ export class AcademicService {
       this.throwIfUniqueViolation(error, 'A subject with this slug already exists');
       throw error;
     }
+  }
+
+  /** Deletes a subject, but only when nothing depends on it. Every FK that
+   * references subjects cascades, so a careless delete would silently remove
+   * the whole academic structure, question bank, materials, content and
+   * syllabi under it. Refuse instead — the caller must remove the dependents
+   * first (or archive the subject). */
+  async deleteSubject(instituteId: string, subjectId: string) {
+    await this.getSubject(instituteId, subjectId);
+
+    const dependents: string[] = [];
+    const counts = await Promise.all([
+      this.db.select({ n: count() }).from(chapters).where(eq(chapters.subjectId, subjectId)),
+      this.db.select({ n: count() }).from(questions).where(eq(questions.subjectId, subjectId)),
+      this.db.select({ n: count() }).from(materials).where(eq(materials.subjectId, subjectId)),
+      this.db.select({ n: count() }).from(contentItems).where(eq(contentItems.subjectId, subjectId)),
+      this.db.select({ n: count() }).from(syllabi).where(eq(syllabi.subjectId, subjectId)),
+      this.db
+        .select({ n: count() })
+        .from(paperPatternSubjects)
+        .where(eq(paperPatternSubjects.subjectId, subjectId)),
+    ]);
+    const labels: [string, string][] = [
+      ['chapter', 'chapters'],
+      ['question', 'questions'],
+      ['material', 'materials'],
+      ['content item', 'content items'],
+      ['syllabus', 'syllabi'],
+      ['paper-pattern link', 'paper-pattern links'],
+    ];
+    counts.forEach(([{ n }], i) => {
+      if (n > 0) dependents.push(`${n} ${n === 1 ? labels[i]![0] : labels[i]![1]}`);
+    });
+    if (dependents.length > 0) {
+      throw new ConflictException(
+        `Cannot delete subject: it has ${dependents.join(', ')}. Remove or archive them first.`,
+      );
+    }
+
+    const [deleted] = await this.db.delete(subjects).where(eq(subjects.id, subjectId)).returning();
+    if (!deleted) throw new NotFoundException('Subject not found');
+    return deleted;
   }
 
   // ── Chapters ─────────────────────────────

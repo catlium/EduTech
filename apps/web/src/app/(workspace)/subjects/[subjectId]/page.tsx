@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Plus, BookMarked, BookOpen, Hash, Loader2, Sparkles } from 'lucide-react';
+import { Plus, BookMarked, BookOpen, Hash, Loader2, Sparkles, Trash2 } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { useTenant, canManage } from '@/lib/tenant';
@@ -16,6 +16,7 @@ import { SkeletonCards } from '@/components/app/loading';
 import { ErrorState } from '@/components/app/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/app/confirm-dialog';
 import {
   GenerateResourcesDialog,
   batchStartMessages,
@@ -51,6 +52,8 @@ export default function SubjectDetailPage() {
   const [adding, setAdding] = useState(false);
   const [topicCount, setTopicCount] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [starting, setStarting] = useState(false);
   const [batch, setBatch] = useState<{
     batchId: string;
@@ -139,6 +142,20 @@ export default function SubjectDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await api(`/academic/subjects/${subjectId}`, { method: 'DELETE' });
+      toast.success('Subject deleted');
+      setDeleteOpen(false);
+      router.push('/subjects');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Delete failed — subject may have dependents');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function addChapter() {
     const name = newChapterName.trim();
     if (!name || adding) return;
@@ -190,6 +207,14 @@ export default function SubjectDetailPage() {
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => router.push(`/syllabus`)}>
                   <BookMarked className="mr-1 size-3.5" /> Syllabus
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setDeleteOpen(true)}
+                  disabled={Boolean(batch?.status?.active)}
+                >
+                  <Trash2 className="mr-1 size-3.5" /> Delete
                 </Button>
               </>
             )}
@@ -264,6 +289,17 @@ export default function SubjectDetailPage() {
         onGenerate={(types, mode) => void startBatch(types, mode)}
         starting={starting}
         sourceLabel={`every topic in ${subject.name}`}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`Delete "${subject.name}"?`}
+        description="This cannot be undone. If the subject has chapters, questions, syllabi or paper-pattern links, deletion will be blocked."
+        confirmLabel={deleting ? 'Deleting…' : 'Delete subject'}
+        destructive
+        loading={deleting}
+        onConfirm={() => void handleDelete()}
       />
     </div>
   );

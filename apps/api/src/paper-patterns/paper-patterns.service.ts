@@ -14,6 +14,7 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { MaterialsService } from '../materials/materials.service.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
+import { QuestionGenerationService } from '../questions/question-generation.service.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { validatePaperPatternStructure } from './paper-patterns.validation.js';
 import { buildSubjectIds, foreignSubjectIds } from './paper-pattern-subjects.js';
@@ -33,6 +34,7 @@ export class PaperPatternsService {
     private readonly jobs: JobsService,
     private readonly materials: MaterialsService,
     private readonly examinations: ExaminationsService,
+    private readonly generation: QuestionGenerationService,
   ) {}
 
   // ── CRUD ──────────────────────────────────
@@ -289,6 +291,30 @@ export class PaperPatternsService {
     }
 
     const structure = this.asStructure(row.structure);
+
+    // Never create an assessment the bank cannot fully supply.
+    const coverage = await this.generation.ensurePatternCoverage(instituteId, userId, row.id);
+    if (!coverage.covered) {
+      if (coverage.status === 'GENERATING') {
+        return {
+          status: coverage.status,
+          patternId: row.id,
+          totalDeficit: coverage.totalDeficit,
+          totalExisting: coverage.totalExisting,
+          buckets: coverage.buckets,
+          batchId: coverage.batchId,
+          jobIds: coverage.jobIds,
+        };
+      }
+      throw new BadRequestException(
+        coverage.status === 'NO_SUBJECT'
+          ? 'This pattern has no subject scope, so missing questions cannot be generated automatically. Link the pattern to a subject or add questions to the bank.'
+          : coverage.status === 'AWAITING_APPROVAL'
+            ? `${coverage.totalDeficit} generated question${coverage.totalDeficit === 1 ? ' is' : 's are'} still awaiting approval — approve them in the Question Bank, then create the assessment again.`
+            : 'The question bank has too few questions for this pattern to generate the missing ones automatically.',
+      );
+    }
+
     const assessment = await this.examinations.createAssessment(instituteId, userId, {
       title: input.title ?? `${row.title} — Blueprint`,
       description: input.description ?? row.description ?? undefined,

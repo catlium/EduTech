@@ -42,12 +42,11 @@ export class QuestionPapersController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateQuestionPaperDto,
   ) {
-    const paper = await this.questionPapersService.createQuestionPaper(
-      tenant.instituteId,
-      user.userId,
-      { patternId: dto.patternId, title: dto.title, description: dto.description },
-    );
-    return { paper };
+    return this.questionPapersService.createQuestionPaper(tenant.instituteId, user.userId, {
+      patternId: dto.patternId,
+      title: dto.title,
+      description: dto.description,
+    });
   }
 
   @Get()

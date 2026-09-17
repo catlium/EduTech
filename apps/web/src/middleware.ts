@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { shouldAllowProtectedRoute } from './lib/session-guard';
 
 const PROTECTED = [
   '/dashboard',
@@ -22,7 +23,14 @@ export function middleware(request: NextRequest) {
     (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
   );
   if (!protectedMatch) return NextResponse.next();
-  if (request.cookies.has('access_token')) return NextResponse.next();
+  if (
+    shouldAllowProtectedRoute({
+      hasAccessToken: request.cookies.has('access_token'),
+      hasCsrfToken: request.cookies.has('csrf_token'),
+    })
+  ) {
+    return NextResponse.next();
+  }
 
   const login = request.nextUrl.clone();
   login.pathname = '/login';

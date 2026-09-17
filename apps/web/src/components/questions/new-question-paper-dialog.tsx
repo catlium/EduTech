@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, Plus } from 'lucide-react';
 
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, waitForBankBatch } from '@/lib/api';
 import type { PaperPattern, SubjectResponse } from '@catlium/contracts';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -24,6 +24,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+
+type CreateFromPatternResponse =
+  | { paper: { id: string } }
+  | { assessment: { id: string } }
+  | { status: 'GENERATING'; batchId: string | null; totalDeficit: number };
 
 export function NewQuestionPaperDialog({
   open,
@@ -73,23 +78,47 @@ export function NewQuestionPaperDialog({
     setCreating(true);
     try {
       if (isAssessment) {
-        const { assessment } = await api<{ assessment: { id: string } }>(
-          `/paper-patterns/${patternId}/assessment`,
-          { method: 'POST', body: {} },
-        );
-        await api(`/assessments/${assessment.id}/select-from-pattern`, { method: 'POST' });
-        toast.success('Assessment created from pattern — questions selected');
-        onOpenChange(false);
-        router.push(`/assessments/${assessment.id}`);
+        // The API only creates when the bank fully covers the pattern; on a
+        // shortfall it queues generation and returns the batch to wait on.
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const res = await api<CreateFromPatternResponse>(
+            `/paper-patterns/${patternId}/assessment`,
+            { method: 'POST', body: {} },
+          );
+          if ('assessment' in res) {
+            await api(`/assessments/${res.assessment.id}/select-from-pattern`, { method: 'POST' });
+            toast.success('Assessment created from pattern — questions selected');
+            onOpenChange(false);
+            router.push(`/assessments/${res.assessment.id}`);
+            return;
+          }
+          if ('status' in res && res.status === 'GENERATING') {
+            if (res.batchId) await waitForBankBatch(res.batchId);
+            continue;
+          }
+          break;
+        }
+        toast.error('Question generation is taking longer than expected — try again shortly.');
       } else {
-        const { paper } = await api<{ paper: { id: string } }>('/question-papers', {
-          method: 'POST',
-          body: { patternId },
-        });
-        await api(`/question-papers/${paper.id}/select-from-pattern`, { method: 'POST' });
-        toast.success('Question paper generated — questions left fixed');
-        onOpenChange(false);
-        router.push(`/question-papers/${paper.id}`);
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const res = await api<CreateFromPatternResponse>('/question-papers', {
+            method: 'POST',
+            body: { patternId },
+          });
+          if ('paper' in res) {
+            await api(`/question-papers/${res.paper.id}/select-from-pattern`, { method: 'POST' });
+            toast.success('Question paper generated — questions left fixed');
+            onOpenChange(false);
+            router.push(`/question-papers/${res.paper.id}`);
+            return;
+          }
+          if ('status' in res && res.status === 'GENERATING') {
+            if (res.batchId) await waitForBankBatch(res.batchId);
+            continue;
+          }
+          break;
+        }
+        toast.error('Question generation is taking longer than expected — try again shortly.');
       }
     } catch (err) {
       toast.error(

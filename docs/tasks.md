@@ -555,6 +555,64 @@ NOTHING publishes a host port in the single file).
       `deployment.md`, `infrastructure.md`, `ocr-standalone-device.md` rewritten
       for the single-file + nginx topology; `.env.example` tunnel docs updated.
 
+### Follow-up batch 13 — QP/assessment full-coverage gate, subject deletion, syllabus edit, QP buffer double-stringify, idle-session redirect (2026-09-17)
+
+User-reported bug-fix batch. Five issues closed; the paper-pattern hierarchy
+rewrite (nested `questionTypes[]`, "Attempt N of M" at question-type level) is
+the next scheduled batch.
+
+- [x] **Subject deletion (Issue 1).** New `DELETE /academic/subjects/:subjectId`
+      (204, INSTITUTE_ADMIN/TEACHER) in `academic.controller.ts`; service
+      `deleteSubject` does a tenant-scoped lookup then counts every dependent
+      resource (chapters, questions, materials, contentItems, syllabi,
+      paperPatternSubjects — all FK `cascade`), throwing a `ConflictException`
+      that names them instead of silently wiping X subjects-with-children.
+      Web subject detail page gains a destructive Delete button + `ConfirmDialog`.
+- [x] **Syllabus edit (Issue 2).** PATCH `/syllabus/:id` verified persisting
+      title/program/academicYear for PROPOSED syllabi; CONFIRMED by design that
+      syllabi are edit-locked once content is generated (`assertUnconfirmed`
+      → 409). The real gap was the UI gating the Edit button on
+      `processingStatus === 'READY'`; loosened to `actionable && !processing &&
+      !analyzing` so an approved-but-unlocked syllabus can be edited live.
+- [x] **Generate-missing double-serialization (Issue 4).** `api.ts` already
+      `JSON.stringify(body)`s, so the QP detail page double-encoded the body
+      (`Unexpected token '"'`). Call sites now send `{ dryRun }` directly;
+      the buffer input and "optional buffer" copy were removed (the generation
+      layer owns batching/buffering).
+- [x] **Idle-session redirect (Issue 7, part 2).** Added
+      `apps/web/src/lib/session-guard.ts` — `shouldAllowProtectedRoute`
+      (access OR csrf cookie present) — used by `middleware.ts` so an idle
+      session past the 15-min access-token TTL is never redirected to `/login`
+      while still logged in; confirmed with `session-guard.test.ts`
+      (`node --test` 9/9 incl. api.test.ts). Token/cookie lifetimes unchanged
+      (explicit constraint).
+- [x] **QP/assessment full-coverage gate (Issues 5+6).** New
+      `QuestionGenerationService.ensurePatternCoverage(instituteId, userId,
+      blueprintId)`: derives the pattern's `(type, difficulty, count)` quota via
+      the existing `buildBucketsFromBlueprint`, counts APPROVED+ACTIVE bank
+      questions across the pattern's subject scope (`countPatternBank`, empty
+      subject set = institute-wide), and returns `COVERED` | `GENERATING`
+      (`batchId`/`jobIds` of the exact shortfall queued into the pattern's
+      single subject) | `AWAITING_APPROVAL` (gap filled by PENDING, needs
+      teacher approval) | `NO_SUBJECT` (General/multi-subject, cannot auto-fill)
+      | `INSUFFICIENT`. `createQuestionPaper` and
+      `createAssessmentFromBlueprint` now refuse to create until the approved
+      bank fully covers the pattern — on `GENERATING` they return the batch (no
+      row created) instead of an empty/short paper; other uncovered states throw
+      a 400 naming the action. Web: pattern page and New-Question-Paper dialog
+      poll the batch (`waitForBankBatch` added to `api.ts`) and retry creation,
+      bounded. Live-verified: General short pattern → 400 "no subject scope";
+      scoped short pattern → 201 `GENERATING` with exact deficits and NO paper
+      created; retry re-queued only the remaining deficits (3→2) after the
+      first batch settled; batch cancel + no stray papers confirmed.
+- [~] **Paper-pattern hierarchy → nested `questionTypes[]` (Issue 3).** APPROACH
+      DECIDED (go nested): `PaperPatternSectionSchema.questionTypes[]` with
+      integrity checks at the type level, a shared pure
+      `normalizePaperPatternStructure` in contracts (accepts legacy flat
+      sections like `"Section A — MCQ"`), selection/generation/export/worker/
+      frontend all read the nested shape, builder drops the `STEM_RE` flatten
+      hack. Not started.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)

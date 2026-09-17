@@ -89,7 +89,6 @@ export default function QuestionPaperDetailPage() {
   const [creatingAssess, setCreatingAssess] = useState(false);
 
   const [genOpen, setGenOpen] = useState(false);
-  const [genBuffer, setGenBuffer] = useState(0);
   const [genPreview, setGenPreview] = useState<GenerateMissingResult | null>(null);
   const [genEffect, setGenEffect] = useState<GenerateMissingResult | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -210,7 +209,7 @@ export default function QuestionPaperDetailPage() {
         `/question-papers/${params.paperId}/generate-missing`,
         {
           method: 'POST',
-          body: JSON.stringify({ buffer: genBuffer, dryRun: true }),
+          body: { dryRun: true },
         },
       );
       setGenPreview(result);
@@ -228,7 +227,7 @@ export default function QuestionPaperDetailPage() {
         `/question-papers/${params.paperId}/generate-missing`,
         {
           method: 'POST',
-          body: JSON.stringify({ buffer: genBuffer, dryRun: false }),
+          body: { dryRun: false },
         },
       );
       setGenEffect(result);
@@ -293,7 +292,6 @@ export default function QuestionPaperDetailPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setGenBuffer(0);
                     setGenPreview(null);
                     setGenEffect(null);
                     setGenOpen(true);
@@ -338,7 +336,7 @@ export default function QuestionPaperDetailPage() {
             <CardDescription>
               {uncoveredSections.length === 0
                 ? 'All sections fully covered.'
-                : `${uncoveredSections.length} section${uncoveredSections.length !== 1 ? 's' : ''} with shortages — Generate Missing creates the shortfall (with an optional buffer).`}
+                : `${uncoveredSections.length} section${uncoveredSections.length !== 1 ? 's' : ''} with shortages — Generate Missing creates the shortfall automatically.`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -497,18 +495,7 @@ export default function QuestionPaperDetailPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex items-end justify-between gap-3">
-            <label className="text-xs font-medium">
-              Extra buffer per bucket
-              <input
-                type="number"
-                min={0}
-                max={10}
-                value={genBuffer}
-                onChange={(e) => setGenBuffer(Number(e.target.value))}
-                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
-              />
-            </label>
+          <div className="flex items-end justify-end gap-3">
             <Button variant="outline" size="sm" onClick={() => void previewGenerateMissing()} disabled={generating}>
               {generating ? 'Checking…' : 'Preview shortage'}
             </Button>
