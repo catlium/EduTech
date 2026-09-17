@@ -59,6 +59,42 @@ _QUALITY_INSTRUCTIONS = (
     "and unit setup; keep those complete but avoid needless padding."
 )
 
+_ANSWER_DEPTH_RULES = (
+    "The expected answer must match the question type. MCQ: correct choice "
+    "only. TRUE_FALSE: True or False. FILL_IN_BLANK: the short phrase(s) that "
+    "fill the blank. NUMERICAL: the numeric model answer (and tolerance). "
+    "MATCHING: the pairing alone. TEXT answers must be PROPORTIONAL to the "
+    "type: SHORT_ANSWER answers are a focused paragraph of 2-4 sentences "
+    "covering the essential point; LONG_ANSWER and CASE_STUDY answers are "
+    "detailed multi-paragraph responses with full reasoning, the necessary "
+    "steps or working, and a short conclusion - NEVER a single line or two. "
+    "When the correct answer is best shown as a diagram (a circuit, geometric "
+    "figure, flowchart, graph, mechanism, etc.), render it as an ASCII-art "
+    "diagram inside a fenced code block (```  ```) within the TEXT "
+    "modelAnswer so alignment survives, and surround it with only brief prose. "
+    "Only use a diagram when the answer genuinely needs one. Keep answers "
+    "accurate and complete but bounded: a LONG_ANSWER or CASE_STUDY answer is "
+    "typically 250-600 words - rich enough to teach the point, never padded."
+)
+
+_TEACHER_ANSWER_RULES = (
+    "Write every answer the way a professional teacher would explain it to a "
+    "student in class, because the generated answers are the learner's OWN "
+    "study material - they must be able to learn the concept from the answer "
+    "alone. Cover ALL aspects the question asks for. State the answer clearly "
+    "up front, then give the reasoning or working that justifies it. Use "
+    "bullet points (\"- ...\") and numbered steps wherever a list or sequence "
+    "makes the explanation clearer and easier to study. Include the necessary "
+    "definitions, formulas, concrete examples, diagrams (as ASCII art in a "
+    "fenced code block) and common mistakes, whenever they genuinely help "
+    "understanding. For a numerical or derivational question, show the full "
+    "working step by step and end with the final answer stated clearly. For a "
+    "conceptual question, define the concept, explain the reasoning, and give "
+    "a concrete example. Keep the language accurate and complete but never "
+    "padded or repetitive - every sentence must add something the learner "
+    "needs."
+)
+
 _SYSTEM_TEMPLATE = (
     "You are a question generator for an education platform. Given the source "
     "material, produce exactly {count} questions of type {type_} "
@@ -128,7 +164,13 @@ def build_messages(
     if academic_context:
         system = f"{academic_context}\n\n{system}"
     return [
-        {"role": "system", "content": f"{system}\n\n{_QUALITY_INSTRUCTIONS}"},
+        {
+            "role": "system",
+            "content": (
+                f"{system}\n\n{_QUALITY_INSTRUCTIONS}\n\n{_ANSWER_DEPTH_RULES}"
+                f"\n\n{_TEACHER_ANSWER_RULES}"
+            ),
+        },
         {"role": "user", "content": user_prompt},
     ]
 
@@ -155,7 +197,13 @@ def build_bank_messages(
     if academic_context:
         system = f"{academic_context}\n\n{system}"
     return [
-        {"role": "system", "content": f"{system}\n\n{_QUALITY_INSTRUCTIONS}"},
+        {
+            "role": "system",
+            "content": (
+                f"{system}\n\n{_QUALITY_INSTRUCTIONS}\n\n{_ANSWER_DEPTH_RULES}"
+                f"\n\n{_TEACHER_ANSWER_RULES}"
+            ),
+        },
         {"role": "user", "content": user_prompt},
     ]
 

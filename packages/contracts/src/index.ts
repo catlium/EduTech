@@ -1058,7 +1058,7 @@ export const FillInBlankFormatPayloadSchema = z.object({
 });
 
 export const TextFormatPayloadSchema = z.object({
-  modelAnswer: z.string().min(1).max(4000),
+  modelAnswer: z.string().min(1).max(20000),
 });
 
 export const MatchingFormatPayloadSchema = z.object({

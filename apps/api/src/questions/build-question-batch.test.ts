@@ -37,9 +37,9 @@ test('per-type limits follow the recommendation table', () => {
   assert.deepEqual(questionTypeBatchLimits('TRUE_FALSE'), { min: 15, max: 25 });
   assert.deepEqual(questionTypeBatchLimits('FILL_IN_BLANK'), { min: 15, max: 25 });
   assert.deepEqual(questionTypeBatchLimits('SHORT_ANSWER'), { min: 10, max: 15 });
-  assert.deepEqual(questionTypeBatchLimits('LONG_ANSWER'), { min: 8, max: 12 });
+  assert.deepEqual(questionTypeBatchLimits('LONG_ANSWER'), { min: 6, max: 10 });
   assert.deepEqual(questionTypeBatchLimits('NUMERICAL'), { min: 10, max: 15 });
-  assert.deepEqual(questionTypeBatchLimits('CASE_STUDY'), { min: 5, max: 8 });
+  assert.deepEqual(questionTypeBatchLimits('CASE_STUDY'), { min: 4, max: 6 });
 });
 
 test('unknown or institute-defined types fall back to the default limits', () => {

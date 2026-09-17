@@ -30,9 +30,9 @@ export const QUESTION_TYPE_BATCH_LIMITS: Record<string, QuestionTypeBatchLimits>
   TRUE_FALSE: { min: 15, max: 25 },
   FILL_IN_BLANK: { min: 15, max: 25 },
   SHORT_ANSWER: { min: 10, max: 15 },
-  LONG_ANSWER: { min: 8, max: 12 },
+  LONG_ANSWER: { min: 6, max: 10 },
   NUMERICAL: { min: 10, max: 15 },
-  CASE_STUDY: { min: 5, max: 8 },
+  CASE_STUDY: { min: 4, max: 6 },
 };
 
 const DEFAULT_BATCH_LIMITS: QuestionTypeBatchLimits = { min: 10, max: 15 };

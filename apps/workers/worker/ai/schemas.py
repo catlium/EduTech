@@ -240,7 +240,9 @@ class FillInBlankQuestionPayload(BaseModel):
 
 
 class TextQuestionPayload(BaseModel):
-    modelAnswer: str = Field(min_length=1, max_length=4000)  # noqa: N815
+    # 20000 keeps room for multi-paragraph LONG_ANSWER/CASE_STUDY answers and
+    # fenced ASCII-art diagrams; 4000 truncated good answers during live E2E.
+    modelAnswer: str = Field(min_length=1, max_length=20000)  # noqa: N815
 
 
 class MatchingQuestionPayload(BaseModel):
