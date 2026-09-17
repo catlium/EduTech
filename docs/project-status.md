@@ -668,6 +668,102 @@ whatever the teacher requests next.
 
 ---
 
+## Phase 38k — teacher-grade AI answers (depth + ASCII art), quality batch limits, objective-first ordering (2026-09-17)
+
+**Status: implemented + validated + live E2E; committed + pushed.**
+
+### Goal
+
+AI answers must be learning material a teacher would hand a student, not
+stub lines: (a) answer detail must be proportionate to the question type —
+SHORT_ANSWER = focused paragraph, LONG_ANSWER = multi-paragraph
+introduction/body/conclusion, CASE_STUDY = layered discussion; figure-style
+answers get an ASCII-art diagram inside a ``` fenced block; (b) the writer
+voice must be a professional teacher explaining for learning — definitions
+first, then bullet pointers/steps, examples, and every required field
+populated; (c) per-job batch counts shrink for the verbose types so token
+budgets stay big enough for quality; (d) manual (non-pattern) selections order
+questions objective → short-answer → long-answer, while Paper-Pattern exports
+keep their own section order (already authoritative).
+
+### Completed work
+
+- **Worker prompt** (`apps/workers/worker/ai/generation/questions.py`):
+  added `_ANSWER_DEPTH_RULES` (per-type length bands; fenced ``` ASCII-art
+  blocks inside the TEXT `modelAnswer` for diagram-type answers "where it
+  cannot be said in lines") and `_TEACHER_ANSWER_RULES` (define → explain →
+  bullet-point steps, professional-teacher voice, every required field, the
+  answer is the source material for learning). Both appended in `build_messages`
+  AND `build_bank_messages`; the existing `_QUALITY_INSTRUCTIONS` untouched.
+  All three are literal non-f strings (safe for JSON-prompt embedding).
+- **Batch limits** (`apps/api/src/questions/build-question-batch.ts` +
+  `build-question-batch.test.ts`): SHORT_ANSWER 10/15 → unchanged; LONG_ANSWER
+  **8/12 → 6/10**; CASE_STUDY **5/8 → 4/6**. Objective/short types keep their
+  wider ranges (cheap answers). Child chunks still never exceed the worker
+  `MAX_QUESTION_COUNT` (50) ceiling.
+- **Objective-first ordering** (`export.content-blocks.ts`, `export.service.ts`):
+  new pure `questionTypeRank`/`orderQuestionTypes` — objective
+  (MCQ/TRUE_FALSE/FILL_IN_BLANK/MATCHING/NUMERICAL and unknown short types) →
+  SHORT_ANSWER → LONG_ANSWER/CASE_STUDY (name heuristics catch SHORT/LONG/CASE/
+  ESSAY custom codes). Applied to the wizard bucket-driven export grouping AND
+  the flat general/patternless branch; pattern-scoped exports keep pattern
+  section order (the user's "pattern structure already present" case). Stable
+  sort preserves caller tie order. Tests added.
+- **Frontend ASCII-art rendering** (`apps/web/src/components/export/
+  answer-text.tsx`): `AnswerText` splits a TEXT answer on ``` fences — fenced
+  segments render as monospace `<pre>` blocks (diagrams keep alignment), prose
+  as normal text. Wired into `questions/page.tsx` `QuestionPreview` (TEXT
+  branch) and `export/doc-blocks.tsx` answer-note (export preview), so preview
+  and exports read the same. No hooks → usable from server components.
+- **TEXT answer cap raised 4000 → 20000** (`apps/workers/worker/ai/schemas.py`
+  `TextQuestionPayload.modelAnswer`, `packages/contracts`
+  `TextFormatPayloadSchema`). Live E2E exposed the 4000 char ceiling: a
+  LONG_ANSWER MEDIUM job failed "AI output failed validation" because its
+  teacher-grade answer exceeded it. Bumped to 20000 (JSONB payload, no DB
+  limit) and added a "typically 250–600 words, never padded" ceiling to
+  `_ANSWER_DEPTH_RULES` so answers stay richly bounded, not bloated.
+
+### Validation
+
+- worker pytest **81 passed**; import smoke-check confirmed both constants land
+  in the system message of `build_messages` and `build_bank_messages`.
+- api `node --test` **39 passed** (incl. new `orderQuestionTypes` objective →
+  short → long test, incl. tie-stability); api + web `tsc --noEmit` clean.
+- Containers rebuilt per the AGENTS.md Container Rule: images for api, web,
+  worker-ai, worker-material rebuilt; containers recreated + healthy; exec into
+  worker-ai confirmed live `_ANSWER_DEPTH_RULES` + `_TEACHER_ANSWER_RULES` and
+  the `max_length=20000` cap (site-packages copy carries the new bytes).
+- **Live E2E (`POST /questions/bank/generate`, Mathematics Minor, buckets
+  LONG_ANSWER EASY×4 / MEDIUM×2 / SHORT_ANSWER MEDIUM×3)**: batch
+  `57f438c4-a500-454c-895b-27511ef22b18`. One LONG_ANSWER MEDIUM job first
+  failed "AI output failed validation" (the 4000 cap — the fix's origin);
+  after retry **4/4 + 2/2 LONG_ANSWER and SHORT_ANSWER generated, 0 failed**.
+  Post-answer QA in DB: **LONG_ANSWER modelAnswers now 1000–2100 chars**
+  (multi-paragraph induction/Peano/set-order explanations), **SHORT_ANSWER
+  250–340 chars** (focused). Proportionality is real. No figurative fence in
+  this batch because the source topics (induction, proof technique) genuinely
+  don't need a diagram — the ASCII-art path is conditional by design and the
+  renderer is deterministic.
+
+### Known issues / deferred
+
+- Paper (PDF/DOCX) output renders fenced ASCII art as plain monospace-ish text
+  via the shared block renderer; only the web preview/native DOCX cells get the
+  styled `<pre>`. Fine for now — PDF/DOCX could add a fenced→pre styled node
+  later if a teacher asks.
+- Bank list on the questions page stays in createdAt order; ordering rule is
+  enforced at export/preview time (the wizard path the request named).
+- No geometry/circuit-topic source data exists in the dev device, so a
+  fenced-ASCII-art answer hasn't been seen live end-to-end (the renderer +
+  prompt rule are in place and tested); a geometry topic will exercise it.
+
+### Exact recommended next task
+
+None — 38k complete. Next: a geometry-style source topic to exercise the
+ASCII-art path, or whichever teacher request comes next.
+
+---
+
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
 
 **Status: core semantics implemented + validated; shuffle-replace, paper renderer, and attempt-N-of-M fixes done; final docs pending.**

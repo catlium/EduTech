@@ -361,6 +361,54 @@ verified running after code changes.
       Scanned all 50 stems: **0 banned phrases**, **50/50 unique stems**,
       payload answers present for MCQ/TRUE_FALSE/FILL_IN_BLANK.
 
+### Follow-up batch 10 — teacher-grade AI answers (depth + ASCII art), quality batch limits, objective-first ordering (2026-09-17)
+
+Teacher follow-ups after batch 9: (a) answers still read like stub lines — a
+LONG_ANSWER must be a real multi-paragraph answer with bullet pointers (the
+answer is the student's learning material), and diagram-style answers should
+use fenced ``` ASCII-art where "lines" can't be computed; (b) make batch sizes
+per-type so verbose answers keep quality; (c) manual (non-pattern) selections
+must order questions objective → short-answer → long-answer ("in case of paper
+pattern structure is already present").
+
+- [x] **Worker prompt: answer depth + teacher voice.** Two new constants in
+      `apps/workers/worker/ai/generation/questions.py`: `_ANSWER_DEPTH_RULES`
+      (per-type length bands; fenced ``` ASCII-art for diagram answers) and
+      `_TEACHER_ANSWER_RULES` (define → explain → bullet-point steps,
+      professional-teacher voice, every required field, learning-source
+      framing). Both appended in `build_messages` AND `build_bank_messages`;
+      `_QUALITY_INSTRUCTIONS` intact.
+- [x] **Batch limits for verbose types.** LONG_ANSWER 8/12 → **6/10**,
+      CASE_STUDY 5/8 → **4/6** in `QUESTION_TYPE_BATCH_LIMITS`
+      (`build-question-batch.ts`); test asserts updated. Objective/short types
+      unchanged and still under the 50-per-job ceiling.
+- [x] **Objective-first ordering for manual exports.** `questionTypeRank`/
+      `orderQuestionTypes` in `export.content-blocks.ts` (objective → short →
+      long; name heuristics catch LONG/CASE/ESSAY/SHORT custom codes; stable
+      tie order). Applied to the wizard bucket-driven grouping and the
+      patternless branch of `buildQuestionsDoc`; pattern-scoped exports keep
+      their section order. Unit tests added.
+- [x] **Frontend fenced ASCII-art rendering.** `AnswerText`
+      (`apps/web/src/components/export/answer-text.tsx`): ``` fenced segments →
+      monospace `<pre>`, prose → normal text; wired into `QuestionPreview`
+      (TEXT branch) and the export preview `doc-blocks.tsx` answer note.
+- [x] **TEXT answer cap 4000 → 20000.** Live E2E surfaced the ceiling: a
+      LONG_ANSWER MEDIUM job failed "AI output failed validation" on a
+      >4000-char teacher-grade answer. Raised `TextQuestionPayload.modelAnswer`
+      (worker) and `TextFormatPayloadSchema.modelAnswer` (contracts) to 20000;
+      added a "250–600 words, never padded" ceiling to `_ANSWER_DEPTH_RULES`
+      so answers stay richly bounded.
+- [x] **Validation.** worker pytest 81 passed; api `node --test` 39 passed;
+      api + web `tsc --noEmit` clean. Containers rebuilt (api, web, worker-ai,
+      worker-material) + healthy; exec into worker-ai confirmed the two new
+      prompt constants and the 20000 cap are live in the site-packages copy.
+- [x] **Live E2E.** `POST /questions/bank/generate` on Mathematics Minor
+      (LONG_ANSWER EASY×4 / MEDIUM×2, SHORT_ANSWER MEDIUM×3) → batch
+      `57f438c4-a500-454c-895b-27511ef22b18`. Retried the capped LONG_ANSWER
+      MEDIUM job under the 20000 cap → **all generated, 0 failed**. DB QA:
+      LONG_ANSWER modelAnswers **1000–2100 chars** (multiparagraph), SHORT_ANSWER
+      **250–340 chars** (focused) — type-proportional depth confirmed live.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
