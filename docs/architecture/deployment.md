@@ -1,42 +1,46 @@
 # Deployment / OCI Process & Image Responsibilities
 
 **Status: implemented + verified locally (2026-09-17).** A registry-based
-`docker compose` roll-out for the 5 app images. Upstream images
-(postgres/redis/rabbitmq/omniroute) are used `as-is` from their registries and
-are NEVER pushed.
+`docker compose` roll-out for the app+edge images. Upstream images
+(postgres/redis/rabbitmq/omniroute/cloudflared) are used `as-is` from their
+registries and are NEVER pushed.
 
-## 1. Compose merge model
+## 1. Compose model
 
-Three files compose the production stack:
+One file composes the production stack (no overrides — the Cloudflare Tunnel
+and nginx reverse proxy are part of the base file):
 
 | File                   | Role                                                        |
 | ---------------------- | ----------------------------------------------------------- |
-| `docker-compose.yml`   | Base: private-network topology, healthchecks, build config. |
-| `docker-compose.prod.yml` | Production override: restarts, resource limits, log rotation, `image:` tags. |
+| `docker-compose.yml`   | Single production file: private-network topology, healthchecks, build config, restarts, resource limits, log rotation, `image:` tags, nginx, tunnel. Nothing publishes a host port. |
 | `.env` (root)          | All secrets/env (from `.env.example`).                      |
+| `docker-compose.dev.yml` | Dev-only override: 127.0.0.1 loopback ports for local tooling. Never used in production. |
 
 Commands (see `AGENTS.md → Commands`):
 
 ```bash
-# Build + run production in one pass (NEVER combined with dev/demo overrides):
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Build + run production in one pass. Cloudflare Tunnel is the ONLY public
+# ingress (TUNNEL_TOKEN from .env); web/api/nginx keep no host ports. nginx
+# splits the single public hostname: /api/* -> api:3000, else -> web:3001.
+docker compose up -d --build
 
-# Build & push ONLY the 5 retagged app images:
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-docker compose -f docker-compose.yml -f docker-compose.prod.yml push \
-  api web worker-ai worker-material ocr
+# Build & push ONLY the 6 retagged app+edge images:
+docker compose build
+docker compose push api web worker-ai worker-material ocr nginx
 ```
 
 > ⚠️ `docker compose push` with no service list would attempt to push
-> postgres/redis/rabbitmq/omniroute to their upstream registries and fail
-> (they are not tagged here). Always list the 5 app services explicitly.
+> postgres/redis/rabbitmq/omniroute/cloudflared to their upstream registries
+> and fail (they are not tagged here). Always list the 6 app+edge services
+> explicitly.
 
 ## 2. Image responsibilities
 
 | Image (tag `${IMAGE_PREFIX}/<svc>:${VERSION}`) | Source Dockerfile            | Runs                                                                          |
 | ----------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------- |
-| `api` | `infrastructure/compose/Dockerfile.api` (target `api`) | NestJS API (`node apps/api/dist/main.js`) on `:3000` — the single public API boundary. |
-| `web` | same Dockerfile (target `web`, overridden CMD)          | Next.js `next start -p 3001` (public). `NEXT_PUBLIC_API_URL` is a build ARG.    |
+| `api` | `infrastructure/compose/Dockerfile.api` (target `api`) | NestJS API (`node apps/api/dist/main.js`) on `:3000` — internal (behind nginx). |
+| `web` | same Dockerfile (target `web`, overridden CMD)          | Next.js `next start -p 3001` (internal, behind nginx). `NEXT_PUBLIC_API_URL` is a build ARG. |
+| `nginx` | `infrastructure/nginx/Dockerfile`     | `nginx:alpine` reverse proxy — the ONLY app-facing boundary (`cloudflared -> nginx:80 -> {web:3001 | api:3000}`). No host port. |
 | `worker-ai` | `Dockerfile.python`           | Python RabbitMQ consumer — AI content/question generation via OmniRoute.        |
 | `worker-material` | `Dockerfile.python`       | Python consumer — syllabus + legacy OCR material path (until OCR retirement).   |
 | `ocr` | `Dockerfile.python`           | Legacy FastAPI local extraction (`uvicorn app.main:app`, `:8000`) — syllabus OCR path, not yet retired. |
@@ -44,24 +48,30 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml push \
 | `migrate` | `Dockerfile.api`            | One-shot `drizzle-kit migrate`; runs before api/web/workers boot (depends_on).  |
 
 Build products are always tagged with `${IMAGE_PREFIX:-catlium}` +
-`${VERSION:-latest}` in the prod override; the base file's `build:` keys remain
-so the same Dockerfiles serve dev. **The 5 app images are the only pushed
-images.** `postgres`/`redis`/`rabbitmq`/`omniroute` come straight from their
-registries.
+`${VERSION:-latest}` in the single file; the `build:` keys stay so the same
+Dockerfiles serve dev. **The 6 app+edge images are the only pushed images.**
+`postgres`/`redis`/`rabbitmq`/`omniroute`/`cloudflared` come straight from
+their registries.
 
 ## 3. Registry roll (second host)
 
-1. On the build host: `build` then `push` the 5 services (above).
+1. On the build host: `build` then `push` the 6 services (above).
 2. On the target host: create `.env` (root) with production values
    (`POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD`, `OMNIROUTE_*`,
-   `WORKER_AI_API_KEY`, `INTERNAL_API_KEY`, `IMAGE_PREFIX`, `VERSION`).
-3. Start the stack — compose pulls the tagged app images and the upstream
+   `WORKER_AI_API_KEY`, `INTERNAL_API_KEY`, `TUNNEL_TOKEN`, `IMAGE_PREFIX`,
+   `VERSION`, `NEXT_PUBLIC_API_URL`).
+3. Start the stack — compose pulls the tagged app+edge images and the upstream
    images:
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+   docker compose up -d
    ```
-4. Verify: `docker compose ps` (all healthy), `curl /api/v1/health`, web
-   `/login` 200.
+4. Verify: `docker compose ps` (all healthy, incl. nginx + tunnel),
+   nginx routes (`/` → web, `/api/v1/health` → api), public hostname through
+   the tunnel.
+
+> KNOWN-GAP: `migrate` has `build:` but no `image:` tag — a registry-only host
+> cannot source the migrate image without the Dockerfile/build context. Fix
+> pending (tag `migrate`).
 
 Standalone OCR on a separate device is **not** part of this compose push list:
 it uses its own `infrastructure/compose/Dockerfile.ocr-worker` image, built and

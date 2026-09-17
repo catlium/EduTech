@@ -1,37 +1,67 @@
 # ─────────────────────────────────────────────────────────────
-# CatLium EduTech - Docker Compose configuration
+# CatLium EduTech - Docker Compose configuration (single file)
 # ─────────────────────────────────────────────────────────────
 #
-# Runs the full stack: backing infrastructure (Postgres/Redis/RabbitMQ)
-# plus the application (API, web, OCR service, DB migrations, both async
-# workers — material + AI generation, and the OmniRoute AI gateway).
+# Runs the full stack in ONE command: backing infrastructure
+# (Postgres/Redis/RabbitMQ), the application (API, web, OCR service,
+# DB migrations, both async workers — material + AI generation, and
+# the OmniRoute AI gateway), the internal nginx reverse proxy, and
+# the Cloudflare Tunnel (cloudflared).
 #
-# SINGLE PUBLIC BOUNDARY
-#   The only ports published to the host are the API (`3000`) and the web
-#   app (`3001`). Postgres, Redis, RabbitMQ, the OCR service, the workers
-#   and OmniRoute are INTERNAL services reachable only over the private
-#   Docker network. The browser/frontend must never call them directly.
+# PUBLIC BOUNDARY
+#   NOTHING is published to the host by this file. The Cloudflare
+#   Tunnel (cloudflared) is the ONLY public ingress:
 #
-#   For LOCAL DEVELOPMENT, `docker-compose.dev.yml` (an explicit opt-in
-#   override) publishes the internal services bound to 127.0.0.1 only.
-#   Production deployments must NOT use that override.
+#     Cloudflare edge -> cloudflared -> http://nginx:80 -> web:3001 / api:3000
+#
+#   nginx is the only application-facing reverse proxy and routes:
+#     /        -> web:3001   (Next.js app)
+#     /api/    -> api:3000   (NestJS API, /api/v1 prefix preserved)
+#   Postgres, Redis, RabbitMQ, OCR, workers, OmniRoute, nginx and the
+#   API/web containers are INTERNAL, reachable only over the private
+#   Docker network. Never add host ports for them in production.
+#
+#   For LOCAL DEVELOPMENT, `docker-compose.dev.yml` (an explicit
+#   opt-in override) publishes the internal services plus api/web
+#   bound to 127.0.0.1 only. Production deployments must NOT use it.
 #
 #   For a DETERMINISTIC DEMO (no external AI credentials), add
 #   `-f docker-compose.demo.yml` — it runs an internal mock AI provider
 #   and applies the demo seed. See docker-compose.demo.yml for details.
 #
 # Usage (from the repo root):
-#   1. Copy the root env template, then tune it:
-#        cp .env.example .env
-#      (The app services load the root .env via env_file — compose requires it.)
-#   2. docker compose up --build
-#      Dev: add `-f docker-compose.dev.yml`.
-#      Demo: add `-f docker-compose.demo.yml`.
+#   𝗣𝗿𝗼𝗱𝘂𝗰𝘁𝗶𝗼𝗻 (tunnel is the only public entry; requires TUNNEL_TOKEN +
+#   the prod cookie posture in .env — see docs/architecture/cloudflare-tunnel.md):
+#     docker compose up -d --build
+#   𝗗𝗲𝘃  (loopback publishes for the browser + host tooling):
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   𝗗𝗲𝗺𝗼 (layered on dev):
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#                    -f docker-compose.demo.yml up --build
+#
+# Registry-based roll (tagged images; only the 5 app services are pushed):
+#     docker compose build
+#     docker compose push api web worker-ai worker-material ocr
+#     # on any host:  docker compose up -d
 #
 # The root `.env` is loaded into each app container (env_file). Settings
 # that must point at container hostnames (postgres/rabbitmq/redis/ocr/
 # omniroute) are overridden under each service's `environment` block so
 # you don't have to rewrite your local `.env` URLs.
+#
+# Production hardening is baked in: restart policies, init, resource
+# limits and json-file log rotation. Secrets come from the root `.env`
+# (cp .env.example .env then override) — the `:-` defaults are dev-only
+# and MUST NOT reach production.
+
+x-prod-common: &prod-common-ts
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options:
+      max-size: '20m'
+      max-file: '5'
 
 services:
   # ── Backing infrastructure (INTERNAL) ──────────────────────
@@ -45,6 +75,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-catlium_dev_secret}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 2.0
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-catlium} -d ${POSTGRES_DB:-catlium_dev}']
       interval: 5s
@@ -58,6 +91,9 @@ services:
     # No host port mapping.
     volumes:
       - redis_data:/data
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -73,6 +109,9 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-catlium_dev_secret}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 1.0
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
       interval: 10s
@@ -95,18 +134,18 @@ services:
       postgres:
         condition: service_healthy
 
-  # ── Application ────────────────────────────────────────────
-  # The ONLY public API entry point. Everything else is internal.
+  # ── Application (INTERNAL — reached only via nginx) ────────
   api:
+    <<: *prod-common-ts
     build:
       context: .
       dockerfile: infrastructure/compose/Dockerfile.api
       args:
         # Inlined into the web bundle at build time (browser-visible URL).
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+    image: ${IMAGE_PREFIX:-catlium}/api:${VERSION:-latest}
     container_name: catlium-api
-    ports:
-      - '${API_PORT:-3000}:3000'
+    # No host port mapping — nginx proxies /api/ -> api:3000.
     env_file:
       - .env
     environment:
@@ -116,6 +155,8 @@ services:
       STORAGE_LOCAL_DIR: /storage
     volumes:
       - storage_data:/storage
+    mem_limit: 1g
+    cpus: 2.0
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -134,16 +175,19 @@ services:
   # (NEXT_PUBLIC_API_URL, baked into the bundle at build time — the value
   # the BROWSER must use). Shares the workspace build image; runs `next start`.
   web:
+    <<: *prod-common-ts
     build:
       context: .
       dockerfile: infrastructure/compose/Dockerfile.api
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+    image: ${IMAGE_PREFIX:-catlium}/web:${VERSION:-latest}
     container_name: catlium-web
     working_dir: /app/apps/web
     command: ['node', 'node_modules/next/dist/bin/next', 'start', '-p', '3001']
-    ports:
-      - '${WEB_PORT:-3001}:3001'
+    # No host port mapping — nginx proxies / -> web:3001.
+    mem_limit: 1g
+    cpus: 2.0
     depends_on:
       api:
         condition: service_healthy
@@ -153,6 +197,51 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  # ── Internal reverse proxy (nginx) ─────────────────────────
+  # The ONLY application-facing reverse proxy and the single target for
+  # the Cloudflare Tunnel. Binds only inside the private network — no
+  # host port. Routes /api/ -> api:3000 and everything else -> web:3001.
+  nginx:
+    build:
+      context: infrastructure/nginx
+      dockerfile: Dockerfile
+    image: ${IMAGE_PREFIX:-catlium}/nginx:${VERSION:-latest}
+    container_name: catlium-nginx
+    restart: unless-stopped
+    init: true
+    # No host port mapping: reached only by cloudflared over the network.
+    mem_limit: 128m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  # ── Cloudflare Tunnel (ONLY public ingress) ────────────────
+  # Remote-managed mode: the token embeds the tunnel credentials + secret,
+  # so nothing secret is committed — set TUNNEL_TOKEN in the root .env.
+  # all traffic: Cloudflare edge -> tunnel -> http://nginx:80
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: catlium-tunnel
+    restart: unless-stopped
+    init: true
+    command: ['tunnel', '--no-autoupdate', 'run', '--token', '${TUNNEL_TOKEN}']
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+    depends_on:
+      nginx:
+        condition: service_healthy
 
   # ── Internal AI gateway (OmniRoute) ────────────────────────
   # No local LLM ever: the AI worker only talks to this internal,
@@ -164,6 +253,9 @@ services:
     image: diegosouzapw/omniroute:latest
     container_name: catlium-omniroute
     # No host port mapping: reachable only via the Docker network.
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       PORT: '20128'
       # MUST be set in .env (see .env.example). Dev override supplies local
@@ -184,9 +276,14 @@ services:
     build:
       context: .
       dockerfile: infrastructure/compose/Dockerfile.python
+    image: ${IMAGE_PREFIX:-catlium}/ocr:${VERSION:-latest}
     container_name: catlium-ocr
     command: ['uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000']
     # No host port mapping.
+    restart: unless-stopped
+    init: true
+    mem_limit: 2g
+    cpus: 4.0
     env_file:
       - .env
     environment:
@@ -200,6 +297,11 @@ services:
     volumes:
       # Persist the PaddleOCR model cache so downloads survive rebuilds.
       - paddle_models:/root/.paddlex
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
     healthcheck:
       test: ['CMD', 'python', '-c', 'import urllib.request as u; u.urlopen("http://localhost:8000/health", timeout=5)']
       interval: 10s
@@ -211,8 +313,13 @@ services:
     build:
       context: .
       dockerfile: infrastructure/compose/Dockerfile.python
+    image: ${IMAGE_PREFIX:-catlium}/worker-material:${VERSION:-latest}
     container_name: catlium-worker-material
     command: ['python', '-m', 'worker.app']
+    restart: on-failure:10
+    init: true
+    mem_limit: 2g
+    cpus: 4.0
     env_file:
       - .env
     environment:
@@ -224,6 +331,11 @@ services:
       WORKER_STORAGE_DIR: /storage
     volumes:
       - storage_data:/storage
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -241,8 +353,13 @@ services:
     build:
       context: .
       dockerfile: infrastructure/compose/Dockerfile.python
+    image: ${IMAGE_PREFIX:-catlium}/worker-ai:${VERSION:-latest}
     container_name: catlium-worker-ai
     command: ['python', '-m', 'worker.app']
+    restart: on-failure:10
+    init: true
+    mem_limit: 1g
+    cpus: 2.0
     env_file:
       - .env
     environment:
@@ -262,6 +379,11 @@ services:
       WORKER_AI_API_KEY: ${WORKER_AI_API_KEY:-}
     volumes:
       - storage_data:/storage
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
     depends_on:
       migrate:
         condition: service_completed_successfully

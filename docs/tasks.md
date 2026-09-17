@@ -513,6 +513,48 @@ redirects to /login even though cookies are present" auth bug end-to-end.
       api eslint clean on src/identity.
 - [x] Validation + docs + commit + push.
 
+### Amendment — single-file deploy: Cloudflare Tunnel + nginx in the base compose (2026-09-17)
+
+Follow-up to batch 12: consolidate the tunnel deployment into ONE
+`docker-compose.yml`. Production is now a single `docker compose up -d`;
+`docker-compose.prod.yml` and `docker-compose.tunnel.yml` are deleted, and the
+tunnel + nginx reverse proxy live in the base file (nginx is the ONLY
+app-facing proxy, `cloudflared -> nginx:80 -> {web:3001 | api:3000}`, and
+NOTHING publishes a host port in the single file).
+
+- [x] **`infrastructure/nginx/`** — `nginx.conf` + `Dockerfile` (`nginx:alpine`):
+      routes `/api/` → `api:3000` (full `/api/v1/...` path preserved) and `/` →
+      `web:3001`; direct `/health` (200 `ok`); forwards Host/X-Real-IP/
+      X-Forwarded-For/X-Forwarded-Proto; WebSocket/SSE Upgrade+Connection
+      headers; `client_max_body_size 26m`; proxy timeouts 10s/300s/300s. Upstream
+      names resolve at request time via Docker DNS (`resolver 127.0.0.11`,
+      `set $*_upstream` + `proxy_pass $*_upstream`) so recreating api/web with a
+      new IP never leaves nginx pinned to a stale address.
+- [x] **`docker-compose.yml` rewritten as the single production file**: prod
+      hardening merged in (all `restart`/`init`/mem/cpu + json-file log rotation
+      via a shared anchor, `image: ${IMAGE_PREFIX:-catlium}/<svc>:${VERSION}`
+      tags restored on ocr/worker-ai/worker-material), web/api publish NO host
+      ports, new internal `nginx` service (depends_on api+web healthy) and
+      `tunnel` service (`cloudflare/cloudflared:latest`,
+      `tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}`, depends_on nginx
+      healthy). Resolution: `docker compose config` shows `published:` count 0.
+- [x] **`docker-compose.dev.yml`** — dev-only loopback re-publish (127.0.0.1)
+      of web/api + internal services; tunnel `restart: 'no'` (no token in dev →
+      cloudflared exits immediately, no crash-loop). Draft demo layered on dev.
+- [x] **Deleted `docker-compose.prod.yml` + `docker-compose.tunnel.yml`** after a
+      per-service diff of old base+prod+tunnel vs the new single file confirmed
+      nothing was lost (only additions: nginx + tunnel).
+- [x] **Validation** — `docker compose config -q` (single/dev/demo) OK; live
+      production smoke test: all 12 services up (api/web/nginx/postgres/redis/
+      rabbitmq/ocr/omniroute healthy, workers+tunnel running), nginx routes
+      verified (`/health` → `ok`; `/api/v1/health` → API JSON; `/login` → web
+      200), zero published ports, and the real `TUNNEL_TOKEN` registered
+      (`Registered tunnel connection`).
+- [x] **Docs** — `AGENTS.md` §6 + Commands (single-file, 6 pushed images incl.
+      nginx, one public hostname → `http://nginx:80`), `cloudflare-tunnel.md`,
+      `deployment.md`, `infrastructure.md`, `ocr-standalone-device.md` rewritten
+      for the single-file + nginx topology; `.env.example` tunnel docs updated.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)

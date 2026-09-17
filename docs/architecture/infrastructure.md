@@ -2,24 +2,26 @@
 
 ## Single Public API Boundary
 
-**The NestJS API is the ONLY public entry point.** Every other service
-(Postgres, Redis, RabbitMQ, the OCR service, the async workers, the OmniRoute
-AI gateway) is INTERNAL and reachable only over the private Docker network.
-The browser / frontend only ever talks to the API (`http://localhost:3000`,
-the `/api/v1` base). The frontend never knows internal service URLs.
+**The Cloudflare Tunnel is the ONLY public entry point** (`cloudflared` in the
+single `docker-compose.yml`). It forwards to **nginx** (`infrastructure/nginx`),
+the ONLY application-facing reverse proxy, which routes to the web app and the
+API. Every other service (Postgres, Redis, RabbitMQ, the OCR service, the async
+workers, the OmniRoute AI gateway) is INTERNAL and reachable only over the
+private Docker network. Nothing publishes a host port in the single compose
+file.
 
 ```
-Browser ──► Web app (apps/web, Next.js, public :3001)
-                 │  fetch() JSON
-                 ▼
-           API (NestJS)  ◄── public, port 3000
-                 │
-                 ├──► PostgreSQL  ├──► Redis   ├──► RabbitMQ
-│
-                  └──► worker-material ──► OCR service (FastAPI, port 8000)
-                                                └─ PyMuPDF / PaddleOCR (local)
-                  worker-ai ──► OmniRoute AI gateway (port 20128)
-                                 └─ cloud LLM (OpenAI-compatible)
+Cloudflare edge ─► cloudflared ─► nginx (http://nginx:80)
+                                      │
+                                      ├──/──► Web app (apps/web, Next.js, :3001)
+                                      └──/api/──► API (NestJS, :3000, /api/v1)
+                                                         │
+                                                         ├──► PostgreSQL ├──► Redis
+                                                         └──► RabbitMQ ─► workers
+                                                                  ├──► worker-material ──► OCR service (:8000)
+                                                                  │                          └─ PyMuPDF / PaddleOCR (local)
+                                                                  └──► worker-ai ──► OmniRoute AI gateway (:20128)
+                                                                                         └─ cloud LLM (OpenAI-compatible)
 ```
 
 > **Update (2026-09-17):** OCR is now the **distributed pull-worker** topology
@@ -32,44 +34,44 @@ Browser ──► Web app (apps/web, Next.js, public :3001)
 ### Compose layout
 
 Compose files live at the **repo root** (Dockerfiles stay in
-`infrastructure/compose/`):
+`infrastructure/`):
 
-- `docker-compose.yml` — base posture. Publishes **only** the API (`:3000`)
-  and the web app (`:3001`). Postgres/Redis/RabbitMQ/OCR/OmniRoute/workers
-  publish nothing.
+- `docker-compose.yml` — the single production file. Everything is INTERNAL on
+  the private Docker network; **nothing publishes a host port**. Includes the
+  `nginx` reverse proxy (`cloudflared → nginx:80 → {web:3001 | api:3000}`) and
+  the `tunnel` service (`cloudflared`, remote-managed via `TUNNEL_TOKEN`).
 - `docker-compose.dev.yml` — **DEVELOPMENT-ONLY** opt-in override that
-  republishes the internal services bound to `127.0.0.1` so host-based
-  tooling (drizzle studio, psql, host-run workers, E2E suites) can reach
-  them. Never used in production.
+  republishes the web/API and internal services bound to `127.0.0.1` so
+  browser access and host-based tooling (drizzle studio, psql, host-run
+  workers, E2E suites) can reach them. Never used in production.
 - `docker-compose.demo.yml` — demo profile: adds an internal deterministic
   **mock AI** service plus an idempotent one-shot **seed** (demo users + all
   E2E fixture institutes/users) so a full demo + every suite is runnable from
   a single command. The API/web start only after the seed completes.
-- `docker-compose.prod.yml` — production override merged with the base: single
-  `up -d --build`, restart policies, resource limits, log rotation, and
-  `image: ${IMAGE_PREFIX}/<svc>:${VERSION}` tags. NEVER combined with dev/demo.
 
 ```bash
-# Base (internal services stay private; web + api public):
+# Base (everything internal behind nginx; no host ports):
 docker compose up --build
 
-# Local development (publishes internal services on loopback only):
+# Local development (loopback ports for browser + host tooling):
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 # Demo (seeded data + mock AI, internal only):
 docker compose -f docker-compose.yml \
                -f docker-compose.dev.yml -f docker-compose.demo.yml up --build
 
-# Production (single final build; see docs/architecture/deployment.md):
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Production (single file; tunnel is the only ingress — recreate only if the
+# base file changed; see docs/architecture/deployment.md):
+docker compose up -d --build
 ```
 
 ### Internal services
 
 | Service       | Internal port      | Exposed?                | Purpose                                   |
 | ------------- | ------------------ | ----------------------- | ----------------------------------------- |
-| Web app       | 3001               | **public**              | Next.js frontend (server-side auth guard) |
-| API (NestJS)  | 3000               | **public**              | The single public API boundary            |
+| nginx         | 80                 | none (private net)      | Reverse proxy: `/api/*` → api, `/` → web  |
+| Web app       | 3001               | dev override (loopback) | Next.js frontend (server-side auth guard) |
+| API (NestJS)  | 3000               | dev override (loopback) | NestJS API (behind nginx)                 |
 | PostgreSQL 17 | 5432               | dev override (loopback) | Primary database                          |
 | Redis 7       | 6379               | dev override (loopback) | Cache / rate limiting                     |
 | RabbitMQ 3    | 5672 (+15672 mgmt) | dev override (loopback) | Async job queues (API -> workers)         |
@@ -77,6 +79,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 | ocr-worker (distributed, dev only) | HTTPS pull (outbound to API) | none | External OCR worker (`Dockerfile.ocr-worker`); outside the main compose boundary |
 | OmniRoute     | 20128              | dev override (loopback) | Internal AI gateway (OpenAI-compatible)   |
 | mock AI       | 8899               | none (demo profile)     | Deterministic canned responses (demo)     |
+| cloudflared   | (outbound to CF)   | none (private net)      | Cloudflare Tunnel — the only public ingress |
 
 ### Internal authentication
 
@@ -131,14 +134,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
 ```
 
-## Service URLs (development)
+## Service URLs (development, via the dev override)
 
 | Service        | URL                                 | Note                            |
 | -------------- | ----------------------------------- | ------------------------------- |
-| Web app        | http://localhost:3001               | PUBLIC                          |
-| API            | http://localhost:3000               | PUBLIC                          |
-| API Health     | http://localhost:3000/api/v1/health | PUBLIC                          |
-| API Health     | http://localhost:3000/api/v1/health | PUBLIC                          |
+| Web app        | http://localhost:3001               | loopback (dev override)         |
+| API            | http://localhost:3000               | loopback (dev override)         |
+| API Health     | http://localhost:3000/api/v1/health | loopback (dev override)         |
 | OCR Service    | http://localhost:8000               | loopback-only (dev override)    |
 | OmniRoute UI   | http://localhost:20128              | loopback-only (dev override)    |
 | RabbitMQ UI    | http://localhost:15672              | loopback-only (dev override)    |
@@ -146,18 +148,20 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
 
 ## Production Considerations
 
-- Only the web app and the API are exposed; terminate TLS at a reverse proxy in
-  front of them (and restrict the web origin via `CORS_ORIGIN`).
-- `INTERNAL_API_KEY` + OmniRoute secrets must be set (env only, never committed).
+- The Cloudflare Tunnel is the only ingress; nginx is the only reverse proxy;
+  nothing publishes a host port. TLS terminates at the Cloudflare edge.
+- `INTERNAL_API_KEY` + OmniRoute secrets + `TUNNEL_TOKEN` must be set (env only,
+  never committed). `CORS_ORIGIN` = the public origin.
 - Managed Postgres/Redis/RabbitMQ can replace the containers without touching
   the boundary: the API and workers must reference the managed endpoints via
-  env, but nothing accepts public traffic except the API and the web app.
+  env, but nothing accepts public traffic except the tunnel.
 - The OCR worker image carries PaddleOCR (heavy). A persistent `paddle_models`
   volume caches model downloads across rebuilds.
 - The web image builds the whole workspace and serves `next start` on 3001
   via `NODE apps/web/node_modules/next/dist/bin/next` (the `pnpm`/`.bin`
   shells are not on PATH inside the image). `NEXT_PUBLIC_API_URL` is a build
   ARG — changing it requires `docker compose build web`.
-- **Production build/deploy:** `docker-compose.prod.yml` builds and versions
-  the 5 app images in one pass. Registry-based roll-out and image ownership
-  responsibilities: see `docs/architecture/deployment.md`.
+- **Production build/deploy:** the single `docker-compose.yml` builds and
+  versions the 6 app+edge images (`api`/`web`/`nginx`/`worker-ai`/
+  `worker-material`/`ocr`) in one pass. Registry-based roll-out and image
+  ownership responsibilities: see `docs/architecture/deployment.md`.

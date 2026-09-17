@@ -14,42 +14,59 @@
 
 ## Phase 39 — Cloudflare Tunnel ingress + auth session redirect fix (2026-09-17)
 
-**Status: implemented + validated (API 137/137, api+web tsc clean, api eslint
-clean, all three compose merges validate via `docker compose config`). Docs
-updated; commit + push pending.**
+**Status: implemented + validated + committed + pushed (`a19aa8c..55da682`).**
+API 137/137, api+web tsc clean, api eslint clean; live E2E race test both
+refreshes answered 200. **Amendment (same session, pushed): the tunnel + nginx
+are consolidated into the SINGLE `docker-compose.yml`** — production is one
+`docker compose up -d` with nothing host-exposed; the prod/tunnel overrides are
+deleted. Live production smoke test passed (12/12 services, nginx routes, 0
+published ports, tunnel registered).
 
 ### Goal
 
-Two hardening items: (a) give the stack an optional Cloudflare Tunnel
-integration so a production deployment serves ONLY the web app and the API
-through a public edge — never the internal services; (b) fix the "after being
-logged in for some time, the frontend redirects to /login even though the
-session cookies are still present" bug.
+Two hardening items: (a) give the stack a Cloudflare Tunnel integration so a
+production deployment serves only the web app and the API through a public
+edge — never the internal services; (b) fix the "after being logged in for
+some time, the frontend redirects to /login even though the session cookies
+are still present" bug.
 
-### Completed work — Cloudflare Tunnel (Part 1)
+### Completed work — Cloudflare Tunnel (Parts 1 + amendment)
 
-- **`docker-compose.tunnel.yml`** (production-only override, layered on
-  base+prod): `tunnel` service on the official `cloudflare/cloudflared` image,
-  remote-managed mode `tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}` —
-  the token embeds the tunnel credentials so no secret is committed.
-  `ports: !override []` on api/web removes the host port publishes (a plain
-  `ports: []` silently re-merges and keeps them — verified) so the tunnel is
-  the ONLY public boundary; Postgres/Redis/RabbitMQ/OmniRoute/OCR/workers
-  remain private-network-only (they already publish nothing in prod).
+- **Single `docker-compose.yml`** (final posture — `docker-compose.prod.yml`
+  and `docker-compose.tunnel.yml` are DELETED): a `tunnel` service on the
+  official `cloudflare/cloudflared` image, remote-managed mode
+  `tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}` — the token embeds the
+  tunnel credentials so no secret is committed. The tunnel forwards to a new
+  internal **nginx** service (`infrastructure/nginx/nginx.conf` +
+  `Dockerfile`, `nginx:alpine`), the ONLY application-facing reverse proxy:
+  `/api/` → `api:3000` (full `/api/v1/...` path preserved) and `/` → `web:3001`.
+  **NOTHING publishes a host port in the single file** (`docker compose config`
+  → `published:` count 0); web/api keep no public ports; all internal services
+  (Postgres/Redis/RabbitMQ/OmniRoute/OCR/workers) stay private-network-only,
+  addressed by Docker DNS. Prod hardening (restart/init/mem/cpu, json-file
+  log rotation, `image: ${IMAGE_PREFIX}/<svc>:${VERSION}` tags incl. nginx)
+  merged into the base. nginx resolves upstreams at request time via Docker DNS
+  (`resolver 127.0.0.11` + `set $*_upstream`), so api/web recreated with new
+  IPs never pin nginx to a stale address.
 - **`.env.example`**: `TUNNEL_TOKEN` (empty = tunnel disabled), and the
   production cookie/HTTPS posture — `NEXT_PUBLIC_API_URL=https://app.example.com/api/v1`
   (build-time), `COOKIE_SECURE=true`, `COOKIE_SAMESITE=lax`, empty
   `COOKIE_DOMAIN`, same-origin through the tunnel.
 - **`docs/architecture/cloudflare-tunnel.md`**: one-time Cloudflare setup
-  (create tunnel → token; public hostname routes `app.example.com/*` →
-  `http://web:3001`, `app.example.com/api/*` → `http://api:3000`), the
-  build-time public API URL, cookie/HTTPS notes, WebSocket/forwarded-header
-  behavior, verification commands, and a locally-managed ingress fallback.
-- **AGENTS.md**: §6 notes the optional tunnel override; Commands gains the
-  `-f docker-compose.tunnel.yml` production run.
-- **Validation**: `docker compose config` exits 0 for base+dev, base+prod,
-  and base+prod+tunnel; merged tunnel config reports **0 published ports** and
-  the token-derived `run --token` command.
+  (create tunnel → token; ONE public hostname `app.example.com/*` →
+  `http://nginx:80`, which nginx splits internally), the build-time public API
+  URL, cookie/HTTPS notes, WebSocket/forwarded-header behavior, verification
+  commands, and a locally-managed ingress fallback.
+- **AGENTS.md §6 + Commands**: single-file production run, nothing
+  host-exposed, 6 pushed images incl. nginx; the other infrastructure docs
+  (deployment.md, infrastructure.md, ocr-standalone-device.md) rewritten for
+  the single-file + nginx topology.
+- **Validation**: `docker compose config` exit 0 (single/dev/demo); live
+  production smoke test — 12/12 services up (api/web/nginx/postgres/redis/
+  rabbitmq/ocr/omniroute healthy; migrate exit 0; workers + tunnel running),
+  nginx routes verified (`/health` → `ok`; `/api/v1/health` → API JSON via
+  nginx; `/login` → 200 web), **0 published ports** in the resolved config,
+  and the real `TUNNEL_TOKEN` registered (`Registered tunnel connection …`).
 
 ### Completed work — auth session redirect fix (Part 2)
 
@@ -95,18 +112,27 @@ were:
 
 ### Known issues / deferred
 
-- Tunnel route configuration lives in the Cloudflare dashboard (remote-managed
-  mode); the locally-managed ingress fallback is documented in
+- The deployed web bundle was built with the dev default
+  `NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1` (269 refs in the image).
+  For real public users the web image MUST be rebuilt with
+  `NEXT_PUBLIC_API_URL=https://<your-domain>/api/v1` (build-time) before go-live
+  — otherwise every client-side API call hits `localhost:3000` on the visitor's
+  machine. Server-side web→API traffic is unaffected (internal DNS).
+- Tunnel ingress configuration lives in the Cloudflare dashboard
+  (remote-managed mode); the locally-managed fallback is documented in
   cloudflare-tunnel.md if ingress must be version-controlled.
 - The grace window accepts a replayed `refresh_token` that matches the stored
   hash within 60 s of rotation — a deliberate, bounded trade-off aligned with
   industry practice; reuse later than the window is still treated as theft.
+- Dev (`docker-compose.dev.yml`) still publishes loopback ports for local
+  tooling; production uses the single base file only.
 
 ### Exact recommended next task
 
-None — Phase 39 complete. Commit + push, then the next teacher/infra request
-(e.g. Phase 37 resource-layout polish or registry-host roll of the versioned
-images).
+None for Phase 39 — complete + pushed. **Before public go-live:** rebuild `web`
+with `NEXT_PUBLIC_API_URL=https://<domain>/api/v1` and verify the tunnel public
+origin end-to-end (login → workspaces → content). Then the next teacher/infra
+request (e.g. Phase 37 resource-layout polish or a registry-host roll).
 
 ---
 
@@ -911,14 +937,15 @@ ops manual for running the OCR worker standalone on other devices.
   cache mount → `COPY . .` → `pnpm build` with `TURBO_CACHE_DIR=/turbo-cache`
   on a cache mount (unchanged workspaces restore from turbo cache; var leaks
   invalidate correctly by file hash). Same dev flow/CMD, just warm-cached.
-- **`docker-compose.prod.yml`** (production override, merged with the base):
-  `restart` policies (workers `on-failure:10`; api/web/ocr/infra
-  `unless-stopped`), `init: true`, mem_limit/cpus limits, json-file log
-  rotation (20m × 5), and `image: ${IMAGE_PREFIX}/<svc>:${VERSION}` tags so a
-  single `up -d --build` builds AND versions for a registry push/pull flow.
-  Dev (`docker-compose.dev.yml`) keeps loopback port publishes and NO restart
-  policy; prod MUST never be combined with dev/demo overrides. All three merge
-  combos validated via `docker compose config`.
+- **Production posture** (was `docker-compose.prod.yml`; ALL of this is now
+  merged into the base `docker-compose.yml` by the Phase 39 amendment, which
+  also deleted the override): `restart` policies (workers `on-failure:10`;
+  api/web/ocr/infra `unless-stopped`), `init: true`, mem_limit/cpus limits,
+  json-file log rotation (20m × 5), and `image: ${IMAGE_PREFIX}/<svc>:${VERSION}`
+  tags so a single `docker compose up -d --build` builds AND versions for a
+  registry push/pull flow. Dev (`docker-compose.dev.yml`) keeps loopback port
+  publishes and NO restart policy; prod MUST never be combined with dev/demo
+  overrides. All merge combos validated via `docker compose config`.
 - **`docs/architecture/ocr-standalone-device.md`** — the standalone-OCR manual:
   image contents, build, transfer paths (registry / `docker save|load`),
   one-time worker registration (`POST /ocr/workers` → `{workerId, apiKey}`

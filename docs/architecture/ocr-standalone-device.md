@@ -35,8 +35,8 @@ Pick a release tag and build once (only the first build downloads Paddle):
 docker build \
   -f infrastructure/compose/Dockerfile.ocr-worker \
   -t catlium-ocr-worker:1.0.0 .
-# or via compose (same tags the stack uses):
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build ocr-worker
+# or via compose (the service ships in the dev-only override):
+docker compose -f docker-compose.yml -f docker-compose.dev.yml build ocr-worker
 ```
 
 ## 3. Get the image onto the other device
@@ -53,14 +53,16 @@ docker pull registry.example.com/catlium/ocr-worker:1.0.0
 
 ### Option B — registry-integrated into the main stack
 
-`docker-compose.prod.yml` tags every image `${IMAGE_PREFIX:-catlium}/…`; build
-the whole stack once and `docker compose push`, then `docker compose pull` on
-the device just for the worker:
+Option B — reuses the stack's image tags: the single `docker-compose.yml` tags
+every image `${IMAGE_PREFIX:-catlium}/…`. Build the worker via the dev override
+(it ships there), retag it to the stack naming, and push to a registry the
+device can pull from:
 
 ```bash
 # main repo host:
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-docker compose -f docker-compose.yml -f docker-compose.prod.yml push
+docker compose -f docker-compose.yml -f docker-compose.dev.yml build ocr-worker
+docker tag catlium-ocr-worker:latest ${IMAGE_PREFIX:-catlium}/ocr-worker:${VERSION:-latest}
+docker push ${IMAGE_PREFIX:-catlium}/ocr-worker:${VERSION:-latest}
 
 # device: pull only the worker
 docker pull catlium/ocr-worker:${VERSION:-latest}

@@ -89,16 +89,20 @@ These are the planned logical modules for the API. Do NOT implement them now:
 
 ### 6. Single Public API Boundary
 
-- The NestJS API (`/api/v1`) and the Next.js web app `apps/web` (served on
-  :3001) are the only public entry points. The browser talks to the web app,
-  which talks only to the API. In production these two may be reached through
-  a Cloudflare Tunnel override (`docker-compose.tunnel.yml`) that removes their
-  host port publishes and makes the tunnel the only ingress — see
+- The public boundary is the **Cloudflare Tunnel** (`cloudflared`), which is
+  part of the single `docker-compose.yml`. All public traffic flows through it
+  to the internal nginx reverse proxy and then to the app:
+  `Cloudflare edge -> cloudflared -> http://nginx:80 -> {web:3001 | api:3000}`.
+- **nginx** (`infrastructure/nginx`) is the ONLY application-facing reverse
+  proxy: it routes `/` → Next.js web (`web:3001`) and `/api/` → NestJS API
+  (`api:3000`, prefix preserved). It binds only inside the private Docker
+  network — never a host port, never public. See
   `docs/architecture/cloudflare-tunnel.md`.
-- Postgres, Redis, RabbitMQ, the OCR service, the async workers, and the
-  OmniRoute AI gateway are INTERNAL, reachable only over the private Docker
-  network. Their ports are never published on the host except in the
-  development-only `docker-compose.dev.yml` override (127.0.0.1 loopback).
+- **Nothing publishes a host port in the single compose file.** Postgres,
+  Redis, RabbitMQ, the OCR service, the async workers, OmniRoute, nginx, the
+  API and the web app are all INTERNAL, reachable only over the private Docker
+  network. The only exception is the development-only
+  `docker-compose.dev.yml` override (127.0.0.1 loopback for local tooling).
 - **AI goes only through OmniRoute** (internal OpenAI-compatible gateway).
   No local LLM / Ollama; no direct cloud-provider SDK calls from the API or
   workers. `WORKER_AI_PROVIDER_URL`/`WORKER_AI_API_KEY` configure it.
@@ -171,25 +175,23 @@ pnpm db:migrate           # Run migrations
 pnpm db:studio            # Open Drizzle Studio
 
 # Infrastructure
-docker compose up -d                    # base posture (web+api public)
+docker compose up -d                    # base posture (web+api internal behind nginx)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d   # dev
 # Demo (seed + mock AI on top of dev):
 docker compose -f docker-compose.yml -f docker-compose.dev.yml \
                -f docker-compose.demo.yml up --build
 
-# Production (single build + run; NEVER combine with dev/demo overrides):
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-# Production with a Cloudflare Tunnel as the ONLY public ingress (removes the
-# api/web host port publishes; TUNNEL_TOKEN from .env; ingress routes must be
-# configured in CF Zero Trust — see docs/architecture/cloudflare-tunnel.md):
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-               -f docker-compose.tunnel.yml up -d --build
-# Tag & push the 5 app images for registry-based deploys. Only api/web/
-# worker-ai/worker-material/ocr are retagged (postgres/redis/rabbitmq/omniroute
-# stay upstream and are NOT pushed):
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-docker compose -f docker-compose.yml -f docker-compose.prod.yml push \
-  api web worker-ai worker-material ocr
+# Production — single file, nothing host-exposed. A Cloudflare Tunnel is the
+# ONLY public ingress (TUNNEL_TOKEN from .env); web/api/nginx keep no host
+# ports. Register ONE public hostname -> http://nginx:80 in CF Zero Trust —
+# nginx splits it: /api/* -> api:3000, everything else -> web:3001.
+# See docs/architecture/cloudflare-tunnel.md.
+docker compose up -d --build
+# Tag & push the 6 app+edge images for registry-based deploys. Only api/web/
+# worker-ai/worker-material/ocr/nginx are retagged (postgres/redis/rabbitmq/
+# omniroute/cloudflared stay upstream and are NOT pushed):
+docker compose build
+docker compose push api web worker-ai worker-material ocr nginx
 ```
 
 #### Docker build caching (keep it fast)
