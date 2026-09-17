@@ -1,0 +1,105 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech — PRODUCTION Compose override (single build)
+# ─────────────────────────────────────────────────────────────
+#
+# A single production build AND run in one command. It layers on the base
+# compose file (private-network topology + healthchecks) and adds only
+# production hardening — it does NOT re-expose any internal port.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  up -d --build
+#
+# The images are built from the same Dockerfiles as dev (they are shared),
+# but tagged `${IMAGE_PREFIX}:${VERSION}` in one pass, so the same build can
+# be pushed to a registry and rolled to other hosts:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml push
+#   # on any host:  ... -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# ⚠️  Production secrets must come from the root `.env` (cp .env.example .env
+#     then override): POSTGRES_PASSWORD, RABBITMQ_PASSWORD, OMNIROUTE_*,
+#     WORKER_AI_API_KEY, INTERNAL_API_KEY. The base file's `:-` defaults are
+#     dev-only and MUST NOT reach production.
+#
+# ⚠️  NEVER combine with docker-compose.dev.yml (loopback publishes) or
+#     docker-compose.demo.yml (mock AI) in production.
+# ─────────────────────────────────────────────────────────────
+
+x-prod-common: &prod-common-ts
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options:
+      max-size: '20m'
+      max-file: '5'
+
+services:
+  api:
+    <<: *prod-common-ts
+    image: ${IMAGE_PREFIX:-catlium}/api:${VERSION:-latest}
+    mem_limit: 1g
+    cpus: 2.0
+
+  web:
+    <<: *prod-common-ts
+    image: ${IMAGE_PREFIX:-catlium}/web:${VERSION:-latest}
+    mem_limit: 1g
+    cpus: 2.0
+
+  worker-ai:
+    restart: on-failure:10
+    init: true
+    image: ${IMAGE_PREFIX:-catlium}/worker-ai:${VERSION:-latest}
+    mem_limit: 1g
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+
+  worker-material:
+    restart: on-failure:10
+    init: true
+    image: ${IMAGE_PREFIX:-catlium}/worker-material:${VERSION:-latest}
+    mem_limit: 2g
+    cpus: 4.0
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+
+  ocr:
+    restart: unless-stopped
+    init: true
+    image: ${IMAGE_PREFIX:-catlium}/ocr:${VERSION:-latest}
+    mem_limit: 2g
+    cpus: 4.0
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+
+  postgres:
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 2.0
+
+  redis:
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+
+  rabbitmq:
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 1.0
+
+  omniroute:
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
