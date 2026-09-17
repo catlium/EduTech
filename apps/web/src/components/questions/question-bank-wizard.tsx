@@ -67,10 +67,13 @@ interface WizardProps {
   onChanged: () => void;
 }
 
-/* Equal percentage split so manual buckets sum to the requested per-type count. */
+/* Equal percentage split so manual buckets sum to the requested per-type
+ * count. Empty selection → spread across all difficulties (server default). */
 function splitDifficulties(difficulties: QuestionDifficulty[]): Record<QuestionDifficulty, number> {
   const dist: Record<QuestionDifficulty, number> = { EASY: 0, MEDIUM: 0, HARD: 0 };
-  if (difficulties.length === 0) return dist;
+  if (difficulties.length === 0) {
+    return { EASY: 34, MEDIUM: 33, HARD: 33 };
+  }
   const each = Math.floor(100 / difficulties.length);
   let remainder = 100;
   for (const d of difficulties) {
@@ -82,7 +85,8 @@ function splitDifficulties(difficulties: QuestionDifficulty[]): Record<QuestionD
 }
 
 /* Percentage split for a type's difficulty distribution (pattern sections) —
- * falls back to all-MEDIUM when the section has no distribution. */
+ * the section's own distribution wins when present; a section with none
+ * spreads across all difficulties (server default). */
 function patternDifficultySplit(
   structure: PaperPattern['structure'] | null,
   questionType: string,
@@ -93,7 +97,7 @@ function patternDifficultySplit(
   if (dist && total > 0) {
     return { EASY: dist.EASY, MEDIUM: dist.MEDIUM, HARD: dist.HARD };
   }
-  return { EASY: 0, MEDIUM: 100, HARD: 0 };
+  return { EASY: 34, MEDIUM: 33, HARD: 33 };
 }
 
 /* Type × difficulty targets shared by both modes. The Source step only decides
@@ -335,7 +339,15 @@ export function QuestionBankWizard({
     }
     const target = deficit.buckets
       .filter((b) => b.deficit > 0)
-      .map((b) => ({ questionType: b.questionType, difficulty: b.difficulty, count: b.deficit }));
+      .map((b) => ({
+        questionType: b.questionType,
+        difficulty: b.difficulty,
+        // The API recomputes deficit internally as `count - existing - pending`
+        // (so send the full requested target, not our computed deficit, to avoid
+        // double-subtracting). The generation layer owns batching — it floors
+        // small requests to the per-type min and splits at the per-type max.
+        count: b.requested,
+      }));
     if (target.length === 0) {
       toast.info('Nothing to generate — the bank covers these targets');
       return;

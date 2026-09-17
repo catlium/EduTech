@@ -6,7 +6,6 @@ import {
   InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { eq, and, sql, asc, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
@@ -24,8 +23,13 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { QuestionTypesService } from './question-types.service.js';
-import { buildBucketsFromBlueprint } from './build-bank-buckets.js';
-import { planQuestionBankJobs, DEFAULT_QUESTION_BATCH_SIZE } from './build-question-batch.js';
+import {
+  buildBankBuckets,
+  buildBucketsFromBlueprint,
+  QUESTION_TYPES,
+} from './build-bank-buckets.js';
+import { planQuestionBankJobs } from './build-question-batch.js';
+import { questionTypeBatchLimits } from './build-question-batch.js';
 import { patternMatchesSubject } from '../paper-patterns/paper-pattern-subjects.js';
 
 const OPERATION = 'AI_GENERATE_QUESTIONS';
@@ -65,19 +69,7 @@ export class QuestionGenerationService {
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly jobs: JobsService,
     private readonly typesService: QuestionTypesService,
-    private readonly config: ConfigService,
   ) {}
-
-  /** Per-child question quota (env `QUESTION_BANK_BATCH_SIZE`, default 10). A
-   * bucket above this is split so the worker never answers a 100+ question
-   * prompt in one request. Clamped to the worker's MAX_QUESTION_COUNT (50). */
-  private get maxPerJob(): number {
-    const raw = this.config.get<string>('QUESTION_BANK_BATCH_SIZE');
-    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-    return Number.isInteger(parsed) && parsed > 0
-      ? Math.min(parsed, 50)
-      : DEFAULT_QUESTION_BATCH_SIZE;
-  }
 
   // ── Legacy single-type generation (backward compatible) ────────────
 
@@ -195,8 +187,9 @@ export class QuestionGenerationService {
       }
     }
 
-    // One child job per (questionType, difficulty) bucket, split to maxPerJob;
-    // all children share the batchId. Each child is one small request, never a
+    // One child job per (questionType, difficulty) bucket; per-type min/max
+    // govern the plan (floor small types to their min, split above their max).
+    // All children share the batchId — each child is one small request, never a
     // single 100+ question prompt (Goal E batching).
     const plan = planQuestionBankJobs({
       batchId,
@@ -205,7 +198,6 @@ export class QuestionGenerationService {
       userId,
       buckets,
       typeFormats,
-      maxPerJob: this.maxPerJob,
     });
     if (plan.children.length === 0) {
       throw new BadRequestException('No questions to generate for the requested buckets');
@@ -318,6 +310,24 @@ export class QuestionGenerationService {
       )
       .limit(1);
     return Boolean(row);
+  }
+
+  /** Seed the subject's bank with a starter set: the default question types
+   * each at their per-type min, spread across all difficulties. Small on
+   * purpose — the teacher inspects and grows it from there. */
+  async generateStarter(instituteId: string, userId: string, subjectId: string) {
+    const buckets = QUESTION_TYPES.flatMap((questionType) =>
+      buildBankBuckets({
+        questionTypes: [questionType],
+        count: questionTypeBatchLimits(questionType).min,
+      }),
+    );
+    return this.requestBankGeneration(
+      instituteId,
+      userId,
+      { subjectId, count: buckets.reduce((sum, b) => sum + b.count, 0) },
+      buckets,
+    );
   }
 
   // ── Bank batch monitor (Goal E) ─────────────────────────────────────

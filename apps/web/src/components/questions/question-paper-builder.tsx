@@ -189,7 +189,11 @@ export function QuestionPaperBuilder({
           subjectId,
           buckets: shortagePreview.buckets
             .filter((b) => b.deficit > 0)
-            .map((b) => ({ questionType: b.questionType, difficulty: b.difficulty, count: b.deficit })),
+            .map((b) => ({
+              questionType: b.questionType,
+              difficulty: b.difficulty,
+              count: b.requested,
+            })),
         },
       });
       if (resp.batchId) {

@@ -24,6 +24,7 @@ import {
   GenerateMoreDto,
   GenerateBankFromBlueprintDto,
   DeriveDistributionDto,
+  QuestionBankScopeDto,
 } from './dto/question-bank.dto.js';
 import { buildBankBuckets, QUESTION_TYPES } from './build-bank-buckets.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
@@ -280,6 +281,25 @@ export class QuestionsController {
       },
     );
     return result;
+  }
+
+  @Post('bank/starter')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async bankStarter(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: QuestionBankScopeDto,
+  ) {
+    if (!dto.subjectId) {
+      throw new BadRequestException('subjectId is required to generate starter questions');
+    }
+    const generation = await this.generationService.generateStarter(
+      tenant.instituteId,
+      user.userId,
+      dto.subjectId,
+    );
+    return { generation };
   }
 
   @Post('bank/derive')

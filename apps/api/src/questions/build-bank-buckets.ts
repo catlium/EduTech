@@ -17,14 +17,24 @@ export interface BankConfig {
 
 export const QUESTION_TYPES: readonly QuestionType[] = ['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'];
 export const DIFFICULTIES: BucketDifficulty[] = ['EASY', 'MEDIUM', 'HARD'];
-const DEFAULT_DIST: Record<BucketDifficulty, number> = { EASY: 0, MEDIUM: 100, HARD: 0 };
+/* If no difficulty distribution is given, spread the request across ALL
+ * difficulties (equal thirds) instead of collapsing to one level. An explicit
+ * distribution is honored as provided. */
+const DEFAULT_DIST: Record<BucketDifficulty, number> = { EASY: 34, MEDIUM: 33, HARD: 33 };
 
 /** Allocate `count` across every (type, difficulty) cell via largest-remainder,
  * so bucket counts always sum to exactly `count` and the requested types and
  * difficulty distribution survive small counts. */
 export function buildBankBuckets(config: BankConfig): BankBucket[] {
   const { questionTypes, count } = config;
-  const dist = { ...DEFAULT_DIST, ...config.difficultyDistribution };
+  // No distribution at all → spread across ALL difficulties (equal thirds). A
+  // provided distribution is prioritized: un-specified difficulties get zero.
+  const hasDist = config.difficultyDistribution
+    ? Object.keys(config.difficultyDistribution).length > 0
+    : false;
+  const dist = hasDist
+    ? { EASY: 0, MEDIUM: 0, HARD: 0, ...config.difficultyDistribution }
+    : DEFAULT_DIST;
 
   const cells = questionTypes.flatMap((questionType) =>
     DIFFICULTIES.map((difficulty) => ({
@@ -65,7 +75,7 @@ export function buildBucketsFromBlueprint(sections: BlueprintSectionLike[]): Ban
   const buckets: BankBucket[] = [];
   for (const section of sections) {
     if (!section.questionType || !section.count || section.count <= 0) continue;
-    const dist = section.difficultyDistribution ?? { EASY: 0, MEDIUM: 100, HARD: 0 };
+    const dist = section.difficultyDistribution ?? { EASY: 34, MEDIUM: 33, HARD: 33 };
     const safeDist: Partial<Record<BucketDifficulty, number>> = {};
     for (const d of DIFFICULTIES) {
       const pct = dist[d];

@@ -38,9 +38,13 @@ test('no type or difficulty is ever dropped when count is small', () => {
   );
 });
 
-test('defaults: no distribution -> MCQs at MEDIUM', () => {
-  const buckets = buildBankBuckets({ questionTypes: ['MCQ'], count: 2 });
-  assert.deepEqual(buckets, [{ questionType: 'MCQ', difficulty: 'MEDIUM', count: 2 }]);
+test('defaults: no distribution spreads the count across all difficulties', () => {
+  const buckets = buildBankBuckets({ questionTypes: ['MCQ'], count: 3 });
+  assert.deepEqual(
+    [...buckets.map((b) => b.difficulty)].sort(),
+    ['EASY', 'HARD', 'MEDIUM'],
+  );
+  assert.equal(buckets.reduce((s, b) => s + b.count, 0), 3);
 });
 
 test('only requested difficulties are represented', () => {
@@ -65,7 +69,7 @@ test('blueprint sections become quota buckets and unmet sections are skipped', (
   const byKey = new Map(buckets.map((b) => [`${b.questionType}|${b.difficulty}`, b.count]));
   assert.equal(byKey.get('MCQ|EASY'), 2);
   assert.equal(byKey.get('MCQ|MEDIUM'), 2);
-  assert.equal(byKey.get('TRUE_FALSE|MEDIUM'), 2);
+  assert.ok(byKey.get('TRUE_FALSE|EASY')! > 0 && byKey.get('TRUE_FALSE|MEDIUM')! > 0);
   assert.equal(
     buckets.reduce((s, b) => s + b.count, 0),
     6,

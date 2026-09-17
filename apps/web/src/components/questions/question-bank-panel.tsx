@@ -160,6 +160,7 @@ export function QuestionBankPanel({
     { scopeLabel: string; status: GenerateMoreQuestionsResponse }[]
   >([]);
   const [generating, setGenerating] = useState(false);
+  const [startering, setStartering] = useState(false);
 
   /* Active generation batches (Goal E): one batch per scope, tracked until
    * every child job settles so the teacher can see progress and retry only
@@ -360,22 +361,26 @@ export function QuestionBankPanel({
   const perScopeSize =
     scopes.length > 0 ? Math.max(1, Math.min(100, Math.round(size / scopes.length))) : size;
 
-  function difficultyDistribution(): { EASY: number; MEDIUM: number; HARD: number } {
-    const dist: { EASY: number; MEDIUM: number; HARD: number } = {
-      EASY: 0,
-      MEDIUM: 0,
-      HARD: 0,
-    };
-    if (selectedDifficulties.length === 0) return dist;
-    const each = Math.floor(100 / selectedDifficulties.length);
-    let remainder = 100;
-    for (const d of selectedDifficulties) {
-      dist[d] = each;
-      remainder -= each;
-    }
-    if (selectedDifficulties.length > 0) dist[selectedDifficulties[0]!] += remainder;
-    return dist;
+function difficultyDistribution(): { EASY: number; MEDIUM: number; HARD: number } {
+  const dist: { EASY: number; MEDIUM: number; HARD: number } = {
+    EASY: 0,
+    MEDIUM: 0,
+    HARD: 0,
+  };
+  // No difficulties chosen → spread across all (server default), so the empty
+  // case generates a balanced starter instead of zero-size buckets.
+  if (selectedDifficulties.length === 0) {
+    return { EASY: 34, MEDIUM: 33, HARD: 33 };
   }
+  const each = Math.floor(100 / selectedDifficulties.length);
+  let remainder = 100;
+  for (const d of selectedDifficulties) {
+    dist[d] = each;
+    remainder -= each;
+  }
+  if (selectedDifficulties.length > 0) dist[selectedDifficulties[0]!] += remainder;
+  return dist;
+}
 
   /** Manual target buckets: selected types × selected difficulties. */
   function manualBuckets() {
@@ -410,10 +415,6 @@ export function QuestionBankPanel({
     }
     if (!blueprintId && !autoMode && selectedTypes.length === 0) {
       toast.error('Select at least one question type');
-      return;
-    }
-    if (!blueprintId && !autoMode && selectedDifficulties.length === 0) {
-      toast.error('Select at least one difficulty');
       return;
     }
     setChecking(true);
@@ -471,7 +472,9 @@ export function QuestionBankPanel({
         buckets: target.map((b) => ({
           questionType: b.questionType,
           difficulty: b.difficulty,
-          count: b.deficit,
+          // Send the full requested target; the API recomputes the deficit as
+          // count - existing - pending and applies per-type min/max batching.
+          count: b.requested,
         })),
       },
     });
@@ -553,10 +556,6 @@ export function QuestionBankPanel({
       toast.error('Select at least one question type');
       return;
     }
-    if (!blueprintId && !autoMode && selectedDifficulties.length === 0) {
-      toast.error('Select at least one difficulty');
-      return;
-    }
     setGenerating(true);
     try {
       for (const scope of scopes) {
@@ -590,6 +589,34 @@ export function QuestionBankPanel({
       toast.error(err instanceof ApiError ? err.message : 'Failed to retry generation');
     } finally {
       setRetryingBatch(null);
+    }
+  }
+
+  /** Seed the selected subject with a starter set (default types at their
+   * per-type min, spread across all difficulties). */
+  async function generateStarter() {
+    if (!statsSubjectId) {
+      toast.error('Select a subject to seed');
+      return;
+    }
+    setStartering(true);
+    try {
+      const { generation } = await api<{ generation: GenerateBankResponse }>(
+        '/questions/bank/starter',
+        {
+          method: 'POST',
+          body: { subjectId: statsSubjectId },
+        },
+      );
+      const name = subjects.find((s) => s.id === statsSubjectId)?.name ?? 'subject';
+      trackBatch(`${name} starter`, generation.batchId);
+      toast.success(`Starter questions queued for ${name}`);
+      onChanged();
+      void loadStats(statsSubjectId);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to generate starter questions');
+    } finally {
+      setStartering(false);
     }
   }
 
@@ -658,9 +685,26 @@ export function QuestionBankPanel({
           )}
 
           {isTeacher && (
-            <Button className="mt-3" size="sm" onClick={() => setDialogOpen(true)}>
-              <Sparkles className="mr-1 size-3.5" /> Generate bank questions
-            </Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {statsSubjectId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={startering}
+                  onClick={() => void generateStarter()}
+                >
+                  {startering ? (
+                    <Loader2 className="mr-1 size-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-1 size-3.5" />
+                  )}
+                  {startering ? 'Seeding…' : 'Generate starter question'}
+                </Button>
+              )}
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Sparkles className="mr-1 size-3.5" /> Generate bank questions
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>

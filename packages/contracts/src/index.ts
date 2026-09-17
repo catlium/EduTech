@@ -1270,7 +1270,7 @@ export type BatchQuestionActionRequest = z.infer<typeof BatchQuestionActionReque
 export const GenerateBankBucketSchema = z.object({
   questionType: QuestionTypeRefSchema,
   difficulty: QuestionDifficultyEnum,
-  count: z.number().int().min(1).max(100),
+  count: z.number().int().min(1).max(500),
 });
 export type GenerateBankBucket = z.infer<typeof GenerateBankBucketSchema>;
 

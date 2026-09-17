@@ -1,11 +1,11 @@
-// Goal E question-bank batch planner — pure function, no NestJS.
+// Per-type min/max question-bank batch planner — pure function, no NestJS.
 // Run: node --test apps/../apps/api/src/questions/build-question-batch.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
   planQuestionBankJobs,
-  DEFAULT_QUESTION_BATCH_SIZE,
+  questionTypeBatchLimits,
   MAX_QUESTION_BATCH_SIZE,
 } from './build-question-batch.ts';
 import type { BankBucket } from './build-bank-buckets.ts';
@@ -19,7 +19,7 @@ function bucket(type: string, difficulty: BankBucket['difficulty'], count: numbe
   return { questionType: type, difficulty, count };
 }
 
-function plan(buckets: BankBucket[], maxPerJob?: number) {
+function plan(buckets: BankBucket[]) {
   return planQuestionBankJobs({
     batchId: BATCH_ID,
     batchSource: { type: 'TOPIC', id: SOURCE.id },
@@ -27,32 +27,85 @@ function plan(buckets: BankBucket[], maxPerJob?: number) {
     userId: USER_ID,
     buckets,
     typeFormats: TYPE_FORMATS,
-    maxPerJob,
   });
 }
 
-// ── 1. One job per bucket when every bucket fits the batch size ─────────
+// ── 1. Type limits table ──────────────────────────────────────────────
 
-test('one child per (type, difficulty) bucket within the default batch size', () => {
-  const result = plan([
-    bucket('MCQ', 'EASY', 7),
-    bucket('TRUE_FALSE', 'MEDIUM', 5),
-    bucket('FILL_IN_BLANK', 'HARD', 10),
-  ]);
+test('per-type limits follow the recommendation table', () => {
+  assert.deepEqual(questionTypeBatchLimits('MCQ'), { min: 20, max: 30 });
+  assert.deepEqual(questionTypeBatchLimits('TRUE_FALSE'), { min: 15, max: 25 });
+  assert.deepEqual(questionTypeBatchLimits('FILL_IN_BLANK'), { min: 15, max: 25 });
+  assert.deepEqual(questionTypeBatchLimits('SHORT_ANSWER'), { min: 10, max: 15 });
+  assert.deepEqual(questionTypeBatchLimits('LONG_ANSWER'), { min: 8, max: 12 });
+  assert.deepEqual(questionTypeBatchLimits('NUMERICAL'), { min: 10, max: 15 });
+  assert.deepEqual(questionTypeBatchLimits('CASE_STUDY'), { min: 5, max: 8 });
+});
 
-  assert.equal(result.children.length, 3, 'one child per bucket');
-  assert.equal(result.totalQuestions, 22);
+test('unknown or institute-defined types fall back to the default limits', () => {
+  assert.deepEqual(questionTypeBatchLimits('CUSTOM_ESSAY'), { min: 10, max: 15 });
+});
 
-  const [mcq, tf, fib] = result.children;
-  assert.equal(mcq.payload.params.questionType, 'MCQ');
-  assert.equal(mcq.payload.params.difficulty, 'EASY');
-  assert.equal(mcq.payload.params.count, 7);
-  assert.equal(tf.payload.params.questionType, 'TRUE_FALSE');
-  assert.equal(fib.payload.params.count, 10);
+// ── 2. Request below the type min is floored to the min ───────────────
 
-  // Each child carries the batch wiring and a unique dedupKey slot.
-  const dedupKeys = new Set(result.children.map((c) => c.dedupKey));
-  assert.equal(dedupKeys.size, result.children.length, 'dedupKeys unique');
+test('a type below its min is floored up to the min', () => {
+  const result = plan([bucket('MCQ', 'EASY', 3)]);
+
+  assert.equal(result.totalQuestions, questionTypeBatchLimits('MCQ').min);
+  assert.equal(result.children.length, 1);
+  assert.equal(result.children[0]!.payload.params.count, 20);
+});
+
+test('a small request is spread across the requested difficulties', () => {
+  const result = plan([bucket('MCQ', 'EASY', 1), bucket('MCQ', 'HARD', 1)]);
+
+  assert.equal(result.totalQuestions, 20);
+  const byDifficulty = new Map(result.children.map((c) => [c.payload.params.difficulty, c.payload.params.count]));
+  assert.equal(byDifficulty.get('EASY')! + byDifficulty.get('HARD')!, 20);
+  assert.ok(!byDifficulty.has('MEDIUM'), 'unrequested difficulty not invented');
+});
+
+test('exactly-min request is not inflated', () => {
+  const result = plan([bucket('MCQ', 'MEDIUM', 20)]);
+  assert.equal(result.totalQuestions, 20);
+  assert.equal(result.children.length, 1);
+});
+
+// ── 3. Split above the type max keeps every child <= the type max ─────
+
+test('bucket above the type max splits into sub-batches of <= the type max', () => {
+  const result = plan([bucket('MCQ', 'HARD', 65)]);
+
+  const { max } = questionTypeBatchLimits('MCQ');
+  assert.ok(result.children.every((c) => c.payload.params.count <= max));
+  assert.equal(result.totalQuestions, 65);
+  assert.deepEqual(
+    result.children.map((c) => c.payload.params.count).sort((a, b) => a - b),
+    [5, 30, 30],
+    '65/30 -> 30+30+5',
+  );
+  for (const child of result.children) {
+    assert.deepEqual(child.payload.params.questionType, 'MCQ');
+    assert.deepEqual(child.payload.params.difficulty, 'HARD');
+  }
+});
+
+test('maxPerJob never exceeds the worker MAX_QUESTION_COUNT ceiling', () => {
+  const result = plan([bucket('CASE_STUDY', 'MEDIUM', MAX_QUESTION_BATCH_SIZE * 2)]);
+  assert.ok(result.children.every((c) => c.payload.params.count <= MAX_QUESTION_BATCH_SIZE));
+  assert.equal(result.totalQuestions, MAX_QUESTION_BATCH_SIZE * 2);
+  for (const child of result.children) {
+    assert.ok(child.payload.params.count <= questionTypeBatchLimits('CASE_STUDY').max);
+  }
+});
+
+// ── 4. Child wiring ───────────────────────────────────────────────────
+
+test('children share the batch wiring with unique dedupKey slots', () => {
+  const result = plan([bucket('MCQ', 'MEDIUM', 40)]);
+  assert.ok(result.children.length >= 2, 'split produces multiple children');
+  const keys = result.children.map((c) => c.dedupKey);
+  assert.equal(new Set(keys).size, keys.length);
   for (const child of result.children) {
     assert.equal(child.payload.batchId, BATCH_ID);
     assert.deepEqual(child.payload.batchSource, { type: 'TOPIC', id: SOURCE.id });
@@ -61,82 +114,15 @@ test('one child per (type, difficulty) bucket within the default batch size', ()
     assert.equal(child.payload.operation, 'AI_GENERATE_QUESTIONS');
     assert.equal(child.payload.params.dedupKey, child.dedupKey);
     assert.deepEqual(child.payload.params.types, TYPE_FORMATS);
+    assert.ok(child.dedupKey.startsWith(`qbank:${BATCH_ID}:MCQ:MEDIUM:`));
   }
 });
 
-// ── 2. Large bucket is split so no child exceeds maxPerJob ────────────
-
-test('bucket larger than maxPerJob splits into sub-batches of <= maxPerJob', () => {
-  const result = plan([bucket('MCQ', 'HARD', 25)], 10);
-
-  assert.equal(result.children.length, 3, '25/10 -> three children');
-  assert.deepEqual(
-    result.children.map((c) => c.payload.params.count),
-    [10, 10, 5],
-    'counts preserved exactly',
-  );
-  assert.equal(result.totalQuestions, 25);
-  for (const child of result.children) {
-    assert.ok(child.payload.params.count <= 10);
-    assert.deepEqual(child.payload.params.questionType, 'MCQ');
-    assert.deepEqual(child.payload.params.difficulty, 'HARD');
-  }
-});
-
-// ── 3. Split children stay unique per slot while sharing the batch ────
-
-test('split sub-batches share batchId but carry distinct dedupKey slots', () => {
-  const result = plan([bucket('MCQ', 'MEDIUM', 22)], 10);
-
-  assert.equal(result.children.length, 3);
-  const keys = result.children.map((c) => c.dedupKey);
-  assert.equal(new Set(keys).size, 3);
-  for (const key of keys) assert.ok(key.startsWith(`qbank:${BATCH_ID}:MCQ:MEDIUM:`));
-  for (const child of result.children) assert.equal(child.payload.batchId, BATCH_ID);
-});
-
-// ── 4. Zero-count buckets produce no child, and never a slot with 0 ───
+// ── 5. Zero-count buckets produce nothing ─────────────────────────────
 
 test('zero-count buckets are dropped and no child asks for 0 questions', () => {
-  const result = plan([bucket('MCQ', 'EASY', 0), bucket('TRUE_FALSE', 'HARD', 4)]);
+  const result = plan([bucket('MCQ', 'EASY', 0), bucket('TRUE_FALSE', 'HARD', 0)]);
 
-  assert.equal(result.children.length, 1, 'only the positive bucket plans a child');
-  assert.equal(result.children[0].payload.params.count, 4);
-});
-
-// ── 5. Custom batch size is clamped to the worker MAX_QUESTION_COUNT ──
-
-test('maxPerJob above MAX_QUESTION_BATCH_SIZE clamps to the worker ceiling', () => {
-  const result = plan([bucket('MCQ', 'MEDIUM', 120)], MAX_QUESTION_BATCH_SIZE + 20);
-
-  assert.ok(result.children.every((c) => c.payload.params.count <= MAX_QUESTION_BATCH_SIZE));
-  assert.equal(result.totalQuestions, 120);
-});
-
-// ── 6. Multiple buckets keep per-type independence (parallel batches) ──
-
-test('multi-bucket request keeps one job per slot with exact preserved totals', () => {
-  const result = plan(
-    [bucket('MCQ', 'EASY', 3), bucket('MCQ', 'HARD', 17), bucket('LONG_ANSWER', 'MEDIUM', 21)],
-    10,
-  );
-
-  // MCQ/EASY 3 -> 1, MCQ/HARD 17 -> 10+7, LONG_ANSWER/MEDIUM 21 -> 10+10+1
-  assert.equal(result.children.length, 6);
-  assert.equal(result.totalQuestions, 41);
-
-  const mcqHard = result.children.filter(
-    (c) => c.payload.params.questionType === 'MCQ' && c.payload.params.difficulty === 'HARD',
-  );
-  assert.deepEqual(
-    mcqHard.map((c) => c.payload.params.count).sort((a, b) => a - b),
-    [7, 10],
-  );
-});
-
-// ── 7. Default batch size used when omitted ───────────────────────────
-
-test('default batch size is DEFAULT_QUESTION_BATCH_SIZE', () => {
-  const result = plan([bucket('MCQ', 'EASY', DEFAULT_QUESTION_BATCH_SIZE + 1)]);
-  assert.equal(result.children.length, 2);
+  assert.equal(result.children.length, 0);
+  assert.equal(result.totalQuestions, 0);
 });
