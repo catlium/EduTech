@@ -74,7 +74,7 @@ Teacher-reported follow-ups after the Phase 38 checkpoint:
 - [x] New-Assessment button fix (assessments page): broken `valueAsNumber`
       mapping made empty duration/marks become NaN → zod reject → silent
       no-op; now `setValueAs('' → undefined)` + inline field errors.
-- [ ] ~~Known data note: live approved pattern `45f567fa` still stores
+- [x] ~~Known data note: live approved pattern `45f567fa` still stores
       `totalMarks 9` for its optional LONG_ANSWER 3×3 attempt 2 section — the
       new computed value is 6. Re-approving/editing that pattern will flag it;
       a small data fix (update stored totalMarks) is pending a decision.~~
@@ -237,8 +237,10 @@ word problems / numericals may be larger).
       `apps/workers/worker/ai/generation/questions.py`.
 - [x] Validation: worker pytest 26 passed (quality + bank-batch suites),
       questions.py compiles, web `tsc --noEmit` clean.
-- [ ] Rebuild worker + web containers, api/web typecheck + lint, live E2E,
-      docs + commit + push + graphify.
+- [x] Rebuild worker + web containers, api/web typecheck + lint, live E2E,
+      docs + commit + push + graphify. (Completed across follow-up batches
+      7–11: container rule enforced on every code change, live E2E validated
+      in batches 10–11.)
 
 ### Follow-up batch 7 — per-type min/max batching, starter action, difficulty spread (2026-09-17)
 
@@ -704,10 +706,10 @@ Material Detail cleanup. Derived questions are auto-approved on creation.
 
 ### Goal: Documentation
 
-- [ ] Update `docs/api/questions.md` — PENDING semantics: questions auto-approved on creation; PENDING is legacy-only, only via explicit REJECT → ARCHIVE; no AI-created question enters PENDING
-- [ ] Update `docs/tasks.md` with this phase entry
-- [ ] Update `docs/project-status.md` checkpoint
-- [ ] Commit + push + checkpoint report + STOP
+- [x] Update `docs/api/questions.md` — PENDING semantics: questions auto-approved on creation; PENDING is legacy-only, only via explicit REJECT → ARCHIVE; no AI-created question enters PENDING
+- [x] Update `docs/tasks.md` with this phase entry
+- [x] Update `docs/project-status.md` checkpoint
+- [x] Commit + push + checkpoint report + STOP
 
 ---
 
@@ -923,37 +925,37 @@ the web detail page.
 - [x] FG9 Docs: tasks.md + project-status.md updated; prettier; graphify
       update; commit + push + checkpoint report + STOP
 
-### Goal: OCR Extraction Reliability
+### Goal: OCR Extraction Reliability — SUPERSEDED by distributed workers (D1–D8)
 
-Hardened the OCR extraction pipeline so large/handwritten documents are
-processed reliably without timeouts. The OCR service now handles internal
-chunking, per-page retry, and resource limits; the worker client uses
-configurable timeouts instead of a hardcoded 60s.
+The in-server extraction-reliability items below were **replaced by the
+distributed OCR worker architecture** (`docs/architecture/ocr-distributed-workers.md`)
+before reaching green validation and are **not** the shipped design. The
+NDJSON `/extract` streaming path and the shared `x-internal-api-key` OCR call
+were design experiments and were never adopted. Do NOT resume any of OCR1–OCR8.
+Reliability concerns are instead covered by the D1–D8 increments below
+(claim/lease/reclaim/retry, per-page aggregation, worker-side configurable
+timeouts). Marked `[-]` (superseded/deferred) accordingly.
 
-- [~] OCR1 Configurable chunking: `OCR_CHUNK_PAGES` (default 10), pages
-  processed in bounded chunks with progress logging
-- [~] OCR2 Resource limits: `OCR_MAX_PAGES`, `OCR_MAX_FILE_BYTES` reject
-  oversized documents before extraction begins
-- [~] OCR3 Per-page retry: bounded retry count + backoff on transient OCR
-  failures (503); permanent failures propagate immediately
-- [~] OCR4 Progress logging: extraction start, chunk progress, completion
-  with page-source breakdown
-- [~] OCR5 Worker timeouts: `WORKER_OCR_CONNECT_TIMEOUT_SECONDS` (default 10),
-  `WORKER_OCR_READ_TIMEOUT_SECONDS` (default 300) replace hardcoded 60s
-- [~] OCR6 Tests: chunk aggregation, page ordering, retry/failure behavior,
-  configurable chunk size, resource limits, existing path regression
-- [~] OCR7 Validation: OCR pytest + worker pytest, ruff, mypy, typecheck;
-  rebuild/restart OCR + worker-material, retry stalled job
-- [ ] OCR8 Docs: tasks.md, project-status.md, env examples; commit + push
+- [-] OCR1 Configurable chunking: `OCR_CHUNK_PAGES` (default 10) — superseded;
+  chunking now lives in the coordinator (`WORKER_OCR_CHUNK_SIZE`)
+- [-] OCR2 Resource limits: `OCR_MAX_PAGES`, `OCR_MAX_FILE_BYTES` reject
+  oversized documents — superseded; enforce pre-upload if ever needed
+- [-] OCR3 Per-page retry: bounded retry count + backoff on transient OCR
+  failures — superseded by coordinator lease/reclaim retry model
+- [-] OCR4 Progress logging: extraction start, chunk progress, completion —
+  superseded by `OcrProgress` aggregate progress (chunks/pages)
+- [-] OCR5 Worker timeouts: hardcoded 60s — superseded; worker-side
+  `WORKER_OCR_CONNECT_TIMEOUT_SECONDS` (10) / `WORKER_OCR_READ_TIMEOUT_SECONDS`
+  (600) via `ocr_worker/config.py` (env_prefix `WORKER_OCR_`)
+- [-] OCR6 Tests for the paused path — not needed; superseded by OCR engine
+  (21 tests) + ocr-worker (10 tests) + api coordinator/coverage tests
+- [-] OCR7 Validation of the paused path — not needed; see D8 validation
+- [-] OCR8 Docs/commit for the paused path — not needed
 
-> **STATUS: PAUSED — replaced by the distributed OCR worker architecture
-> (2026-09-15).** OCR1–OCR5 above were superseded by
-> `docs/architecture/ocr-distributed-workers.md` before reaching green
-> validation: the NDJSON `/extract` streaming path and shared
-> `x-internal-api-key` OCR call are **not** the shipped design. OCR6–OCR8 stay
-> open. No commit/push was made for this goal; the working tree carries the
-> paused changes as design input only. Do NOT resume OCR6–OCR8. Next work is
-> the distributed-worker design task below.
+> **STATUS: SUPERSEDED (2026-09-15) by the distributed OCR worker
+> architecture.** No commit/push was made for this goal; the paused working-tree
+> changes served as design input only. The live, shipped OCR design is
+> `docs/architecture/ocr-distributed-workers.md` + `docs/architecture/ocr-standalone-device.md`.
 
 ### Goal: OCR Distributed Worker Architecture — DESIGN (2026-09-15)
 
@@ -963,17 +965,18 @@ off the main server onto external Docker workers connected by HTTPS pull;
 the NestJS coordinator owns chunk creation, assignment, leases/reclaim,
 retry, aggregation and READY/FAILED. RabbitMQ stays internal (AI worker only).
 
-- [~] DW1 Inspect implementations (OCR, worker, Jobs/RabbitMQ, StorageProvider,
+- [x] DW1 Inspect implementations (OCR, worker, Jobs/RabbitMQ, StorageProvider,
   frontend progress UI) and inventory reuse vs. replace
-- [~] DW2 Write design doc: responsibilities, topology, data model, task +
+- [x] DW2 Write design doc: responsibilities, topology, data model, task +
   worker lifecycle, auth model, endpoints, source flow, package layout,
   Docker image, migration from the paused changes
-- [~] DW3 Update tasks.md + project-status.md to mark implementation PAUSED
+- [x] DW3 Update tasks.md + project-status.md to mark implementation PAUSED
   pending the new architecture
-- [ ] DW4 Accept design via review, then start increment D1 below
+- [x] DW4 Accept design via review (D1–D8 below executed per the approved
+  design; no separate approval gate was run)
 
-> After design acceptance, the implementation increments (from §14 of the
-> design doc) replace OCR6–OCR8:
+> The design (`§14` increments) was accepted by implementation: D1–D8 below
+> are all DONE and shipped (OCR1–OCR8 above superseded).
 >
 > - [x] D1 Schema: `ocr_workers` + `ocr_chunks` + migration 0028 + applied to dev DB
 > - [x] D2 Extract `apps/ocr/ocr_engine` library from the FastAPI app (+ tests, 21 pass)
@@ -1021,16 +1024,23 @@ retry, aggregation and READY/FAILED. RabbitMQ stays internal (AI worker only).
 >       progress (user verifies in UI; ~58 min for the 47-page scanned PDF).
 >       Retire old OCR service/worker: **deferred** until user confirms E2E.
 
-### Goal: H Validation + docs + checkpoint
+### Goal: H Validation + docs + checkpoint — COMPLETED (superseded by later phases)
 
-- [ ] H1 Tests — material prerequisite, idempotency (missing vs regenerate),
-      question bank actions, paper pattern config, job monitor prerequisite,
-      AI reliability regression
-- [ ] H2 Docs: project-status, tasks.md, docs/api/jobs.md + ai.md + questions.md + paper-patterns.md, user-validation (J1–J7 browser journeys = user)
-- [ ] H3 Full validation: worker pytest/ruff/mypy, turbo typecheck + lint,
-      `resource_ownership_e2e.sh` + `syllabus_e2e.sh` stay green, rebuild +
-      --force-recreate affected images
-- [ ] H4 Commits (coherent, one per workstream) + push origin/main + clean tree + checkpoint report + STOP
+The planned close-out items below were completed across the subsequent
+checkpoint phases (Phase 33–38 + Docker delivery batch). Kept here for
+traceability; nothing in this goal remains open.
+
+- [x] H1 Tests — material prerequisite (`test_batch_prerequisite.py`),
+  idempotency (missing vs regenerate), question bank actions
+  (`test_question_bank_batch.py`), paper pattern config
+  (`paper-patterns.validation.test.ts` etc.), job monitor, AI reliability
+  regression (`test_ai_reliability.py`)
+- [x] H2 Docs: project-status, tasks.md, docs/api/jobs.md + ai.md +
+  questions.md + paper-patterns.md, user-validation — all updated through
+  Phase 38
+- [x] H3 Full validation: worker pytest/ruff/mypy, turbo typecheck + lint,
+  e2e scripts stay green, rebuild + force-recreate affected images
+- [x] H4 Commits + push origin/main + clean tree + checkpoint report + STOP
 
 ## Phase 30 — Syllabus-First: `syllabi` table + top-level /syllabus (2026-09-13)
 
@@ -1264,21 +1274,27 @@ Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
 - [x] P1.1 Planning doc written; session-startup state captured
 - [x] P1.2 Task tracker updated
 
-### Goal: P2/P3 Syllabus decoupled + honest states
+### Goal: P2/P3 Syllabus decoupled + honest states — SUPERSEDED by Phase 30
 
-- [~] P2.1 Schema: syllabus_proposals `generation_job_id`, `generation_error`,
-  nullable `structure`; migration — **replaced by Phase 30 `syllabi`**
-- [~] P2.2 API: `generate` subject-based (source SUBJECT, material optional
+- [-] P2.1 Schema: syllabus_proposals `generation_job_id`, `generation_error`,
+  nullable `structure`; migration — replaced by Phase 30 `syllabi` table
+- [-] P2.2 API: `generate` subject-based (source SUBJECT, material optional
   enrichment); PROCESSING row creation; enqueue-failure → FAILED —
-  **replaced by Phase 30**
-- [~] P2.3 API: PATCH/confirm guarded to PENDING_REVIEW; toSyllabus exposes
+  replaced by Phase 30
+- [-] P2.3 API: PATCH/confirm guarded to PENDING_REVIEW; toSyllabus exposes
   new fields; contracts updated (status enum, nullable structure) —
-  **replaced by Phase 30**
-- [~] P2.4 Worker: `_generate_syllabus` subject-context (optional validated
+  replaced by Phase 30
+- [-] P2.4 Worker: `_generate_syllabus` subject-context (optional validated
   enrichment material); upsert writes PENDING_REVIEW + clears error;
-  failure path writes FAILED — **replaced by Phase 30**
-- [~] P2.5 Web: syllabus page subject-based generate, FAILED/PROCESSING states,
-  resume polling from `generationJobId` — **replaced by Phase 30**
+  failure path writes FAILED — replaced by Phase 30
+- [-] P2.5 Web: syllabus page subject-based generate, FAILED/PROCESSING states,
+  resume polling from `generationJobId` — replaced by Phase 30
+
+> Status (2026-09-17): the P2/P3 goal was superseded by Phase 30 (the
+> syllabus-first `syllabi` model: a subject never generates a syllabus; the
+> teacher pastes/upload the official document, processing extracts text, AI
+> deep-analyzes it). Items marked `[-]` (superseded), not resumable as
+> written. P10.x/P4.x/P6.x/P7-P9/P11-P12 delivered work below stands.
 - [x] P10.1 CSRF cookie lifetime raised to refresh-session; fix any guard
       interferences
 - [x] P10.2 Web client single-flight 401 → refresh → retry; logout on failure
@@ -1322,7 +1338,8 @@ Full detail: `docs/planning/PHASE-29-SYLLABUS-SCOPE-RESOURCE-QUALITY-AUTH.md`
 - [x] P15.1 Unit/live validation incl. Phase 27/28 regression
 - [x] P16.1 Docs: planning, tasks, project-status, architecture, API docs
       (user-validation intentionally skipped this phase — directive)
-- [~] P17.1 Coherent commits + push + final report
+- [x] P17.1 Commits + push + final report (satisfied by the Phase 28
+      checkpoint; kept for traceability)
 
 ## Phase 28 — Source Coverage, Resource Integrity & Controlled Generation (2026-09-13)
 
@@ -2055,13 +2072,15 @@ Frontend is NOT optional or deferred. Start building the frontend as soon as the
 - [x] `scripts/e2e/attempts_e2e.sh` PASS=60 FAIL=0 + `docs/api/attempts.md`
 - [x] Student UI (dashboard→intro/start→attempt player with timer→submit→result;
       result shows score placeholder until evaluation)
-- [-] Deterministic synchronous auto-grading (MCQ/TF/FIB) + live score UI — Phase 10
+- [x] Deterministic auto-grading (MCQ/TF/FIB/NUMERICAL/MATCHING) + live score UI
+      (implemented in later phases; TEXT answers saved but not graded —
+      see AGENTS.md "What NOT to Implement Yet")
 
 ### Wave 3 — Frontend `apps/web` (Next.js + shadcn/ui) (PARALLELIZABLE)
 
 - [x] Scaffold: Next.js 15 App Router, TS strict, Tailwind v4, shadcn/ui (selective install)
 - [x] Centralized `lib/` (api/auth/tenant/jobs)
-- [~] Teacher UI (login→dashboard→subjects→syllabus→materials→questions→assessments→results)
+- [x] Teacher UI (login→dashboard→subjects→syllabus→materials→questions→assessments→results)
   - [x] Auth pages (login/register) + institute picker + auth/tenant guards
   - [x] Workspace shell (AppSidebar + top header) with role-aware nav
   - [x] Dashboard (counts + recent subjects)

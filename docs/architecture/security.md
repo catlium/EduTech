@@ -91,13 +91,16 @@ roles }` to the request.
   `JobsService.getJob` filters by both `jobId` and `instituteId`), so a member
   of institute A cannot read or mutate institute B resources.
 - `RolesGuard` + `@RequiredRoles(...)` gate handlers on the roles resolved
-  from `membership_roles`. No current handler uses roles yet; the guard is
-  wired and ready.
+  from `membership_roles` (e.g. write routes across exam/exports/OCR admin
+  require `INSTITUTE_ADMIN`/`TEACHER`). The guard defaults to ALLOW when no
+  `@RequiredRoles` is present, so every privileged route must decorate
+  explicitly.
 
 ## Internal Service Authentication (`x-internal-api-key`)
 
-Internal HTTP services (workers → OCR, and any future API-internal callers)
-authenticate with the **`x-internal-api-key`** header convention:
+Internal HTTP calls between platform services (workers → OCR service, and any
+omics API-internal callers) authenticate with the **`x-internal-api-key`**
+header convention:
 
 - The API and OCR read the shared secret from env (`INTERNAL_API_KEY`,
   `OCR_INTERNAL_API_KEY` in compose). Empty in local dev = open (loopback
@@ -107,6 +110,12 @@ authenticate with the **`x-internal-api-key`** header convention:
 - Workers send the key only when configured — they never assume it exists.
 - Worker → OmniRoute is NOT part of this convention: it uses OmniRoute's
   native OpenAI-compatible `Authorization: Bearer <endpoint key>`.
+- **Distributed OCR workers use a separate per-worker credential**, not
+  `x-internal-api-key`: each registered worker gets an `owr_…` API key shown
+  exactly once (`OcrWorkerAuthGuard`). Requests carry `x-worker-id` +
+  `Authorization: Bearer <key>` over HTTPS pull. Registry-level Auth Guard
+  covers the worker endpoints (see
+  `docs/architecture/ocr-distributed-workers.md` §7).
 
 ## Validated Flows (2026-08-19)
 

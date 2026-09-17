@@ -176,8 +176,12 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml \
 
 # Production (single build + run; NEVER combine with dev/demo overrides):
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-# Tag & push the same images for registry-based deploys:
-docker compose -f docker-compose.yml -f docker-compose.prod.yml push
+# Tag & push the 5 app images for registry-based deploys. Only api/web/
+# worker-ai/worker-material/ocr are retagged (postgres/redis/rabbitmq/omniroute
+# stay upstream and are NOT pushed):
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml push \
+  api web worker-ai worker-material ocr
 ```
 
 #### Docker build caching (keep it fast)
@@ -235,13 +239,24 @@ Use `docker compose up -d --build <svc>` for a targeted rebuild; never report
 
 ### What NOT to Implement Yet
 
-Do NOT implement any business logic until Phase 1:
+The core platform is fully built — Authentication, Users, Institutes, Roles,
+Academic structure, Content, Materials, OCR processing, AI generation,
+Flashcards, Notes, Cornell notes, Questions, Examination, Export, Practice,
+Attempts, Syllabus, and Paper Patterns are all implemented and live.
 
-- Authentication, Users, Institutes, Roles
-- Academic structure, Content, Materials
-- OCR processing, AI generation
-- Flashcards, Notes, Cornell notes
-- Questions, Examination, FORM, OMR, OSM
+Do NOT implement:
+- **FORM** (online answer sheet), **OMR** (optical mark recognition),
+  **OSM** (on-screen marking) — checking-system features; no code exists yet.
+- **Full Academic Export redesign** (per-topic/per-resource export, richer
+  formats) — deferred until the directive is scheduled.
+- **Question versioning, question-set delete/merge** — not requested yet.
+- **TEXT/essay auto-grading** — attempts save TEXT answers but never grade
+  them (checks are MCQ/TF/FIB/NUMERICAL/MATCHING only); grading belongs to the
+  deferred FORM/OMR/OSM checking-system work.
+- **Practice scoring/attempts** — practice is deliberately ungraded per-item
+  instant feedback with reveal; adding scoring would change that contract.
+- **Per-attempt/attempt-N-of-M mechanics and auto-replenishment after
+  selection** — documented as known remaining work, not scheduled.
 
 ## Checkpoint and Continuity Rules
 

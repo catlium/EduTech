@@ -45,6 +45,10 @@ venv/
 npm-debug.log*
 pnpm-debug.log*
 
+# AI coding-session artifacts (session dumps, ad-hoc HTTP/error captures)
+session-ses_*.md
+gs.json
+
 # Testing
 coverage/
 

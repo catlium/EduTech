@@ -166,7 +166,13 @@ If the retry also fails, `job B` becomes `failed` and a later retry creates
   `TEXT`, `UPLOADED`, `QUEUED`, `PROCESSING`, `READY`, and `ARCHIVED`.
 
 Both create a `MATERIAL_PROCESS` job (`payload: { materialId }`) — the same
-worker path — so a retry is just a new attempt of the same operation.
+path — so a retry is just a new attempt of the same operation. Since the
+distributed OCR rollout, MATERIAL_PROCESS is **coordinator-owned** (see
+`docs/architecture/ocr-distributed-workers.md`): the API never publishes it to
+RabbitMQ; the coordinator sweep adopts `queued` MATERIAL_PROCESS jobs and the
+external OCR workers drive them. The legacy RabbitMQ/`/extract` worker path
+below remains live **only** for `PROCESS_SYLLABUS` until that too is migrated
+to the coordinator.
 
 ### Retry authorization
 
@@ -195,13 +201,23 @@ would remove it; accepted for MVP).
 
 ## Async pipeline (implemented)
 
+> **Update (2026-09-17):** the diagram below is the **legacy** path that applied
+> before the distributed OCR rollout. TODAY materials flow through the OCR
+> coordinator + external pull workers (`docs/architecture/ocr-distributed-workers.md`):
+> the API inserts a `MATERIAL_PROCESS` job, the coordinator sweep adopts
+> `queued` jobs, chunks them, and external OCR workers pull chunks over HTTPS;
+> aggregation writes `text_content` and READY. The legacy RabbitMQ→worker→
+> `/extract` path shown below is retained here only to document the syllabus
+> pipeline (`PROCESS_SYLLABUS`), which has NOT yet been migrated to the
+> coordinator.
+
 ```
 POST /materials/:id/process (202)   ← initial extraction (UPLOADED)
 POST /materials/:id/retry (202)     ← explicit retry (FAILED → QUEUED)
         ↓  material → QUEUED
 Job created (MATERIAL_PROCESS, payload { materialId })
         ↓
-RabbitMQ 'jobs' queue (plain JSON)
+RabbitMQ 'jobs' queue (plain JSON)     ← legacy — coordinator-owned today
         ↓
 Python worker (pika consumer)
         ↓  job → processing, material → PROCESSING
@@ -258,10 +274,18 @@ containerized, mount a shared volume (option A); a future S3-backed provider
 would make the worker use the storage provider client instead of the
 filesystem (the `storage_key` abstraction is unchanged).
 
-## OCR service contract
+## OCR service contract (legacy — superseded for materials)
 
 Internal HTTP contract between the worker and the OCR service
 (`http://localhost:8000`, `WORKER_OCR_URL`):
+
+> **Status: SUPERSEDED (2026-09-15).** Materials no longer use this contract —
+> they route through the OCR coordinator + external pull workers
+> (`docs/architecture/ocr-distributed-workers.md`). This section documents the
+> legacy FastAPI OCR service, still used by `PROCESS_SYLLABUS` until the
+> syllabus path is also migrated. The extraction engine itself lives on in
+> `apps/ocr/ocr_engine/` (shared by the FastAPI app and the standalone worker
+> image).
 
 - `GET /health` → `{ "status": "ok", "service": "catlium-ocr" }`
 - `POST /extract` — `multipart/form-data` with a `file` field.
@@ -290,8 +314,8 @@ plaintext lives on a material:
 
 ### Tiered local extraction (implemented)
 
-`apps/ocr/app/extraction.py` implements a deterministic, **local** pipeline
-(no external OCR vendor):
+`apps/ocr/ocr_engine/` implements the deterministic, **local** extraction
+pipeline (no external OCR vendor):
 
 ```
 input file

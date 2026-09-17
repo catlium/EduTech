@@ -1,12 +1,14 @@
 # OCR Distributed Worker Architecture
 
-**Status: D1–D8 implemented; automated validation green; live E2E in
-progress (dev worker registered + running). Old OCR flow retirement deferred
-until the user confirms the E2E in the UI.**
-**HEAD: `e7a0bed` (D7).** D8 fixes (requeue routing, worker config guard,
-job cancel, archived-hidden listing, claimed→processing/progress UI) are
-committed below. The paused monolith-OCR changes remain uncommitted and are
-design input only — nothing about the old flow is committed.
+**Status: D1–D8 implemented, shipped, and live (2026-09-17).** The coordinator
+owns MATERIAL_PROCESS (claim/lease/reclaim/retry/aggregation); containers have
+been rebuilt on the new images and the dev OCR worker is registered and
+running. **The legacy OCR flow is NOT yet retired** — `apps/ocr` (FastAPI +
+`/extract`), `worker-material`, and the `PROCESS_SYLLABUS` path through them
+remain live until the user confirms the distributed E2E; see §11(b)/§12
+retirement notes. `WORKER_OCR_URL`/`WORKER_INTERNAL_API_KEY` are still in use
+by the legacy path.
+**HEAD: `e7a0bed` (D7); D8 + later container-rebuild fixes shipped subsequently.**
 
 > Supersedes the in-progress monolith OCR workstream: internal chunking,
 > NDJSON `/extract` streaming, worker-side streaming progress, and the
@@ -298,7 +300,8 @@ apps/
   - `WORKER_OCR_SERVER_URL=https://<host>/api/v1`
   - `WORKER_OCR_WORKER_ID=<uuid>`
   - `WORKER_OCR_API_KEY=owr_...`
-  - `WORKER_OCR_CHUNK_LEASE_SECONDS`, heartbeats, retries, paddle options.
+  - `WORKER_OCR_CHUNK_SIZE`, `WORKER_OCR_LEASE_SECONDS` (server-side),
+    heartbeats, retries, paddle options.
 - Compose dev adds an `ocr-worker` service (same image) for local validation;
   the old `ocr` (FastAPI service) and the `worker-material` OCR path are
   removed once the distributed path is green (§12).
@@ -324,18 +327,23 @@ apps/
 ### (b) Replace / remove (incompatible with distributed chunk workers)
 
 - `apps/ocr/app/main.py` NDJSON `/extract` (StreamingResponse + `iter_pdf_events`)
-  — the pull-task protocol replaces it; there is no HTTP OCR service anymore.
+  — the pull-task protocol replaces it for the distributed path; the FastAPI
+  `/extract` endpoints remain live for the not-yet-retired `PROCESS_SYLLABUS`
+  path (see header status).
 - `apps/workers/worker/ocr.py` httpx streaming client — replaced by
-  `ocr_worker` claim/source/result client.
+  `ocr_worker` claim/source/result client (still used by the legacy syllabus
+  path until retirement).
 - `apps/workers/worker/processing.py` `_run_extraction` full-file flow —
-  replaced by coordinator chunk lifecycle.
-- `apps/workers/worker/consumer.py` material/syllabus consumers — removed;
-  RabbitMQ stays only for the AI worker.
+  replaced by coordinator chunk lifecycle (still live for syllabus).
+- `apps/workers/worker/consumer.py` material/syllabus consumers — to be
+  removed after retirement; RabbitMQ stays only for the AI worker. Today the
+  worker still runs the syllabus (legacy) consumer.
 - `ocr` FastAPI compose service + `worker-material` compose service — removed
-  after validation.
-- Not needed anymore: `x-internal-api-key` for OCR (worker uses its own
-  credential), `WORKER_OCR_URL`, `WORKER_INTERNAL_API_KEY`, shared
-  `WORKER_STORAGE_DIR`.
+  only AFTER the user confirms the distributed E2E (still present today).
+- Not needed anymore (for the distributed path): `x-internal-api-key` for OCR
+  (worker uses its own credential), shared `WORKER_STORAGE_DIR`. NB:
+  `WORKER_OCR_URL`/`WORKER_INTERNAL_API_KEY` are STILL in use by the legacy
+  syllabus path and must be removed together with it.
 
 ### (c) Migration sequence (incremental, each step shippable)
 
@@ -360,17 +368,22 @@ apps/
 
 ## 12. Compatibility
 
-- **Jobs/RabbitMQ:** reuses `jobs` rows, cancel, retry, list. OCR job types
-  stop publishing to RabbitMQ; AI types unchanged (`ai_generation`). No second
-  "job system" — `ocr_chunks` is the task layer beneath the existing job row.
+- **Jobs/RabbitMQ:** reuses `jobs` rows, cancel, retry, list. MATERIAL_PROCESS
+  no longer publishes to RabbitMQ — the coordinator sweep adopts `queued`
+  MATERIAL_PROCESS jobs (implemented). AI types (`ai_generation`) stay on
+  RabbitMQ unchanged. **PROCESS_SYLLABUS still uses the legacy
+  worker→`/extract` path** (not yet migrated). No second "job system" —
+  `ocr_chunks` is the task layer beneath the existing job row.
 - **StorageProvider:** one interface addition (`read`); LocalStorageProvider
   implemented via `fs.readFile`; S3 later without protocol change.
-- **Materials/syllabi:** identical mechanics via `source_type`; syllabi chunk
-  flow can ship after materials (same coordinator, aggregate into
-  `syllabi.text_content`).
+- **Materials/syllabi:** identical mechanics via `source_type`; materials are
+  on the coordinator; syllabi chunk flow can ship after materials (same
+  coordinator, aggregate into `syllabi.text_content`) — pending.
 - **Contracts:** add `OcrChunkSchema`, `WorkerSchema`, `WorkerSummarySchema`,
   claim/result/fail request schemas; change `progress` in
-  `MaterialResponseSchema`. `RoleEnum` unchanged.
+  `MaterialResponseSchema`; `OcrChunk`/`OcrPageStatus`/`OcrPageDetail`/
+  `OcrPageListResponse`/`CreateOcrPageCorrectionRequest` for the inspection
+  API. `RoleEnum` unchanged.
 - **Tenancy:** chunks/jobs are tenant-scoped (`institute_id`); the worker
   registry is intentionally platform-global. Worker API has no `x-institute-id`
   (bearer auth only).

@@ -11,10 +11,12 @@
 #
 # The images are built from the same Dockerfiles as dev (they are shared),
 # but tagged `${IMAGE_PREFIX}:${VERSION}` in one pass, so the same build can
-# be pushed to a registry and rolled to other hosts:
+# be pushed to a registry and rolled to other hosts. Only the 5 app services
+# are retagged; postgres/redis/rabbitmq/omniroute stay upstream (NOT pushed):
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml push
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml push \
+#     api web worker-ai worker-material ocr
 #   # on any host:  ... -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # ⚠️  Production secrets must come from the root `.env` (cp .env.example .env

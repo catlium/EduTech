@@ -72,16 +72,17 @@ export function orderQuestionTypes(questionTypes: readonly string[]): string[] {
   return [...questionTypes].sort((a, b) => questionTypeRank(a) - questionTypeRank(b));
 }
 
-/** Deterministic digest of a document — the exported file is regenerated from
- * the same blocks, so a preview is valid only while its hash matches. */
+/** Deterministic digest of a document — a preview carries the digest so the
+ * client could compare it against a later export if it ever wanted a freshness
+ * check. */
 export function docDigest(doc: DocumentModel): string {
   return createHash('sha256').update(JSON.stringify(doc)).digest('hex');
 }
 
-/** Preview = the exact document export would produce, plus its digest. The
- * export endpoints re-build the document and compare hashes, so exporting is
- * only possible for content that has actually been previewed: a missing or
- * stale hash returns 409 — no UI/API bypass.
+/** Preview = the exact document export would produce, plus its digest. A
+ * preview is a convenience (same renderer, one shared source of truth), never
+ * a prerequisite: every export endpoint builds the document and exports it
+ * directly. No hash-gate/409 check is enforced.
  * (The rendered `html` is composed by the controller so this module stays free
  * of runtime imports — native node --test type-stripping can run it directly.) */
 export interface ExportPreview {

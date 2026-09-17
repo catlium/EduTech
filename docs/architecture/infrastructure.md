@@ -15,12 +15,19 @@ Browser ──► Web app (apps/web, Next.js, public :3001)
            API (NestJS)  ◄── public, port 3000
                  │
                  ├──► PostgreSQL  ├──► Redis   ├──► RabbitMQ
-                 │
-                 └──► worker-material ──► OCR service (FastAPI, port 8000)
-                                               └─ PyMuPDF / PaddleOCR (local)
-                 worker-ai ──► OmniRoute AI gateway (port 20128)
-                                └─ cloud LLM (OpenAI-compatible)
+│
+                  └──► worker-material ──► OCR service (FastAPI, port 8000)
+                                                └─ PyMuPDF / PaddleOCR (local)
+                  worker-ai ──► OmniRoute AI gateway (port 20128)
+                                 └─ cloud LLM (OpenAI-compatible)
 ```
+
+> **Update (2026-09-17):** OCR is now the **distributed pull-worker** topology
+> (`docs/architecture/ocr-distributed-workers.md`): the NestJS coordinator owns
+> a `worker-material`-style job for MATERIAL_PROCESS (no RabbitMQ publish), and
+> external `ocr-worker` images pull chunks over HTTPS. The legacy
+> `worker-material → OCR service /extract` arm above remains live only for
+> `PROCESS_SYLLABUS` until retirement. RabbitMQ stays internal (AI worker only).
 
 ### Compose layout
 
@@ -38,6 +45,9 @@ Compose files live at the **repo root** (Dockerfiles stay in
   **mock AI** service plus an idempotent one-shot **seed** (demo users + all
   E2E fixture institutes/users) so a full demo + every suite is runnable from
   a single command. The API/web start only after the seed completes.
+- `docker-compose.prod.yml` — production override merged with the base: single
+  `up -d --build`, restart policies, resource limits, log rotation, and
+  `image: ${IMAGE_PREFIX}/<svc>:${VERSION}` tags. NEVER combined with dev/demo.
 
 ```bash
 # Base (internal services stay private; web + api public):
@@ -49,6 +59,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 # Demo (seeded data + mock AI, internal only):
 docker compose -f docker-compose.yml \
                -f docker-compose.dev.yml -f docker-compose.demo.yml up --build
+
+# Production (single final build; see docs/architecture/deployment.md):
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 ### Internal services
@@ -60,7 +73,8 @@ docker compose -f docker-compose.yml \
 | PostgreSQL 17 | 5432               | dev override (loopback) | Primary database                          |
 | Redis 7       | 6379               | dev override (loopback) | Cache / rate limiting                     |
 | RabbitMQ 3    | 5672 (+15672 mgmt) | dev override (loopback) | Async job queues (API -> workers)         |
-| OCR (FastAPI) | 8000               | dev override (loopback) | Local document extraction                 |
+| OCR (FastAPI, legacy) | 8000               | dev override (loopback) | Local document extraction (syllabus path, not retired) |
+| ocr-worker (distributed, dev only) | HTTPS pull (outbound to API) | none | External OCR worker (`Dockerfile.ocr-worker`); outside the main compose boundary |
 | OmniRoute     | 20128              | dev override (loopback) | Internal AI gateway (OpenAI-compatible)   |
 | mock AI       | 8899               | none (demo profile)     | Deterministic canned responses (demo)     |
 
@@ -69,12 +83,16 @@ docker compose -f docker-compose.yml \
 Internal HTTP callers use the **`x-internal-api-key`** header convention,
 backed by a shared `INTERNAL_API_KEY` env secret:
 
-- `worker-material` → OCR `POST /extract` sends `x-internal-api-key`.
+- `worker-material` → OCR `POST /extract` sends `x-internal-api-key` — this is
+  the **legacy** OCR path (syllabus only, not yet retired).
 - The OCR service rejects `/extract` with 401 when the key is configured and
   the header is missing/mismatched.
 - Empty key = open (local dev, loopback-only). Production **must** set it.
 - Worker → OmniRoute uses OmniRoute's native `Authorization: Bearer <endpoint key>`
   (OpenAI-compatible) — no custom header needed there.
+- **Distributed OCR workers use a per-worker `owr_…` credential + bearer
+  auth, not `x-internal-api-key`** (`OcrWorkerAuthGuard`; see
+  `docs/architecture/ocr-distributed-workers.md`).
 
 ### Env
 
@@ -134,9 +152,12 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
 - Managed Postgres/Redis/RabbitMQ can replace the containers without touching
   the boundary: the API and workers must reference the managed endpoints via
   env, but nothing accepts public traffic except the API and the web app.
-- The OCR image carries PaddleOCR (heavy). A persistent `paddle_models`
+- The OCR worker image carries PaddleOCR (heavy). A persistent `paddle_models`
   volume caches model downloads across rebuilds.
 - The web image builds the whole workspace and serves `next start` on 3001
   via `NODE apps/web/node_modules/next/dist/bin/next` (the `pnpm`/`.bin`
   shells are not on PATH inside the image). `NEXT_PUBLIC_API_URL` is a build
   ARG — changing it requires `docker compose build web`.
+- **Production build/deploy:** `docker-compose.prod.yml` builds and versions
+  the 5 app images in one pass. Registry-based roll-out and image ownership
+  responsibilities: see `docs/architecture/deployment.md`.
