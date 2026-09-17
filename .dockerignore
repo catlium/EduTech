@@ -50,3 +50,7 @@ coverage
 # Planning docs
 .planning
 docs
+
+# Graphify knowledge-graph output (regenerated, large)
+graphify-out
+.tmp
