@@ -7,13 +7,13 @@
 #     away from workspace routes to /login
 #   - a cookie-holder is allowed through to the workspace shell (page renders)
 #   - dynamic workspace routes neither crash (>=500) nor 404 for auth'd shells
-#   - the web origin may call the API (CORS preflight from localhost:3001)
+#   - the web origin may call the API (same-origin via nginx, no CORS)
 # Exits non-zero on any FAIL. Requires web reachable at $WEB_URL (the caller
 # must start it: docker compose up -d or pnpm dev:web).
 
 set -u
-WEB="${WEB_URL:-http://localhost:3001}"
-API="http://localhost:3000/api/v1"
+WEB="${WEB_URL:-http://localhost:8080}"
+API="http://localhost:8080/api/v1"
 BODY_FILE="/tmp/opencode/web_body.tmp"
 HDR_FILE="/tmp/opencode/web_hdr.tmp"
 PASS=0

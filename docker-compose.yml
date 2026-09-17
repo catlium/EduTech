@@ -140,9 +140,6 @@ services:
     build:
       context: .
       dockerfile: infrastructure/compose/Dockerfile.api
-      args:
-        # Inlined into the web bundle at build time (browser-visible URL).
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
     image: ${IMAGE_PREFIX:-catlium}/api:${VERSION:-latest}
     container_name: catlium-api
     # No host port mapping — nginx proxies /api/ -> api:3000.
@@ -171,16 +168,14 @@ services:
       retries: 10
       start_period: 20s
 
-  # Public client-facing web app (Next.js). It talks ONLY to the API
-  # (NEXT_PUBLIC_API_URL, baked into the bundle at build time — the value
-  # the BROWSER must use). Shares the workspace build image; runs `next start`.
+  # Public client-facing web app (Next.js). It talks to the API via RELATIVE
+  # /api/v1 (same origin) — nginx routes /api/* -> api:3000 — so nothing is
+  # baked at build time and the image works unchanged for dev and public hosts.
   web:
     <<: *prod-common-ts
     build:
       context: .
       dockerfile: infrastructure/compose/Dockerfile.api
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
     image: ${IMAGE_PREFIX:-catlium}/web:${VERSION:-latest}
     container_name: catlium-web
     working_dir: /app/apps/web

@@ -8,7 +8,7 @@ server retains answer fields (`correctChoiceId` / `correctAnswer` /
 evaluation, but they are never serialized in student responses — except in the
 dedicated Phase 10 `result` review after the attempt is submitted/expired.
 
-Base URL: `http://localhost:3000/api/v1` — all non-`/health` routes require the
+Base URL: `http://localhost:8080/api/v1` — all non-`/health` routes require the
 session cookie + `x-institute-id` header. The CSRF double-submit check
 (`x-csrf-token`) applies only to `POST /auth/refresh` and `POST /auth/logout`
 (see `docs/api/auth.md`), not to these routes.

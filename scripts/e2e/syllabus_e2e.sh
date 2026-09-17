@@ -15,7 +15,7 @@
 # Exits non-zero on any FAIL.
 
 set -u
-BASE="http://localhost:3000/api/v1"
+BASE="http://localhost:8080/api/v1"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CJ="/tmp/opencode/syl_ck.txt"
 CJS="/tmp/opencode/syl_ck_s.txt"

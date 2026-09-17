@@ -59,13 +59,11 @@ it keeps secrets out of the repo entirely.
    request. **Do NOT** add any route that points at Postgres/Redis/RabbitMQ/
    OmniRoute/OCR/workers/nginx/api/web directly.
 
-3. **Build the web bundle for the public origin.** `NEXT_PUBLIC_API_URL` is
-   baked into the web image at build time (docker-compose.yml build arg). For a
-   tunneled deployment build with:
-
-   ```bash
-   NEXT_PUBLIC_API_URL=https://app.example.com/api/v1 docker compose up -d --build
-   ```
+3. **No build-time URL needed.** The web calls the API via **relative
+   `/api/v1`** (same origin — nginx routes `/api/*` → `api:3000`, so the
+   browser, cookies and CSRF stay same-origin on the public host automatically,
+   and dev uses the identical image via `http://localhost:8080`). Nothing is
+   baked at build time; one web image serves every host.
 
 4. **Cookie/HTTPS posture** in the production `.env`:
 

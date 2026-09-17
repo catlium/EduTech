@@ -11,7 +11,7 @@
 # demo seed applied (teacher@catlium.dev).
 
 set -u
-BASE="http://localhost:3000/api/v1"
+BASE="http://localhost:8080/api/v1"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 JAR="/tmp/opencode/mat_teacher.txt"
 CJS="/tmp/opencode/mat_student.txt"

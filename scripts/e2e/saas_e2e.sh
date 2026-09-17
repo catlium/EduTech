@@ -13,8 +13,8 @@
 # uses only 3 logins.
 
 set -u
-BASE="http://localhost:3000/api/v1"
-WEB="http://localhost:3001"
+BASE="http://localhost:8080/api/v1"
+WEB="http://localhost:8080"
 BODY_FILE="/tmp/opencode/saas_body.tmp"
 JAR_A="/tmp/opencode/saas_admin.txt"
 JAR_T="/tmp/opencode/saas_teacher.txt"

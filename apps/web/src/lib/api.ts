@@ -1,4 +1,7 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+// Same-origin by default: nginx routes /api/* -> api:3000, so the browser can
+// call the API relative to the page origin (no bake-time URL, no CORS). Set
+// NEXT_PUBLIC_API_URL only to point the client at a DIFFERENT origin on purpose.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
 
 export class ApiError extends Error {
   status: number;

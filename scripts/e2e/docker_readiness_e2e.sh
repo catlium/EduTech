@@ -20,8 +20,8 @@
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT" || exit 1
-BASE="http://localhost:3000/api/v1"
-WEB="http://localhost:3001"
+BASE="http://localhost:8080/api/v1"
+WEB="http://localhost:8080"
 BODY_FILE="/tmp/opencode/rd_body.tmp"
 HDR_FILE="/tmp/opencode/rd_hdr.tmp"
 JAR="/tmp/opencode/rd_jar.txt"
@@ -87,11 +87,13 @@ ok "$code" 0 "RD-02c rabbitmq ping"
 code=$(curl -s http://localhost:8000/health -o /dev/null -w '%{http_code}')
 ok "$code" 200 "RD-02d ocr /health"
 
-echo "== RD-03 public boundary: only api:3000 + web:3001 published =="
-api_port=$(docker port catlium-api 3000 2>/dev/null || docker compose port api 3000 2>/dev/null)
-web_port=$(docker port catlium-web 3001 2>/dev/null || docker compose port web 3001 2>/dev/null)
-ok "$(printf '%s' "$api_port" | grep -c '0.0.0.0')" 1 "RD-03a api 3000 published on all interfaces"
-ok "$(printf '%s' "$web_port" | grep -c '0.0.0.0')" 1 "RD-03b web 3001 published on all interfaces"
+echo "== RD-03 public boundary: only nginx on loopback; api/web unpublished =="
+api_port=$(docker compose port api 3000 2>/dev/null)
+web_port=$(docker compose port web 3001 2>/dev/null)
+ok "$([ -n "$api_port" ] && echo 1 || echo 0)" 0 "RD-03a api has no host publish"
+ok "$([ -n "$web_port" ] && echo 1 || echo 0)" 0 "RD-03b web has no host publish"
+nginx_port=$(docker port catlium-nginx 80 2>/dev/null | sed -E 's/.*-> //' | head -1)
+ok "$(printf '%s' "$nginx_port" | grep -c '127.0.0.1')" 1 "RD-03c nginx only on loopback"
 # Internal services may be published ONLY on loopback (dev override). Any
 # non-loopback mapping of an internal port is a public-boundary violation.
 viol=0

@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const WEB_URL = process.env.WEB_URL || 'http://localhost:3001';
+export const WEB_URL = process.env.WEB_URL || 'http://localhost:8080';
 export const CHROME_BIN = process.env.CHROME_BIN || '/usr/bin/google-chrome';
 const CDP_PORT = 9222;
 

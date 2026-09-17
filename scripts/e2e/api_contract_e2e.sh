@@ -14,7 +14,7 @@
 # catlium-worker-material) so the single POST /jobs fixture job is not consumed.
 
 set -u
-BASE="http://localhost:3000/api/v1"
+BASE="http://localhost:8080/api/v1"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DB_URL="postgresql://catlium:catlium_dev_secret@localhost:5432/catlium_dev"
 CJ="/tmp/opencode/ct_teacher.txt"

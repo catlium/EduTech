@@ -8,7 +8,7 @@
 # with the idempotent demo seed applied (pnpm db:seed).
 
 set -u
-BASE="http://localhost:3000/api/v1"
+BASE="http://localhost:8080/api/v1"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DB_URL="postgresql://catlium:catlium_dev_secret@localhost:5432/catlium_dev"
 CJ="/tmp/opencode/att_teacher.txt"

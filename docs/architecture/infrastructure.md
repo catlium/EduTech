@@ -40,10 +40,11 @@ Compose files live at the **repo root** (Dockerfiles stay in
   the private Docker network; **nothing publishes a host port**. Includes the
   `nginx` reverse proxy (`cloudflared → nginx:80 → {web:3001 | api:3000}`) and
   the `tunnel` service (`cloudflared`, remote-managed via `TUNNEL_TOKEN`).
-- `docker-compose.dev.yml` — **DEVELOPMENT-ONLY** opt-in override that
-  republishes the web/API and internal services bound to `127.0.0.1` so
-  browser access and host-based tooling (drizzle studio, psql, host-run
-  workers, E2E suites) can reach them. Never used in production.
+- `docker-compose.dev.yml` — **DEVELOPMENT-ONLY** opt-in override. Publishes
+  ONLY nginx on `127.0.0.1:8080` (the single browser entry — it routes `/` →
+  web:3001, `/api/*` → api:3000) plus the internal services bound to
+  `127.0.0.1` for host-based tooling (drizzle studio, psql, host-run workers,
+  E2E suites). web/api publish nothing, even in dev. Never used in production.
 - `docker-compose.demo.yml` — demo profile: adds an internal deterministic
   **mock AI** service plus an idempotent one-shot **seed** (demo users + all
   E2E fixture institutes/users) so a full demo + every suite is runnable from
@@ -69,9 +70,9 @@ docker compose up -d --build
 
 | Service       | Internal port      | Exposed?                | Purpose                                   |
 | ------------- | ------------------ | ----------------------- | ----------------------------------------- |
-| nginx         | 80                 | none (private net)      | Reverse proxy: `/api/*` → api, `/` → web  |
-| Web app       | 3001               | dev override (loopback) | Next.js frontend (server-side auth guard) |
-| API (NestJS)  | 3000               | dev override (loopback) | NestJS API (behind nginx)                 |
+| nginx         | 80                 | dev override (loopback 8080) | Reverse proxy: `/api/*` → api, `/` → web  |
+| Web app       | 3001               | none (behind nginx)          | Next.js frontend (server-side auth guard) |
+| API (NestJS)  | 3000               | none (behind nginx)          | NestJS API (behind nginx)                 |
 | PostgreSQL 17 | 5432               | dev override (loopback) | Primary database                          |
 | Redis 7       | 6379               | dev override (loopback) | Cache / rate limiting                     |
 | RabbitMQ 3    | 5672 (+15672 mgmt) | dev override (loopback) | Async job queues (API -> workers)         |
@@ -138,13 +139,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
 
 | Service        | URL                                 | Note                            |
 | -------------- | ----------------------------------- | ------------------------------- |
-| Web app        | http://localhost:3001               | loopback (dev override)         |
-| API            | http://localhost:3000               | loopback (dev override)         |
-| API Health     | http://localhost:3000/api/v1/health | loopback (dev override)         |
-| OCR Service    | http://localhost:8000               | loopback-only (dev override)    |
-| OmniRoute UI   | http://localhost:20128              | loopback-only (dev override)    |
-| RabbitMQ UI    | http://localhost:15672              | loopback-only (dev override)    |
-| Drizzle Studio | Via `pnpm db:studio`                | uses Postgres on 127.0.0.1:5432 |
+| nginx / app    | http://localhost:8080               | THE app entry — nginx routes `/` → web:3001 and `/api/*` → api:3000 |
+| API Health     | http://localhost:8080/api/v1/health | same-origin through nginx        |
+| nginx health   | http://localhost:8080/health        | answered directly by nginx       |
+| OCR Service    | http://localhost:8000               | loopback-only (dev override)     |
+| OmniRoute UI   | http://localhost:20128              | loopback-only (dev override)     |
+| RabbitMQ UI    | http://localhost:15672              | loopback-only (dev override)     |
+| Drizzle Studio | Via `pnpm db:studio`                | uses Postgres on 127.0.0.1:5432  |
 
 ## Production Considerations
 
@@ -159,8 +160,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
   volume caches model downloads across rebuilds.
 - The web image builds the whole workspace and serves `next start` on 3001
   via `NODE apps/web/node_modules/next/dist/bin/next` (the `pnpm`/`.bin`
-  shells are not on PATH inside the image). `NEXT_PUBLIC_API_URL` is a build
-  ARG — changing it requires `docker compose build web`.
+  shells are not on PATH inside the image). The client calls the API via
+  relative `/api/v1` (same origin), so no build-time URL is baked in.
 - **Production build/deploy:** the single `docker-compose.yml` builds and
   versions the 6 app+edge images (`api`/`web`/`nginx`/`worker-ai`/
   `worker-material`/`ocr`) in one pass. Registry-based roll-out and image

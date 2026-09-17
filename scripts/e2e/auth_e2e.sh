@@ -6,13 +6,13 @@
 # memberships hub. Anonymous-access guards are asserted too. Since Phase 21
 # removed public self-registration, register must be 404 and the suite logs in
 # with the seeded demo teacher.
-# Exits non-zero on any FAIL. Requires a live dockerized API (localhost:3000).
+# Exits non-zero on any FAIL. Requires a live dockerized API (via nginx at http://localhost:8080).
 # NOTE: auth routes are throttled 5/min per route; this suite makes <=3 calls
 # per route so it never trips the limiter and is safe back-to-back with the
 # other suites. Requires the demo seed (teacher@catlium.dev).
 
 set -u
-BASE="http://localhost:3000/api/v1"
+BASE="http://localhost:8080/api/v1"
 BODY_FILE="/tmp/opencode/auth_body.tmp"
 JAR="/tmp/opencode/auth_jar.txt"
 TMP="/tmp/opencode"

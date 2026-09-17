@@ -39,7 +39,7 @@ docker compose push api web worker-ai worker-material ocr nginx
 | Image (tag `${IMAGE_PREFIX}/<svc>:${VERSION}`) | Source Dockerfile            | Runs                                                                          |
 | ----------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------- |
 | `api` | `infrastructure/compose/Dockerfile.api` (target `api`) | NestJS API (`node apps/api/dist/main.js`) on `:3000` — internal (behind nginx). |
-| `web` | same Dockerfile (target `web`, overridden CMD)          | Next.js `next start -p 3001` (internal, behind nginx). `NEXT_PUBLIC_API_URL` is a build ARG. |
+| `web` | same Dockerfile (target `web`, overridden CMD)          | Next.js `next start -p 3001` (internal, behind nginx). Client calls the API via relative `/api/v1` — no build-time URL baked. |
 | `nginx` | `infrastructure/nginx/Dockerfile`     | `nginx:alpine` reverse proxy — the ONLY app-facing boundary (`cloudflared -> nginx:80 -> {web:3001 | api:3000}`). No host port. |
 | `worker-ai` | `Dockerfile.python`           | Python RabbitMQ consumer — AI content/question generation via OmniRoute.        |
 | `worker-material` | `Dockerfile.python`       | Python consumer — syllabus + legacy OCR material path (until OCR retirement).   |
@@ -59,7 +59,7 @@ their registries.
 2. On the target host: create `.env` (root) with production values
    (`POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD`, `OMNIROUTE_*`,
    `WORKER_AI_API_KEY`, `INTERNAL_API_KEY`, `TUNNEL_TOKEN`, `IMAGE_PREFIX`,
-   `VERSION`, `NEXT_PUBLIC_API_URL`).
+   `VERSION`).
 3. Start the stack — compose pulls the tagged app+edge images and the upstream
    images:
    ```bash
@@ -92,7 +92,8 @@ From `.env.example` (never commit `.env`):
   `:-` defaults)
 - `WORKER_AI_PROVIDER_URL`, `WORKER_AI_API_KEY`, `INTERNAL_API_KEY`
 - `OMNIROUTE_*` (gateway creds/JWT secret)
-- `NEXT_PUBLIC_API_URL` (build ARG; changing it requires a rebuild)
+- `NEXT_PUBLIC_API_URL` — OPTIONAL, unset by default (client uses relative
+  `/api/v1` against the serving origin; only set to force a different origin)
 - `WORKER_OCR_*` registration/poll env for the OCR worker(s); server-side
   coordinator knobs (`WORKER_OCR_CHUNK_SIZE`, `WORKER_OCR_LEASE_SECONDS`,
   `WORKER_SWEEP_INTERVAL_MS`, `WORKER_OFFLINE_SECONDS`)

@@ -13,7 +13,7 @@
 # Exits non-zero on any FAIL.
 
 set -u
-BASE="http://localhost:3000/api/v1"
+BASE="http://localhost:8080/api/v1"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CJ="/tmp/opencode/pp_ck.txt"
 CJS="/tmp/opencode/pp_ck_s.txt"

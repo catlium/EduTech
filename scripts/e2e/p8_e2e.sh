@@ -5,7 +5,7 @@
 # Exits non-zero on any FAIL. Requires live dockerized stack (api + postgres).
 
 set -u
-BASE="http://localhost:3000/api/v1"
+BASE="http://localhost:8080/api/v1"
 CJ="/tmp/opencode/p8_ck.txt"
 BODY_FILE="/tmp/opencode/p8_body.tmp"
 PASS=0

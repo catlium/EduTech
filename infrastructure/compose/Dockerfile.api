@@ -3,9 +3,8 @@
 #
 # One image serves BOTH the NestJS API and the Next.js web app (each picks
 # its runtime command via the compose service definition). The web bundle
-# inlines NEXT_PUBLIC_API_URL (the browser-visible API URL) at build time —
-# pass it as a build ARG when the machine serving the browser is not
-# `localhost`.
+# talks to the API via relative `/api/v1` (same origin — nginx routes it), so
+# no browser-visible URL needs baking in at build time.
 #
 # The API imports the `@catlium/*` workspace packages, which are
 # TypeScript ESM packages that resolve to their built `dist/`. So the
@@ -33,8 +32,10 @@ FROM node:24-alpine AS build
 WORKDIR /app
 
 # Browser-visible API URL, baked into the web bundle during `next build`.
-# Must be passed through the compose `build.args` for non-localhost hosts.
-ARG NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1
+# Same-origin (relative `/api/v1`) by default — nginx routes /api/* -> api:3000,
+# so dev and any public host work without a rebuild. Only set this ARG to point
+# the client at a DIFFERENT origin on purpose.
+ARG NEXT_PUBLIC_API_URL=/api/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_TELEMETRY_DISABLED=1 \
     PNPM_HOME=/pnpm

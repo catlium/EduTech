@@ -20,9 +20,10 @@
 #     compose file and set OMNIROUTE_INITIAL_PASSWORD / OMNIROUTE_JWT_SECRET /
 #     WORKER_AI_API_KEY (one-time operator setup, documented in .env.example).
 #
-# Browser access in the demo comes from the dev override (loopback publishes
-# for web:3001 + api:3000) — this file only swaps the AI provider and seeds
-# data; it publishes nothing itself. mock-ai is never exposed to the host.
+# Browser access in the demo comes from the dev override (nginx on loopback
+# http://localhost:8080, which routes / -> web:3001 and /api/* -> api:3000) —
+# this file only swaps the AI provider and seeds data; it publishes nothing
+# itself. mock-ai is never exposed to the host.
 
 services:
   # Internal deterministic mock provider for the demo/test path.

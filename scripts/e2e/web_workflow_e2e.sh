@@ -12,7 +12,7 @@
 # must start the stack: docker compose up -d, or pnpm dev:web).
 
 set -u
-WEB="${WEB_URL:-http://localhost:3001}"
+WEB="${WEB_URL:-http://localhost:8080}"
 BODY_FILE="/tmp/opencode/web_body2.tmp"
 HDR_FILE="/tmp/opencode/web_hdr2.tmp"
 PASS=0

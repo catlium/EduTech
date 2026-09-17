@@ -1048,7 +1048,7 @@ Status: `[x]` All tests passed 2026-09-02 against the dockerized stack
 **Casing note (Pitfall 3):** membership `status` must be lowercase `'active'`;
 the DTO/payload field names are exactly `stem`, `questionType`, `difficulty`,
 `explanation`, `payload`, `source`, `subjectId`, `chapterId`, `topicId` — never
-invented names (Pitfall 4). Base URL `http://localhost:3000/api/v1`; writes use
+invented names (Pitfall 4). Base URL `http://localhost:8080/api/v1`; writes use
 teacher-A cookie + header `x-institute-id: 11111111-...`.
 
 ### QBN-01 — Create, list, retrieve, update, delete
@@ -1187,7 +1187,7 @@ Checks map to requirements AIGQ-01..08.
   (`{"topicId", "title", "text"}`).
 
 Headers on all requests: Cookie `access_token=<teacher session>` +
-`x-institute-id: 11111111-...`. Base URL `http://localhost:3000/api/v1`.
+`x-institute-id: 11111111-...`. Base URL `http://localhost:8080/api/v1`.
 
 ### AIGQ-01 — State a generation request (202 + QUEUED)
 
@@ -1292,7 +1292,7 @@ slug='math'`); topic `Linear Equations`
 - Payload field names are used VERBATIM from the Create/UpdateAssessmentDto
   Zod contract: `title`, `description`, `durationMinutes`, `maxMarks`,
   `instructions`, `startsAt`, `endsAt`, `status` — never invented names. Base
-  URL `http://localhost:3000/api/v1`; writes use teacher-A cookie + header
+  URL `http://localhost:8080/api/v1`; writes use teacher-A cookie + header
   `x-institute-id: 11111111-...`.
 
 ### EXAM-01 — Assessment CRUD (create, list, retrieve, update, delete) — [x]
@@ -1827,7 +1827,7 @@ scoreDistribution: [{score:0,count:1},{score:3,count:1}], … } }`.
 - **Setup required:** web server reachable at $WEB_URL (`pnpm start -p 3001`
   on built output, or the dockerized web service). API not required — the
   pages are client-rendered shells (skeletons) at SSR time.
-- **Command:** `WEB_URL=http://localhost:3001 bash scripts/e2e/web_workflow_e2e.sh`
+- **Command:** `WEB_URL=http://localhost:8080 bash scripts/e2e/web_workflow_e2e.sh`
 - **Expected output:** `WEB WORKFLOW E2E: PASS=33 FAIL=0` (WEB-10 web
   reachable; WEB-11 all Phase 19 route prefixes redirect anonymous →
   /login via middleware: content, materials/:id, paper-patterns(+new/+:id),
@@ -1845,8 +1845,8 @@ docker-compose.dev.yml -f docker-compose.demo.yml up --build`), mock AI on
   `99999999-9999-9999-9999-999999999999`, teacher@catlium.dev /
   student@catlium.dev `Password123!`. Space API logins ≥65s apart (auth
   throttle 5/min per route+IP).
-- **Endpoints:** web `http://localhost:3001` only against the API
-  `http://localhost:3000/api/v1`.
+- **Endpoints:** web `http://localhost:8080` only against the API
+  `http://localhost:8080/api/v1`.
 - **Teacher journey:** login → dashboard (stat cards + quick actions) →
   Subjects → subject detail → add chapter/topic → Syllabus flow
   (Generate→Process→Review→Confirm) → Materials upload → material detail →

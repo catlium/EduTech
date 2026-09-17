@@ -14,13 +14,16 @@
 
 ## Phase 39 — Cloudflare Tunnel ingress + auth session redirect fix (2026-09-17)
 
-**Status: implemented + validated + committed + pushed (`a19aa8c..55da682`).**
+**Status: implemented + validated + committed + pushed (`a19aa8c..4705bca`).**
 API 137/137, api+web tsc clean, api eslint clean; live E2E race test both
-refreshes answered 200. **Amendment (same session, pushed): the tunnel + nginx
-are consolidated into the SINGLE `docker-compose.yml`** — production is one
+refreshes answered 200. **Amendment 1 (pushed): the tunnel + nginx are
+consolidated into the SINGLE `docker-compose.yml`** — production is one
 `docker compose up -d` with nothing host-exposed; the prod/tunnel overrides are
 deleted. Live production smoke test passed (12/12 services, nginx routes, 0
-published ports, tunnel registered).
+published ports, tunnel registered). **Amendment 2 (this session): the web no
+longer needs a baked API URL** — the client calls relative `/api/v1` through
+nginx (same origin, no CORS, one image for dev + public), and dev exposes only
+nginx on loopback `:8080`.
 
 ### Goal
 
@@ -48,10 +51,11 @@ are still present" bug.
   merged into the base. nginx resolves upstreams at request time via Docker DNS
   (`resolver 127.0.0.11` + `set $*_upstream`), so api/web recreated with new
   IPs never pin nginx to a stale address.
-- **`.env.example`**: `TUNNEL_TOKEN` (empty = tunnel disabled), and the
-  production cookie/HTTPS posture — `NEXT_PUBLIC_API_URL=https://app.example.com/api/v1`
-  (build-time), `COOKIE_SECURE=true`, `COOKIE_SAMESITE=lax`, empty
-  `COOKIE_DOMAIN`, same-origin through the tunnel.
+- **`.env.example`**: `TUNNEL_TOKEN` (empty = tunnel disabled), the
+  production cookie/HTTPS posture (`COOKIE_SECURE=true`, `COOKIE_SAMESITE=lax`,
+  empty `COOKIE_DOMAIN`, same-origin through the tunnel) and
+  `NEXT_PUBLIC_API_URL` documented as OPTIONAL/unset (relative `/api/v1` is used
+  by default).
 - **`docs/architecture/cloudflare-tunnel.md`**: one-time Cloudflare setup
   (create tunnel → token; ONE public hostname `app.example.com/*` →
   `http://nginx:80`, which nginx splits internally), the build-time public API
@@ -112,27 +116,31 @@ were:
 
 ### Known issues / deferred
 
-- The deployed web bundle was built with the dev default
-  `NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1` (269 refs in the image).
-  For real public users the web image MUST be rebuilt with
-  `NEXT_PUBLIC_API_URL=https://<your-domain>/api/v1` (build-time) before go-live
-  — otherwise every client-side API call hits `localhost:3000` on the visitor's
-  machine. Server-side web→API traffic is unaffected (internal DNS).
+- ~~Baked API URL~~ — **resolved (Phase 39 amendment 2):** the web now calls
+  the API via relative `/api/v1` (same origin through nginx), so no
+  build-time `NEXT_PUBLIC_API_URL` is needed for dev or public hosts; the
+  `NEXT_PUBLIC_API_URL` build args were removed from compose and the
+  Dockerfile default is `/api/v1`. The web image is shared unchanged between
+  `http://localhost:8080` (dev, nginx loopback) and `https://edutech.catlium.in`
+  (tunnel).
 - Tunnel ingress configuration lives in the Cloudflare dashboard
   (remote-managed mode); the locally-managed fallback is documented in
   cloudflare-tunnel.md if ingress must be version-controlled.
 - The grace window accepts a replayed `refresh_token` that matches the stored
   hash within 60 s of rotation — a deliberate, bounded trade-off aligned with
   industry practice; reuse later than the window is still treated as theft.
-- Dev (`docker-compose.dev.yml`) still publishes loopback ports for local
-  tooling; production uses the single base file only.
+- Dev (`docker-compose.dev.yml`) publishes ONLY nginx on `127.0.0.1:8080`
+  (plus internal services loopback for local tooling); production uses the
+  single base file only.
 
 ### Exact recommended next task
 
-None for Phase 39 — complete + pushed. **Before public go-live:** rebuild `web`
-with `NEXT_PUBLIC_API_URL=https://<domain>/api/v1` and verify the tunnel public
-origin end-to-end (login → workspaces → content). Then the next teacher/infra
-request (e.g. Phase 37 resource-layout polish or a registry-host roll).
+None for Phase 39 — complete + pushed. **Rebuild + reverify go-live:** once the
+web image is rebuilt with the relative-URL client (`docker compose up -d --build web`),
+verify the tunnel origin `https://edutech.catlium.in` end-to-end (login →
+workspaces → content) — the earlier "CORS failed" login was the stale
+localhost-baked bundle. Then the next teacher/infra request (e.g. Phase 37
+resource-layout polish or a registry-host roll).
 
 ---
 

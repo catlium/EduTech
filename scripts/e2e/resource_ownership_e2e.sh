@@ -11,7 +11,7 @@
 # pedagogical (multiple blocks/types), summary stays concise, schema valid.
 
 set -u
-BASE="http://localhost:3000/api/v1"
+BASE="http://localhost:8080/api/v1"
 CJ="/tmp/opencode/p31_cj.txt"
 BODY_FILE="/tmp/opencode/p31_body.tmp"
 PASS=0
