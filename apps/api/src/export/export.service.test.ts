@@ -170,3 +170,30 @@ test('questionDocBlock: teacher shows the answer, paper hides it', () => {
   assert.equal(paper.difficulty, '');
   assert.equal(paper.choices?.[1]?.correct, false);
 });
+
+test('questionDocBlock: TEXT questions surface the modelAnswer as the answer note', () => {
+  const asQuestion = (b: DocBlock) => b as Extract<DocBlock, { kind: 'question' }>;
+  const teacher = asQuestion(
+    questionDocBlock({
+      stem: 'Explain photosynthesis.',
+      type: 'SHORT_ANSWER',
+      difficulty: 'MEDIUM',
+      payload: { answerFormat: 'TEXT', modelAnswer: 'Plants convert sunlight into energy.' },
+      includeAnswers: true,
+    }),
+  );
+  const paper = asQuestion(
+    questionDocBlock({
+      stem: 'Explain photosynthesis.',
+      type: 'SHORT_ANSWER',
+      difficulty: 'MEDIUM',
+      payload: { answerFormat: 'TEXT', modelAnswer: 'Plants convert sunlight into energy.' },
+      includeAnswers: false,
+      scope: 'paper',
+    }),
+  );
+  assert.equal(teacher.answerNote, 'Plants convert sunlight into energy.');
+  assert.equal(teacher.showAnswer, true);
+  assert.equal(paper.answerNote, undefined);
+  assert.equal(paper.showAnswer, false);
+});

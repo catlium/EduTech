@@ -110,7 +110,10 @@ export function questionDocBlock(args: {
   ).toUpperCase();
   let answerNote: string | undefined;
   if (args.includeAnswers && !isPaper) {
-    if (fmt === 'FILL_IN_BLANK' && Array.isArray(payload['acceptableAnswers'])) {
+    if (fmt === 'TEXT') {
+      const modelAnswer = str(payload['modelAnswer']);
+      if (modelAnswer) answerNote = modelAnswer;
+    } else if (fmt === 'FILL_IN_BLANK' && Array.isArray(payload['acceptableAnswers'])) {
       const acc = payload['acceptableAnswers'].map(String).filter((v) => v.length > 0);
       if (acc.length > 0) answerNote = acc.join(' / ');
     } else if (fmt === 'TRUE_FALSE') {

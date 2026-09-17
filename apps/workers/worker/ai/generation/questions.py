@@ -35,6 +35,30 @@ _FORMATS_REFERENCE = (
 
 # NOTE: kept as a plain (non-f) string so the JSON braces are literal. The
 # dynamic values are injected via str.format on the explicit placeholders below.
+_QUALITY_INSTRUCTIONS = (
+    "Every question must be strictly self-contained and answerable on its "
+    "own, with no reference to the source text, a previous question, or any "
+    "hidden context. NEVER use phrases like: \"according to the source text\", "
+    "\"according to the source material\", \"according to the text\", \"in the "
+    "context of\", \"as described above\", \"based on the material\", "
+    "\"according to the provided content\", \"this algorithm\", \"the method\", "
+    "\"the above example\". If a concept needs context, put that context "
+    "directly inside the question stem and name the exact concept, subject, "
+    "condition, scenario, data, or definition required to answer it. A learner "
+    "who sees ONLY the generated question and no source material must still "
+    "know exactly what is being asked. Before accepting each question, run the "
+    "self-containedness check: if the source material and all surrounding "
+    "questions were completely hidden, could a student understand exactly what "
+    "the question asks and what information is required to answer it? If NO, "
+    "rewrite the question until it passes. Also detect and reject duplicate or "
+    "near-duplicate questions that test the same concept with only minor "
+    "wording changes - never emit two questions that ask the same thing in "
+    "different words. Keep stems short and to the point: at most about two "
+    "lines for regular questions. Word problems and numerical/calculation "
+    "questions may be longer and are expected to contain their full numbers "
+    "and unit setup; keep those complete but avoid needless padding."
+)
+
 _SYSTEM_TEMPLATE = (
     "You are a question generator for an education platform. Given the source "
     "material, produce exactly {count} questions of type {type_} "
@@ -104,7 +128,7 @@ def build_messages(
     if academic_context:
         system = f"{academic_context}\n\n{system}"
     return [
-        {"role": "system", "content": system},
+        {"role": "system", "content": f"{system}\n\n{_QUALITY_INSTRUCTIONS}"},
         {"role": "user", "content": user_prompt},
     ]
 
@@ -131,7 +155,7 @@ def build_bank_messages(
     if academic_context:
         system = f"{academic_context}\n\n{system}"
     return [
-        {"role": "system", "content": system},
+        {"role": "system", "content": f"{system}\n\n{_QUALITY_INSTRUCTIONS}"},
         {"role": "user", "content": user_prompt},
     ]
 
