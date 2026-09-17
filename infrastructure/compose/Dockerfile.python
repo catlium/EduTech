@@ -7,13 +7,26 @@
 #
 #   ocr      → uvicorn app.main:app
 #   worker   → python -m worker.app   (WORKER_ROLE=material|ai)
+#
+# BUILD ORDER (why it's fast to rebuild):
+#   1. apt libs ............ cached (instruction never changes)
+#   2. requirements.lock .. the ONLY heavy layer (paddlepaddle ~200 MB,
+#      OpenCV, paddleocr). It copies just the lockfile, so it rebuilds
+#      ONLY when dependencies change — never on a source edit.
+#      `---mount=type=cache` persists the pip download cache as well, so
+#      even a lockfile bump re-uses already-downloaded wheels.
+#   3. source + --no-deps ... re-runs on every source change but installs
+#      just OUR packages (seconds, no network, no resolver).
+#
+# Regenerate the lock from infrastructure/compose/requirements.in
+# (see header comment there). Deps come ONLY from the lock.
 # ─────────────────────────────────────────────────────────────
 
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # System libs required by paddlepaddle (OpenMP) and paddleocr/OpenCV (GL).
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,11 +37,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /srv
 
+# ── 2. Third-party deps (heavy; cached until the lock changes) ──
+COPY infrastructure/compose/requirements.lock /tmp/requirements.lock
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /tmp/requirements.lock && rm /tmp/requirements.lock
+
+# ── 3. Our code (fast, no-deps) ────────────────────────────────
 # Copy both apps so pip can install them (packages: `app`, `worker`).
+# The installed deps already satisfy their requirements, so `--no-deps`
+# skips resolution entirely and only installs the local packages.
 COPY apps/ocr ./ocr
 COPY apps/workers ./worker
-
-# Install both projects (and their declared deps) into one interpreter.
-RUN pip install ./ocr ./worker
+RUN pip install --no-deps ./ocr ./worker
 
 CMD ["python", "-m", "worker.app"]

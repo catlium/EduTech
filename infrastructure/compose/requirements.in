@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech — Python dependency lock (pip-tools)
+#
+# The UNION of every direct dependency declared across the three Python
+# packages (apps/ocr/pyproject.toml, apps/workers/pyproject.toml,
+# apps/workers/ocr-worker/pyproject.toml). The Docker images install ONLY
+# this lockfile for third-party deps, then `pip install --no-deps` their own
+# code — so the heavy paddle/OpenCV layer is cached and rebuilt only when
+# this file changes.
+#
+# Regenerate (requires pip-tools):
+#   python3 -m venv /tmp/pipcompile && /tmp/pipcompile/bin/pip install -q pip-tools
+#   cd infrastructure/compose && /tmp/pipcompile/bin/pip-compile requirements.in -o requirements.lock
+#
+# If you add a dependency to one of the pyprojects, add it here too and
+# recompile — otherwise images silently miss it (deps come from this lock).
+# ─────────────────────────────────────────────────────────────
+
+# apps/ocr
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.11.0
+pydantic-settings>=2.9.0
+httpx>=0.28.0
+python-multipart>=0.0.12
+numpy>=1.26.0
+pillow>=10.0.0
+pymupdf>=1.24.0
+paddlepaddle>=3.0.0
+paddleocr>=3.0.0
+
+# apps/workers
+pika>=1.3.2
+psycopg[binary]>=3.2.0
+
+# apps/workers/ocr-worker (adds no new third-party deps beyond the above:
+# catlium-ocr[apps/ocr] + httpx + pydantic-settings are already listed)

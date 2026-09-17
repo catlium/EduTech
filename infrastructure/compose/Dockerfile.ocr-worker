@@ -2,7 +2,8 @@
 # CatLium EduTech — Distributed OCR worker (external pull worker)
 #
 # Standalone image for the distributed OCR architecture
-# (docs/architecture/ocr-distributed-workers.md). Runs OCR computation ONLY:
+# (docs/architecture/ocr-distributed-workers.md,
+#  docs/architecture/ocr-standalone-device.md). Runs OCR computation ONLY:
 # no PostgreSQL, no RabbitMQ, no OmniRoute, no NestJS source, no Next.js.
 # The worker polls the NestJS Worker API and never touches the database.
 #
@@ -12,13 +13,16 @@
 #   WORKER_OCR_API_KEY=owr_...  (issued once)
 #
 # Entrypoint: the `ocr-worker` console script (ocr_worker.app:run).
+#
+# Same build structure as Dockerfile.python: shared deps come from the
+# pip-tools lock (heavy layer cached), then `--no-deps` installs our code.
 # ─────────────────────────────────────────────────────────────
 
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # System libs required by paddlepaddle (OpenMP) and paddleocr/OpenCV (GL).
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,14 +33,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /srv
 
+# Third-party deps (heavy; cached until the lock changes). The pip cache
+# mount keeps already-downloaded wheels across lock bumps.
+COPY infrastructure/compose/requirements.lock /tmp/requirements.lock
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /tmp/requirements.lock && rm /tmp/requirements.lock
+
 # The OCR engine library ships inside `apps/ocr` (the old FastAPI app modules
 # are present in the source tree but never run); the pull worker is
 # `apps/workers/ocr-worker`. Installing both packages into one interpreter is
 # the same convention as Dockerfile.python.
 COPY apps/ocr ./ocr
 COPY apps/workers/ocr-worker ./ocr-worker
-
-RUN pip install ./ocr ./ocr-worker
+RUN pip install --no-deps ./ocr ./ocr-worker
 
 # Persist the PaddleOCR model cache so downloads survive container rebuilds.
 VOLUME /root/.paddlex

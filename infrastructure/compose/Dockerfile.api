@@ -12,6 +12,16 @@
 # image builds the whole pnpm workspace (turbo build → all package
 # dists) and copies that into a runtime stage.
 #
+# BUILD ORDER (monorepo cache-friendly):
+#   1. manifests + lockfile only → `pnpm install` (cached; invalidates only
+#      when a package.json / pnpm-lock.yaml / pnpm-workspace.yaml changes).
+#      The pnpm store lives on a BuildKit cache mount, so even a lock bump
+#      re-uses previously fetched tarballs instead of re-downloading.
+#   2. COPY the full source → `pnpm build`. Turbo's local cache lives on a
+#      cache mount too (TURBO_CACHE_DIR), so unchanged workspaces are
+#      restored from cache instead of recompiled.
+#   3. Runtime stage keeps the chromium PDF renderer.
+#
 # Services using this image:
 #   - `api`    → node apps/api/dist/main.js            (default CMD)
 #   - `web`    → pnpm --filter @catlium/web exec next start -p 3001
@@ -19,31 +29,49 @@
 #   - `seed`   → tsx ./scripts/seed-demo.ts (demo override, one-shot)
 # ─────────────────────────────────────────────────────────────
 
-# ── Build stage: install + compile the full workspace ──
-# Node 24 (LTS): the repo pins pnpm 11.1.2 (needs Node >=22.13) and
-# `node:sqlite` (Node >=22.5).
 FROM node:24-alpine AS build
 WORKDIR /app
 
 # Browser-visible API URL, baked into the web bundle during `next build`.
 # Must be passed through the compose `build.args` for non-localhost hosts.
 ARG NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PNPM_HOME=/pnpm
 
-ENV NEXT_TELEMETRY_DISABLED=1
-
-# Pin pnpm to the repo's packageManager version.
+# Pin pnpm to the repo's packageManager version; keep its store on a cache
+# mount so dependency installs survive rebuilds.
 RUN corepack enable
+ENV npm_config_store_dir=/pnpm-store
 
-# Copy the whole repo (respecting .dockerignore), then install and build.
+# ── 1. Dependencies: manifests + lockfile FIRST so the install layer only
+#       rebuilds when they change. `allowBuilds`/workspace globs come from
+#       pnpm-workspace.yaml; each workspace member's package.json is copied
+#       so pnpm can resolve the whole graph. Add a line here when a new
+#       workspace member is added.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/ai/package.json packages/ai/package.json
+COPY packages/auth/package.json packages/auth/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/shared/package.json packages/shared/package.json
+
+RUN --mount=type=cache,target=/pnpm-store pnpm install --frozen-lockfile
+
+# ── 2. Source + compile (unchanged workspaces come back from the turbo
+#       cache instead of recompiling).
 COPY . .
-
-RUN pnpm install --frozen-lockfile
-RUN pnpm build
+# Turborepo respects TURBO_CACHE_DIR for its local cache; persist it so
+# `pnpm build` only recompiles packages that actually changed.
+ENV TURBO_CACHE_DIR=/turbo-cache
+RUN --mount=type=cache,target=/turbo-cache pnpm build
 
 # ── Runtime stage ──
 # ponytail: ships the full workspace (dev deps included) to avoid fragile
-# dependency-pruning; fine for dev, revisit when image size matters.
+# dependency-pruning; fine for dev+single-image prod, revisit when image
+# size matters.
 FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
