@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import {
   Archive,
+  ArrowRight,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -81,6 +82,11 @@ import type {
 } from '@catlium/contracts';
 import { CreateQuestionRequestSchema, UpdateQuestionRequestSchema } from '@catlium/contracts';
 import type { UpdateQuestionRequest } from '@catlium/contracts';
+import {
+  MatchingFormatPayloadSchema,
+  NumericalFormatPayloadSchema,
+  TextFormatPayloadSchema,
+} from '@catlium/contracts';
 
 const DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD'] as const;
 
@@ -145,8 +151,46 @@ function QuestionPreview({ question }: { question: QuestionListItem }) {
       </p>
     );
   }
-  // Not FILL_IN_BLANK (TEXT/MATCHING/NUMERICAL/custom payloads have no
-  // acceptableAnswers) — never index into a payload we don't own.
+  const matching = MatchingFormatPayloadSchema.safeParse(question.payload);
+  if (matching.success) {
+    const rightOf = new Map(matching.data.right.map((r) => [r.id, r.text]));
+    return (
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground">Matches</p>
+        {matching.data.left.map((l) => (
+          <div
+            key={l.id}
+            className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+          >
+            <span>{l.text}</span>
+            <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="font-medium">{rightOf.get(matching.data.matches[l.id]) ?? '—'}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  const numerical = NumericalFormatPayloadSchema.safeParse(question.payload);
+  if (numerical.success) {
+    return (
+      <p className="text-sm">
+        Answer: <span className="font-medium">{numerical.data.modelAnswer}</span>
+        {typeof numerical.data.tolerance === 'number' && (
+          <span className="text-muted-foreground"> (±{numerical.data.tolerance})</span>
+        )}
+      </p>
+    );
+  }
+  const text = TextFormatPayloadSchema.safeParse(question.payload);
+  if (text.success) {
+    return (
+      <p className="text-sm">
+        Answer: <span className="font-medium whitespace-pre-wrap">{text.data.modelAnswer}</span>
+      </p>
+    );
+  }
+  // Not FILL_IN_BLANK (has no other renderable format) — never index into a
+  // payload we don't own.
   const fibPayload = question.payload as unknown as FillInBlankPayload;
   const acceptable = Array.isArray(fibPayload.acceptableAnswers)
     ? fibPayload.acceptableAnswers

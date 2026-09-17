@@ -175,6 +175,32 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml \
                -f docker-compose.demo.yml up --build
 ```
 
+### Container Rule — Restart + Verify After Every Code Change
+
+The API, web, and worker images are built from source at `docker compose up
+--build` time; running containers do NOT hot-reload code changes and do NOT
+see edited mounted files (the worker imports a pip-installed copy from
+site-packages, not the source tree). An "up" container can therefore be
+running STALE code.
+
+After completing any code work that touches `apps/api`, `apps/web`, or
+`apps/workers`:
+
+1. Rebuild the affected services:
+   `docker compose up -d --build api web worker-ai worker-material`
+2. Confirm every service is healthy/running:
+   `docker compose ps` — no container may be absent, exited, or unhealthy.
+3. If the work changed behavior the user can observe, verify the running
+   container actually has the change (e.g. exec into the worker and print the
+   new constant/instruction text) — "Up (healthy)" is not proof the new code
+   is live; the image may predate the change.
+4. If live data was produced by stale code (e.g. AI-generated questions from
+   an old prompt), flag it and offer to remove/re-generate it — stale
+   container output is stale data.
+
+Use `docker compose up -d --build <svc>` for a targeted rebuild; never report
+"done" while a stale image is still serving traffic.
+
 ### Health Endpoints
 
 - API: `GET /api/v1/health` (the API applies the global `api/v1` prefix to all
