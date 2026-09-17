@@ -212,6 +212,113 @@ Teacher follow-ups after batch 4:
       (1 heading + 5 questions); full bank still 469. Docs + commit + push +
       graphify update.
 
+### Follow-up batch 6 — generate-missing sends requested+buffer (no double-subtract); prompt quality (2026-09-16)
+
+Teacher follow-ups after batch 5: (a) when only 1 question is missing, the AI
+call must not be wasted on 1 question — generate more per request while keeping
+quality and bank the surplus for the future; (b) generated questions must be
+self-contained (never reference "the provided text") and short (~2 lines max;
+word problems / numericals may be larger).
+
+- [x] Wizard `generateMissing` double-subtraction fixed: it sent
+      `count: b.deficit`, but the API recomputes `deficit = max(0, count -
+      existing - pending)` internally — so existing/pending were subtracted
+      twice and a small shortage (e.g. need 1, have 5) generated NOTHING.
+      It now sends `count: Math.min(100, b.requested + buffer)` (the full
+      requested target + a per-group buffer), so the server computes the true
+      shortage once and tops up the buffer in the same expensive AI call; the
+      surplus lands in the bank as PENDING for future shortages.
+- [x] Wizard Step 2 gains an "Extra buffer per group" input (0–50, default 10)
+      that feeds that top-up; per-bucket count is clamped to the API's `@Max(100)`.
+- [x] Worker prompt quality: `_QUALITY_INSTRUCTIONS` (self-contained, complete,
+      succinct stems ~2 lines; word/numerical may be longer) defined and wired
+      into both `build_messages` (single generation) and `build_bank_messages`
+      (bank quota generation) in
+      `apps/workers/worker/ai/generation/questions.py`.
+- [x] Validation: worker pytest 26 passed (quality + bank-batch suites),
+      questions.py compiles, web `tsc --noEmit` clean.
+- [ ] Rebuild worker + web containers, api/web typecheck + lint, live E2E,
+      docs + commit + push + graphify.
+
+### Follow-up batch 7 — per-type min/max batching, starter action, difficulty spread (2026-09-17)
+
+Teacher follow-ups after batch 6: (a) stop wasting tiny AI calls — enforce a
+per-question-type **min** and **max** in the server generation layer (callers
+send recommendations, the layer batches); (b) when difficulties are not
+specified, spread across all instead of collapsing to one; an explicit
+distribution wins; (c) add a one-click "Generate starter question" for a
+subject bank.
+
+Per-type limits (authoritative table): MCQ 20/30, TRUE_FALSE 15/25,
+FILL_IN_BLANK 15/25, SHORT_ANSWER 10/15, LONG_ANSWER 8/12, NUMERICAL 10/15,
+CASE_STUDY 5/8. Unknown/institute-defined types fall back to 10/15.
+
+- [x] `build-question-batch.ts` rewritten: `QUESTION_TYPE_BATCH_LIMITS` +
+      `questionTypeBatchLimits()` fallback; `floorTypeTotals()` floors each
+      type's total to its min and spreads the surplus across the requested
+      difficulty buckets (largest remainder); child chunks = min(type max, 50).
+      The old `maxPerJob` input param and `DEFAULT_QUESTION_BATCH_SIZE` removed
+      — batching is the generation layer's job, not the caller's.
+- [x] Default difficulty distribution changed to spread across all
+      (`{EASY:34,MEDIUM:33,HARD:33}`) in `build-bank-buckets.ts` (and the
+      blueprint section default); a provided distribution is honored and
+      un-provided difficulties get zero (partial distributions no longer leak
+      defaults).
+- [x] `question-generation.service.ts`: `maxPerJob`/`ConfigService` removed;
+      added `generateStarter(instituteId, userId, subjectId)` — default types at
+      their per-type min spread across all difficulties, then
+      `requestBankGeneration`.
+- [x] `questions.controller.ts`: new `POST /questions/bank/starter`
+      (`QuestionBankScopeDto`, requires `subjectId`, WRITE_ROLES, 202).
+- [x] Web: panel `generate()` and QP-builder `runShortageGeneration()` fixed to
+      send `count: b.requested` (not `b.deficit`) — same double-subtraction bug
+      as batch 6; both now let the API recompute the deficit once.
+- [x] Web: "Generate starter question" button in `question-bank-panel.tsx`
+      subject mode (visible when a subject is selected, teacher role); wizard
+      buffer removed (generation layer owns batching); empty difficulty
+      selection now spreads across all (panel + wizard).
+- [x] Shared contract bucket cap raised 100 → 500 (`GenerateBankBucketSchema`
+      and `GenerateBankBucketDto`) since the layer splits above the type max.
+- [x] Tests: `build-question-batch.test.ts` rewritten for min/max semantics
+      (floor, split, fallback, cap); `build-bank-buckets.test.ts` updated for
+      the spread default. `node --test` 15 passed.
+- [x] Live E2E (starter on a subject; min-floor + max-split observed):
+      rebuilt containers; `POST /questions/bank/starter` → 202 batch
+      `3c765c26-322a-44d0-acee-c369184beb16`, 9 type×difficulty jobs (each type
+      at its min, e.g. MCQ 7/7/6, TRUE_FALSE 5/5/5, FILL_IN_BLANK 5/5/5), 9/9
+      completed 0 failed; worker hit OmniRoute (`http://omniroute:20128/v1/chat/
+      completions` 200); subject bank now 185 active questions.
+
+### Follow-up batch 8 — self-contained prompt, expected-answer rendering (2026-09-17)
+
+Teacher follow-ups after batch 7: (a) the generation prompt must enforce
+**strictly self-contained** questions (no source-material references, no vague
+"this/named" phrasing, no duplicates/near-duplicates) for ALL types,
+difficulties, and modes; (b) the frontend/export must show the **expected
+answer** for every question type, and the export's answer option must default
+to **no answer in the file**.
+
+- [x] Worker prompt: `_QUALITY_INSTRUCTIONS` (drives both single-and-bank
+      generation) strengthened — explicit banned phrases ("according to the
+      source text/material…", "in the context of", "as described above", "this
+      algorithm/the method/the above example", …); self-containedness gate
+      ("if the source and surrounding questions were hidden, could a student
+      still answer? If NO — rewrite"); duplicate/near-duplicate rejection;
+      still requires the question to name the exact concept/condition/data.
+      Worker pytest 81 passed.
+- [x] Export/renderer: `questionDocBlock` now surfaces `TEXT`-format answers
+      (`payload.modelAnswer`, used by SHORT_ANSWER/LONG_ANSWER/custom
+      subjective types) into `answerNote` — previously answers silently
+      missing for those types in the preview and teacher key. New node test
+      covers it (export suite 23 passed, total api 38 passed).
+- [x] Export answer option already wired with **default = no answer**:
+      wizard `include` state defaults to `paper` ("Student paper"),
+      `include=answers` ("Teacher answer key") opt-in; API export endpoints
+      default `include` to `paper` and only then pass scope=teacher.
+- [x] Validation: api+web `tsc --noEmit` clean; api `node --test` 38 passed
+      (15 questions + 23 export); worker pytest 81 passed.
+- [ ] Rebuild containers, docs + commit + push + graphify.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
