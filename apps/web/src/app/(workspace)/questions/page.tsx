@@ -28,6 +28,7 @@ import { api, ApiError } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
+import { AnswerText } from '@/components/export/answer-text';
 import { QuestionBankWizard } from '@/components/questions/question-bank-wizard';
 import { QuestionBankSets } from '@/components/questions/question-bank-sets';
 import { PageHeader } from '@/components/app/page-header';
@@ -184,9 +185,10 @@ function QuestionPreview({ question }: { question: QuestionListItem }) {
   const text = TextFormatPayloadSchema.safeParse(question.payload);
   if (text.success) {
     return (
-      <p className="text-sm">
-        Answer: <span className="font-medium whitespace-pre-wrap">{text.data.modelAnswer}</span>
-      </p>
+      <div>
+        <p className="text-xs font-medium text-muted-foreground">Answer</p>
+        <AnswerText text={text.data.modelAnswer} className="mt-1" />
+      </div>
     );
   }
   // Not FILL_IN_BLANK (has no other renderable format) — never index into a

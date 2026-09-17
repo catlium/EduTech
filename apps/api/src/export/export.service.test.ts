@@ -8,6 +8,8 @@ import {
   questionDocBlock,
   docDigest,
   buildPreview,
+  orderQuestionTypes,
+  questionTypeRank,
 } from './export.content-blocks.ts';
 import type { DocBlock, DocumentModel } from './export.content-blocks.ts';
 
@@ -196,4 +198,23 @@ test('questionDocBlock: TEXT questions surface the modelAnswer as the answer not
   assert.equal(teacher.showAnswer, true);
   assert.equal(paper.answerNote, undefined);
   assert.equal(paper.showAnswer, false);
+});
+
+test('orderQuestionTypes: objective first, then short-answer, then long-answer', () => {
+  for (const objective of ['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK', 'MATCHING', 'NUMERICAL']) {
+    assert.equal(questionTypeRank(objective), 0, objective);
+  }
+  assert.equal(questionTypeRank('SHORT_ANSWER'), 1);
+  assert.equal(questionTypeRank('LONG_ANSWER'), 2);
+  assert.equal(questionTypeRank('CASE_STUDY'), 2);
+
+  const ordered = orderQuestionTypes(['LONG_ANSWER', 'MCQ', 'SHORT_ANSWER', 'CASE_STUDY', 'TRUE_FALSE']);
+  assert.deepEqual(ordered, ['MCQ', 'TRUE_FALSE', 'SHORT_ANSWER', 'LONG_ANSWER', 'CASE_STUDY']);
+
+  // Ties keep their caller-supplied order (stable).
+  assert.deepEqual(orderQuestionTypes(['TRUE_FALSE', 'MCQ', 'NUMERICAL']), [
+    'TRUE_FALSE',
+    'MCQ',
+    'NUMERICAL',
+  ]);
 });

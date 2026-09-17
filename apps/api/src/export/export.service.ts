@@ -22,7 +22,13 @@ import {
 import type { Database } from '@catlium/database';
 import type { PaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
-import { contentBlocks, questionDocBlock, exportPaperBlocks } from './export.content-blocks.js';
+import {
+  contentBlocks,
+  questionDocBlock,
+  exportPaperBlocks,
+  orderQuestionTypes,
+  questionTypeRank,
+} from './export.content-blocks.js';
 import type { DocBlock, DocumentModel } from './export.content-blocks.js';
 import { paperPatternDoc } from './paper-pattern-doc.js';
 import { buildAnalytics } from '../attempts/analytics.js';
@@ -150,6 +156,10 @@ export class ExportService {
     }
 
     const blocks: DocBlock[] = [];
+    /* Manual/patternless exports order questions objective → short → long
+     * (pattern exports keep the pattern's section order). */
+    const byRank = <T extends { questionType: string }>(qs: T[]): T[] =>
+      [...qs].sort((a, b) => questionTypeRank(a.questionType) - questionTypeRank(b.questionType));
     if (pattern) {
       blocks.push({
         kind: 'paragraph',
@@ -199,11 +209,12 @@ export class ExportService {
       );
       if (general.length > 0) {
         blocks.push({ kind: 'heading', text: 'General' });
-        blocks.push(...general.map((q) => questionBlock(q)));
+        blocks.push(...byRank(general).map((q) => questionBlock(q)));
       }
     } else if (buckets && buckets.length > 0) {
-      // Bucket-driven export (wizard): group by question type.
-      const typeOrder = [...new Set(buckets.map((b) => b.questionType))];
+      // Bucket-driven export (wizard): group by question type, objective types
+      // first, then short-answer, then long-answer.
+      const typeOrder = orderQuestionTypes([...new Set(buckets.map((b) => b.questionType))]);
       for (const type of typeOrder) {
         const typeQuestions = selected.filter((q) => q.questionType === type);
         if (typeQuestions.length === 0) continue;
@@ -211,7 +222,7 @@ export class ExportService {
         blocks.push(...typeQuestions.map((q) => questionBlock(q)));
       }
     } else {
-      blocks.push(...selected.map((q) => questionBlock(q)));
+      blocks.push(...byRank(selected).map((q) => questionBlock(q)));
     }
 
     return {

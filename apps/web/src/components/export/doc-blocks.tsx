@@ -5,6 +5,8 @@
  * preview and the PDF/DOCX export are generated from the SAME blocks, so
  * what you preview is exactly what gets exported. */
 
+import { AnswerText } from './answer-text';
+
 export interface DocBlockQuestion {
   kind: 'question';
   stem: string;
@@ -111,9 +113,10 @@ function QuestionBlock({ b, number }: { b: DocBlockQuestion; number: number }) {
         </div>
       )}
       {b.showAnswer && b.answerNote && (
-        <p className="mt-2 text-sm text-emerald-700">
-          <span className="font-medium">Answer:</span> {b.answerNote}
-        </p>
+        <div className="mt-2 text-sm text-emerald-700">
+          <span className="font-medium">Answer:</span>
+          <AnswerText text={b.answerNote} className="mt-0.5 text-emerald-700" />
+        </div>
       )}
       {b.showAnswer && b.explanation && (
         <p className="mt-1 text-xs text-muted-foreground">

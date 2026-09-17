@@ -53,6 +53,25 @@ export interface DocumentModel {
   blocks: DocBlock[];
 }
 
+/** Pedagogical display order for question types in a NON-pattern export
+ * (manual/wizard selection): objective questions first, then short-answer, then
+ * long-answer/essay types. A Paper Pattern export ignores this — its own
+ * section order is authoritative. Unknown types rank with the objective group
+ * (their usual shape); sparingly, "SHORT"/"LONG"/"CASE"/"ESSAY" in a custom
+ * code ranks it correctly. */
+export function questionTypeRank(questionType: string): number {
+  const t = questionType.toUpperCase();
+  if (t.includes('LONG') || t.includes('CASE') || t.includes('ESSAY')) return 2;
+  if (t.includes('SHORT')) return 1;
+  return 0;
+}
+
+/** Stable-sort question types by pedagogical rank (ties keep their input
+ * order — insertion order from the caller). */
+export function orderQuestionTypes(questionTypes: readonly string[]): string[] {
+  return [...questionTypes].sort((a, b) => questionTypeRank(a) - questionTypeRank(b));
+}
+
 /** Deterministic digest of a document — the exported file is regenerated from
  * the same blocks, so a preview is valid only while its hash matches. */
 export function docDigest(doc: DocumentModel): string {
