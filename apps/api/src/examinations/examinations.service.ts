@@ -14,7 +14,8 @@ import {
   questions,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
-import type { AssessmentStatus, PaperPatternStructure } from '@catlium/contracts';
+import type { AssessmentStatus } from '@catlium/contracts';
+import { flattenPatternRules, normalizePaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import {
@@ -474,22 +475,6 @@ export class ExaminationsService {
     return pattern;
   }
 
-  private structureSections(structure: PaperPatternStructure) {
-    return structure.sections.map((s) => ({
-      id: s.id,
-      name: s.name,
-      questionType: s.questionType ?? null,
-      count: s.count ?? null,
-      marksPerQuestion: s.marksPerQuestion ?? null,
-      totalMarks: s.totalMarks ?? null,
-      compulsory: s.compulsory,
-      attemptCount: s.attemptCount ?? null,
-      difficultyDistribution: (s.difficultyDistribution ?? null) as
-        | Partial<Record<Difficulty, number>>
-        | null,
-    }));
-  }
-
   /** Mode A — the system builds the paper from the Question Bank. Only DRAFT
    * assessments linked to an APPROVED pattern are eligible. Selection honors
    * each section's type/count/difficulty and records honest shortages when the
@@ -504,8 +489,8 @@ export class ExaminationsService {
     }
 
     const pattern = await this.loadBlueprintPattern(instituteId, assessment.blueprintId);
-    const structure = pattern.structure as PaperPatternStructure;
-    const sections = this.structureSections(structure);
+    const structure = normalizePaperPatternStructure(pattern.structure);
+    const sections = flattenPatternRules(structure);
 
     const subjectRows = await this.db
       .select({ subjectId: paperPatternSubjects.subjectId })
@@ -584,14 +569,14 @@ export class ExaminationsService {
     if (!assessment.blueprintId) return null;
 
     const pattern = await this.loadBlueprintPattern(instituteId, assessment.blueprintId);
-    const structure = pattern.structure as PaperPatternStructure;
+    const structure = normalizePaperPatternStructure(pattern.structure);
     const links = await this.listQuestions(instituteId, assessmentId);
 
     return {
       patternId: pattern.id,
       patternTitle: pattern.title,
       sections: computePatternCoverage(
-        this.structureSections(structure),
+        flattenPatternRules(structure),
         links.map((l) => ({
           section: l.section,
           questionType: l.question.questionType,

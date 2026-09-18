@@ -16,28 +16,38 @@ const structure: PaperPatternStructure = {
     {
       id: id('1'),
       name: 'Section A',
-      questionType: 'MCQ',
-      count: 10,
-      marksPerQuestion: 3,
-      totalMarks: 30,
-      compulsory: true,
-      difficultyDistribution: { EASY: 50, MEDIUM: 50, HARD: 0 },
-      topicDistribution: [
-        { name: 'Algebra', percentage: 60 },
-        { name: 'Geometry', percentage: 40 },
+      questionTypes: [
+        {
+          id: id('1q'),
+          questionType: 'MCQ',
+          count: 10,
+          marksPerQuestion: 3,
+          totalMarks: 30,
+          compulsory: true,
+          difficultyDistribution: { EASY: 50, MEDIUM: 50, HARD: 0 },
+          topicDistribution: [
+            { name: 'Algebra', percentage: 60 },
+            { name: 'Geometry', percentage: 40 },
+          ],
+        },
       ],
     },
     {
       id: id('2'),
       name: 'Section B',
-      questionType: 'LONG_ANSWER',
-      count: 2,
-      marksPerQuestion: 25,
-      totalMarks: 50,
-      compulsory: false,
-      attemptCount: 1,
-      difficultyDistribution: null,
-      topicDistribution: null,
+      questionTypes: [
+        {
+          id: id('2q'),
+          questionType: 'LONG_ANSWER',
+          count: 2,
+          marksPerQuestion: 25,
+          totalMarks: 50,
+          compulsory: false,
+          attemptCount: 1,
+          difficultyDistribution: null,
+          topicDistribution: null,
+        },
+      ],
     },
   ],
 };
@@ -84,7 +94,7 @@ test('General pattern renders meta, instructions, and blueprint table', () => {
   };
   assert.equal(table.headers?.[0], 'Section');
   assert.deepEqual(table.rows[0], [
-    'Section A',
+    'Section A — MCQ',
     'Multiple Choice',
     '10',
     '3',
@@ -94,7 +104,7 @@ test('General pattern renders meta, instructions, and blueprint table', () => {
     'Algebra 60%, Geometry 40%',
   ]);
   assert.deepEqual(table.rows[1], [
-    'Section B',
+    'Section B — LONG_ANSWER',
     'LONG_ANSWER',
     '2',
     '25',

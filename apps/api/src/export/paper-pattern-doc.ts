@@ -1,4 +1,8 @@
-import type { PaperPatternStructure } from '@catlium/contracts';
+import {
+  flattenPatternRules,
+  type PaperPatternRuleRow,
+  type PaperPatternStructure,
+} from '@catlium/contracts';
 import type { DocBlock, DocumentModel } from './export.content-blocks.js';
 
 /* Pure, deterministic mapping from a paper pattern to an export document.
@@ -23,48 +27,45 @@ function typeName(code: string | undefined, names: Record<string, string>): stri
   return names[code] ?? code;
 }
 
-function marksCell(section: PaperPatternStructure['sections'][number]): string {
-  if (section.totalMarks != null) return String(section.totalMarks);
-  if (section.count != null && section.marksPerQuestion != null) {
-    return String(section.count * section.marksPerQuestion);
+function marksCell(rule: PaperPatternRuleRow): string {
+  if (rule.totalMarks != null) return String(rule.totalMarks);
+  if (rule.count != null && rule.marksPerQuestion != null) {
+    return String(rule.count * rule.marksPerQuestion);
   }
   return '—';
 }
 
-function attemptCell(section: PaperPatternStructure['sections'][number]): string {
-  if (section.compulsory) return 'Compulsory';
-  if (section.attemptCount != null) {
-    return `Attempt ${section.attemptCount} of ${section.count ?? '?'}`;
+function attemptCell(rule: PaperPatternRuleRow): string {
+  if (rule.compulsory) return 'Compulsory';
+  if (rule.attemptCount != null) {
+    return `Attempt ${rule.attemptCount} of ${rule.count ?? '?'}`;
   }
   return 'Optional';
 }
 
-function difficultyCell(section: PaperPatternStructure['sections'][number]): string {
-  const d = section.difficultyDistribution;
+function difficultyCell(rule: PaperPatternRuleRow): string {
+  const d = rule.difficultyDistribution;
   if (!d) return '—';
   return `${d.EASY}/${d.MEDIUM}/${d.HARD} (E/M/H)`;
 }
 
-function topicsCell(section: PaperPatternStructure['sections'][number]): string {
-  if (!section.topicDistribution || section.topicDistribution.length === 0) return '—';
-  return section.topicDistribution
+function topicsCell(rule: PaperPatternRuleRow): string {
+  if (!rule.topicDistribution || rule.topicDistribution.length === 0) return '—';
+  return rule.topicDistribution
     .map((t) => `${t.name}${t.percentage != null ? ` ${t.percentage}%` : ''}`)
     .join(', ');
 }
 
-function sectionRow(
-  section: PaperPatternStructure['sections'][number],
-  names: Record<string, string>,
-): string[] {
+function ruleRow(rule: PaperPatternRuleRow, names: Record<string, string>): string[] {
   return [
-    section.name,
-    typeName(section.questionType, names),
-    section.count?.toString() ?? '—',
-    section.marksPerQuestion?.toString() ?? '—',
-    marksCell(section),
-    attemptCell(section),
-    difficultyCell(section),
-    topicsCell(section),
+    rule.name,
+    typeName(rule.questionType, names),
+    rule.count?.toString() ?? '—',
+    rule.marksPerQuestion?.toString() ?? '—',
+    marksCell(rule),
+    attemptCell(rule),
+    difficultyCell(rule),
+    topicsCell(rule),
   ];
 }
 
@@ -115,7 +116,7 @@ export function paperPatternDoc(source: PaperPatternDocSource): DocumentModel {
       'Difficulty (E/M/H)',
       'Topics',
     ],
-    rows: structure.sections.map((s) => sectionRow(s, source.questionTypeNames)),
+    rows: flattenPatternRules(structure).map((r) => ruleRow(r, source.questionTypeNames)),
   });
 
   return { title: source.title || 'Paper Pattern', blocks };

@@ -1,4 +1,4 @@
-import type { PaperPatternStructure } from '@catlium/contracts';
+import type { PaperPatternQuestionType, PaperPatternStructure } from '@catlium/contracts';
 
 // Deterministic blueprint validation (§8 of the Paper Pattern spec). Never
 // consults the AI: pure arithmetic/invariants over the structure so approval
@@ -17,8 +17,6 @@ export function validatePaperPatternStructure(structure: PaperPatternStructure):
   let totalKnown = true;
 
   for (const section of structure.sections) {
-    const label = section.name;
-
     if (seenIds.has(section.id)) {
       errors.push(`Duplicate section id "${section.id}"`);
     }
@@ -30,67 +28,30 @@ export function validatePaperPatternStructure(structure: PaperPatternStructure):
       errors.push(`Duplicate section name "${section.name}"`);
     }
 
-    const count = section.count ?? null;
-    const marks = section.marksPerQuestion ?? null;
-    const total = section.totalMarks ?? null;
-    if (count != null && marks != null) {
-      // Attempt-N-of-M: the marks a student can score, not what the paper
-      // presents. A 3×3 long-answer section attempted 2-of-3 is worth 6, not 9.
-      const attempted =
-        section.compulsory === false && section.attemptCount && section.attemptCount > 0
-          ? section.attemptCount
-          : count;
-      const computed = attempted * marks;
-      if (total != null && total !== computed) {
-        errors.push(
-          `"${label}": totalMarks ${total} does not match ${attempted} questions × ${marks} marks = ${computed}`,
-        );
-      }
-      declaredTotal += total ?? computed;
-    } else {
-      if (total == null) totalKnown = false;
-      declaredTotal += total ?? 0;
-    }
+    for (const qt of section.questionTypes) {
+      const label = `${section.name} → ${qt.questionType ?? 'Mixed'}`;
+      validateQuestionTypeRule(qt, label, errors);
 
-    if (section.attemptCount != null && count != null && section.attemptCount > count) {
-      errors.push(`"${label}": cannot attempt ${section.attemptCount} of ${count} questions`);
-    }
-    if (
-      section.compulsory &&
-      section.attemptCount != null &&
-      count != null &&
-      section.attemptCount !== count
-    ) {
-      errors.push(
-        `"${label}": compulsory section must be fully attempted (attempt ${section.attemptCount} of ${count})`,
-      );
-    }
-    if (!section.compulsory) {
-      if (section.attemptCount == null) {
-        errors.push(`"${label}": optional section must declare how many questions to attempt`);
-      } else if (count != null && section.attemptCount >= count) {
-        errors.push(
-          `"${label}": optional section attempt ${section.attemptCount} must be fewer than the ${count} questions available`,
-        );
-      }
-    }
-
-    if (section.difficultyDistribution) {
-      const { EASY, MEDIUM, HARD } = section.difficultyDistribution;
-      const sum = EASY + MEDIUM + HARD;
-      if (sum !== 100) {
-        errors.push(`"${label}": difficulty distribution must total 100% (got ${sum}%)`);
-      }
-    }
-
-    if (section.topicDistribution && section.topicDistribution.length > 0) {
-      const withPercent = section.topicDistribution.filter((t) => t.percentage != null);
-      const known = withPercent.filter((t) => t.percentage != null);
-      if (known.length > 0) {
-        const sum = known.reduce((acc, t) => acc + (t.percentage ?? 0), 0);
-        if (sum !== 100) {
-          errors.push(`"${label}": topic distribution must total 100% (got ${sum}%)`);
+      const count = qt.count ?? null;
+      const marks = qt.marksPerQuestion ?? null;
+      const total = qt.totalMarks ?? null;
+      if (count != null && marks != null) {
+        // Attempt-N-of-M: the marks a student can score, not what the paper
+        // presents. A 3×3 long-answer section attempted 2-of-3 is worth 6, not 9.
+        const attempted =
+          qt.compulsory === false && qt.attemptCount && qt.attemptCount > 0
+            ? qt.attemptCount
+            : count;
+        const computed = attempted * marks;
+        if (total != null && total !== computed) {
+          errors.push(
+            `"${label}": totalMarks ${total} does not match ${attempted} questions × ${marks} marks = ${computed}`,
+          );
         }
+        declaredTotal += total ?? computed;
+      } else {
+        if (total == null) totalKnown = false;
+        declaredTotal += total ?? 0;
       }
     }
   }
@@ -102,4 +63,48 @@ export function validatePaperPatternStructure(structure: PaperPatternStructure):
   }
 
   return errors;
+}
+
+function validateQuestionTypeRule(
+  qt: PaperPatternQuestionType,
+  label: string,
+  errors: string[],
+): void {
+  const count = qt.count ?? null;
+
+  if (qt.attemptCount != null && count != null && qt.attemptCount > count) {
+    errors.push(`"${label}": cannot attempt ${qt.attemptCount} of ${count} questions`);
+  }
+  if (qt.compulsory && qt.attemptCount != null && count != null && qt.attemptCount !== count) {
+    errors.push(
+      `"${label}": compulsory rule must be fully attempted (attempt ${qt.attemptCount} of ${count})`,
+    );
+  }
+  if (!qt.compulsory) {
+    if (qt.attemptCount == null) {
+      errors.push(`"${label}": optional rule must declare how many questions to attempt`);
+    } else if (count != null && qt.attemptCount >= count) {
+      errors.push(
+        `"${label}": optional rule attempt ${qt.attemptCount} must be fewer than the ${count} questions available`,
+      );
+    }
+  }
+
+  if (qt.difficultyDistribution) {
+    const { EASY, MEDIUM, HARD } = qt.difficultyDistribution;
+    const sum = EASY + MEDIUM + HARD;
+    if (sum !== 100) {
+      errors.push(`"${label}": difficulty distribution must total 100% (got ${sum}%)`);
+    }
+  }
+
+  if (qt.topicDistribution && qt.topicDistribution.length > 0) {
+    const known = qt.topicDistribution.filter((t) => t.percentage != null);
+    if (known.length > 0) {
+      const sum = known.reduce((acc, t) => acc + (t.percentage ?? 0), 0);
+      if (sum !== 100) {
+        errors.push(`"${label}": topic distribution must total 100% (got ${sum}%)`);
+      }
+    }
+  }
 }

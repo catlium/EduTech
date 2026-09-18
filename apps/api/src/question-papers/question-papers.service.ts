@@ -14,8 +14,7 @@ import {
   subjects,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
-import type { PaperPatternStructure } from '@catlium/contracts';
-import { PaperPatternStructureSchema } from '@catlium/contracts';
+import { flattenPatternRules, normalizePaperPatternStructure, type PaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
 import { QuestionGenerationService } from '../questions/question-generation.service.js';
@@ -50,7 +49,7 @@ export class QuestionPapersService {
     input: CreateQuestionPaperInput,
   ) {
     const pattern = await this.requireApprovedPattern(instituteId, input.patternId);
-    const structure = pattern.structure as PaperPatternStructure;
+    const structure = normalizePaperPatternStructure(pattern.structure);
 
     // Never create a paper the bank cannot fully supply. If questions are
     // missing we queue generation and report back; the caller polls and retries.
@@ -185,8 +184,8 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
     }
 
     const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
-    const structure = pattern.structure as PaperPatternStructure;
-    const sections = structureSections(structure);
+    const structure = normalizePaperPatternStructure(pattern.structure);
+    const sections = flattenPatternRules(structure);
 
     const subjectRows = await this.db
       .select({ subjectId: paperPatternSubjects.subjectId })
@@ -252,14 +251,14 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
     if (!paper.blueprintId) return null;
 
     const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
-    const structure = pattern.structure as PaperPatternStructure;
+    const structure = normalizePaperPatternStructure(pattern.structure);
     const links = await this.listQuestions(instituteId, paperId);
 
     return {
       patternId: pattern.id,
       patternTitle: pattern.title,
       sections: computePatternCoverage(
-        structureSections(structure),
+        flattenPatternRules(structure),
         links.map((l) => ({
           section: l.section,
           questionType: l.question.questionType,
@@ -284,7 +283,7 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
       throw new BadRequestException('Question paper has no paper-pattern blueprint');
     }
     const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
-    const structure = pattern.structure as PaperPatternStructure;
+    const structure = normalizePaperPatternStructure(pattern.structure);
 
     const subjectRows = await this.db
       .select({ subjectId: paperPatternSubjects.subjectId })
@@ -310,11 +309,11 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
 
     const DIFFS: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
     const buckets: { questionType: string; difficulty: Difficulty; count: number }[] = [];
-    for (const section of structure.sections) {
-      const required = section.count ?? 0;
-      const type = section.questionType;
+    for (const rule of flattenPatternRules(structure)) {
+      const required = rule.count ?? 0;
+      const type = rule.questionType;
       if (!type || required <= 0) continue;
-      const dist = section.difficultyDistribution;
+      const dist = rule.difficultyDistribution;
       const pool = bank.filter((q) => {
         if (q.questionType !== type) return false;
         if (!dist) return true;
@@ -444,28 +443,13 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
         'Only an approved paper pattern with a structure can create a question paper',
       );
     }
-    const parsed = PaperPatternStructureSchema.safeParse(pattern.structure);
-    if (!parsed.success) {
+    try {
+      normalizePaperPatternStructure(pattern.structure);
+    } catch {
       throw new BadRequestException('Paper pattern structure is not currently valid');
     }
     return pattern;
   }
-}
-
-function structureSections(structure: PaperPatternStructure) {
-  return structure.sections.map((s) => ({
-    id: s.id,
-    name: s.name,
-    questionType: s.questionType ?? null,
-    count: s.count ?? null,
-    marksPerQuestion: s.marksPerQuestion ?? null,
-    totalMarks: s.totalMarks ?? null,
-    compulsory: s.compulsory,
-    attemptCount: s.attemptCount ?? null,
-    difficultyDistribution: (s.difficultyDistribution ?? null) as
-      | Partial<Record<Difficulty, number>>
-      | null,
-  }));
 }
 
 function structuredIntoInstructions(structure: PaperPatternStructure): Record<string, unknown> {

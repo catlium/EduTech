@@ -5,10 +5,12 @@ import assert from 'node:assert/strict';
 
 import {
   questionTypeLabel,
-  flattenSections,
+  buildBackendSections,
   parseBackendSections,
+  ruleSubtotal,
   collectIssues,
   emptyRule,
+  type BackendSection,
   type Section,
 } from './paper-pattern-builder.ts';
 
@@ -24,19 +26,19 @@ test('questionTypeLabel handles unknown/removed codes with the raw code', () => 
   assert.equal(questionTypeLabel('', {}), 'Mixed');
 });
 
-test('flatten/parse round-trip preserves arbitrary custom question-type codes', () => {
+test('build/parse round-trip preserves arbitrary custom question-type codes', () => {
   const sections: Section[] = [
     {
       id: 's1',
       name: 'Section A',
-      compulsory: true,
-      attemptCount: null,
       rules: [
         {
           id: 'r1',
           questionType: 'VERY_SHORT_ANSWER',
           count: 5,
           marksPerQuestion: 2,
+          compulsory: true,
+          attemptCount: null,
           difficulty: { EASY: 40, MEDIUM: 60, HARD: 0 },
           topics: [],
         },
@@ -45,15 +47,20 @@ test('flatten/parse round-trip preserves arbitrary custom question-type codes', 
           questionType: 'CUSTOM_TYPE_2',
           count: 3,
           marksPerQuestion: 4,
+          compulsory: true,
+          attemptCount: null,
           difficulty: { EASY: '', MEDIUM: '', HARD: '' },
           topics: [],
         },
       ],
     },
   ];
-  const backend = flattenSections(sections);
-  assert.equal(backend[0]?.questionType, 'VERY_SHORT_ANSWER');
-  assert.equal(backend[1]?.questionType, 'CUSTOM_TYPE_2');
+  const backend = buildBackendSections(sections);
+  assert.equal(backend.length, 1);
+  assert.deepEqual(
+    backend[0]?.questionTypes.map((qt) => qt.questionType),
+    ['VERY_SHORT_ANSWER', 'CUSTOM_TYPE_2'],
+  );
 
   const parsed = parseBackendSections(backend);
   assert.deepEqual(
@@ -62,13 +69,58 @@ test('flatten/parse round-trip preserves arbitrary custom question-type codes', 
   );
 });
 
+test('attempt N of M is per rule and affects the subtotal', () => {
+  const optionalLong: Section = {
+    id: 's1',
+    name: 'Section C',
+    rules: [
+      {
+        id: 'r1',
+        questionType: 'LONG_ANSWER',
+        count: 3,
+        marksPerQuestion: 3,
+        compulsory: false,
+        attemptCount: 2,
+        difficulty: { EASY: '', MEDIUM: '', HARD: '' },
+        topics: [],
+      },
+    ],
+  };
+  assert.equal(ruleSubtotal(optionalLong.rules[0]!), 6);
+  const backend = buildBackendSections([optionalLong]);
+  assert.equal(backend[0]?.questionTypes[0]?.compulsory, false);
+  assert.equal(backend[0]?.questionTypes[0]?.attemptCount, 2);
+  assert.equal(backend[0]?.questionTypes[0]?.totalMarks, 6);
+});
+
+test('parseBackendSections handles legacy flat sections', () => {
+  const legacy: BackendSection[] = [
+    {
+      id: 's1',
+      name: 'Section A',
+      questionTypes: [
+        {
+          id: 'q1',
+          questionType: 'MCQ',
+          count: 6,
+          marksPerQuestion: 1,
+          compulsory: true,
+          attemptCount: null,
+          difficultyDistribution: null,
+          topicDistribution: null,
+        },
+      ],
+    },
+  ];
+  const parsed = parseBackendSections(legacy);
+  assert.equal(parsed[0]?.rules[0]?.questionType, 'MCQ');
+});
+
 test('collectIssues labels rules with config names and falls back to raw code', () => {
   const sections: Section[] = [
     {
       id: 's1',
       name: 'Section A',
-      compulsory: true,
-      attemptCount: null,
       rules: [
         { ...emptyRule(), questionType: 'CUSTOM_TYPE_2', count: 5 },
         { ...emptyRule(), questionType: 'LONG_ANSWER', count: 2 },

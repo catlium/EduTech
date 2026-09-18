@@ -6,25 +6,30 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { validatePaperPatternStructure } from './paper-patterns.validation.ts';
-import type { PaperPatternSection, PaperPatternStructure } from '@catlium/contracts';
+import type { PaperPatternQuestionType, PaperPatternStructure } from '@catlium/contracts';
 
 const UUID = '8f2c0a6e-9b4e-4f6a-9f1c-000000000001';
 
-function section(
-  id: string,
-  name: string,
-  overrides: Partial<PaperPatternSection> = {},
-): PaperPatternSection {
+function rule(
+  override: Partial<PaperPatternQuestionType> = {},
+): PaperPatternQuestionType {
   return {
-    id,
-    name,
+    id: `${UUID}q`,
     questionType: 'MCQ',
     count: 10,
     marksPerQuestion: 1,
     totalMarks: 10,
     compulsory: true,
-    ...overrides,
+    ...override,
   };
+}
+
+function section(
+  id: string,
+  name: string,
+  rules: PaperPatternQuestionType[] = [rule()],
+): PaperPatternStructure['sections'][number] {
+  return { id, name, questionTypes: rules };
 }
 
 function structure(overrides: Partial<PaperPatternStructure> = {}): PaperPatternStructure {
@@ -33,13 +38,18 @@ function structure(overrides: Partial<PaperPatternStructure> = {}): PaperPattern
     durationMinutes: 40,
     instructions: [],
     sections: [
-      section(`${UUID}1`, 'Section A', { count: 10, marksPerQuestion: 1, totalMarks: 10 }),
-      section(`${UUID}2`, 'Section B', {
-        questionType: 'TRUE_FALSE',
-        count: 5,
-        marksPerQuestion: 2,
-        totalMarks: 10,
-      }),
+      section(`${UUID}1`, 'Section A', [
+        rule({ id: `${UUID}1q`, count: 10, marksPerQuestion: 1, totalMarks: 10 }),
+      ]),
+      section(`${UUID}2`, 'Section B', [
+        rule({
+          id: `${UUID}2q`,
+          questionType: 'TRUE_FALSE',
+          count: 5,
+          marksPerQuestion: 2,
+          totalMarks: 10,
+        }),
+      ]),
     ],
     ...overrides,
   };
@@ -49,9 +59,11 @@ test('valid blueprint passes with no errors', () => {
   assert.deepEqual(validatePaperPatternStructure(structure()), []);
 });
 
-test('section total that does not match count x marks is rejected', () => {
+test('rule total that does not match count x marks is rejected', () => {
   const s = structure({
-    sections: [section(`${UUID}1`, 'A', { count: 10, marksPerQuestion: 1, totalMarks: 99 })],
+    sections: [
+      section(`${UUID}1`, 'A', [rule({ id: `${UUID}1q`, totalMarks: 99 })]),
+    ],
   });
   const errors = validatePaperPatternStructure(s);
   assert.ok(errors.length > 0, 'expected an error');
@@ -59,42 +71,52 @@ test('section total that does not match count x marks is rejected', () => {
 });
 
 test('optional attempt-N-of-M total is worth attemptCount x marks, not count x marks', () => {
-  // 3 long answers at 3 marks, attempt 2 of 3 → section worth 6, not 9.
+  // 3 long answers at 3 marks, attempt 2 of 3 → rule worth 6, not 9.
   const s = structure({
     totalMarks: 10,
     sections: [
-      section(`${UUID}1`, 'A', { count: 2, marksPerQuestion: 2, totalMarks: 4 }),
-      section(`${UUID}2`, 'B', {
-        questionType: 'LONG_ANSWER',
-        count: 3,
-        marksPerQuestion: 3,
-        totalMarks: 9,
-        compulsory: false,
-        attemptCount: 2,
-      }),
+      section(`${UUID}1`, 'A', [
+        rule({ id: `${UUID}1q`, count: 2, marksPerQuestion: 2, totalMarks: 4 }),
+      ]),
+      section(`${UUID}2`, 'B', [
+        rule({
+          id: `${UUID}2q`,
+          questionType: 'LONG_ANSWER',
+          count: 3,
+          marksPerQuestion: 3,
+          totalMarks: 9,
+          compulsory: false,
+          attemptCount: 2,
+        }),
+      ]),
     ],
   });
   const errors = validatePaperPatternStructure(s);
-  assert.ok(errors.some((e) => /Total marks 10.*section totals \(9\)|9 does not match 2/.test(e)));
+  assert.ok(errors.some((e) => /9 does not match 2/.test(e)));
   // Correcting the stored total to attemptCount x marks (6) makes it pass.
   const fixed = structure({
     totalMarks: 10,
     sections: [
-      section(`${UUID}1`, 'A', { count: 2, marksPerQuestion: 2, totalMarks: 4 }),
-      section(`${UUID}2`, 'B', {
-        questionType: 'LONG_ANSWER',
-        count: 3,
-        marksPerQuestion: 3,
-        totalMarks: 6,
-        compulsory: false,
-        attemptCount: 2,
-      }),
+      section(`${UUID}1`, 'A', [
+        rule({ id: `${UUID}1q`, count: 2, marksPerQuestion: 2, totalMarks: 4 }),
+      ]),
+      section(`${UUID}2`, 'B', [
+        rule({
+          id: `${UUID}2q`,
+          questionType: 'LONG_ANSWER',
+          count: 3,
+          marksPerQuestion: 3,
+          totalMarks: 6,
+          compulsory: false,
+          attemptCount: 2,
+        }),
+      ]),
     ],
   });
   assert.deepEqual(validatePaperPatternStructure(fixed), []);
 });
 
-test('pattern total that does not match the sum of sections is rejected', () => {
+test('pattern total that does not match the sum of rules is rejected', () => {
   const s = structure({ totalMarks: 999 });
   const errors = validatePaperPatternStructure(s);
   assert.ok(errors.some((e) => /Total marks 999/.test(e)));
@@ -102,31 +124,47 @@ test('pattern total that does not match the sum of sections is rejected', () => 
 
 test('attemptCount above the available count is rejected', () => {
   const s = structure({
-    sections: [section(`${UUID}1`, 'A', { count: 5, attemptCount: 6, compulsory: false })],
+    sections: [
+      section(`${UUID}1`, 'A', [
+        rule({ id: `${UUID}1q`, count: 5, attemptCount: 6, compulsory: false }),
+      ]),
+    ],
   });
   const errors = validatePaperPatternStructure(s);
   assert.ok(errors.some((e) => /cannot attempt 6 of 5/.test(e)));
 });
 
-test('compulsory section that is not fully attempted is rejected', () => {
+test('compulsory rule that is not fully attempted is rejected', () => {
   const s = structure({
-    sections: [section(`${UUID}1`, 'A', { count: 5, attemptCount: 3, compulsory: true })],
+    sections: [
+      section(`${UUID}1`, 'A', [
+        rule({ id: `${UUID}1q`, count: 5, attemptCount: 3, compulsory: true }),
+      ]),
+    ],
   });
   const errors = validatePaperPatternStructure(s);
-  assert.ok(errors.some((e) => /compulsory section/.test(e)));
+  assert.ok(errors.some((e) => /compulsory rule/.test(e)));
 });
 
-test('optional section without an attempt rule is rejected', () => {
+test('optional rule without an attempt rule is rejected', () => {
   const s = structure({
-    sections: [section(`${UUID}1`, 'A', { count: 5, attemptCount: null, compulsory: false })],
+    sections: [
+      section(`${UUID}1`, 'A', [
+        rule({ id: `${UUID}1q`, count: 5, attemptCount: null, compulsory: false }),
+      ]),
+    ],
   });
   const errors = validatePaperPatternStructure(s);
-  assert.ok(errors.some((e) => /optional section must declare/.test(e)));
+  assert.ok(errors.some((e) => /optional rule must declare/.test(e)));
 });
 
-test('optional section attempting all available questions is rejected', () => {
+test('optional rule attempting all available questions is rejected', () => {
   const s = structure({
-    sections: [section(`${UUID}1`, 'A', { count: 5, attemptCount: 5, compulsory: false })],
+    sections: [
+      section(`${UUID}1`, 'A', [
+        rule({ id: `${UUID}1q`, count: 5, attemptCount: 5, compulsory: false }),
+      ]),
+    ],
   });
   const errors = validatePaperPatternStructure(s);
   assert.ok(errors.some((e) => /must be fewer than/.test(e)));
@@ -135,9 +173,12 @@ test('optional section attempting all available questions is rejected', () => {
 test('difficulty distribution not summing to 100 is rejected', () => {
   const s = structure({
     sections: [
-      section(`${UUID}1`, 'A', {
-        difficultyDistribution: { EASY: 40, MEDIUM: 40, HARD: 40 },
-      }),
+      section(`${UUID}1`, 'A', [
+        rule({
+          id: `${UUID}1q`,
+          difficultyDistribution: { EASY: 40, MEDIUM: 40, HARD: 40 },
+        }),
+      ]),
     ],
   });
   const errors = validatePaperPatternStructure(s);
@@ -148,9 +189,9 @@ test('difficulty distribution summing to 100 passes', () => {
   const s = structure({
     totalMarks: 10,
     sections: [
-      section(`${UUID}1`, 'A', {
-        difficultyDistribution: { EASY: 40, MEDIUM: 40, HARD: 20 },
-      }),
+      section(`${UUID}1`, 'A', [
+        rule({ id: `${UUID}1q`, difficultyDistribution: { EASY: 40, MEDIUM: 40, HARD: 20 } }),
+      ]),
     ],
   });
   assert.deepEqual(validatePaperPatternStructure(s), []);
@@ -160,16 +201,31 @@ test('topic distribution not summing to 100 is rejected', () => {
   const s = structure({
     totalMarks: 10,
     sections: [
-      section(`${UUID}1`, 'A', {
-        topicDistribution: [
-          { name: 'Algebra', percentage: 50 },
-          { name: 'Geometry', percentage: 30 },
-        ],
-      }),
+      section(`${UUID}1`, 'A', [
+        rule({
+          id: `${UUID}1q`,
+          topicDistribution: [
+            { name: 'Algebra', percentage: 50 },
+            { name: 'Geometry', percentage: 30 },
+          ],
+        }),
+      ]),
     ],
   });
   const errors = validatePaperPatternStructure(s);
   assert.ok(errors.some((e) => /topic distribution must total 100/.test(e)));
+});
+
+test('labels reference the section and question type together', () => {
+  const s = structure({
+    sections: [
+      section(`${UUID}1`, 'Section A', [
+        rule({ id: `${UUID}1q`, count: 5, attemptCount: 6, compulsory: false }),
+      ]),
+    ],
+  });
+  const errors = validatePaperPatternStructure(s);
+  assert.ok(errors.some((e) => /"Section A → MCQ"/.test(e)));
 });
 
 test('duplicate section names are rejected', () => {
@@ -186,18 +242,30 @@ test('duplicate section ids are rejected', () => {
 
 test('unknown (null count) does not distort the total-marks check', () => {
   // Section A declares 10 x 1, Section B declares 10 x 2 — totals line up with
-  // the pattern even though Section C only declares a total with no counts.
+  // the pattern even though rule C only declares a total with no counts.
   const s = structure({
     totalMarks: 40,
     sections: [
-      section(`${UUID}1`, 'A', { count: 10, marksPerQuestion: 1, totalMarks: 10 }),
-      section(`${UUID}2`, 'B', { count: 5, marksPerQuestion: 2, totalMarks: 10 }),
-      section(`${UUID}3`, 'C', {
-        count: null,
-        marksPerQuestion: null,
-        questionType: 'FILL_IN_BLANK',
-        totalMarks: 20,
-      }),
+      section(`${UUID}1`, 'A', [
+        rule({ id: `${UUID}1q`, count: 10, marksPerQuestion: 1, totalMarks: 10 }),
+      ]),
+      section(`${UUID}2`, 'B', [
+        rule({
+          id: `${UUID}2q`,
+          count: 5,
+          marksPerQuestion: 2,
+          totalMarks: 10,
+        }),
+      ]),
+      section(`${UUID}3`, 'C', [
+        rule({
+          id: `${UUID}3q`,
+          count: null,
+          marksPerQuestion: null,
+          questionType: 'FILL_IN_BLANK',
+          totalMarks: 20,
+        }),
+      ]),
     ],
   });
   assert.deepEqual(validatePaperPatternStructure(s), []);

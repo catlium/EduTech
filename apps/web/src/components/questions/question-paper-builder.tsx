@@ -13,7 +13,7 @@ import type {
   GenerateMoreQuestionsResponse,
   QuestionDifficulty,
 } from '@catlium/contracts';
-import { PaperPatternStructureSchema } from '@catlium/contracts';
+import { PaperPatternStructureSchema, flattenPatternRules } from '@catlium/contracts';
 import { useTenant, canManage } from '@/lib/tenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -105,6 +105,12 @@ export function QuestionPaperBuilder({
     return parsed.success ? parsed.data : null;
   }, [pattern]);
 
+  /* Flat per-question-type rules — selection/shortage math operates on these. */
+  const sections = useMemo(
+    () => (structure ? flattenPatternRules(structure) : []),
+    [structure],
+  );
+
   const usableQuestions = useMemo(
     () =>
       questions.filter(
@@ -116,7 +122,7 @@ export function QuestionPaperBuilder({
 
   /* Questions scalable to a section: same question type; if the section
    * declares a difficulty split, only difficulties with a share count here. */
-  const sectionPool = (section: NonNullable<typeof structure>['sections'][number]) =>
+  const sectionPool = (section: (typeof sections)[number]) =>
     usableQuestions.filter((q) => {
       if (section.questionType && q.questionType !== section.questionType) return false;
       const dist = section.difficultyDistribution;
@@ -129,7 +135,7 @@ export function QuestionPaperBuilder({
    * loans the same bucketing the bank panel uses per scope. */
   const shortSections = useMemo(() => {
     if (!structure) return [];
-    return structure.sections
+    return sections
       .map((section) => {
         const required = section.count ?? 0;
         const available = sectionPool(section).length;
@@ -142,7 +148,7 @@ export function QuestionPaperBuilder({
 
   function shortageBuckets() {
     if (!structure) return [];
-    return structure.sections.flatMap((section) => {
+    return sections.flatMap((section) => {
       const required = section.count ?? 0;
       const available = sectionPool(section).length;
       const shortage = required - available;
@@ -297,7 +303,7 @@ export function QuestionPaperBuilder({
                 <ShieldCheck className="size-4 text-emerald-600" /> {pattern.title}
               </span>
               <span className="text-muted-foreground">
-                {structure.sections.length} section{structure.sections.length !== 1 ? 's' : ''}
+                {sections.length} section{sections.length !== 1 ? 's' : ''}
               </span>
               <span className="text-muted-foreground">Max marks: {structure.totalMarks}</span>
               <span className="flex items-center gap-1 text-muted-foreground">
@@ -311,7 +317,7 @@ export function QuestionPaperBuilder({
 
             {/* Section cards with available · required */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {structure.sections.map((section) => {
+              {sections.map((section) => {
                 const pool = sectionPool(section);
                 const required = section.count ?? 0;
                 const available = pool.length;
@@ -419,7 +425,7 @@ export function QuestionPaperBuilder({
 
             {/* Questions grouped under sections */}
             <Accordion type="multiple" className="space-y-2">
-              {structure.sections.map((section) => {
+              {sections.map((section) => {
                 const pool = sectionPool(section);
                 if (pool.length === 0) return null;
                 return (
@@ -464,7 +470,7 @@ export function QuestionPaperBuilder({
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-            {structure?.sections.map((s) => (
+            {sections.map((s) => (
               <p key={s.id} className="flex justify-between py-0.5">
                 <span>{s.name}</span>
                 <span className="tabular-nums">

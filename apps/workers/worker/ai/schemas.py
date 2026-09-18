@@ -405,11 +405,10 @@ class BlueprintTopicDistribution(BaseModel):
     percentage: int | None = Field(default=None, ge=0, le=100)
 
 
-class BlueprintSection(BaseModel):
-    # LLM ids are rarely UUIDs; the aggregation step re-keys every section to a
+class BlueprintQuestionType(BaseModel):
+    # LLM ids are rarely UUIDs; the aggregation step re-keys every rule to a
     # fresh UUID (stable across re-analysis runs is not required).
     id: str = Field(min_length=1, max_length=128)
-    name: str = Field(min_length=1, max_length=100)
     # Any question-type code (predefined or custom); the blueprint aggregation
     # step maps display names to codes where possible.
     questionType: str | None = Field(default=None, max_length=64)  # noqa: N815
@@ -420,6 +419,14 @@ class BlueprintSection(BaseModel):
     attemptCount: int | None = Field(default=None, ge=1)  # noqa: N815
     difficultyDistribution: BlueprintDifficultyDistribution | None = None  # noqa: N815
     topicDistribution: list[BlueprintTopicDistribution] | None = None  # noqa: N815
+
+
+class BlueprintSection(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=100)
+    # "attempt N of M" and every rule-level field live on each question-type
+    # rule; a section is only a named grouping of rules.
+    questionTypes: list[BlueprintQuestionType] = Field(min_length=1, max_length=50)  # noqa: N815
 
 
 class BlueprintPayload(BaseModel):

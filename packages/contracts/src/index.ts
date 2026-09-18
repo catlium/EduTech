@@ -2087,20 +2087,28 @@ export const PaperPatternTopicDistributionSchema = z.object({
 });
 export type PaperPatternTopicDistribution = z.infer<typeof PaperPatternTopicDistributionSchema>;
 
-export const PaperPatternSectionSchema = z.object({
+/* A question-type rule inside a section. A section may contain several rules,
+ * each with its own optional "attempt N of M" semantics. */
+export const PaperPatternQuestionTypeSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().min(1).max(100),
-  /* absent/undefined = unspecified or mixed-type section (no descriptive type exists yet) */
+  /* absent/undefined = unspecified or mixed-type rule (no descriptive type exists yet) */
   questionType: QuestionTypeRefSchema.optional(),
   /* null = unknown (teacher/AI could not state it) */
   count: z.number().int().min(1).nullable().optional(),
   marksPerQuestion: z.number().int().min(1).nullable().optional(),
   totalMarks: z.number().int().min(1).nullable().optional(),
   compulsory: z.boolean().default(true),
-  /* "attempt N of M" — for non-compulsory sections */
+  /* "attempt N of M" at the question-type level — for non-compulsory rules */
   attemptCount: z.number().int().min(1).nullable().optional(),
   difficultyDistribution: PaperPatternDifficultyDistributionSchema.nullable().optional(),
   topicDistribution: z.array(PaperPatternTopicDistributionSchema).max(100).nullable().optional(),
+});
+export type PaperPatternQuestionType = z.infer<typeof PaperPatternQuestionTypeSchema>;
+
+export const PaperPatternSectionSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  questionTypes: z.array(PaperPatternQuestionTypeSchema).min(1).max(50),
 });
 export type PaperPatternSection = z.infer<typeof PaperPatternSectionSchema>;
 
@@ -2111,6 +2119,90 @@ export const PaperPatternStructureSchema = z.object({
   sections: z.array(PaperPatternSectionSchema).min(1).max(50),
 });
 export type PaperPatternStructure = z.infer<typeof PaperPatternStructureSchema>;
+
+/** A flat, per-question-type rule row — the unit selection/coverage/export
+ *  operate on. `name` matches the legacy display convention
+ *  ("Section A — MCQ") so stored selections and coverage grouping stay stable. */
+export interface PaperPatternRuleRow {
+  id: string;
+  sectionId: string;
+  sectionName: string;
+  name: string;
+  questionType?: string;
+  count: number | null;
+  marksPerQuestion: number | null;
+  totalMarks: number | null;
+  compulsory: boolean;
+  attemptCount: number | null;
+  difficultyDistribution: PaperPatternDifficultyDistribution | null;
+  topicDistribution: PaperPatternTopicDistribution[] | null;
+}
+
+/** Flatten a (nested) structure into one row per question-type rule. */
+export function flattenPatternRules(structure: PaperPatternStructure): PaperPatternRuleRow[] {
+  return structure.sections.flatMap((section) =>
+    section.questionTypes.map((qt) => ({
+      id: qt.id,
+      sectionId: section.id,
+      sectionName: section.name,
+      name: `${section.name} — ${qt.questionType ?? 'Mixed'}`,
+      questionType: qt.questionType,
+      count: qt.count ?? null,
+      marksPerQuestion: qt.marksPerQuestion ?? null,
+      totalMarks: qt.totalMarks ?? null,
+      compulsory: qt.compulsory,
+      attemptCount: qt.attemptCount ?? null,
+      difficultyDistribution: qt.difficultyDistribution ?? null,
+      topicDistribution: qt.topicDistribution ?? null,
+    })),
+  );
+}
+
+function normalizePatternSection(section: unknown): Record<string, unknown> {
+  if (typeof section !== 'object' || section === null) return section as Record<string, unknown>;
+  const s = section as Record<string, unknown>;
+  if (Array.isArray(s.questionTypes)) return s;
+  /* Legacy flat section — hoist its fields into a single question-type rule. */
+  const questionType = s.questionType as string | undefined;
+  const count = s.count as number | null | undefined;
+  const marksPerQuestion = s.marksPerQuestion as number | null | undefined;
+  const hasRule =
+    questionType !== undefined || count !== undefined || marksPerQuestion !== undefined;
+  return {
+    ...s,
+    // An empty legacy wrapper (no type/count/marks) drops out below via the
+    // schema's min(1) on questionTypes.
+    questionTypes: hasRule
+      ? [
+          {
+            id: crypto.randomUUID(),
+            questionType,
+            count,
+            marksPerQuestion,
+            totalMarks: s.totalMarks,
+            compulsory: s.compulsory,
+            attemptCount: s.attemptCount,
+            difficultyDistribution: s.difficultyDistribution,
+            topicDistribution: s.topicDistribution,
+          },
+        ]
+      : [],
+  };
+}
+
+/** Accept a nested structure (pass-through) or a legacy flat structure
+ *  (one rule per section) and return a validated nested shape. */
+export function normalizePaperPatternStructure(raw: unknown): PaperPatternStructure {
+  if (typeof raw !== 'object' || raw === null) {
+    return PaperPatternStructureSchema.parse(raw);
+  }
+  const candidate = raw as Record<string, unknown>;
+  if (Array.isArray(candidate.sections)) {
+    const sections = candidate.sections.map(normalizePatternSection);
+    return PaperPatternStructureSchema.parse({ ...candidate, sections });
+  }
+  return PaperPatternStructureSchema.parse(candidate);
+}
 
 export const PaperPatternSchema = z.object({
   id: z.string().uuid(),

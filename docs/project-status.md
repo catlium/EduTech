@@ -1,9 +1,9 @@
 # Project Status
 
-## Current test inventory (verified 2026-09-17)
+## Current test inventory (verified 2026-09-18)
 
-- API native suite: **137/137** across 18 node:test files in `apps/api/src`.
-- Worker AI/material: **81** pytest (12 files) + ruff + mypy clean
+- API native suite: **153/153** across 18 node:test files in `apps/api/src`.
+- Worker AI/material: **83** pytest (12 files) + ruff + mypy clean
   (`apps/workers/tests`).
 - OCR engine: **21** (`apps/ocr/ocr_engine`), ocr-worker: **10**
   (`apps/workers/ocr-worker/tests/test_worker.py`).
@@ -12,80 +12,75 @@
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
 
-## Phase 40 — User bug-fix batch: QP/assessment full-coverage gate, subject deletion, syllabus edit, generate-missing double-stringify, idle-session redirect (2026-09-17)
+## Phase 41 — Issue 3: nested paper-pattern hierarchy (2026-09-18)
 
-**Status: curated checkpoint committed + pushed; QP coverage gate live-verified.**
-API 137/137, api+web tsc clean, api lint clean, web `node --test` 13/13;
-api/web images rebuilt + healthy. Issue 3 (paper-pattern hierarchy → nested
-`questionTypes[]`) is the next scheduled batch, approach decided (go nested).
+**Status: checkpoint committed + pushed; all reported bugs resolved.**
+
+The last reported bug (Issue 3) is complete: the paper-pattern hierarchy is now
+`Paper Pattern → Section → Question Type → Rules`, with "Attempt N of M"
+declared per question type. All legacy flat structures normalize to the nested
+shape on read/write, so no data migration was needed.
 
 ### Completed work
 
-- **QP/assessment full-coverage gate (Issues 5+6).** New
-  `QuestionGenerationService.ensurePatternCoverage(instituteId, userId,
-  blueprintId)` verifies the APPROVED+ACTIVE bank fully covers the pattern's
-  `(type, difficulty, count)` quota (`buildBucketsFromBlueprint` +
-  `countPatternBank`, subject-scoped; empty subject set = institute-wide). It
-  returns `COVERED` (create proceeds), `GENERATING` (exact shortfall queued
-  into the pattern's single subject — `batchId`/`jobIds` returned, nothing
-  created), `AWAITING_APPROVAL` (gap covered only by pending AI questions —
-  teacher must approve them first), or `NO_SUBJECT`/`INSUFFICIENT`
-  (General/multi-subject patterns cannot auto-fill — creation is blocked with a
-  400 naming the fix). `createQuestionPaper` and
-  `createAssessmentFromBlueprint` are now subject to this gate, so a paper or
-  assessment is never created short. Web polls the batch via the new
-  `waitForBankBatch` (`api.ts`) and retries creation, bounded. Subject
-  selection in `autoSelectFromPattern` had already been verified correct
-  (Issue 5 selection side); the gate makes generation itself subject-scoped.
-- **Subject deletion (Issue 1).** `DELETE /academic/subjects/:subjectId` (204)
-  with full dependent-resource conflict checks + confirm dialog on the subject
-  page.
-- **Syllabus edit (Issue 2).** PATCH verified working; the real bug was the
-  Edit button being gated on `READY` — loosened so approved-but-unlocked
-  syllabi can be edited. Generated-content lock is by design.
-- **Generate-missing double-stringify (Issue 4).** Body was JSON.stringify'd
-  twice; fixed call sites + removed the buffer input.
-- **Idle-session redirect (Issue 7 remainder).** `session-guard.ts` lets a
-  session pass middleware when either the access or CSRF cookie is present, so
-  idle past access-token expiry never redirects to `/login`. Token/cookie
-  lifetimes unchanged.
+- **Contracts** (`packages/contracts/src/index.ts`): `PaperPatternQuestionType`
+  (uuid `id`, optional `questionType`, `count?`, `marksPerQuestion?`,
+  `totalMarks?`, `compulsory` default true, `attemptCount?`,
+  difficulty/topic distributions); `PaperPatternSection` is now
+  `{id, name, questionTypes: 1..50}`. Pure helpers:
+  `normalizePaperPatternStructure` (legacy flat sections → one nested rule via
+  `crypto.randomUUID()`, empty wrappers dropped by the schema `min(1)`) and
+  `flattenPatternRules` → `PaperPatternRuleRow[]` (`id`, `sectionId`,
+  `sectionName`, `name = "Section — Type"`, rule fields) — the canonical unit
+  selection/coverage/export operate on.
+- **API validation** rewritten per question-type rule (`attemptCount ≤ count`;
+  compulsory must attempt all; optional must declare attempt < count;
+  difficulty/topic distributions sum to 100; rule total = attempted × marks;
+  section/pattern totals), labelled `"Section → Type"`.
+- **Read normalization at every boundary**: `asStructure`/`parseStructure`
+  normalize on write; a shared `normalizeRowStructure` on list/get/approve
+  normalizes legacy DB rows on read — every DTO returns nested. Question-papers,
+  examinations and question-generation all consume `flattenPatternRules`, so
+  selection, coverage, shortage buckets and quota generation work identically
+  for new and legacy patterns.
+- **Export** renders per rule: question-paper doc, paper-pattern doc and the
+  content-block renderer group by the plural-name convention and emit
+  attempt-N-of-M per question type.
+- **Worker** blueprint: `BlueprintSection.questionTypes[]` (Pydantic min
+  1/max 50), the prompt emits the nested shape,
+  `_aggregate_blueprint` dedupes rules by `(questionType, count)` and folds
+  legacy flat sections even on first occurrence; satisfaction iterates rule
+  counts.
+- **Web**: the builder's `Rule` carries compulsory/attemptCount and sections
+  hold rules only; nested parse/build with a legacy fallback; the pattern page
+  has per-rule compulsory checkbox + attempt input + subtotals (section-level
+  attempt controls removed); the QP-builder and bank-wizard read flattened rows.
+- **Seed** updated to the nested shape.
+- **Live E2E**: nested write → GET → validate → approve round-trip returns the
+  nested structure; a legacy-flat write validates and reads back nested; test
+  patterns cleaned up afterwards.
 
 ### Validation
 
-- API native suite **137/137**; web `node --test` **13/13** (incl. new
-  `session-guard.test.ts`); api + web `tsc --noEmit` clean; `pnpm lint` clean.
-- api + web images rebuilt (`docker compose up -d --build api web`), both
-  healthy.
-- Live: General short pattern → 400 "no subject scope" + no paper; scoped short
-  pattern → 201 `GENERATING` with exact deficits + **no paper created**; retry
-  after batch settlement re-queued only the remaining deficits (3→2); demo
-  batch cancelled, no stray papers.
+- API **153/153**, worker **83/83** (pytest) + ruff + mypy clean, web
+  `node --test` **13/13**; `pnpm typecheck`, `pnpm lint`, `pnpm build` all
+  clean. Containers rebuilt (api/web/worker-ai/worker-material) + healthy;
+  legacy row read back nested from the live API.
 
 ### Known issues / deferred
 
-- Auto-generated questions land PENDING; if a re-check finds the gap covered
-  only by pending questions, creation stays blocked with an
-  "awaiting approval" message (teacher approves in the bank, then regenerates).
-- `waitForBankBatch` timeout (5 min) and `20`-attempt cap bound the
-  create-retry loop; a chronically-failing generation surfaces as a toaster
-  error rather than an infinite loop.
-- **Issue 3 (paper-pattern hierarchy)** — the largest remaining item: nested
-  `questionTypes[]` with per-type integrity checks + shared legacy normalizer +
-  all consumers + worker blueprint + builder (drop `STEM_RE`) + seed. Not
-  started.
+- Existing approved patterns keep their old flat JSON in the DB; they are
+  normalized on every read by `normalizeRowStructure`, so this is invisible.
+- Per-attempt mechanics (queuing/time-limits per attempt) remain out of scope —
+  the stored `attemptCount` is a rule declaration only, matching the
+  pre-existing product contract.
 
 ### Exact recommended next task
 
-**Issue 3 — nested paper-pattern hierarchy.** Implement `questionTypes[]` on
-`PaperPatternSectionSchema` (validated at runtime), a shared pure
-`normalizePaperPatternStructure` in contracts accepting the legacy flat
-structure, then migrate selection (`paper-selection.ts`), generation/buckets,
-coverage, export (`paper-pattern-doc` per-QT "Attempt N of M"), worker blueprint
-Pydantic + prompt, the frontend builder (delete the `STEM_RE` flatten hack and
-UI labels), and seed/demo data. Update `paper-selection.test.ts`,
-`paper-pattern-doc.test.ts`, `paper-patterns.validation.test.ts`,
-`build-bank-buckets.test.ts`; then typecheck/lint/build + container rebuild +
-live check + commit/push.
+No open reported bugs remain. Natural next work: **Practice/attempt mechanics**
+(per-attempt N-of-M time limits and replenishment — documented earlier as
+known remaining work), or a fresh product directive. Run the session startup
+protocol (AGENTS.md) before starting.
 
 ---
 

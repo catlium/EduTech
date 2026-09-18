@@ -28,7 +28,7 @@ _SYSTEM_TEMPLATE = (
     "faithfully from the document ONLY — never invent, expand, or add content "
     "that the document does not state. Respond with ONLY a JSON object and "
     "nothing else (no markdown code fences) matching exactly this schema:\n"
-    '{\n'
+    "{\n"
     '  "context": {\n'
     '    "program": string (optional),\n'
     '    "course": string (optional),\n'

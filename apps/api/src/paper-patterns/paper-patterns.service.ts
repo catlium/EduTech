@@ -9,7 +9,7 @@ import {
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
 import { materials, paperPatterns, paperPatternSubjects, subjects } from '@catlium/database';
-import { PaperPatternStructureSchema, type PaperPatternStructure } from '@catlium/contracts';
+import { normalizePaperPatternStructure, type PaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { MaterialsService } from '../materials/materials.service.js';
@@ -79,12 +79,12 @@ export class PaperPatternsService {
       .from(paperPatterns)
       .where(eq(paperPatterns.instituteId, instituteId))
       .orderBy(desc(paperPatterns.createdAt));
-    return this.attachSubjectIds(rows);
+    return this.attachSubjectIds(rows.map(this.normalizeRowStructure.bind(this)));
   }
 
   async getPattern(instituteId: string, patternId: string) {
     const row = await this.requirePattern(instituteId, patternId);
-    return (await this.attachSubjectIds([row]))[0]!;
+    return (await this.attachSubjectIds([this.normalizeRowStructure(row)]))[0]!;
   }
 
   async updatePattern(
@@ -270,7 +270,7 @@ export class PaperPatternsService {
       .where(and(eq(paperPatterns.id, patternId), eq(paperPatterns.instituteId, instituteId)))
       .returning();
 
-    return (await this.attachSubjectIds([approved!]))[0]!;
+    return (await this.attachSubjectIds([this.normalizeRowStructure(approved!)]))[0]!;
   }
 
   // ── Assessment creation ───────────────────
@@ -402,6 +402,14 @@ export class PaperPatternsService {
     return patterns.map((p) => ({ ...p, subjectIds: byPattern.get(p.id) ?? [] }));
   }
 
+  /** Normalize a DB row's structure to the nested shape before it crosses the
+   *  API boundary, so every consumer (web builder, selection, export) sees the
+   *  canonical format even for rows written before the migration. */
+  private normalizeRowStructure<T extends { structure?: unknown }>(row: T): T {
+    if (row.structure == null) return row;
+    return { ...row, structure: normalizePaperPatternStructure(row.structure) };
+  }
+
   /**
    * Resolve the material an analysis reads from:
    *  - MATERIAL / PREVIOUS_YEAR_PAPER: an existing, processed, ACTIVE material
@@ -481,16 +489,17 @@ export class PaperPatternsService {
 
   private parseStructure(structure: unknown): PaperPatternStructure {
     try {
-      return PaperPatternStructureSchema.parse(structure);
+      return normalizePaperPatternStructure(structure);
     } catch {
       throw new BadRequestException('Invalid paper pattern structure');
     }
   }
 
   // Drizzle jsonb reads as an opaque object type; the stored structure has
-  // already passed PaperPatternStructureSchema on write, so this is a
-  // validation-safe cast, not a blind trust of arbitrary bytes.
+  // already passed PaperPatternStructureSchema on write (legacy flat rows are
+  // normalized here), so this is a validation-safe cast, not a blind trust of
+  // arbitrary bytes.
   private asStructure(value: unknown): PaperPatternStructure {
-    return value as PaperPatternStructure;
+    return normalizePaperPatternStructure(value);
   }
 }

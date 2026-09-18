@@ -52,6 +52,7 @@ import type {
   GenerateBankBucket,
   QuestionBankBatchResponse,
 } from '@catlium/contracts';
+import { flattenPatternRules } from '@catlium/contracts';
 
 const DIFFICULTIES: QuestionDifficulty[] = ['EASY', 'MEDIUM', 'HARD'];
 const STEPS = ['Scope', 'Source', 'Generate', 'Preview & Export'] as const;
@@ -91,8 +92,10 @@ function patternDifficultySplit(
   structure: PaperPattern['structure'] | null,
   questionType: string,
 ): Record<QuestionDifficulty, number> {
-  const section = structure?.sections.find((s) => s.questionType === questionType);
-  const dist = section?.difficultyDistribution;
+  const rule = structure
+    ? flattenPatternRules(structure).find((r) => r.questionType === questionType)
+    : undefined;
+  const dist = rule?.difficultyDistribution;
   const total = dist ? dist.EASY + dist.MEDIUM + dist.HARD : 0;
   if (dist && total > 0) {
     return { EASY: dist.EASY, MEDIUM: dist.MEDIUM, HARD: dist.HARD };
@@ -115,7 +118,13 @@ function buildTargets(
   const types =
     mode === 'manual'
       ? selectedTypes
-      : [...new Set((structure?.sections ?? []).flatMap((s) => (s.questionType ? [s.questionType] : [])))];
+      : [
+          ...new Set(
+            (structure ? flattenPatternRules(structure) : []).flatMap((r) =>
+              r.questionType ? [r.questionType] : [],
+            ),
+          ),
+        ];
   const out: GenerateBankBucket[] = [];
   for (const questionType of types) {
     const dist =
@@ -236,7 +245,13 @@ export function QuestionBankWizard({
   const activeTypes = useMemo(
     () =>
       mode === 'pattern'
-        ? [...new Set((activePattern?.structure?.sections ?? []).flatMap((s) => (s.questionType ? [s.questionType] : [])))]
+        ? [
+            ...new Set(
+              (activePattern?.structure ? flattenPatternRules(activePattern.structure) : []).flatMap(
+                (r) => (r.questionType ? [r.questionType] : []),
+              ),
+            ),
+          ]
         : selectedTypes,
     [mode, activePattern, selectedTypes],
   );
@@ -251,9 +266,9 @@ export function QuestionBankWizard({
         if (next[t] === undefined) {
           const total =
             mode === 'pattern'
-              ? (activePattern?.structure?.sections ?? [])
-                  .filter((s) => s.questionType === t)
-                  .reduce((sum, s) => sum + (s.count ?? 0), 0)
+              ? (activePattern?.structure ? flattenPatternRules(activePattern.structure) : [])
+                  .filter((r) => r.questionType === t)
+                  .reduce((sum, r) => sum + (r.count ?? 0), 0)
               : 10;
           next[t] = Math.max(1, total);
         }
@@ -496,7 +511,7 @@ export function QuestionBankWizard({
                     </Select>
                     {activePattern?.structure && (
                       <p className="text-xs text-muted-foreground">
-                        {activePattern.structure.sections.length} sections ·{' '}
+                        {flattenPatternRules(activePattern.structure).length} sections ·{' '}
                         {activePattern.structure.totalMarks} marks — the pattern sets the
                         question types.
                       </p>

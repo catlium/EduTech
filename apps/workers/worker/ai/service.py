@@ -314,22 +314,42 @@ def _aggregate_blueprint(
             name = str(section.get("name") or "").strip()
             if not name:
                 continue
+            # Fold legacy flat sections (single rule declared on the section)
+            # into the nested shape so half-migrated chunk output still works.
+            raw_rules = section.get("questionTypes")
+            if not isinstance(raw_rules, list):
+                flat = [
+                    key
+                    for key in (
+                        "questionType",
+                        "count",
+                        "marksPerQuestion",
+                        "totalMarks",
+                        "compulsory",
+                        "attemptCount",
+                        "difficultyDistribution",
+                        "topicDistribution",
+                    )
+                    if section.get(key) is not None
+                ]
+                raw_rules = [section] if flat else []
+            rules = [r for r in raw_rules if isinstance(r, dict)]
             if name not in sections:
                 sections[name] = {**section, "id": str(uuid4())}
+                if "questionTypes" not in section or not isinstance(
+                    section.get("questionTypes"), list
+                ):
+                    sections[name]["questionTypes"] = [{**r, "id": str(uuid4())} for r in rules]
                 continue
             existing = sections[name]
-            for key in (
-                "questionType",
-                "count",
-                "marksPerQuestion",
-                "totalMarks",
-                "compulsory",
-                "attemptCount",
-                "difficultyDistribution",
-                "topicDistribution",
-            ):
-                if existing.get(key) is None and section.get(key) is not None:
-                    existing[key] = section[key]
+            for rule in rules:
+                key = (rule.get("questionType"), rule.get("count"))
+                existing_rules = existing.setdefault("questionTypes", [])
+                if not any(
+                    (other.get("questionType"), other.get("count")) == key
+                    for other in existing_rules
+                ):
+                    existing_rules.append({**rule, "id": str(uuid4())})
 
     return {
         "totalMarks": total_marks or 0,
@@ -1353,18 +1373,21 @@ def _compute_blueprint_satisfaction(
     for section in structure.get("sections") or []:
         if not isinstance(section, dict):
             continue
-        section_type = section.get("questionType")
-        count = section.get("count")
-        if not isinstance(section_type, str) or section_type not in generated_by_type:
-            continue
-        if not isinstance(count, int) or count < 1:
-            continue
-        actual = generated_by_type[section_type]
-        if actual < count:
-            mismatches.append(
-                f"Section '{section.get('name') or section_type}': expects {count} "
-                f"{section_type} questions, this generation produced {actual}"
-            )
+        for rule in section.get("questionTypes") or []:
+            if not isinstance(rule, dict):
+                continue
+            section_type = rule.get("questionType")
+            count = rule.get("count")
+            if not isinstance(section_type, str) or section_type not in generated_by_type:
+                continue
+            if not isinstance(count, int) or count < 1:
+                continue
+            actual = generated_by_type[section_type]
+            if actual < count:
+                mismatches.append(
+                    f"Section '{section.get('name') or section_type}': expects {count} "
+                    f"{section_type} questions, this generation produced {actual}"
+                )
 
     return {
         "patternId": pattern_id,

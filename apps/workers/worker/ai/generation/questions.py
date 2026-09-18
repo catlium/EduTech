@@ -38,11 +38,11 @@ _FORMATS_REFERENCE = (
 _QUALITY_INSTRUCTIONS = (
     "Every question must be strictly self-contained and answerable on its "
     "own, with no reference to the source text, a previous question, or any "
-    "hidden context. NEVER use phrases like: \"according to the source text\", "
-    "\"according to the source material\", \"according to the text\", \"in the "
-    "context of\", \"as described above\", \"based on the material\", "
-    "\"according to the provided content\", \"this algorithm\", \"the method\", "
-    "\"the above example\". If a concept needs context, put that context "
+    'hidden context. NEVER use phrases like: "according to the source text", '
+    '"according to the source material", "according to the text", "in the '
+    'context of", "as described above", "based on the material", '
+    '"according to the provided content", "this algorithm", "the method", '
+    '"the above example". If a concept needs context, put that context '
     "directly inside the question stem and name the exact concept, subject, "
     "condition, scenario, data, or definition required to answer it. A learner "
     "who sees ONLY the generated question and no source material must still "
@@ -83,7 +83,7 @@ _TEACHER_ANSWER_RULES = (
     "study material - they must be able to learn the concept from the answer "
     "alone. Cover ALL aspects the question asks for. State the answer clearly "
     "up front, then give the reasoning or working that justifies it. Use "
-    "bullet points (\"- ...\") and numbered steps wherever a list or sequence "
+    'bullet points ("- ...") and numbered steps wherever a list or sequence '
     "makes the explanation clearer and easier to study. Include the necessary "
     "definitions, formulas, concrete examples, diagrams (as ASCII art in a "
     "fenced code block) and common mistakes, whenever they genuinely help "

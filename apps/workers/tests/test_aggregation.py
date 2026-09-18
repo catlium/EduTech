@@ -1,6 +1,7 @@
 """Deterministic aggregation of per-chunk AI outputs."""
 
 from worker.ai.service import (
+    _aggregate_blueprint,
     _aggregate_concepts,
     _aggregate_cornell,
     _aggregate_flashcards,
@@ -8,6 +9,7 @@ from worker.ai.service import (
     _aggregate_questions,
     _aggregate_summary,
     _aggregate_syllabus_analysis,
+    _compute_blueprint_satisfaction,
     _resolve_scope,
 )
 
@@ -160,3 +162,87 @@ def test_syllabus_aggregation_merges_chapters_and_dedupes_topics() -> None:
     assert out["context"]["program"] == "CS"
     assert out["context"]["objectives"] == ["o1", "o2"]
     assert out["context"]["learningOutcomes"] == ["lo1"]
+
+
+PATTERN_ID = "p-1"
+
+
+def test_blueprint_aggregation_folds_rules_and_legacy_flat_sections() -> None:
+    results = [
+        {
+            "totalMarks": 20,
+            "durationMinutes": 60,
+            "sections": [
+                {
+                    "name": "Section A",
+                    "questionTypes": [
+                        {
+                            "questionType": "MCQ",
+                            "count": 5,
+                            "marksPerQuestion": 1,
+                            "compulsory": True,
+                        },
+                    ],
+                }
+            ],
+        },
+        {
+            "totalMarks": 0,
+            "durationMinutes": 0,
+            "sections": [
+                {
+                    "name": "Section A",
+                    "questionTypes": [
+                        {
+                            "questionType": "LONG_ANSWER",
+                            "count": 2,
+                            "compulsory": False,
+                            "attemptCount": 1,
+                        },
+                    ],
+                },
+                # Legacy flat section still folds into a single nested rule.
+                {"name": "Section B", "questionType": "TRUE_FALSE", "count": 3},
+            ],
+        },
+    ]
+    out = _aggregate_blueprint(results)
+    section_a = next(s for s in out["sections"] if s["name"] == "Section A")
+    assert len(section_a["questionTypes"]) == 2
+    assert section_a["questionTypes"][0]["questionType"] == "MCQ"
+    assert section_a["questionTypes"][1]["compulsory"] is False
+    assert section_a["questionTypes"][1]["attemptCount"] == 1
+    section_b = next(s for s in out["sections"] if s["name"] == "Section B")
+    assert len(section_b["questionTypes"]) == 1
+    assert section_b["questionTypes"][0]["questionType"] == "TRUE_FALSE"
+    assert section_b["questionTypes"][0]["count"] == 3
+    assert out["totalMarks"] == 20
+
+
+def test_blueprint_satisfaction_uses_rule_counts() -> None:
+    blueprint = {
+        "patternId": PATTERN_ID,
+        "structure": {
+            "sections": [
+                {
+                    "name": "Section A",
+                    "questionTypes": [
+                        {"questionType": "MCQ", "count": 5},
+                        {"questionType": "LONG_ANSWER", "count": 2},
+                    ],
+                }
+            ]
+        },
+    }
+    generated = [
+        {"questionType": "MCQ"},
+        {"questionType": "MCQ"},
+        {"questionType": "MCQ"},
+        {"questionType": "MCQ"},
+        {"questionType": "MCQ"},
+        {"questionType": "LONG_ANSWER"},
+    ]
+    out = _compute_blueprint_satisfaction(generated, blueprint)
+    assert out["patternId"] == PATTERN_ID
+    assert out["satisfied"] is False
+    assert any("LONG_ANSWER" in m and "produced 1" in m for m in out["mismatches"])

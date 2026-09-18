@@ -19,6 +19,11 @@ import {
   jobs,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
+import {
+  flattenPatternRules,
+  normalizePaperPatternStructure,
+  type PaperPatternStructure,
+} from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
@@ -99,7 +104,7 @@ export class QuestionGenerationService {
       }
       payload['params'] = {
         ...(payload['params'] as Record<string, unknown>),
-        blueprint: { patternId: pattern.id, structure: pattern.structure },
+        blueprint: { patternId: pattern.id, structure: normalizePaperPatternStructure(pattern.structure) },
       };
     }
 
@@ -179,10 +184,10 @@ export class QuestionGenerationService {
           and(eq(paperPatterns.id, input.blueprintId), eq(paperPatterns.instituteId, instituteId)),
         )
         .limit(1);
-      if (pattern?.status === 'APPROVED') {
+      if (pattern?.status === 'APPROVED' && pattern.structure) {
         blueprint = {
           patternId: pattern.id,
-          structure: pattern.structure as Record<string, unknown>,
+          structure: normalizePaperPatternStructure(pattern.structure),
         };
       }
     }
@@ -471,12 +476,12 @@ export class QuestionGenerationService {
   async getApprovedPattern(
     instituteId: string,
     blueprintId: string,
-  ): Promise<{ id: string; subjectIds: string[]; structure: Record<string, unknown> }> {
+  ): Promise<{ id: string; subjectIds: string[]; structure: PaperPatternStructure }> {
     const pattern = await this.loadApprovedPattern(instituteId, blueprintId);
     return {
       id: pattern.id,
       subjectIds: pattern.subjectIds,
-      structure: pattern.structure as Record<string, unknown>,
+      structure: normalizePaperPatternStructure(pattern.structure),
     };
   }
 
@@ -516,12 +521,7 @@ export class QuestionGenerationService {
       throw new BadRequestException('Blueprint subject must match the generation scope subject');
     }
 
-    const sections = Array.isArray(pattern.structure['sections'])
-      ? (pattern.structure as { sections: unknown[] }).sections
-      : [];
-    const buckets = buildBucketsFromBlueprint(
-      sections as Parameters<typeof buildBucketsFromBlueprint>[0],
-    );
+    const buckets = buildBucketsFromBlueprint(flattenPatternRules(pattern.structure));
     if (buckets.length === 0) {
       throw new BadRequestException(
         'Blueprint has no section with a concrete question type and count to generate',
@@ -650,30 +650,26 @@ export class QuestionGenerationService {
       );
 
     for (const { pattern } of patterns) {
-      const sections = Array.isArray(
-        (pattern.structure as Record<string, unknown> | null)?.['sections'],
-      )
-        ? (pattern.structure as { sections: Array<Record<string, unknown>> }).sections
-        : [];
+      if (!pattern.structure) continue;
+      const structure = normalizePaperPatternStructure(pattern.structure);
       let added = 0;
-      for (const section of sections) {
-        const type = section['questionType'];
-        const qCount = section['count'];
-        if (typeof type !== 'string' || typeof qCount !== 'number' || !(qCount > 0)) continue;
-        const diffDist = section['difficultyDistribution'] as Record<string, number> | undefined;
+      for (const section of flattenPatternRules(structure)) {
+        const type = section.questionType;
+        if (!type || !section.count || !(section.count > 0)) continue;
+        const diffDist = section.difficultyDistribution;
         if (diffDist && typeof diffDist === 'object') {
           for (const diff of ['EASY', 'MEDIUM', 'HARD'] as const) {
             const pct = diffDist[diff];
             if (typeof pct === 'number' && pct > 0) {
               const key = `${type}|${diff}`;
-              signals.set(key, (signals.get(key) ?? 0) + (qCount * pct) / 100);
+              signals.set(key, (signals.get(key) ?? 0) + (section.count * pct) / 100);
               added += 1;
             }
           }
         } else {
           for (const diff of ['EASY', 'MEDIUM', 'HARD'] as const) {
             const key = `${type}|${diff}`;
-            signals.set(key, (signals.get(key) ?? 0) + qCount / 3);
+            signals.set(key, (signals.get(key) ?? 0) + section.count / 3);
             added += 1;
           }
         }
@@ -833,11 +829,8 @@ export class QuestionGenerationService {
     options: { dryRun?: boolean } = {},
   ) {
     const pattern = await this.loadApprovedPattern(instituteId, blueprintId);
-    const rawSections = (pattern.structure as { sections?: unknown }).sections;
     const requested = buildBucketsFromBlueprint(
-      (Array.isArray(rawSections) ? rawSections : []) as Parameters<
-        typeof buildBucketsFromBlueprint
-      >[0],
+      flattenPatternRules(normalizePaperPatternStructure(pattern.structure)),
     );
 
     const covered = {

@@ -158,9 +158,7 @@ def _describe_http_error(response: httpx.Response) -> str:
         body = response.json()
         if isinstance(body, dict):
             error = body.get("error")
-            message = (
-                error.get("message") if isinstance(error, dict) else None
-            )
+            message = error.get("message") if isinstance(error, dict) else None
         else:
             message = None
     except ValueError:

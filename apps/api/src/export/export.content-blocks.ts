@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { PaperPatternStructure } from '@catlium/contracts';
+import type { PaperPatternRuleRow } from '@catlium/contracts';
 
 export type DocBlock =
   | { kind: 'heading'; text: string }
@@ -355,7 +355,7 @@ export function exportPaperBlocks(input: {
     sortOrder: number;
     section: string;
   }>;
-  patternSections: PaperPatternStructure['sections'];
+  patternSections: PaperPatternRuleRow[];
   scope: 'paper' | 'teacher';
 }): DocBlock[] {
   const dateTimeParts = [input.dateTime?.date || null, input.dateTime?.time || null].filter(

@@ -221,9 +221,7 @@ class FakeConn:
 
 
 def _fake_connect(monkeypatch, cursor: FakeCursor) -> None:
-    monkeypatch.setattr(
-        db.psycopg, "connect", lambda *args, **kwargs: FakeConn(cursor)
-    )
+    monkeypatch.setattr(db.psycopg, "connect", lambda *args, **kwargs: FakeConn(cursor))
 
 
 def test_question_insert_purges_previous_same_job_rows(monkeypatch) -> None:

@@ -80,7 +80,7 @@ import {
   computeTotals,
   difficultySum,
   topicPercentSum,
-  flattenSections,
+  buildBackendSections,
   parseBackendSections,
   collectIssues,
   questionTypeLabel,
@@ -282,7 +282,7 @@ export default function PatternBuilderPage() {
       toast.error('Duration (minutes) is required');
       return;
     }
-    const flattened = flattenSections(sections);
+    const flattened = buildBackendSections(sections);
     if (flattened.length === 0) {
       toast.error('Add at least one section with a configured question-type rule');
       return;
@@ -795,7 +795,8 @@ export default function PatternBuilderPage() {
             <CardTitle className="text-base">Blueprint</CardTitle>
             {sections.length > 0 && (
               <Badge variant="secondary" className="text-xs font-normal">
-                {flattenSections(sections).length} rule{sections.length !== 1 ? 's' : ''} ·{' '}
+                {buildBackendSections(sections).length} rule
+                {buildBackendSections(sections).length !== 1 ? 's' : ''} ·{' '}
                 {sections.length} section{sections.length !== 1 ? 's' : ''}
               </Badge>
             )}
@@ -898,48 +899,10 @@ export default function PatternBuilderPage() {
                       </Tooltip>
                     </div>
 
-                    {/* section-level options */}
-                    <div className="flex flex-wrap items-center gap-4">
-                      <label className="flex items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={sec.compulsory}
-                          onCheckedChange={(c) => updateSection(sIdx, { compulsory: !!c })}
-                        />
-                        Compulsory
-                      </label>
-                      <div className={`flex items-center gap-2 ${sec.compulsory ? 'opacity-60' : ''}`}>
-                        <Label className="text-xs">Attempt</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            className="w-20"
-                            value={sec.attemptCount ?? ''}
-                            placeholder="N of M"
-                            disabled={sec.compulsory}
-                            onChange={(e) =>
-                              updateSection(sIdx, {
-                                attemptCount: e.target.value ? Number(e.target.value) : null,
-                              })
-                            }
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {sec.compulsory
-                              ? 'of all questions (compulsory — students attempt every one)'
-                              : `of ${
-                                  sec.rules.reduce(
-                                    (acc, r) =>
-                                      acc +
-                                      (r.questionType !== '' ||
-                                      r.count != null ||
-                                      r.marksPerQuestion != null
-                                        ? (r.count ?? 0)
-                                        : 0),
-                                    0,
-                                  )
-                                } questions shown`}
-                          </span>
-                        </div>
-                    </div>
+                    {/* section-level hint (attempt rules live per question type) */}
+                    <p className="text-xs text-muted-foreground">
+                      Compulsory / attempt choice is configured per question-type rule.
+                    </p>
 
                     {/* rules */}
                     <div className="space-y-3">
@@ -949,7 +912,7 @@ export default function PatternBuilderPage() {
                         </p>
                       )}
                       {sec.rules.map((rule, rIdx) => {
-                        const sub = ruleSubtotal(rule, sec.compulsory ? null : sec.attemptCount);
+                        const sub = ruleSubtotal(rule);
                         const diffSum = difficultySum(rule.difficulty);
                         const diffComplete =
                           rule.difficulty.EASY !== '' &&
@@ -1073,6 +1036,40 @@ export default function PatternBuilderPage() {
                                   </TooltipTrigger>
                                   <TooltipContent>Remove rule</TooltipContent>
                                 </Tooltip>
+                              </div>
+                            </div>
+
+                            {/* rule-level options */}
+                            <div className="mt-3 flex flex-wrap items-center gap-4">
+                              <label className="flex items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={rule.compulsory}
+                                  onCheckedChange={(c) => updateRule(sIdx, rIdx, { compulsory: !!c })}
+                                />
+                                Compulsory
+                              </label>
+                              <div
+                                className={`flex items-center gap-2 ${rule.compulsory ? 'opacity-60' : ''}`}
+                              >
+                                <Label className="text-xs">Attempt</Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  className="w-20"
+                                  value={rule.attemptCount ?? ''}
+                                  placeholder="N of M"
+                                  disabled={rule.compulsory}
+                                  onChange={(e) =>
+                                    updateRule(sIdx, rIdx, {
+                                      attemptCount: e.target.value ? Number(e.target.value) : null,
+                                    })
+                                  }
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                  {rule.compulsory
+                                    ? 'all questions attempted'
+                                    : `of ${rule.count ?? '?'} questions shown`}
+                                </span>
                               </div>
                             </div>
 
@@ -1282,7 +1279,7 @@ export default function PatternBuilderPage() {
                 );
                 if (configured.length === 0) return null;
                 const secSubtotal = configured.reduce(
-                  (acc, r) => acc + (ruleSubtotal(r, sec.compulsory ? null : sec.attemptCount) ?? 0),
+                  (acc, r) => acc + (ruleSubtotal(r) ?? 0),
                   0,
                 );
                 return (
@@ -1290,15 +1287,11 @@ export default function PatternBuilderPage() {
                     <div className="flex items-center justify-between border-b pb-1">
                       <span className="font-medium">{sec.name.trim() || '(untitled section)'}</span>
                       <span className="text-xs text-muted-foreground">
-                        {sec.compulsory
-                          ? 'compulsory'
-                          : `attempt ${sec.attemptCount ?? '?'} of ${configured.reduce((a, r) => a + (r.count ?? 0), 0)}`}
-                        {' · '}
-                        {secSubtotal} marks
+                        {configured.length} rule{configured.length !== 1 ? 's' : ''} · {secSubtotal} marks
                       </span>
                     </div>
                     {configured.map((r, i) => {
-                      const sub = ruleSubtotal(r, sec.compulsory ? null : sec.attemptCount);
+                      const sub = ruleSubtotal(r);
                       const title = questionTypeLabel(r.questionType, typeLabels);
                       const diffParts = [
                         r.difficulty.EASY,
@@ -1333,9 +1326,9 @@ export default function PatternBuilderPage() {
                                 .join(', ')}
                             </span>
                           )}
-                          {i === 0 && !sec.compulsory && sec.attemptCount != null && (
+                          {i === 0 && !r.compulsory && r.attemptCount != null && (
                             <Badge variant="outline" className="text-[10px]">
-                              choice
+                              attempt {r.attemptCount} of {r.count ?? '?'}
                             </Badge>
                           )}
                         </div>

@@ -20,7 +20,12 @@ import {
   users,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
-import type { PaperPatternStructure } from '@catlium/contracts';
+import {
+  flattenPatternRules,
+  normalizePaperPatternStructure,
+  type PaperPatternRuleRow,
+  type PaperPatternStructure,
+} from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import {
   contentBlocks,
@@ -139,7 +144,7 @@ export class ExportService {
     // and the generated bank questions fill it. Without a pattern it stays a
     // flat practice pool grouped by question type.
     let pattern: (typeof paperPatterns.$inferSelect) | undefined;
-    let sections: PaperPatternStructure['sections'] = [];
+    let sections: PaperPatternRuleRow[] = [];
     if (scope.patternId) {
       const [row] = await this.db
         .select()
@@ -150,9 +155,11 @@ export class ExportService {
         .limit(1);
       if (!row) throw new NotFoundException('Paper pattern not found');
       pattern = row;
-      sections = ((row.structure as PaperPatternStructure | null)?.sections ?? []).filter(
-        (s) => s.questionType,
-      );
+      sections = row.structure
+        ? flattenPatternRules(normalizePaperPatternStructure(row.structure)).filter((s) =>
+            s.questionType,
+          )
+        : [];
     }
 
     const blocks: DocBlock[] = [];
@@ -525,7 +532,7 @@ export class ExportService {
   private async patternSectionsForBlueprint(
     instituteId: string,
     blueprintId: string | null,
-  ): Promise<PaperPatternStructure['sections']> {
+  ): Promise<PaperPatternRuleRow[]> {
     if (!blueprintId) return [];
     const [pattern] = await this.db
       .select({ structure: paperPatterns.structure })
@@ -538,7 +545,7 @@ export class ExportService {
       )
       .limit(1);
     if (pattern?.structure) {
-      return (pattern.structure as PaperPatternStructure).sections;
+      return flattenPatternRules(normalizePaperPatternStructure(pattern.structure));
     }
     return [];
   }
@@ -565,11 +572,13 @@ export class ExportService {
       for (const s of nameRows) subjectNames[s.id] = s.name;
     }
 
-    const structure = pattern.structure as PaperPatternStructure | null;
+    const structure = pattern.structure ? normalizePaperPatternStructure(pattern.structure) : null;
     const codes = new Set<string>();
     if (structure) {
       for (const section of structure.sections) {
-        if (section.questionType) codes.add(section.questionType);
+        for (const qt of section.questionTypes) {
+          if (qt.questionType) codes.add(qt.questionType);
+        }
       }
     }
     const questionTypeNames: Record<string, string> = {};

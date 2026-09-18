@@ -21,11 +21,12 @@ _SYSTEM_TEMPLATE = (
     "You are an exam paper designer for an education platform. Given the source "
     "material, produce the paper pattern (blueprint) such an exam would follow: "
     "total marks, total duration in minutes, instructions for candidates, and an "
-    "ordered set of sections. Each section declares a question type (MCQ, "
-    "TRUE_FALSE, or FILL_IN_BLANK), how many questions it holds, marks per "
-    "question, whether the section is compulsory (attempt all of its questions) "
-    'or offers a choice ("attempt N of M"), and — only when the material '
-    "clearly supports it — a difficulty split (EASY/MEDIUM/HARD percentages "
+    "ordered set of sections. Each section declares an array of question-type "
+    "rules. A rule names a question type (MCQ, TRUE_FALSE, or FILL_IN_BLANK), how "
+    "many questions it holds, marks per question, whether it is compulsory "
+    '("attempt N of M" choice lives on the rule: omit compulsory/leave true and set '
+    "attemptCount for optional rules), and — only when the material clearly "
+    "supports it — a difficulty split (EASY/MEDIUM/HARD percentages "
     "summing to 100) and a topic split (percentages summing to 100). Any field "
     "the source material does not support must be omitted or null — never "
     "invented. Respond with ONLY a JSON object and nothing else (no markdown "
@@ -37,19 +38,24 @@ _SYSTEM_TEMPLATE = (
     '  "sections": [\n'
     "    {\n"
     '      "name": string (short, unique),\n'
-    '      "questionType": "MCQ" | "TRUE_FALSE" | "FILL_IN_BLANK" (omit when mixed),\n'
-    '      "count": integer >= 1 (nullable),\n'
-    '      "marksPerQuestion": integer >= 1 (nullable),\n'
-    '      "totalMarks": integer >= 1 (nullable),\n'
-    '      "compulsory": boolean,\n'
-    '      "attemptCount": integer >= 1 (nullable; use for optional sections),\n'
-    '      "difficultyDistribution": {"EASY": int, "MEDIUM": int, "HARD": int} (optional),\n'
-    '      "topicDistribution": [{"name": string, "percentage": int (nullable)}] (optional)\n'
+    '      "questionTypes": [\n'
+    "        {\n"
+    '          "questionType": "MCQ" | "TRUE_FALSE" | "FILL_IN_BLANK" (omit when mixed),\n'
+    '          "count": integer >= 1 (nullable),\n'
+    '          "marksPerQuestion": integer >= 1 (nullable),\n'
+    '          "totalMarks": integer >= 1 (nullable),\n'
+    '          "compulsory": boolean,\n'
+    '          "attemptCount": integer >= 1 (nullable; use when compulsory is false),\n'
+    '          "difficultyDistribution": {"EASY": int, "MEDIUM": int, "HARD": int} (optional),\n'
+    '          "topicDistribution": [{"name": string, "percentage": int (nullable)}] (optional)\n'
+    "        }\n"
+    "      ]\n"
     "    }\n"
     "  ]\n"
     "}\n"
-    '"sections" must contain at least 1 and at most 50 items, each with a short, '
-    "unique name. Do not include individual questions — only the pattern."
+    '"sections" must contain at least 1 and at most 50 items, and each section at '
+    "least 1 and at most 50 question-type rules, each with a short, unique section "
+    "name. Do not include individual questions — only the pattern."
 )
 
 

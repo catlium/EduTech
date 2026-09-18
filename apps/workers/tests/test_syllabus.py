@@ -120,6 +120,5 @@ def test_not_ready_syllabus_fails_honestly(monkeypatch) -> None:
 
     assert failed == [(SYLLABUS_ID, "Syllabus text is not ready for analysis")]
     assert (
-        calls["job:job-2:failed"]["error"]["message"]
-        == "Syllabus text is not ready for analysis"
+        calls["job:job-2:failed"]["error"]["message"] == "Syllabus text is not ready for analysis"
     )

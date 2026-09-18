@@ -605,13 +605,46 @@ the next scheduled batch.
       scoped short pattern → 201 `GENERATING` with exact deficits and NO paper
       created; retry re-queued only the remaining deficits (3→2) after the
       first batch settled; batch cancel + no stray papers confirmed.
-- [~] **Paper-pattern hierarchy → nested `questionTypes[]` (Issue 3).** APPROACH
+- [x] **Paper-pattern hierarchy → nested `questionTypes[]` (Issue 3).** APPROACH
       DECIDED (go nested): `PaperPatternSectionSchema.questionTypes[]` with
       integrity checks at the type level, a shared pure
       `normalizePaperPatternStructure` in contracts (accepts legacy flat
       sections like `"Section A — MCQ"`), selection/generation/export/worker/
       frontend all read the nested shape, builder drops the `STEM_RE` flatten
-      hack. Not started.
+      hack. Completed (batch 14):
+      - [x] Contracts: `PaperPatternQuestionTypeSchema` (uuid `id`, optional
+        `questionType`, `count?`, `marksPerQuestion?`, `totalMarks?`,
+        `compulsory` default true, `attemptCount?`, difficulty/topic
+        distributions) + `PaperPatternSectionSchema.questionTypes[]` (1..50);
+        pure `normalizePaperPatternStructure` (legacy flat → one nested rule
+        via `crypto.randomUUID()`, empty wrappers dropped by `min(1)`) and
+        `flattenPatternRules(structure)` → `PaperPatternRuleRow[]` (`id`,
+        `sectionId`, `sectionName`, `name = "Section — Type"`, rule fields) —
+        the canonical unit selection/coverage/export now operate on.
+      - [x] API validation rewritten per question-type rule (`attemptCount ≤
+        count`, compulsory must attempt all, optional must declare attempt <
+        count, difficulty/topic 100%, rule total = attempted × marks, section/
+        pattern totals), labels `"Section → Type"`.
+      - [x] Reads normalize at the boundary: `asStructure`/`parseStructure` in
+        `paper-patterns.service` + a `normalizeRowStructure` on list/get/approve
+        so every DTO (incl. legacy rows) returns nested; question-papers,
+        examinations, question-generation all consume `flattenPatternRules`.
+      - [x] Export per rule: QP doc, paper-pattern doc, content-blocks group by
+        the plural-name convention; exports render attempt-N-of-M per rule.
+      - [x] Worker nested blueprint: `BlueprintSection.questionTypes[]` in
+        schemas, prompt emits the nested shape, `_aggregate_blueprint` dedupes
+        rules by `(questionType, count)` and folds legacy flat sections on
+        first occurrence; satisfaction iterates rules.
+      - [x] Web builder: `Rule` carries compulsory/attemptCount, sections hold
+        `rules[]` only; nested parse/build (legacy fallback kept); per-rule
+        compulsory + attempt UI + subtotals on the pattern page; QP-builder
+        and bank-wizard read flattened rows.
+      - [x] Seed + migration-free (nested is JSON — old rows normalize on read).
+      - [x] Validation: api node tests 153/153 (validation, doc, qp-doc,
+        selection, buckets), web tests 13/13, worker pytest 83/83 + ruff + mypy
+        clean; `pnpm typecheck`/`lint`/`build` clean; containers rebuilt
+        (worker source-import verified) + live E2E: nested write→GET→validate→
+        approve round-trip, legacy-flat write validates + reads back nested.
 
 ---
 
