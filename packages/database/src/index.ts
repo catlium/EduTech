@@ -22,7 +22,7 @@ export { jobs } from './schema/jobs.js';
 export { subjects, chapters, topics } from './schema/academic.js';
 export { contentItems, contentVersions } from './schema/content.js';
 export { materials } from './schema/materials.js';
-export { materialEnhancements } from './schema/material-enhancements.js';
+export { materialEnhancements, materialEnhancementSegments, materialEnhancementSegmentMappings } from './schema/material-enhancements.js';
 export { questions } from './schema/questions.js';
 export { questionTypes } from './schema/question-types.js';
 export { assessments, assessmentQuestions } from './schema/examinations.js';

@@ -435,7 +435,11 @@ material_enhancements.payload   ← sections (block kind, verbatim content,
                                     page + source provenance, line range),
                                     KEEP/EXCLUDE/REVIEW findings (EXCLUDE
                                     keeps the original), recomposed cleanedText
-material_enhancements.alignment ← syllabus-unit match metadata (never edits)
+material_enhancement_segments   ← logical regions of the material (heading or
+                                    unheaded prefix), page range + block ids
+material_enhancement_segment_mappings
+                                ← normalized segment → syllabus-entity
+                                    associations (relevance, never edits)
 ```
 
 - **Table:** `material_enhancements`, append-only per material, `version`
@@ -443,25 +447,62 @@ material_enhancements.alignment ← syllabus-unit match metadata (never edits)
   `trigger` ∈ OCR_COMPLETE | CORRECTION | TEXT_SOURCE | MANUAL.
   `source_revision` + `source_text_hash` = the exact raw fingerprint; rerunning
   the same raw is a no-op (idempotent — no duplicate versions).
-- **Jobs:** `MATERIAL_ENHANCE` is coordinator-owned (like `MATERIAL_PROCESS`):
-  never published to RabbitMQ; a sweep in `MaterialEnhancementService` adopts
-  queued jobs on the `WORKER_SWEEP_INTERVAL_MS` timer. Enqueue sites:
-  `finalizeReady` (OCR_COMPLETE), `reapplyAggregate` on real text change
-  (CORRECTION), TEXT create/update (TEXT_SOURCE), `POST /materials/:id/
-  enhancement` (MANUAL). Active-job dedup prevents stacking. Fetch fingerprint
-  match → completed `unchanged`.
+- **Segmentation (normalized):** `material_enhancement_segments` stores the
+  logical regions of a material — each detected heading opens a segment
+  (kind `chapter` / `section`; `\bchapter\b` or `unit|module|part` → chapter,
+  everything else → section), and any unheaded prefix is one `other` segment
+  (title null). A segment keeps `segment_no`, `kind`, overall relevance
+  `level` (`relevant` | `uncertain` | `irrelevant` | `unmapped`), `title`,
+  `preview`, `start_page`/`end_page`, and the payload `block_ids` it spans —
+  provenance by reference, so content still lives only inside the payload
+  jsonb. `UNIQUE(enhancement_id, segment_no)`. One uploaded Material remains
+  the canonical source — **segments never become separate materials**.
+- **Mappings:** `material_enhancement_segment_mappings` is a normalized
+  segment → syllabus-entity association. Each row targets exactly ONE entity
+  (DB CHECK `material_enhancement_mappings_single_entity`): a Subject
+  (`subject_id`), a Chapter (`chapter_id` + name), a Topic (`topic_id` + name,
+  with its chapter context), or a syllabus Context-unit fallback
+  (`syllabus_id` + `unit_title`) — the last used only when the subject has no
+  active Chapters/Topics. `level` ∈ relevant | uncertain, `confidence` =
+  0..1 keyword-overlap ratio, `reason` names the matched target. A segment can
+  map to several entities; overlapping keywords are never invented — a mapping
+  exists only where overlap was found, and irrelevant/unmapped segments are
+  flagged, never deleted. Indexes exist for downstream
+  `Subject → Chapter → Topic` relevance queries.
+- **Targets:** chosen from the latest syllabus of the material's subject,
+  preferring CONFIRMED then highest version. Subject/Chapter/Topic targets
+  come from the active academic rows; if the subject has no chapters, the
+  syllabus `context.units` titles become unit targets. Nothing is synthesized
+  — empty context ⇒ no targets ⇒ every segment `unmapped`.
+- **Classification:** per target, significant-word overlap (words ≥ 4 chars,
+  stopwords excluded) over the segment's text. `relevant` = a fully-matched
+  single-word target, or ≥ 2 words at ≥ 0.5 ratio; a weaker single-hit overlap
+  maps `uncertain`. A segment with no hit at all is `irrelevant` when syllabus
+  context exists, else `unmapped`. Subject mappings are a fallback only — they
+  are considered solely when no chapter/topic/unit matched, so a coarse subject
+  name never masks a precise hit.
 - **Enhancer rules:** normalization (NBSP/ZWJ cleanup), broken-hyphenation
   join, confident running header/footer + page-number margin exclusion,
   consecutive duplicate line/page exclusion (content preserved in findings),
   block building (headings incl. numbered runs, bullet/numbered lists, table
   rows by tab/pipe cells, equations, paragraphs), REVIEW for garbled ASCII and
-  lone short fragments (kept, never dropped). Syllabus alignment uses keyword
-  overlap on a confirmed syllabus's `context.units` titles → confidence 0..1 +
-  KEEP/REVIEW.
-- **Reads:** `GET /materials/:id/enhancement` (latest version + payload),
-  `GET /materials/:id/enhancement/versions` (history summary). Enhancer is a
-  pure module (no NestJS); the service imports JobsModule only — the
-  coordinator and materials services enqueue via the exported service, avoiding
-  a module cycle.
+  lone short fragments (kept, never dropped).
+- **Jobs:** `MATERIAL_ENHANCE` is coordinator-owned (like `MATERIAL_PROCESS`):
+  never published to RabbitMQ; a sweep in `MaterialEnhancementService` adopts
+  queued (and lease-expired `processing`) jobs on the
+  `WORKER_SWEEP_INTERVAL_MS` timer. Enqueue sites: `finalizeReady`
+  (OCR_COMPLETE), `reapplyAggregate` on real text change (CORRECTION), TEXT
+  create/update (TEXT_SOURCE), `POST /materials/:id/enhancement` (MANUAL).
+  Active-job dedup prevents stacking. Fetch fingerprint match → completed
+  `unchanged`. The version row, its segments, and all mappings are written in
+  ONE transaction (the derivation is atomic).
+- **Reads:** `GET /materials/:id/enhancement` (latest version + payload +
+  resolved segments), `GET /materials/:id/enhancement/versions` (history +
+  per-version segment counts), `GET /materials/:id/enhancement/segments`
+  (the reported "relevant segments" read — filter by `version`, syllabus
+  entity `entityType`/`entityId` (subject | chapter | topic | unit, unit + its
+  `unitTitle`), and/or `level`). Enhancer is a pure module (no NestJS); the
+  service imports JobsModule only — the coordinator and materials services
+  enqueue via the exported service, avoiding a module cycle.
 - **Future phases:** paper-pattern extraction and question extraction read
-  `payload.sections` + `alignment`.
+  `payload.sections` and the segment relevance mappings.

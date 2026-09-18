@@ -2,8 +2,8 @@
 
 ## Current test inventory (verified 2026-09-18)
 
-- API native suite: **155/155** across 19 node:test files in `apps/api/src`
-  (12 new Material Intelligence enhancer tests).
+- API native suite: **160/160** across 20 node:test files in `apps/api/src`
+  (17 Material Intelligence enhancer tests).
 - Worker AI/material: **83** pytest (12 files) + ruff + mypy clean
   (`apps/workers/tests`).
 - OCR engine: **21** (`apps/ocr/ocr_engine`), ocr-worker: **10**
@@ -24,9 +24,16 @@ DERIVED and versioned: `materials.text_content` stays the untouched raw
 extraction; each `material_enhancements` row stores the structured clean form
 (sections/blocks with page + engine provenance), a KEEP/EXCLUDE/REVIEW quality
 report (nothing silently discarded — EXCLUDE always carries the original
-text + reason), the recomposed `cleanedText`, and syllabus alignment as pure
-metadata. OCR stays extraction-only; no paper-pattern/question extraction yet
-(deferred to later phases consuming this output).
+text + reason), and the recomposed `cleanedText`. Syllabus relevance is carried
+by LOGICAL SEGMENTS + normalized mappings (amendment 2): one uploaded Material
+may span many chapters/topics — `material_enhancement_segments` keep the page
+range + payload block ids per logical region, and
+`material_enhancement_segment_mappings` associate each segment with the
+Subject/Chapter/Topic (or Context-unit fallback) it matches, as
+relevant/uncertain (irrelevant/unmapped flagged, nothing invented, nothing
+deleted, no separate Material records). OCR stays extraction-only; no
+paper-pattern/question extraction yet (deferred to later phases consuming this
+output).
 
 ### Completed work
 
@@ -36,8 +43,18 @@ metadata. OCR stays extraction-only; no paper-pattern/question extraction yet
   fingerprint the exact raw derivation for audit + idempotency. Migration
   `0036_material_enhancements.sql` (+ journal idx 36; no snapshot per
   post-0023 convention).
+- **Segmentation + mappings (amendment 2, normalized)** —
+  `material_enhancement_segments` (kind by heading `chapter`/`section`/`other`,
+  relevance `level`, title, preview, `start_page`/`end_page`, payload
+  `block_ids`, `UNIQUE(enhancement_id, segment_no)`) and
+  `material_enhancement_segment_mappings` (Subject/Chapter/Topic or
+  Syllabus+unitTitle, `level` relevant|uncertain, `confidence` 0..1, `reason`,
+  display names, DB CHECK exactly-one-entity per row, entity indexes). One
+  uploaded Material is the canonical source — segments never become materials.
+  Migration 0036 rewritten in place (never applied to a live DB).
 - **Contracts** (`@catlium/contracts`): payload (sections, findings,
-  cleanedText, summary), block kinds, finding levels, alignment, and
+  cleanedText, summary), block kinds, finding levels, segment/mapping/
+  resolved-segment schemas, segments-response schema, and
   response/versions/enhance-response wire schemas.
 - **Pure engine `enhancer.ts`** — normalize (NBSP/non-breaking spaces, runs),
   join broken hyphenation, exclude confident running headers/footers +
@@ -45,22 +62,33 @@ metadata. OCR stays extraction-only; no paper-pattern/question extraction yet
   verbatim duplicate pages (content preserved in findings), structure block
   building (headings incl. numbered runs, lists, tables via tab/pipe cells,
   equations, paragraphs), REVIEW flags for garbled ASCII and lone short
-  fragments (kept), and keyword-overlap syllabus alignment (confidence +
-  KEEP/REVIEW, never rewrites content).
+  fragments (kept). Segmentation: each heading opens a segment; unheaded
+  prefix → `other`; page range + block ids tracked. Classification:
+  significant-word overlap vs the subject's targets (active Subject/Chapter/
+  Topic rows, else syllabus Context-units) — relevant (full single-word match,
+  or ≥2 words at ≥0.5 ratio) / uncertain (weak hit) / irrelevant (no hit with
+  syllabus context) / unmapped (no context); subject is a fallback mapping only.
 - **Coordinator-owned jobs** — `MATERIAL_ENHANCE` joins `ALLOWED_JOB_TYPES`
   and is never published to RabbitMQ; `MaterialEnhancementService` sweeps
-  queued jobs on the same `WORKER_SWEEP_INTERVAL_MS` timer as the OCR
-  coordinator. Fingerprint match → completed `unchanged` (no new version);
-  else next-version insert in a transaction → completed `enhanced`. Failed
-  jobs are marked `failed` with the message; the material stays READY.
+  queued (and lease-stale `processing`) jobs on the same
+  `WORKER_SWEEP_INTERVAL_MS` timer as the OCR coordinator. Fingerprint match →
+  completed `unchanged` (no new version); else next-version insert + segments +
+  mappings in ONE transaction → completed `enhanced`. Failed jobs are marked
+  `failed` with the message; the material stays READY. A crashed mid-sweep
+  `processing` ghost is reclaimed via the 60s lease instead of permanently
+  blocking future enqueues.
 - **Enqueue sites** — OCR `finalizeReady` (OCR_COMPLETE), `reapplyAggregate`
   only when the corrected aggregate actually changed text (CORRECTION), TEXT
   material create + content-changing update (TEXT_SOURCE), and
-  `POST /materials/:id/enhancement` (MANUAL, user-authored). Active-job dedup
-  guard; best-effort system enqueues never fail material create/OCR.
-- **Reads** — `GET /materials/:id/enhancement` (latest), `GET
-  /materials/:id/enhancement/versions` (history). Writes guarded by the
-  existing WRITE_ROLES (INSTITUTE_ADMIN | TEACHER).
+  `POST /materials/:id/enhancement` (MANUAL, user-authored). Tenant-scoped
+  active-job dedup guard; best-effort system enqueues never fail material
+  create/OCR.
+- **Reads** — `GET /materials/:id/enhancement` (latest, payload + resolved
+  segments), `GET /materials/:id/enhancement/versions` (history +
+  per-version segment counts), `GET /materials/:id/enhancement/segments`
+  (Subject → Chapter → Topic relevance read; `version`/`entityType`/`entityId`/
+  `unitTitle`/`level` filters). Writes guarded by the existing WRITE_ROLES
+  (INSTITUTE_ADMIN | TEACHER).
 - **Data flow note** — enhancement input per OCR page comes from a new pure
   `pagesWithText()` (ocr-coordinator.util) with corrections applied; TEXT
   materials use a single synthetic page. No circular dependency: the
@@ -68,20 +96,24 @@ metadata. OCR stays extraction-only; no paper-pattern/question extraction yet
 
 ### Validation
 
-- API native suite **155/155** (12 new enhancer tests covering structure +
-  provenance, margin exclusions, duplicate line/page, hyphenation join,
-  garbled/orphan REVIEW, alignment, fingerprint determinism, empty-input
-  rejection, numbered heading-vs-list), API typecheck + lint clean; contract
-  + database packages typecheck clean.
+- API native suite **160/160** (17 enhancer tests covering segmentation
+  boundaries/page ranges/block ids, relevant/uncertain/irrelevant/unmapped
+  classification, subject-fallback rule, unit provenance, plus the phase-1
+  structure/margin/dedupe/hyphenation/REVIEW coverage), API typecheck + lint
+  clean; contract + database packages typecheck + lint clean; API
+  `nest build` passes (contracts/database dist rebuilt).
 - Migration not yet applied to a live DB in this session (hand-written SQL
   validated against the table definition).
 
 ### Next task
 
-Phase B/C of Material Intelligence when scheduled: paper-pattern extraction
-and question extraction consume `material_enhancements.payload.sections`/
-`alignment`. Then commit + push the Phase A checkpoint (and separately the
-held-back Phase 44 completion).
+Commit + push the Phase A checkpoint (Phase 44 leftover stays uncommitted),
+then phase B/C of Material Intelligence when scheduled: paper-pattern
+extraction and question extraction consume
+`material_enhancement.payload.sections` + the segment relevance mappings.
+Live E2E (upload a multi-chapter document → verify segments/mappings per
+Subject → Chapter → Topic via the segments endpoint) is the user's manual
+step.
 
 ## Phase 44 — Generation UX: deficit-driven generate-missing, export fixes, AI retry + auto-fill (2026-09-18)
 

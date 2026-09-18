@@ -22,7 +22,7 @@ test('structure + provenance preserved (headings, list, paragraph, page number)'
     },
   ];
 
-  const { payload, alignment } = enhanceMaterial(pages);
+  const { payload, segments, mappings } = enhanceMaterial(pages);
 
   assert.equal(payload.pages, 2);
   assert.deepEqual(
@@ -46,7 +46,14 @@ test('structure + provenance preserved (headings, list, paragraph, page number)'
   assert.equal(excludes, 1);
   assert.equal(payload.summary.findings.keep, 2); // one page-boundary per page
   assert.equal(payload.summary.blocks, 5);
-  assert.equal(alignment.length, 0);
+  assert.equal(mappings.length, 0);
+  assert.deepEqual(
+    segments.map((s) => [s.kind, s.title]),
+    [
+      ['section', '1. Introduction'],
+      ['section', 'Conclusion'],
+    ],
+  );
   assert.equal(payload.cleanedText, payload.sections.map((s) => s.content).join('\n\n'));
 });
 
@@ -56,7 +63,7 @@ test('running header and footer are excluded with content preserved', () => {
     { page: 2, ...PR, text: 'GLOBAL ACADEMY\nBody text of page two.\nCONFIDENTIAL\n' },
     { page: 3, ...PR, text: 'GLOBAL ACADEMY\nBody text of page three.\nCONFIDENTIAL\n' },
   ];
-  const { payload, alignment } = enhanceMaterial(pages);
+  const { payload, segments } = enhanceMaterial(pages);
   assert.deepEqual(payload.sections.map((s) => s.content), [
     'Body text of page one.',
     'Body text of page two.',
@@ -64,7 +71,7 @@ test('running header and footer are excluded with content preserved', () => {
   ]);
   const excluded = payload.summary.findings.exclude;
   assert.equal(excluded, 6); // header + footer on each page
-  void alignment;
+  void segments;
 });
 
 test('duplicated lines on a page are excluded (consecutive exact repeats)', () => {
@@ -122,21 +129,123 @@ test('sourceFingerprint is deterministic and sensitive to input', () => {
   assert.notEqual(sourceFingerprint(a), sourceFingerprint(b));
 });
 
-test('syllabus alignment maps blocks to confirmed units as metadata', () => {
+test('logical segmentation: headings open segments, unheaded prefix is "other", page ranges tracked', () => {
   const pages: EnhancePage[] = [
     {
       page: 1,
       ...PR,
-      text: 'Electric Circuits\nThe flow of electric charge and its measurement tell us about circuits.\nBusiness Management\nManaging time inside the classroom is a core management skill.\n',
+      text: 'This document explains financial statements and their preparation.\n',
+    },
+    {
+      page: 2,
+      ...PR,
+      text: 'Chapter 1: The Accounting Cycle\nAn accounting cycle records every financial transaction of the firm.\n',
+    },
+    {
+      page: 3,
+      ...PR,
+      text: '1. Cash Flow Statements\nCash flow statements report the movement of funds within the company.\n',
     },
   ];
-  const { alignment } = enhanceMaterial(pages, [
-    { syllabusId: 's1', unitTitle: 'Electric Circuits' },
-    { syllabusId: 's2', unitTitle: 'Management of Time' },
+  const { segments, mappings } = enhanceMaterial(pages);
+  assert.equal(mappings.length, 0);
+  assert.equal(segments.length, 3);
+  assert.deepEqual(
+    segments.map((s) => [s.kind, s.title, s.startPage, s.endPage, s.blockIds]),
+    [
+      ['other', null, 1, 1, ['b1']],
+      ['chapter', 'Chapter 1: The Accounting Cycle', 2, 2, ['b2', 'b3']],
+      ['section', '1. Cash Flow Statements', 3, 3, ['b4', 'b5']],
+    ],
+  );
+  assert.equal(segments[1]!.title, 'Chapter 1: The Accounting Cycle');
+  assert.ok(segments[1]!.preview.startsWith('Chapter 1: The Accounting Cycle'));
+  assert.equal(segments[2]!.preview, '1. Cash Flow Statements\n\nCash flow statements report the movement of funds within the company.');
+});
+
+test('segments map to chapter/topic targets as relevant, unmatched to irrelevant', () => {
+  const pages: EnhancePage[] = [
+    { page: 1, ...PR, text: 'Chapter 1: The Accounting Cycle\nAn accounting cycle records every financial transaction of the firm.\n' },
+    { page: 2, ...PR, text: '1. Cash Flow Statements\nThe cash flow statement shows the flow of funds across the period.\n' },
+    { page: 3, ...PR, text: '2. Human Resource Strategy\nHiring and workforce planning are important strategic duties.\n' },
+  ];
+  const { segments, mappings } = enhanceMaterial(pages, [
+    { type: 'chapter', title: 'The Accounting Cycle', syllabusId: null, subjectId: 'sub1', chapterId: 'c1', chapterName: 'The Accounting Cycle', topicId: null, topicName: null, unitTitle: null },
+    { type: 'topic', title: 'Cash Flow Statements', syllabusId: null, subjectId: 'sub1', chapterId: 'c2', chapterName: 'Financial Statements', topicId: 't1', topicName: 'Cash Flow Statements', unitTitle: null },
+    { type: 'topic', title: 'Partnership Valuation', syllabusId: null, subjectId: 'sub1', chapterId: null, chapterName: null, topicId: 't2', topicName: 'Partnership Valuation', unitTitle: null },
   ]);
-  assert.equal(alignment.length, 2);
-  assert.deepEqual(alignment[0]!.blockIds, ['b1']);
-  assert.ok(alignment[0]!.confidence >= 0.5);
+  assert.deepEqual(segments.map((s) => s.level), ['relevant', 'relevant', 'irrelevant']);
+  assert.equal(mappings.length, 2);
+  assert.deepEqual(
+    mappings.map((m) => [m.segmentIndex, m.type, m.level, m.chapterId, m.topicId]),
+    [
+      [0, 'chapter', 'relevant', 'c1', null],
+      [1, 'topic', 'relevant', 'c2', 't1'],
+    ],
+  );
+  assert.equal(mappings[0]!.confidence, 1);
+  assert.ok(mappings[0]!.reason.includes('The Accounting Cycle'));
+  assert.equal(mappings[1]!.reason, 'topic "Cash Flow Statements"');
+});
+
+test('a weak single-word overlap maps uncertain, a full overlap relevant', () => {
+  const pages: EnhancePage[] = [
+    { page: 1, ...PR, text: '1. Physics Lab\nWe study the motion of objects in the physics laboratory.\n' },
+    { page: 2, ...PR, text: '2. Fundamentals of Optics\nPhysics fundamentals determine how light bends.\n' },
+  ];
+  const { segments, mappings } = enhanceMaterial(pages, [
+    { type: 'topic', title: 'Fundamentals of Physics', syllabusId: null, subjectId: 'sub1', chapterId: null, chapterName: null, topicId: 't3', topicName: 'Fundamentals of Physics', unitTitle: null },
+  ]);
+  assert.deepEqual(segments.map((s) => s.level), ['uncertain', 'relevant']);
+  assert.deepEqual(mappings.map((m) => m.level), ['uncertain', 'relevant']);
+  assert.equal(mappings[0]!.confidence, 0.5);
+  assert.equal(mappings[1]!.confidence, 1);
+});
+
+test('no syllabus context → every segment is unmapped', () => {
+  const { segments, mappings } = enhanceMaterial([
+    { page: 1, ...PR, text: 'Introduction\nMaterial with no syllabus to align against.\n' },
+  ]);
+  assert.deepEqual(segments.map((s) => s.level), ['unmapped']);
+  assert.equal(mappings.length, 0);
+});
+
+test('subject mappings are a fallback only and never mask a chapter/topic hit', () => {
+  const pages: EnhancePage[] = [
+    { page: 1, ...PR, text: '1. Physics Basics\nPhysics fundamentals guide every physics experiment.\n' },
+    { page: 2, ...PR, text: '2. Modern History\nModern history records governance across the centuries.\n' },
+  ];
+  const { segments, mappings } = enhanceMaterial(pages, [
+    { type: 'subject', title: 'Physics', syllabusId: null, subjectId: 'sub1', chapterId: null, chapterName: null, topicId: null, topicName: null, unitTitle: null },
+    { type: 'subject', title: 'Modern History', syllabusId: null, subjectId: 'sub1', chapterId: null, chapterName: null, topicId: null, topicName: null, unitTitle: null },
+    { type: 'topic', title: 'Physics Fundamentals', syllabusId: null, subjectId: 'sub1', chapterId: 'c1', chapterName: null, topicId: 't1', topicName: 'Physics Fundamentals', unitTitle: null },
+  ]);
+  // Segment 1 hits the topic (and also spells "Physics") yet only the topic maps.
+  // Segment 2 has no chapter/topic hit → subject "Modern History" maps instead.
+  assert.deepEqual(segments.map((s) => s.level), ['relevant', 'relevant']);
+  assert.equal(mappings.length, 2);
+  assert.deepEqual(
+    mappings.map((m) => [m.segmentIndex, m.type, m.level]),
+    [
+      [0, 'topic', 'relevant'],
+      [1, 'subject', 'relevant'],
+    ],
+  );
+});
+
+test('syllabus context-units map segments with provenance', () => {
+  const { segments, mappings } = enhanceMaterial(
+    [{ page: 1, ...PR, text: '1. Electric Circuits\nThe flow of electric charge and its measurement are described here.\n' }],
+    [{ type: 'unit', title: 'Electric Circuits', syllabusId: 'syl1', subjectId: 'sub1', chapterId: null, chapterName: null, topicId: null, topicName: null, unitTitle: 'Electric Circuits' }],
+  );
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0]!.level, 'relevant');
+  assert.equal(mappings.length, 1);
+  assert.deepEqual(
+    [mappings[0]!.type, mappings[0]!.level, mappings[0]!.syllabusId, mappings[0]!.unitTitle],
+    ['unit', 'relevant', 'syl1', 'Electric Circuits'],
+  );
+  void segments;
 });
 
 test('numbering-prefixed heading followed by prose stays a heading', () => {

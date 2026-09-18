@@ -6,7 +6,7 @@ export { jobs } from './jobs.js';
 export { subjects, chapters, topics } from './academic.js';
 export { contentItems, contentVersions } from './content.js';
 export { materials } from './materials.js';
-export { materialEnhancements } from './material-enhancements.js';
+export { materialEnhancements, materialEnhancementSegments, materialEnhancementSegmentMappings } from './material-enhancements.js';
 export { questions } from './questions.js';
 export { questionTypes } from './question-types.js';
 export { assessments, assessmentQuestions } from './examinations.js';

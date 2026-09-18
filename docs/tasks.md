@@ -5,53 +5,81 @@
 > Material Intelligence Phase A: a generic, determinist, versioned pipeline
 > that turns the RAW extraction (`materials.text_content`) into a structured,
 > cleaned ENHANCED material — sections/blocks with page + engine provenance,
-> KEEP/EXCLUDE/REVIEW quality findings, recomposed cleaned text, and syllabus
-> alignment metadata. Later Paper Pattern extraction and Question extraction
-> phases consume this output. The raw never changes; OCR stays extraction-only.
+> KEEP/EXCLUDE/REVIEW quality findings, recomposed cleaned text, plus syllabus
+> relevance via LOGICAL SEGMENTATION + normalized segment→syllabus-entity
+> mappings (amendment 2: one uploaded Material spans multiple chapters/topics —
+> segments keep page ranges + block provenance, map to Subject/Chapter/Topic or
+> a Context-unit fallback, and never become separate materials). Later Paper
+> Pattern extraction and Question extraction phases consume this output. The
+> raw never changes; OCR stays extraction-only.
 
 - [x] **`material_enhancements` table (append-only, versioned).** FKs to
       materials (cascade) + users; `UNIQUE(material_id, version)`; columns
       `trigger`, `source_revision`, `source_text_hash` (audit + idempotency),
-      `payload` (sections + findings + cleanedText), `alignment`.
-      Migration `0036_material_enhancements.sql` + journal idx 36 (no snapshot,
+      `payload` (sections + findings + cleanedText). Migration
+      `0036_material_enhancements.sql` + journal idx 36 (no snapshot,
       matching the post-0023 convention).
+- [x] **Segmentation tables (normalized, amendment 2).**
+      `material_enhancement_segments` — logical regions (`chapter`/`section`/
+      `other`), per-segment relevance `level`, title, preview, page range,
+      payload block ids, `UNIQUE(enhancement_id, segment_no)`;
+      `material_enhancement_segment_mappings` — one row per segment→syllabus
+      entity hit (Subject/Chapter/Topic, or Syllabus+unitTitle fallback),
+      `level` relevant|uncertain, `confidence` 0..1, `reason`, display names,
+      DB CHECK `material_enhancement_mappings_single_entity` (exactly one
+      entity per row) + indexes on segment/topic/chapter/subject. Migration
+      0036 rewritten in place (never applied to a live DB).
 - [x] **Contracts.** Zod schemas/types in `@catlium/contracts`
       (`src/index.ts`): `MaterialEnhancementPayloadSchema`, block kinds
       (heading/paragraph/list/table/equation/other), finding levels
-      (KEEP/EXCLUDE/REVIEW), alignment (metadata only), response/versions/
-      enqueue-response schemas.
+      (KEEP/EXCLUDE/REVIEW), segment/mapping/resolved-segment schemas,
+      segments-response schema, response/versions/enhance-response schemas.
 - [x] **Pure engine `apps/api/src/material-enhancement/enhancer.ts`.**
       Normalization (NBSP/ZW join), hyphenation join, running header/footer +
       page-number margin exclusion (confident repeats only), consecutive
       duplicate line/page exclusion (content preserved in findings), block
       building with numbered-heading-vs-list run disambiguation, orphan/
-      garbled REVIEW findings, syllabus alignment scoring. `sourceFingerprint`
-      = sha256 of per-page texts (idempotency).
+      garbled REVIEW findings. Segmentation: each heading opens a segment
+      (kind by `\bchapter\b`/unit/module/part vs the rest; unheaded prefix →
+      `other`), owning its page range + block ids. Classification: significant-
+      word overlap (≥4-char, no stopwords) across targets — `relevant` = full
+      single-word match or ≥2 words at ≥0.5 ratio, otherwise `uncertain`;
+      no hit ⇒ `irrelevant` when syllabus context exists else `unmapped`;
+      subject mappings are a fallback only (never mask a chapter/topic/unit
+      hit). `sourceFingerprint` = sha256 of per-page texts (idempotency).
 - [x] **Server-side, coordinator-owned jobs.** `MATERIAL_ENHANCE` added to
       `ALLOWED_JOB_TYPES` + never published to RabbitMQ (mirrors
-      `MATERIAL_PROCESS`); `MaterialEnhancementService` sweeps queued jobs
-      (same `WORKER_SWEEP_INTERVAL_MS` timer pattern), guards READY, computes
-      fingerprint, no-ops when the latest version already matches
-      (status `unchanged`), else inserts next version (transaction) and
-      completes (status `enhanced`). One-at-a-time sequential sweep.
+      `MATERIAL_PROCESS`); `MaterialEnhancementService` sweeps queued (and
+      lease-stale `processing`) jobs (same `WORKER_SWEEP_INTERVAL_MS` timer
+      pattern), guards READY, computes fingerprint, no-ops when the latest
+      version already matches (status `unchanged`), else inserts next version
+      + its segments + mappings in ONE transaction and completes (status
+      `enhanced`). One-at-a-time sequential sweep.
 - [x] **Enqueue sites.** `finalizeReady` → `OCR_COMPLETE`;
       `reapplyAggregate` (text actually changed) → `CORRECTION`;
       `createTextMaterial` + `updateMaterial` contentChanged → `TEXT_SOURCE`
       (best-effort, never fails creation); `POST /materials/:id/enhancement`
-      → `MANUAL` with user attribution. Active-job dedup guard.
-- [x] **Read API.** `GET /materials/:id/enhancement` (latest version),
-      `GET /materials/:id/enhancement/versions` (history). No machine-generated
-      docs page yet (docs/api/materials.md unchanged pending Phase-C completion).
+      → `MANUAL` with user attribution. Active-job dedup guard (tenant-scoped).
+- [x] **Read API.** `GET /materials/:id/enhancement` (latest version + payload
+      + resolved segments), `GET /materials/:id/enhancement/versions` (history
+      + per-version segment counts), `GET /materials/:id/enhancement/segments`
+      — the downstream Subject → Chapter → Topic relevance read (filters:
+      `version`, `entityType`/`entityId` [subject|chapter|topic|unit],
+      `unitTitle`, `level`).
 - [x] **Module wiring.** `MaterialEnhancementModule` (imports JobsModule only)
       registered in AppModule, imported by OcrModule (coordinator enqueues) and
       MaterialsModule (TEXT enqueues) — no dependency cycle.
-- [x] **Validation.** 12 node tests (`enhancer.test.ts`) across structure/
+- [x] **Validation.** node tests (`enhancer.test.ts`) across structure/
       provenance, margins, dedupe, hyphenation, garbled/orphan REVIEW,
-      alignment, fingerprint, empty-input, and numbered-list-vs-heading;
-      API typecheck + lint + full suite (155/155) green.
+      segmentation boundaries/page ranges/block ids, relevant/uncertain/
+      irrelevant/unmapped classification, subject-fallback rule, unit
+      provenance, fingerprint, empty-input, and numbered-list-vs-heading;
+      API suite 160/160, API/contracts/database typecheck + lint clean,
+      API `nest build` passes.
 - [x] **Docs.** `docs/tasks.md` + `docs/project-status.md` + architecture
-      `materials.md` updated. Commit excludes the uncommitted Phase 44
-      heartbeat fix (web/worker/config/docs stay unstaged).
+      `materials.md` updated (segments + normalized mappings). Commit excludes
+      the uncommitted Phase 44 heartbeat fix (web/worker/config/docs stay
+      unstaged).
 
 ## Phase 44 — Heartbeat fix: RabbitMQ kills long AI jobs → autofill never fired (2026-09-18)
 

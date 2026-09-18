@@ -15,7 +15,6 @@
 import { createHash } from 'node:crypto';
 
 import type {
-  MaterialAlignment,
   MaterialEnhancedBlock,
   MaterialEnhancementFinding,
   MaterialEnhancementPayload,
@@ -27,14 +26,56 @@ export interface EnhancePage {
   text: string;
 }
 
-export interface AlignmentTarget {
-  syllabusId: string;
-  unitTitle: string;
+// Syllabus context target the enhancer matches segments against. One uploaded
+// Material stays the canonical source — segments never become materials.
+export interface SyllabusTarget {
+  type: 'subject' | 'chapter' | 'topic' | 'unit';
+  syllabusId: string | null;
+  title: string;
+  subjectId: string | null;
+  chapterId: string | null;
+  chapterName: string | null;
+  topicId: string | null;
+  topicName: string | null;
+  unitTitle: string | null;
+}
+
+// A logical region of the material: an unheaded prefix ('other') or the block
+// opened by a detected heading, spanning a page range and the payload blocks
+// it owns (provenance by reference — content lives in the payload).
+export interface EnhancedSegment {
+  title: string | null;
+  kind: 'chapter' | 'section' | 'other';
+  level: 'relevant' | 'uncertain' | 'irrelevant' | 'unmapped';
+  startPage: number;
+  endPage: number;
+  blockIds: string[];
+  text: string;
+  preview: string;
+}
+
+// A segment → syllabus entity association (normalized mapping row). Multiple
+// mappings per segment are allowed; the entity is whatever matched — never
+// invented, never implied where overlap is absent.
+export interface SegmentMapping {
+  segmentIndex: number;
+  type: 'subject' | 'chapter' | 'topic' | 'unit';
+  level: 'relevant' | 'uncertain';
+  confidence: number;
+  reason: string;
+  syllabusId: string | null;
+  subjectId: string | null;
+  chapterId: string | null;
+  chapterName: string | null;
+  topicId: string | null;
+  topicName: string | null;
+  unitTitle: string | null;
 }
 
 export interface EnhanceResult {
   payload: MaterialEnhancementPayload;
-  alignment: MaterialAlignment[];
+  segments: EnhancedSegment[];
+  mappings: SegmentMapping[];
 }
 
 // ── Tunables ────────────────────────────────────────────────────────────────
@@ -416,43 +457,142 @@ function significantWords(title: string): string[] {
     .filter((w) => w.length >= 4 && !ALIGNMENT_STOPWORDS.has(w));
 }
 
-/** Syllabus alignment as pure metadata — never modifies section content. */
-function alignSections(
-  sections: { id: string; content: string }[],
-  targets: AlignmentTarget[],
-): MaterialAlignment[] {
-  const results: MaterialAlignment[] = [];
-  for (const target of targets) {
-    const sig = significantWords(target.unitTitle);
-    if (sig.length === 0) continue;
-    const matched: { id: string; content: string }[] = [];
-    let hits = 0;
-    for (const block of sections) {
-      const norm = normalizeLine(block.content).toLowerCase();
-      const found = sig.filter((w) => norm.includes(w));
-      if (found.length >= 2) {
-        matched.push(block);
-        hits += found.length;
+/** Heading → segment kind. Heuristic, determined purely from the line: the
+ *  word "chapter" (or a unit/module/part marker) = chapter, otherwise section.
+ *  Unheaded runs are 'other'. The SYLLABUS decides what a segment really is. */
+function segmentKindOf(heading: string): 'chapter' | 'section' {
+  return /\bchapter\b/i.test(heading) || /\b(?:unit|module|part)\b/i.test(heading)
+    ? 'chapter'
+    : 'section';
+}
+
+/** Group the (already ordered, page-provenanced) blocks into logical segments:
+ *  each heading opens a segment owning that heading + its following blocks; the
+ *  blocks before the first heading form an unheaded 'other' segment. */
+function buildSegments(sections: MaterialEnhancedBlock[]): EnhancedSegment[] {
+  const segments: EnhancedSegment[] = [];
+  let current: EnhancedSegment | null = null;
+  for (const block of sections) {
+    if (block.kind === 'heading') {
+      current = {
+        title: block.content,
+        kind: segmentKindOf(block.content),
+        level: 'unmapped',
+        startPage: block.page,
+        endPage: block.page,
+        blockIds: [block.id],
+        text: block.content,
+        preview: block.content.slice(0, 200),
+      };
+      segments.push(current);
+      continue;
+    }
+    if (!current) {
+      current = {
+        title: null,
+        kind: 'other',
+        level: 'unmapped',
+        startPage: block.page,
+        endPage: block.page,
+        blockIds: [],
+        text: '',
+        preview: '',
+      };
+      segments.push(current);
+    }
+    current.blockIds.push(block.id);
+    current.text = current.text ? `${current.text}\n\n${block.content}` : block.content;
+    current.startPage = Math.min(current.startPage, block.page);
+    current.endPage = Math.max(current.endPage, block.page);
+  }
+  for (const s of segments) s.preview = s.text.slice(0, 200);
+  return segments;
+}
+
+function segmentMatches(target: SyllabusTarget, text: string): { hits: number; ratio: number; sigLen: number } {
+  const sig = significantWords(target.title);
+  if (sig.length === 0) return { hits: 0, ratio: 0, sigLen: 0 };
+  const norm = normalizeLine(text).toLowerCase();
+  const hits = sig.filter((w) => norm.includes(w)).length;
+  return {
+    hits,
+    ratio: Math.round(Math.min(1, hits / sig.length) * 1000) / 1000,
+    sigLen: sig.length,
+  };
+}
+
+function targetLabel(target: SyllabusTarget): string {
+  return target.type === 'unit'
+    ? `syllabus unit "${target.title}"`
+    : `${target.type} "${target.title}"`;
+}
+
+const RELEVANT_SCORE = 1000;
+
+/** Relevance classification (never invents, never edits content). A mapping is
+ *  created for every target with ≥1 significant-word overlap; level is
+ *  `relevant` for a strong overlap (fully-matched single word, or ≥2 words at
+ *  ≥0.5 ratio) and `uncertain` for a weak one. Segments with no overlap at all
+ *  are `irrelevant` when syllabus context exists, else `unmapped`. Subject
+ *  mappings are a fallback only — they never mask a chapter/topic/unit hit. */
+function classifySegments(segments: EnhancedSegment[], targets: SyllabusTarget[]): SegmentMapping[] {
+  const helpful = targets.filter((t) => significantWords(t.title).length > 0);
+  const internal = helpful.filter((t) => t.type !== 'subject');
+  const subject = helpful.filter((t) => t.type === 'subject');
+  const hasSyllabus = helpful.length > 0;
+  const mappings: SegmentMapping[] = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    let internalHits = 0;
+    const matches: Array<{ mapping: SegmentMapping; score: number }> = [];
+
+    const track = (target: SyllabusTarget): void => {
+      const m = segmentMatches(target, seg.text);
+      if (m.hits === 0) return;
+      if (target.type !== 'subject') internalHits += m.hits;
+      const strong = m.sigLen === 1 ? m.hits === 1 : m.hits >= 2 && m.ratio >= 0.5;
+      const level: SegmentMapping['level'] = strong ? 'relevant' : 'uncertain';
+      const mapping: SegmentMapping = {
+        segmentIndex: i,
+        type: target.type,
+        level,
+        confidence: m.ratio,
+        reason: targetLabel(target),
+        syllabusId: target.syllabusId,
+        subjectId: target.subjectId,
+        chapterId: target.chapterId,
+        chapterName: target.chapterName,
+        topicId: target.topicId,
+        topicName: target.topicName,
+        unitTitle: target.unitTitle,
+      };
+      mappings.push(mapping);
+      matches.push({ mapping, score: level === 'relevant' ? RELEVANT_SCORE + m.hits : m.hits });
+    };
+
+    for (const t of internal) track(t);
+    // Subject mapping only when nothing chapter/topic/unit-based matched —
+    // subject names are too coarse to dominate segment classification.
+    if (internalHits === 0) for (const t of subject) track(t);
+
+    let best: SegmentMapping | null = null;
+    let bestScore = -1;
+    for (const c of matches) {
+      if (c.score > bestScore) {
+        best = c.mapping;
+        bestScore = c.score;
       }
     }
-    if (matched.length === 0) continue;
-    const confidence = Math.round(Math.min(1, hits / sig.length) * 1000) / 1000;
-    results.push({
-      syllabusId: target.syllabusId,
-      unitTitle: target.unitTitle,
-      blockIds: matched.map((m) => m.id),
-      matchedText: matched[0]!.content.slice(0, 120),
-      confidence,
-      level: confidence >= 0.5 ? 'KEEP' : 'REVIEW',
-    });
+    seg.level = best ? best.level : hasSyllabus ? 'irrelevant' : 'unmapped';
   }
-  return results;
+  return mappings;
 }
 
 /** Main entrypoint. Callers guarantee ≥1 page (duplicate pages collapse). */
 export function enhanceMaterial(
   pages: EnhancePage[],
-  alignmentTargets: AlignmentTarget[] = [],
+  syllabusTargets: SyllabusTarget[] = [],
 ): EnhanceResult {
   if (pages.length === 0) {
     throw new Error('enhanceMaterial requires at least one page');
@@ -516,6 +656,9 @@ export function enhanceMaterial(
     { KEEP: 0, EXCLUDE: 0, REVIEW: 0 },
   );
 
+  const segments = buildSegments(sections);
+  const mappings = classifySegments(segments, syllabusTargets);
+
   return {
     payload: {
       pages: prepared.length,
@@ -526,6 +669,7 @@ export function enhanceMaterial(
         findings: { keep: counts.KEEP, exclude: counts.EXCLUDE, review: counts.REVIEW },
       },
     },
-    alignment: alignSections(sections, alignmentTargets),
+    segments,
+    mappings,
   };
 }

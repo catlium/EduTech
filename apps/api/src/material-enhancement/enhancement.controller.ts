@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards, ParseUUIDPipe, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, UseGuards, ParseUUIDPipe, HttpCode, HttpStatus } from '@nestjs/common';
 
 import { MaterialEnhancementService } from './enhancement.service.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
@@ -31,6 +31,24 @@ export class MaterialEnhancementController {
     @Param('materialId', ParseUUIDPipe) materialId: string,
   ) {
     return { enhancements: await this.enhancements.listVersions(tenant.instituteId, materialId) };
+  }
+
+  @Get(':materialId/enhancement/segments')
+  async segments(
+    @Tenant() tenant: TenantContext,
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+    @Query('version') version?: string,
+    @Query('entityType') entityType?: string,
+    @Query('entityId') entityId?: string,
+    @Query('unitTitle') unitTitle?: string,
+    @Query('level') level?: string,
+  ) {
+    return this.enhancements.listSegments(tenant.instituteId, materialId, {
+      ...(version !== undefined ? { version: parseInt(version, 10) } : {}),
+      ...(entityType !== undefined && entityId !== undefined ? { entityType, entityId } : {}),
+      ...(entityType === 'unit' && unitTitle !== undefined ? { unitTitle } : {}),
+      ...(level !== undefined ? { level } : {}),
+    });
   }
 
   @Post(':materialId/enhancement')

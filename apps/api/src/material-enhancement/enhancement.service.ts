@@ -9,29 +9,47 @@
 import { Injectable, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 
 import {
+  chapters,
   jobs,
+  materialEnhancementSegmentMappings,
+  materialEnhancementSegments,
   materialEnhancements,
   materials,
   ocrChunks,
   ocrPageCorrections,
+  subjects,
   syllabi,
+  topics,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
-import type { MaterialAlignment, MaterialEnhancementPayload } from '@catlium/contracts';
+import type {
+  MaterialEnhancementPayload,
+  MaterialResolvedSegment,
+  MaterialSegmentMapping,
+} from '@catlium/contracts';
 import { pagesWithText } from '../ocr/ocr-coordinator.util.js';
 import type { ChunkLike, CorrectionLike } from '../ocr/ocr-coordinator.util.js';
 import { enhanceMaterial, sourceFingerprint } from './enhancer.js';
-import type { EnhancePage } from './enhancer.js';
+import type { EnhancePage, SyllabusTarget } from './enhancer.js';
 
 const SWEEP_INTERVAL_MS = Number(process.env['WORKER_SWEEP_INTERVAL_MS'] ?? '15000') || 15000;
+// A processing enhancement job older than this is considered orphaned (the API
+// died mid-sweep). processJob is seconds-fast and idempotent, so reclaiming it
+// is safe — without this, a ghost `processing` row would block every future
+// enqueue for the material (the dedup guard treats processing as active).
+const ENHANCE_LEASE_MS = 60_000;
 
 export type EnhancementTrigger = 'OCR_COMPLETE' | 'CORRECTION' | 'TEXT_SOURCE' | 'MANUAL';
+
+type M = typeof materialEnhancementSegmentMappings.$inferSelect;
+
+const ZERO_SEGMENTS = { total: 0, relevant: 0, uncertain: 0, irrelevant: 0, unmapped: 0 };
 
 function payloadOf(payload: unknown): Record<string, unknown> | null {
   return typeof payload === 'object' && payload !== null
@@ -98,6 +116,7 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
       .where(
         and(
           eq(jobs.type, 'MATERIAL_ENHANCE'),
+          eq(jobs.instituteId, instituteId),
           sql`${jobs.status} IN ('queued', 'processing')`,
           sql`${jobs.payload}->>'materialId' = ${materialId}`,
         ),
@@ -118,12 +137,7 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
 
   async getLatest(instituteId: string, materialId: string) {
     const material = await this.assertMaterialScoped(instituteId, materialId);
-    const [latest] = await this.db
-      .select()
-      .from(materialEnhancements)
-      .where(eq(materialEnhancements.materialId, materialId))
-      .orderBy(desc(materialEnhancements.version))
-      .limit(1);
+    const latest = await this.latestOf(materialId);
     return {
       material: {
         id: material.id,
@@ -131,7 +145,7 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
         revision: material.revision,
         subjectId: material.subjectId,
       },
-      enhancement: latest ? this.toResponse(latest) : null,
+      enhancement: latest ? await this.toResponse(latest) : null,
     };
   }
 
@@ -142,23 +156,108 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
       .from(materialEnhancements)
       .where(eq(materialEnhancements.materialId, materialId))
       .orderBy(desc(materialEnhancements.version));
+
+    const ids = rows.map((r) => r.id);
+    const segmentCounts = new Map<string, typeof ZERO_SEGMENTS>();
+    if (ids.length) {
+      const segmentsOf = await this.db
+        .select({
+          enhancementId: materialEnhancementSegments.enhancementId,
+          level: materialEnhancementSegments.level,
+        })
+        .from(materialEnhancementSegments)
+        .where(inArray(materialEnhancementSegments.enhancementId, ids));
+      for (const s of segmentsOf) {
+        const counts = segmentCounts.get(s.enhancementId) ?? { ...ZERO_SEGMENTS };
+        counts.total += 1;
+        const level =
+          s.level === 'relevant' || s.level === 'uncertain' || s.level === 'irrelevant'
+            ? s.level
+            : 'unmapped';
+        counts[level] += 1;
+        segmentCounts.set(s.enhancementId, counts);
+      }
+    }
+
     return rows.map((r) => ({
       version: r.version,
       trigger: r.trigger,
       sourceRevision: r.sourceRevision,
       findings: (r.payload as MaterialEnhancementPayload).summary.findings,
+      segments: segmentCounts.get(r.id) ?? { ...ZERO_SEGMENTS },
       createdAt: r.createdAt.toISOString(),
     }));
+  }
+
+  /** The downstream "give me the segments relevant to Subject → Chapter →
+   *  Topic" read. Defaults to the latest enhancement; filters on personality
+   *  (mapping) and/or relevance level. Unit mappings filter by syllabusId
+   *  (+ optional unitTitle). */
+  async listSegments(
+    instituteId: string,
+    materialId: string,
+    filter: {
+      version?: number;
+      entityType?: string;
+      entityId?: string;
+      unitTitle?: string;
+      level?: string;
+    } = {},
+  ) {
+    await this.assertMaterialScoped(instituteId, materialId);
+    const latest = await this.latestOf(materialId, filter.version);
+    if (!latest) {
+      return { materialId, version: filter.version ?? 0, segments: [] };
+    }
+    const resolved = await this.segmentsOf(latest.id);
+
+    const byEntity = (m: MaterialSegmentMapping): boolean => {
+      switch (filter.entityType) {
+        case 'subject':
+          return filter.entityId === (m.subjectId ?? undefined);
+        case 'chapter':
+          return filter.entityId === (m.chapterId ?? undefined);
+        case 'topic':
+          return filter.entityId === (m.topicId ?? undefined);
+        case 'unit':
+          return (
+            filter.entityId === (m.syllabusId ?? undefined) &&
+            (filter.unitTitle == null || filter.unitTitle === m.unitTitle)
+          );
+        default:
+          return true;
+      }
+    };
+
+    const segments = resolved.filter(({ segment, mappings }) => {
+      if (filter.entityType && !mappings.some(byEntity)) return false;
+      if (filter.level && segment.level !== filter.level) return false;
+      return true;
+    });
+
+    return { materialId, version: latest.version, segments };
   }
 
   // ── Sweep (adopt queued MATERIAL_ENHANCE jobs) ─────────────────────────
 
   async sweep(): Promise<void> {
-    const queued = await this.db
+    const cutoff = new Date(Date.now() - ENHANCE_LEASE_MS);
+    const adoptable = await this.db
       .select()
       .from(jobs)
-      .where(and(eq(jobs.type, 'MATERIAL_ENHANCE'), eq(jobs.status, 'queued')));
-    for (const job of queued) {
+      .where(
+        and(
+          eq(jobs.type, 'MATERIAL_ENHANCE'),
+          or(
+            eq(jobs.status, 'queued'),
+            // `ponytail: fixed 60s lease; per-job leases only if multi-replica
+            // sweeps ever run concurrently.` Re-processing is safe because the
+            // fingerprint check is idempotent.
+            and(eq(jobs.status, 'processing'), lt(jobs.startedAt, cutoff)),
+          ),
+        ),
+      );
+    for (const job of adoptable) {
       try {
         await this.processJob(job.id, job.instituteId, job.payload);
       } catch (error) {
@@ -218,8 +317,8 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
       return;
     }
 
-    const targets = await this.alignmentTargets(instituteId, material.subjectId);
-    const { payload: enhanced, alignment } = enhanceMaterial(pages, targets);
+    const targets = await this.syllabusTargets(instituteId, material.subjectId);
+    const { payload: enhanced, segments, mappings } = enhanceMaterial(pages, targets);
 
     const version = (latest?.version ?? 0) + 1;
     const trigger = (payloadOf(payload)?.['trigger'] as string | undefined) ?? 'MANUAL';
@@ -229,16 +328,57 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
         : null;
 
     await this.db.transaction(async (tx) => {
-      await tx.insert(materialEnhancements).values({
-        materialId,
-        version,
-        trigger,
-        sourceRevision: material.revision,
-        sourceTextHash: fingerprint,
-        payload: enhanced as unknown as Record<string, unknown>,
-        alignment: (alignment as unknown as Record<string, unknown>[]) ?? null,
-        createdBy,
-      });
+      const [enhancement] = await tx
+        .insert(materialEnhancements)
+        .values({
+          materialId,
+          version,
+          trigger,
+          sourceRevision: material.revision,
+          sourceTextHash: fingerprint,
+          payload: enhanced as unknown as Record<string, unknown>,
+          createdBy,
+        })
+        .returning();
+
+      // Logical segments + normalized syllabus associations land in the SAME
+      // transaction as the version row — the derivation is atomic.
+      const segmentIds: string[] = [];
+      for (const [i, s] of segments.entries()) {
+        const [row] = await tx
+          .insert(materialEnhancementSegments)
+          .values({
+            enhancementId: enhancement!.id,
+            segmentNo: i + 1,
+            kind: s.kind,
+            level: s.level,
+            title: s.title,
+            preview: s.preview.slice(0, 500),
+            startPage: s.startPage,
+            endPage: s.endPage,
+            blockIds: s.blockIds,
+          })
+          .returning();
+        segmentIds.push(row!.id);
+      }
+      if (mappings.length) {
+        await tx.insert(materialEnhancementSegmentMappings).values(
+          mappings.map((m) => ({
+            segmentId: segmentIds[m.segmentIndex]!,
+            type: m.type,
+            level: m.level,
+            confidence: String(m.confidence),
+            reason: m.reason.slice(0, 255),
+            syllabusId: m.syllabusId,
+            subjectId: m.subjectId,
+            chapterId: m.chapterId,
+            chapterName: m.chapterName,
+            topicId: m.topicId,
+            topicName: m.topicName,
+            unitTitle: m.unitTitle,
+          })),
+        );
+      }
     });
 
     await this.jobsService.updateJobStatus(jobId, 'completed', {
@@ -315,13 +455,22 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
     return documentPages;
   }
 
-  /** Confirmed syllabus units for the material's subject — the alignment
-   *  targets (never invented; empty when the subject/context is missing). */
-  private async alignmentTargets(
+  /** The syllabus context to judge segment relevance against. Prefers the
+   *  subject's confirmed Chapters/Topics (authoritative); falls back to the
+   *  latest syllabus Context-units; empty when the subject is missing. Nothing
+   *  is invented — a segment only maps where keyword overlap exists. */
+  private async syllabusTargets(
     instituteId: string,
     subjectId: string | null,
-  ): Promise<Array<{ syllabusId: string; unitTitle: string }>> {
+  ): Promise<SyllabusTarget[]> {
     if (!subjectId) return [];
+    const [subject] = await this.db
+      .select({ id: subjects.id, name: subjects.name })
+      .from(subjects)
+      .where(and(eq(subjects.id, subjectId), isNull(subjects.deletedAt)))
+      .limit(1);
+    if (!subject) return [];
+
     const [syllabus] = await this.db
       .select({ id: syllabi.id, context: syllabi.context })
       .from(syllabi)
@@ -329,17 +478,132 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
         and(
           eq(syllabi.instituteId, instituteId),
           eq(syllabi.subjectId, subjectId),
-          eq(syllabi.status, 'CONFIRMED'),
           isNull(syllabi.deletedAt),
         ),
       )
-      .orderBy(desc(syllabi.version))
+      .orderBy(desc(sql`CASE WHEN ${syllabi.status} = 'CONFIRMED' THEN 1 ELSE 0 END`), desc(syllabi.version))
       .limit(1);
-    if (!syllabus) return [];
-    const context = syllabus.context as { units?: Array<{ title: string }> } | null;
-    return (context?.units ?? [])
-      .filter((u) => typeof u.title === 'string' && u.title.trim().length > 0)
-      .map((u) => ({ syllabusId: syllabus.id, unitTitle: u.title }));
+
+    const base = {
+      syllabusId: syllabus?.id ?? null,
+      subjectId: subject.id,
+      chapterId: null as string | null,
+      chapterName: null as string | null,
+      topicId: null as string | null,
+      topicName: null as string | null,
+      unitTitle: null as string | null,
+    };
+
+    const targets: SyllabusTarget[] = [];
+    const chapterRows = await this.db
+      .select()
+      .from(chapters)
+      .where(
+        and(
+          eq(chapters.subjectId, subjectId),
+          eq(chapters.status, 'active'),
+          isNull(chapters.deletedAt),
+        ),
+      )
+      .orderBy(asc(chapters.sortOrder));
+
+    if (chapterRows.length > 0) {
+      targets.push({ ...base, type: 'subject', title: subject.name });
+      for (const c of chapterRows) {
+        targets.push({
+          ...base,
+          type: 'chapter',
+          title: c.name,
+          chapterId: c.id,
+          chapterName: c.name,
+        });
+      }
+      const chapterNameById = new Map(chapterRows.map((c) => [c.id, c.name]));
+      const topicRows = await this.db
+        .select()
+        .from(topics)
+        .where(
+          and(
+            inArray(
+              topics.chapterId,
+              chapterRows.map((c) => c.id),
+            ),
+            eq(topics.status, 'active'),
+            isNull(topics.deletedAt),
+          ),
+        )
+        .orderBy(asc(topics.sortOrder));
+      for (const t of topicRows) {
+        targets.push({
+          ...base,
+          type: 'topic',
+          title: t.name,
+          chapterId: t.chapterId,
+          chapterName: chapterNameById.get(t.chapterId) ?? null,
+          topicId: t.id,
+          topicName: t.name,
+        });
+      }
+    } else if (syllabus) {
+      const context = syllabus.context as { units?: Array<{ title: string }> } | null;
+      for (const u of context?.units ?? []) {
+        if (typeof u.title === 'string' && u.title.trim().length > 0) {
+          targets.push({ ...base, type: 'unit', title: u.title, unitTitle: u.title });
+        }
+      }
+    }
+    return targets;
+  }
+
+  private async latestOf(materialId: string, version?: number) {
+    const where = version
+      ? and(
+          eq(materialEnhancements.materialId, materialId),
+          eq(materialEnhancements.version, version),
+        )
+      : eq(materialEnhancements.materialId, materialId);
+    const rows = await this.db
+      .select()
+      .from(materialEnhancements)
+      .where(where)
+      .orderBy(desc(materialEnhancements.version))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  private async segmentsOf(enhancementId: string): Promise<MaterialResolvedSegment[]> {
+    const rows = await this.db
+      .select()
+      .from(materialEnhancementSegments)
+      .where(eq(materialEnhancementSegments.enhancementId, enhancementId))
+      .orderBy(asc(materialEnhancementSegments.segmentNo));
+    if (!rows.length) return [];
+
+    const mappings = await this.db
+      .select()
+      .from(materialEnhancementSegmentMappings)
+      .where(inArray(materialEnhancementSegmentMappings.segmentId, rows.map((r) => r.id)))
+      .orderBy(asc(materialEnhancementSegmentMappings.createdAt));
+    const bySegment = new Map<string, MaterialSegmentMapping[]>();
+    for (const m of mappings) {
+      const list = bySegment.get(m.segmentId) ?? [];
+      list.push(this.mappingOf(m));
+      bySegment.set(m.segmentId, list);
+    }
+
+    return rows.map((r) => ({
+      segment: {
+        segmentNo: r.segmentNo,
+        kind: r.kind,
+        level: r.level,
+        title: r.title,
+        preview: r.preview ?? '',
+        startPage: r.startPage,
+        endPage: r.endPage,
+        blockIds: r.blockIds,
+      },
+      mappings: bySegment.get(r.id) ?? [],
+    }));
   }
 
   private async assertMaterialScoped(instituteId: string, materialId: string) {
@@ -360,7 +624,7 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
     return material;
   }
 
-  private toResponse(row: typeof materialEnhancements.$inferSelect) {
+  private async toResponse(row: typeof materialEnhancements.$inferSelect) {
     return {
       id: row.id,
       materialId: row.materialId,
@@ -369,9 +633,25 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
       sourceRevision: row.sourceRevision,
       sourceTextHash: row.sourceTextHash,
       payload: row.payload as MaterialEnhancementPayload,
-      alignment: (row.alignment as unknown as MaterialAlignment[]) ?? null,
+      segments: await this.segmentsOf(row.id),
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private mappingOf(m: M): MaterialSegmentMapping {
+    return {
+      type: m.type,
+      level: m.level,
+      confidence: Number(m.confidence),
+      reason: m.reason,
+      syllabusId: m.syllabusId,
+      subjectId: m.subjectId,
+      chapterId: m.chapterId,
+      chapterName: m.chapterName,
+      topicId: m.topicId,
+      topicName: m.topicName,
+      unitTitle: m.unitTitle,
     };
   }
 }

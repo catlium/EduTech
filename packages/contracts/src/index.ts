@@ -642,13 +642,28 @@ export const MaterialProcessResponseSchema = z.object({
 });
 export type MaterialProcessResponse = z.infer<typeof MaterialProcessResponseSchema>;
 
-// ── Material Intelligence Contracts — cleaning & enhancement ─────────────
+// ── Material Intelligence Contracts — cleaning + syllabus relevance ─────
 //
-// The enhanced material is a DERIVED, versioned artifact. The raw extraction
-// stays untouched on `materials.text_content`; this payload is the structured
-// form (sections/blocks with page + engine provenance) plus quality findings.
-// Findings never silently drop content: EXCLUDE carries the discarded original
-// text and a reason; uncertain content is kept and flagged REVIEW.
+// Material Intelligence serves TWO purposes on ONE canonical source Material
+// (a 600-page reference book and a two-page handout get the same treatment);
+// it never splits a source into separate Material records:
+//   1. QUALITY: a DERIVED, versioned artifact. The raw extraction stays
+//      untouched on `materials.text_content`; the payload is the structured
+//      form (sections/blocks with page + engine provenance) plus quality
+//      findings. Findings never silently drop content: EXCLUDE carries the
+//      discarded original text and a reason; uncertain content is kept and
+//      flagged REVIEW.
+//   2. SYLLABUS RELEVANCE: the material is logically segmented (heading-led
+//      regions with page ranges + provenance by payload block id), and each
+//      segment is classified relevant / uncertain / irrelevant / unmapped
+//      against the subject's Subject/Chapter/Topic syllabus context.
+//      Relevant/uncertain segments get normalized mappings (segment → one
+//      Subject/Chapter/Topic, or a syllabus Context-unit fallback) with
+//      confidence + reason, so downstream extraction/generation can query only
+//      the relevant segments per Subject → Chapter → Topic.
+// Raw extraction is never modified; no syllabus relationship is invented —
+// mappings exist only where keyword overlap is found; irrelevant content is
+// flagged, never deleted.
 
 export const MaterialFindingLevelEnum = z.enum(['KEEP', 'EXCLUDE', 'REVIEW']);
 export type MaterialFindingLevel = z.infer<typeof MaterialFindingLevelEnum>;
@@ -707,21 +722,63 @@ export const MaterialEnhancementPayloadSchema = z.object({
 });
 export type MaterialEnhancementPayload = z.infer<typeof MaterialEnhancementPayloadSchema>;
 
-export const MaterialAlignmentLevelEnum = z.enum(['KEEP', 'REVIEW']);
-export type MaterialAlignmentLevel = z.infer<typeof MaterialAlignmentLevelEnum>;
+export const MaterialSegmentKindEnum = z.enum(['chapter', 'section', 'other']);
+export type MaterialSegmentKind = z.infer<typeof MaterialSegmentKindEnum>;
 
-// Syllabus alignment as ANALYSIS METADATA ONLY — a mapping from enhanced blocks
-// to a subject's confirmed syllabus units. Alignment never rewrites or destroys
-// source content; it is stored beside (not inside) the enhanced payload.
-export const MaterialAlignmentSchema = z.object({
-  syllabusId: z.string().uuid(),
-  unitTitle: z.string(),
+// Overall segment relevance. `unmapped` means no syllabus context was available
+// to judge against; `irrelevant` means context existed but nothing matched.
+export const MaterialSegmentLevelEnum = z.enum([
+  'relevant',
+  'uncertain',
+  'irrelevant',
+  'unmapped',
+]);
+export type MaterialSegmentLevel = z.infer<typeof MaterialSegmentLevelEnum>;
+
+export const MaterialSegmentMappingTypeEnum = z.enum(['subject', 'chapter', 'topic', 'unit']);
+export type MaterialSegmentMappingType = z.infer<typeof MaterialSegmentMappingTypeEnum>;
+
+export const MaterialSegmentMappingLevelEnum = z.enum(['relevant', 'uncertain']);
+export type MaterialSegmentMappingLevel = z.infer<typeof MaterialSegmentMappingLevelEnum>;
+
+// A logical segment of one enhanced version: heading-led region (or unheaded
+// prefix) with its page range and the payload block ids it spans — provenance
+// by reference, content lives only in the payload (single source of truth).
+export const MaterialEnhancementSegmentSchema = z.object({
+  segmentNo: z.number().int().positive(),
+  kind: MaterialSegmentKindEnum,
+  level: MaterialSegmentLevelEnum,
+  title: z.string().nullable(),
+  preview: z.string(),
+  startPage: z.number().int().positive(),
+  endPage: z.number().int().positive(),
   blockIds: z.array(z.string()),
-  matchedText: z.string(),
-  confidence: z.number().min(0).max(1),
-  level: MaterialAlignmentLevelEnum,
 });
-export type MaterialAlignment = z.infer<typeof MaterialAlignmentSchema>;
+export type MaterialEnhancementSegment = z.infer<typeof MaterialEnhancementSegmentSchema>;
+
+// A segment → syllabus entity association. Exactly one entity group is set per
+// mapping (see the DB CHECK): subject=subjectId, chapter=chapterId+chapterName,
+// topic=topicId+topicName (+optional chapter context), unit=syllabusId+unitTitle.
+export const MaterialSegmentMappingSchema = z.object({
+  type: MaterialSegmentMappingTypeEnum,
+  level: MaterialSegmentMappingLevelEnum,
+  confidence: z.number().min(0).max(1),
+  reason: z.string(),
+  syllabusId: z.string().uuid().nullable(),
+  subjectId: z.string().uuid().nullable(),
+  chapterId: z.string().uuid().nullable(),
+  chapterName: z.string().nullable(),
+  topicId: z.string().uuid().nullable(),
+  topicName: z.string().nullable(),
+  unitTitle: z.string().nullable(),
+});
+export type MaterialSegmentMapping = z.infer<typeof MaterialSegmentMappingSchema>;
+
+export const MaterialResolvedSegmentSchema = z.object({
+  segment: MaterialEnhancementSegmentSchema,
+  mappings: z.array(MaterialSegmentMappingSchema),
+});
+export type MaterialResolvedSegment = z.infer<typeof MaterialResolvedSegmentSchema>;
 
 export const MaterialEnhancementResponseSchema = z.object({
   id: z.string().uuid(),
@@ -731,7 +788,7 @@ export const MaterialEnhancementResponseSchema = z.object({
   sourceRevision: z.number().int().positive(),
   sourceTextHash: z.string(),
   payload: MaterialEnhancementPayloadSchema,
-  alignment: z.array(MaterialAlignmentSchema).nullable(),
+  segments: z.array(MaterialResolvedSegmentSchema),
   createdBy: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
 });
@@ -742,6 +799,13 @@ export const MaterialEnhancementSummarySchema = z.object({
   trigger: z.string(),
   sourceRevision: z.number().int().positive(),
   findings: MaterialEnhancementPayloadSchema.shape.summary.shape.findings,
+  segments: z.object({
+    total: z.number().int().nonnegative(),
+    relevant: z.number().int().nonnegative(),
+    uncertain: z.number().int().nonnegative(),
+    irrelevant: z.number().int().nonnegative(),
+    unmapped: z.number().int().nonnegative(),
+  }),
   createdAt: z.string().datetime(),
 });
 export type MaterialEnhancementSummary = z.infer<typeof MaterialEnhancementSummarySchema>;
@@ -750,6 +814,15 @@ export const MaterialEnhancementVersionsSchema = z.object({
   enhancements: z.array(MaterialEnhancementSummarySchema),
 });
 export type MaterialEnhancementVersions = z.infer<typeof MaterialEnhancementVersionsSchema>;
+
+// The downstream "give me the relevant segments for Subject → Chapter → Topic"
+// read. `version` defaults to the latest enhancement of the material.
+export const MaterialEnhancementSegmentsSchema = z.object({
+  materialId: z.string().uuid(),
+  version: z.number().int().positive(),
+  segments: z.array(MaterialResolvedSegmentSchema),
+});
+export type MaterialEnhancementSegments = z.infer<typeof MaterialEnhancementSegmentsSchema>;
 
 export const MaterialEnhanceResponseSchema = z.object({
   materialId: z.string().uuid(),
