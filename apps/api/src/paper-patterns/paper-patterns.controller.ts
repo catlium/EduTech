@@ -13,10 +13,12 @@ import {
 } from '@nestjs/common';
 
 import { PaperPatternsService } from './paper-patterns.service.js';
+import { PaperPatternExtractionService } from './paper-pattern-extraction.service.js';
 import {
   AnalyzePaperPatternDto,
   CreateAssessmentFromBlueprintDto,
   CreatePaperPatternDto,
+  ExtractFromMaterialDto,
   UpdatePaperPatternDto,
 } from './paper-patterns.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
@@ -33,7 +35,10 @@ const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
 @Controller('paper-patterns')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
 export class PaperPatternsController {
-  constructor(private readonly paperPatternsService: PaperPatternsService) {}
+  constructor(
+    private readonly paperPatternsService: PaperPatternsService,
+    private readonly extraction: PaperPatternExtractionService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -49,6 +54,37 @@ export class PaperPatternsController {
       dto,
     );
     return { pattern };
+  }
+
+  @Post('extract-from-material')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async extractFromMaterial(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ExtractFromMaterialDto,
+  ) {
+    return this.extraction.requestExtraction(tenant.instituteId, dto.materialId, user.userId);
+  }
+
+  @Get('extraction/:jobId')
+  @RequiredRoles(...WRITE_ROLES)
+  async extractionStatus(
+    @Tenant() tenant: TenantContext,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+  ) {
+    const job = await this.extraction.getExtraction(tenant.instituteId, jobId);
+    return {
+      extraction: {
+        jobId: job.id,
+        status: job.status,
+        result: job.result,
+        error: job.error,
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+      },
+    };
   }
 
   @Get()

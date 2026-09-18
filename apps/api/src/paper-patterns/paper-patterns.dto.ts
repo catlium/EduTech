@@ -105,3 +105,8 @@ export class CreateAssessmentFromBlueprintDto extends QuestionScopeDto {
   @IsString()
   description?: string;
 }
+
+export class ExtractFromMaterialDto {
+  @IsUUID()
+  materialId!: string;
+}

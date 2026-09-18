@@ -1,4 +1,13 @@
-import { pgTable, primaryKey, uuid, varchar, integer, jsonb, timestamp, boolean } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  primaryKey,
+  uuid,
+  varchar,
+  integer,
+  jsonb,
+  timestamp,
+  boolean,
+} from 'drizzle-orm/pg-core';
 
 import { institutes } from './institutes.js';
 import { subjects } from './academic.js';
@@ -26,6 +35,11 @@ export const paperPatterns = pgTable('paper_patterns', {
     onDelete: 'set null',
   }),
   structure: jsonb('structure'),
+  // Extraction metadata (Phase B): which material + revision produced the
+  // pattern, source block/page provenance, mark/time resolution source, and
+  // review issues. null unless the pattern was created by deterministic
+  // extraction from an existing paper.
+  extraction: jsonb('extraction'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => users.id),

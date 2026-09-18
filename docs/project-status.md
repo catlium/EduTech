@@ -14,6 +14,67 @@
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
 
+## Phase 46 — Paper-pattern extraction from materials (2026-09-18)
+
+**Status: implementation + validation + live E2E complete; committed on main.**
+
+A deterministic, rule-based extractor turns an existing processed/enhanced
+material (a past-year paper) into a reviewable `PaperPattern` (status REVIEW,
+`sourceType=PREVIOUS_YEAR_PAPER`, `sourceMaterialId` set, subject linked). It
+runs as a coordinator-owned `MATERIAL_PATTERN_EXTRACT` job swept by the API
+(15s, 60s lease, never published to RabbitMQ), so no new worker/deployment is
+needed. Ambiguity is never guessed: `totalMarks`/`durationMinutes` are now
+nullable and missing values surface as extraction issues the teacher resolves
+in the existing builder (which shows an extraction-review banner). Neither a
+question bank nor question extraction is implemented — out of this phase.
+
+### Completed work
+
+- **Contracts:** `PaperPatternStructure.totalMarks`/`durationMinutes` nullable;
+  extraction schemas (`PatternExtractionIssueSchema`,
+  `PatternExtractionRuleProvenanceSchema`, `PatternExtractionMetaSchema`,
+  `ExtractPaperPatternRequest/ResponseSchema`,
+  `PaperPatternExtractionStatusSchema`); `PaperPatternSchema.extraction`
+  (nullable). Nullable totals keep APPROVED patterns strict: validation plus
+  the doc export, question-paper creation, and
+  `createAssessmentFromBlueprint` all guard null totals.
+- **DB:** `extraction jsonb` on `paper_patterns`; migration
+  `0037_paper_pattern_extraction.sql` (journal idx 37).
+- **Extractor** (`pattern-extractor.ts`, pure + 16 tests): section heading
+  splits, declaration-line rule typing (question text like "define" never
+  splits rules), honest marks consensus, attempt-phrase parsing (incl. word
+  numbers and attempt≥count ⇒ compulsory), global compulsory propagation,
+  header-vs-section-sum totals (header kept only when it matches; otherwise
+  the validate-safe scorable sum wins and `INCONSISTENT_MARKS` is reported),
+  keyword/bare-minutes durations, `ATTEMPT_POLICY_UNKNOWN` only on genuine
+  within-section attempt conflicts, null structure + `NO_QUESTIONS_FOUND` when
+  nothing parses.
+- **API:** `POST /paper-patterns/extract-from-material`,
+  `GET /paper-patterns/extraction/:jobId`; `paper-pattern-extraction.service.ts`
+  (enqueue guard, active-job + completed-revision idempotency, sweep/lease,
+  ENHANCEMENT->TEXT block fallback); `createPattern` extended; new job type
+  registered + never published.
+- **Web:** material detail "Extract Paper Pattern" button (ACTIVE+READY) with
+  poll-to-pattern; pattern builder extraction-review banner + nullable
+  total/duration tolerance.
+
+### Validation
+
+- Typecheck clean: contracts, database, api, web. ESLint clean. API suite
+  **176/176**.
+- Live E2E (dev stack, admin@catlium.dev): TEXT-created past-paper material →
+  extraction (2 sections, 20 MCQ×1 + 8 SA×4 attempt-any-5) → REVIEW pattern,
+  subject linked, `totalMarks 40 / duration 180`, validate = valid; both
+  source resolutions verified (raw TEXT fallback then ENHANCEMENT once the
+  auto-enhancer caught up); active-job reuse and completed-revision reuse
+  (returns the existing `patternId`, never a duplicate).
+
+### Next task
+
+Question extraction from materials into the question bank is the next
+milestone and is NOT part of this phase (deferred; the enhanced material +
+this extractor's provenance model are the inputs it needs).
+
 ## Phase 45 A — Material Intelligence: cleaning & enhancement (2026-09-18)
 
 **Status: implementation + validation complete; commit + push pending (Phase

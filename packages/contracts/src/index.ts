@@ -727,12 +727,7 @@ export type MaterialSegmentKind = z.infer<typeof MaterialSegmentKindEnum>;
 
 // Overall segment relevance. `unmapped` means no syllabus context was available
 // to judge against; `irrelevant` means context existed but nothing matched.
-export const MaterialSegmentLevelEnum = z.enum([
-  'relevant',
-  'uncertain',
-  'irrelevant',
-  'unmapped',
-]);
+export const MaterialSegmentLevelEnum = z.enum(['relevant', 'uncertain', 'irrelevant', 'unmapped']);
 export type MaterialSegmentLevel = z.infer<typeof MaterialSegmentLevelEnum>;
 
 export const MaterialSegmentMappingTypeEnum = z.enum(['subject', 'chapter', 'topic', 'unit']);
@@ -2329,8 +2324,9 @@ export const PaperPatternSectionSchema = z.object({
 export type PaperPatternSection = z.infer<typeof PaperPatternSectionSchema>;
 
 export const PaperPatternStructureSchema = z.object({
-  totalMarks: z.number().int().min(1),
-  durationMinutes: z.number().int().min(1),
+  /* null = unknown but structural; approval still requires real values */
+  totalMarks: z.number().int().min(1).nullable(),
+  durationMinutes: z.number().int().min(1).nullable(),
   instructions: z.array(z.string().max(2000)).max(50).default([]),
   sections: z.array(PaperPatternSectionSchema).min(1).max(50),
 });
@@ -2420,10 +2416,89 @@ export function normalizePaperPatternStructure(raw: unknown): PaperPatternStruct
   return PaperPatternStructureSchema.parse(candidate);
 }
 
+/* ── Deterministic paper-pattern extraction (Phase B) ────────────────
+ * A pure, rule-based extractor turns an enhanced material (existing
+ * paper/past-year paper) into a reviewable PaperPattern. Ambiguity is
+ * never guessed: unknown values stay null and surface as issues with
+ * review info for the teacher. */
+
+/** A single unambiguous extraction finding the teacher should review. */
+export const PatternExtractionIssueSchema = z.object({
+  code: z.string().min(1).max(50),
+  message: z.string().min(1).max(500),
+  blockIds: z.array(z.string()).max(1000).optional(),
+  pages: z.array(z.number().int().positive()).max(1000).optional(),
+});
+export type PatternExtractionIssue = z.infer<typeof PatternExtractionIssueSchema>;
+
+/** Which source blocks/pages produced a single extracted rule. */
+export const PatternExtractionRuleProvenanceSchema = z.object({
+  sectionId: z.string().uuid(),
+  ruleId: z.string().uuid(),
+  blockIds: z.array(z.string()).max(1000),
+  pages: z.array(z.number().int().positive()).max(1000),
+});
+export type PatternExtractionRuleProvenance = z.infer<typeof PatternExtractionRuleProvenanceSchema>;
+
+/** Extraction metadata persisted on a pattern (the extraction column). */
+export const PatternExtractionMetaSchema = z.object({
+  extractor: z.literal('v1'),
+  materialId: z.string().uuid(),
+  materialRevision: z.number().int().positive(),
+  /* ENHANCEMENT = parsed from enhanced blocks; TEXT = raw textContent fallback */
+  source: z.enum(['ENHANCEMENT', 'TEXT']),
+  totalMarksSource: z.enum(['HEADER', 'SECTION_SUM', 'UNKNOWN']),
+  durationMinutesSource: z.enum(['HEADER', 'UNKNOWN']),
+  issues: z.array(PatternExtractionIssueSchema).max(500),
+  provenance: z.array(PatternExtractionRuleProvenanceSchema).max(500),
+});
+export type PatternExtractionMeta = z.infer<typeof PatternExtractionMetaSchema>;
+
+export const ExtractPaperPatternRequestSchema = z.object({
+  materialId: z.string().uuid(),
+});
+export type ExtractPaperPatternRequest = z.infer<typeof ExtractPaperPatternRequestSchema>;
+
+export const ExtractPaperPatternResponseSchema = z.object({
+  extraction: z.object({
+    jobId: z.string().uuid(),
+    /* QUEUED = poll GET /paper-patterns/extraction/:jobId; COMPLETED = an
+     * identical extraction already exists — open the returned pattern. */
+    status: z.enum(['QUEUED', 'COMPLETED']),
+    /* true = a pending/completed identical extraction was reused (idempotency) */
+    reused: z.boolean(),
+    /* Present when status is COMPLETED: the existing extracted pattern */
+    patternId: z.string().uuid().optional(),
+  }),
+});
+export type ExtractPaperPatternResponse = z.infer<typeof ExtractPaperPatternResponseSchema>;
+
+export const PaperPatternExtractionStatusSchema = z.object({
+  extraction: z.object({
+    jobId: z.string().uuid(),
+    status: z.enum(['queued', 'processing', 'completed', 'failed', 'cancelled', 'cancelling']),
+    result: z
+      .object({
+        status: z.string(),
+        patternId: z.string().uuid(),
+        totalMarks: z.number().nullable(),
+        durationMinutes: z.number().nullable(),
+        sectionCount: z.number().int().nonnegative(),
+        ruleCount: z.number().int().nonnegative(),
+        issueCount: z.number().int().nonnegative(),
+      })
+      .nullable(),
+    error: z.object({ message: z.string() }).nullable(),
+    createdAt: z.string().datetime(),
+    startedAt: z.string().datetime().nullable(),
+    completedAt: z.string().datetime().nullable(),
+  }),
+});
+export type PaperPatternExtractionStatus = z.infer<typeof PaperPatternExtractionStatusSchema>;
+
 export const PaperPatternSchema = z.object({
   id: z.string().uuid(),
   instituteId: z.string().uuid(),
-  // Empty array = General pattern (reusable across any subject).
   subjectIds: z.array(z.string().uuid()),
   title: z.string().min(1).max(255),
   description: z.string().max(1000).nullable(),
@@ -2433,6 +2508,9 @@ export const PaperPatternSchema = z.object({
   sourceType: PaperPatternSourceTypeEnum,
   sourceMaterialId: z.string().uuid().nullable(),
   structure: PaperPatternStructureSchema.nullable(),
+  /* Present only on patterns produced by deterministic extraction from a
+   * material (Phase B). Carries extraction provenance and review issues. */
+  extraction: PatternExtractionMetaSchema.nullable(),
   createdBy: z.string().uuid(),
   updatedBy: z.string().uuid().nullable(),
   validatedAt: z.string().datetime().nullable(),

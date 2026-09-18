@@ -81,8 +81,8 @@ export function paperPatternDoc(source: PaperPatternDocSource): DocumentModel {
       ? 'General (any subject)'
       : source.subjectIds.map((id) => source.subjectNames[id] ?? 'Unknown subject').join(', ');
 
-  const duration = structure ? `${structure.durationMinutes} min` : '—';
-  const marks = structure ? String(structure.totalMarks) : '—';
+  const duration = structure ? `${structure.durationMinutes ?? '—'} min` : '—';
+  const marks = structure ? String(structure.totalMarks ?? '—') : '—';
 
   blocks.push({
     kind: 'paragraph',

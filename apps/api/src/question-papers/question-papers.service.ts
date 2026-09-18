@@ -61,6 +61,13 @@ export class QuestionPapersService {
   ) {
     const pattern = await this.requireApprovedPattern(instituteId, input.patternId);
     const structure = normalizePaperPatternStructure(pattern.structure);
+    // Approved patterns are validated with real totals; guard anyway so a
+    // degraded row surfaces as a clear 400 instead of a constraint 500.
+    if (structure.totalMarks == null || structure.durationMinutes == null) {
+      throw new BadRequestException(
+        'Approved pattern is missing total marks or duration — re-validate the pattern before creating the paper',
+      );
+    }
 
     // The scope is the authoritative source of questions; the pattern never
     // supplies or infers it. Subject is always required, chapter/topic are

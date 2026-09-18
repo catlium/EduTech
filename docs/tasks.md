@@ -1,5 +1,58 @@
 # Task Tracker
 
+## Phase 46 — Paper-pattern extraction from materials (Phase B, 2026-09-18)
+
+> Deterministic extraction of a reviewable Paper Pattern from an existing
+> processed/enhanced material (past-year paper). Built on Phase 45 A's enhanced
+> material. Extraction is rule-based (pattern-extractor.ts), runs in a
+> coordinator-owned `MATERIAL_PATTERN_EXTRACT` job swept by the API (never
+> published to RabbitMQ), and opens the result in the existing builder as
+> REVIEW. Ambiguity is never guessed: unknown fields stay null and surface as
+> extraction issues the teacher resolves in the builder.
+
+- [x] **Contracts:** `PaperPatternStructure.totalMarks`/`durationMinutes` → nullable;
+      `PatternExtractionIssueSchema`, `PatternExtractionRuleProvenanceSchema`,
+      `PatternExtractionMetaSchema` (`extractor:'v1'`, `materialId`,
+      `materialRevision`, `source` ENHANCEMENT|TEXT, `totalMarksSource`,
+      `durationMinutesSource`, issues, provenance), `PaperPatternSchema.extraction`
+      (nullable), `ExtractPaperPatternRequest/ResponseSchema`,
+      `PaperPatternExtractionStatusSchema`.
+- [x] **DB:** `extraction jsonb` column on `paper_patterns` + migration
+      `0037_paper_pattern_extraction.sql` (journal idx 37, no snapshot).
+- [x] **Validation consumers null-safe:** `validatePaperPatternStructure`
+      reports missing totals as errors (`Total marks are not set`,
+      `Duration (minutes) is not set`); `paper-pattern-doc.ts` export renders
+      `—`; `question-papers.service.ts` + `createAssessmentFromBlueprint` reject
+      approved patterns missing totals/duration; `createPattern` accepts
+      `sourceType/sourceMaterialId/status/extraction`.
+- [x] **`pattern-extractor.ts` (pure) + 16 tests:** section split by headings;
+      declaration-line rule typing; honest marks consensus (`MARKS_UNKNOWN` /
+      `INCONSISTENT_MARKS`); attempt phrases (`attempt N of M`, word numbers);
+      global compulsory propagation; scorable-section-sum totals with
+      `INCONSISTENT_MARKS` when the header disagrees; duration from keyword
+      lines + bare minutes; `ATTEMPT_POLICY_UNKNOWN` only on within-section
+      attempt conflicts; null structure + `NO_QUESTIONS_FOUND` when nothing
+      parses.
+- [x] **`paper-pattern-extraction.service.ts`:** `requestExtraction` guard
+      (READY material) + idempotency — reuses an active job, returns an
+      existing pattern at the same material+revision as COMPLETED; 15s sweep
+      with 60s lease; ENHANCEMENT blocks (freshest enhancement at matching
+      `source_revision`) or raw-text fallback; creates pattern REVIEW /
+      PREVIOUS_YEAR_PAPER / sourceMaterialId / extraction meta; fails the job
+      when structure is null.
+- [x] **API surface:** `POST /paper-patterns/extract-from-material`,
+      `GET /paper-patterns/extraction/:jobId` (WRITE_ROLES + tenant guard);
+      `MATERIAL_PATTERN_EXTRACT` registered in `ALLOWED_JOB_TYPES` + excluded
+      from `publishJob`.
+- [x] **Web:** "Extract Paper Pattern" button on the material detail page
+      (ACTIVE+READY), poll → navigate to the created pattern; builder shows an
+      extraction-review banner (issue list) and tolerates nullable
+      total/duration while loading.
+- [x] **Validation:** contracts/database/api/web typecheck clean; eslint clean;
+      API suite 176/176; live E2E on the dev stack verified both source paths
+      (TEXT fallback and ENHANCEMENT), REVIEW status, subject linkage,
+      active-job + completed reuse idempotency, and validate = valid.
+
 ## Phase 45 A — Material Intelligence: cleaning & enhancement (2026-09-18)
 
 > Material Intelligence Phase A: a generic, determinist, versioned pipeline

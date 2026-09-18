@@ -9,7 +9,11 @@ import {
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
 import { materials, paperPatterns, paperPatternSubjects, subjects } from '@catlium/database';
-import { normalizePaperPatternStructure, type PaperPatternStructure } from '@catlium/contracts';
+import {
+  normalizePaperPatternStructure,
+  PatternExtractionMetaSchema,
+  type PaperPatternStructure,
+} from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
@@ -49,6 +53,11 @@ export class PaperPatternsService {
       subjectId?: string;
       description?: string;
       structure?: unknown;
+      /* Extraction-driven creation (Phase B): sets source, status and meta. */
+      sourceType?: 'MANUAL' | 'TEXT' | 'MATERIAL' | 'PREVIOUS_YEAR_PAPER';
+      sourceMaterialId?: string;
+      status?: 'DRAFT' | 'REVIEW' | 'APPROVED';
+      extraction?: unknown;
     },
   ) {
     const subjectIds = await this.resolveSubjectIds(instituteId, input);
@@ -59,8 +68,14 @@ export class PaperPatternsService {
         instituteId,
         title: input.title,
         description: input.description ?? null,
-        sourceType: 'MANUAL',
+        sourceType: input.sourceType ?? 'MANUAL',
+        sourceMaterialId: input.sourceMaterialId ?? null,
+        status: input.status ?? 'DRAFT',
         structure: input.structure !== undefined ? this.parseStructure(input.structure) : null,
+        extraction:
+          input.extraction !== undefined
+            ? PatternExtractionMetaSchema.parse(input.extraction)
+            : null,
         createdBy: userId,
         updatedBy: userId,
       })
@@ -325,6 +340,11 @@ export class PaperPatternsService {
     }
 
     const structure = this.asStructure(row.structure);
+
+    // After validation passes these are guaranteed non-null; guard for TS
+    if (structure.totalMarks == null || structure.durationMinutes == null) {
+      throw new BadRequestException('Approved pattern is missing total marks or duration');
+    }
 
     // The scope is the authoritative source of questions. The pattern never
     // supplies it, so a missing subject hard-blocks creation.

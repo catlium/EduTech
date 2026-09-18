@@ -9,6 +9,13 @@ export function validatePaperPatternStructure(structure: PaperPatternStructure):
   if (structure.sections.length === 0) {
     errors.push('A paper pattern must have at least one section');
   }
+  // Extraction may leave totals null (unknown); approval still requires them.
+  if (structure.totalMarks == null) {
+    errors.push('Total marks are not set');
+  }
+  if (structure.durationMinutes == null) {
+    errors.push('Duration (minutes) is not set');
+  }
 
   const seenNames = new Map<string, number>();
   const seenIds = new Set<string>();
@@ -56,7 +63,7 @@ export function validatePaperPatternStructure(structure: PaperPatternStructure):
     }
   }
 
-  if (totalKnown && declaredTotal !== structure.totalMarks) {
+  if (structure.totalMarks != null && totalKnown && declaredTotal !== structure.totalMarks) {
     errors.push(
       `Total marks ${structure.totalMarks} does not match section totals (${declaredTotal})`,
     );

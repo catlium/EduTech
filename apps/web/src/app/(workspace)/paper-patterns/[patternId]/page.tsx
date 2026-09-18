@@ -94,8 +94,8 @@ const SOURCE_TYPES_TEXT = ['TEXT', 'MATERIAL'] as const;
 /* ── response types (backend returns these shapes but contracts only exports the Zod schemas) ── */
 
 interface PatternStructure {
-  totalMarks: number;
-  durationMinutes: number;
+  totalMarks: number | null;
+  durationMinutes: number | null;
   instructions: string[];
   sections: BackendSection[];
 }
@@ -199,7 +199,7 @@ export default function PatternBuilderPage() {
       return;
     }
     setSections(parseBackendSections(s.sections));
-    setDurationMinutes(s.durationMinutes);
+    setDurationMinutes(s.durationMinutes ?? '');
     setInstructionsText(s.instructions.join('\n'));
     setStructureLoaded(true);
   }
@@ -811,6 +811,22 @@ export default function PatternBuilderPage() {
           </div>
         )}
 
+        {/* extraction review notes */}
+        {pattern.extraction && pattern.extraction.issues.length > 0 && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <p className="mb-1 font-medium">
+              Extracted from material — review these findings before saving:
+            </p>
+            <ul className="list-disc space-y-0.5 pl-4">
+              {pattern.extraction.issues.map((issue, i) => (
+                <li key={i}>
+                  <span className="font-mono text-xs">{issue.code}</span> — {issue.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* validate result */}
         {validateResult && (
           <div
@@ -929,8 +945,8 @@ export default function PatternBuilderPage() {
             {sections.length > 0 && (
               <Badge variant="secondary" className="text-xs font-normal">
                 {buildBackendSections(sections).length} rule
-                {buildBackendSections(sections).length !== 1 ? 's' : ''} ·{' '}
-                {sections.length} section{sections.length !== 1 ? 's' : ''}
+                {buildBackendSections(sections).length !== 1 ? 's' : ''} · {sections.length} section
+                {sections.length !== 1 ? 's' : ''}
               </Badge>
             )}
           </CardHeader>
@@ -1177,7 +1193,9 @@ export default function PatternBuilderPage() {
                               <label className="flex items-center gap-2 text-sm">
                                 <Checkbox
                                   checked={rule.compulsory}
-                                  onCheckedChange={(c) => updateRule(sIdx, rIdx, { compulsory: !!c })}
+                                  onCheckedChange={(c) =>
+                                    updateRule(sIdx, rIdx, { compulsory: !!c })
+                                  }
                                 />
                                 Compulsory
                               </label>
@@ -1411,16 +1429,14 @@ export default function PatternBuilderPage() {
                   (r) => r.questionType !== '' || r.count != null || r.marksPerQuestion != null,
                 );
                 if (configured.length === 0) return null;
-                const secSubtotal = configured.reduce(
-                  (acc, r) => acc + (ruleSubtotal(r) ?? 0),
-                  0,
-                );
+                const secSubtotal = configured.reduce((acc, r) => acc + (ruleSubtotal(r) ?? 0), 0);
                 return (
                   <div key={sec.id} className="space-y-1.5">
                     <div className="flex items-center justify-between border-b pb-1">
                       <span className="font-medium">{sec.name.trim() || '(untitled section)'}</span>
                       <span className="text-xs text-muted-foreground">
-                        {configured.length} rule{configured.length !== 1 ? 's' : ''} · {secSubtotal} marks
+                        {configured.length} rule{configured.length !== 1 ? 's' : ''} · {secSubtotal}{' '}
+                        marks
                       </span>
                     </div>
                     {configured.map((r, i) => {
