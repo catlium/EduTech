@@ -459,7 +459,7 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
    *  subject's confirmed Chapters/Topics (authoritative); falls back to the
    *  latest syllabus Context-units; empty when the subject is missing. Nothing
    *  is invented — a segment only maps where keyword overlap exists. */
-  private async syllabusTargets(
+  async syllabusTargets(
     instituteId: string,
     subjectId: string | null,
   ): Promise<SyllabusTarget[]> {

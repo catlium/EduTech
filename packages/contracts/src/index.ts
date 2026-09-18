@@ -1317,7 +1317,7 @@ export type ListQuestionTypesResponse = z.infer<typeof ListQuestionTypesResponse
 export const QuestionDifficultyEnum = z.enum(['EASY', 'MEDIUM', 'HARD']);
 export type QuestionDifficulty = z.infer<typeof QuestionDifficultyEnum>;
 
-export const QuestionSourceEnum = z.enum(['MANUAL', 'AI_GENERATED']);
+export const QuestionSourceEnum = z.enum(['MANUAL', 'AI_GENERATED', 'EXTRACTED']);
 export type QuestionSource = z.infer<typeof QuestionSourceEnum>;
 
 export const QuestionApprovalStatusEnum = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
@@ -2531,3 +2531,145 @@ export const GenerateQuestionsWithBlueprintSchema = z.object({
   blueprintId: z.string().uuid().optional(),
 });
 export type GenerateQuestionsWithBlueprint = z.infer<typeof GenerateQuestionsWithBlueprintSchema>;
+
+/* ── Deterministic question extraction (Phase 47) ───────────────────
+ * A pure, rule-based extractor turns an enhanced material (or its raw
+ * text) into reviewable Question Bank candidates. Ambiguity is never
+ * guessed: missing answers/types/scope stay empty and surface as issues
+ * for the teacher to resolve in review. Accepted candidates become
+ * regular ACTIVE/APPROVED bank questions with provenance. */
+
+/** A single unambiguous extraction finding the teacher should review. */
+export const QuestionExtractionIssueSchema = z.object({
+  code: z.string().min(1).max(50),
+  message: z.string().min(1).max(500),
+  blockIds: z.array(z.string()).max(1000).optional(),
+  pages: z.array(z.number().int().positive()).max(1000).optional(),
+});
+export type QuestionExtractionIssue = z.infer<typeof QuestionExtractionIssueSchema>;
+
+/** Extraction metadata persisted on each candidate's provenance (the
+ *  questions.provenance column). `jobId` also scopes the review run so the
+ *  run's candidates can be listed and purged without a dedicated entity. */
+export const QuestionExtractionProvenanceSchema = z.object({
+  operation: z.literal('EXTRACT_QUESTIONS'),
+  jobId: z.string().uuid(),
+  materialId: z.string().uuid(),
+  materialRevision: z.number().int().positive(),
+  subjectId: z.string().uuid(),
+  /* ENHANCEMENT = parsed from enhanced blocks; TEXT = raw textContent fallback */
+  source: z.enum(['ENHANCEMENT', 'TEXT']),
+  page: z.number().int().positive().nullable(),
+  blockIds: z.array(z.string()).max(1000),
+  originalNumber: z.string().max(50).nullable(),
+  originalSection: z.string().max(255).nullable(),
+  originalMarks: z.number().int().positive().nullable(),
+  issues: z.array(QuestionExtractionIssueSchema).max(200),
+  extractedAt: z.string().datetime(),
+});
+export type QuestionExtractionProvenance = z.infer<typeof QuestionExtractionProvenanceSchema>;
+
+export const ExtractQuestionsRequestSchema = z.object({
+  materialId: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  /* Optional scope shows as constraints/context, never a forced assignment:
+   * a question is still mapped per-question within (or below) that scope. */
+  chapterId: z.string().uuid().optional(),
+  topicId: z.string().uuid().optional(),
+});
+export type ExtractQuestionsRequest = z.infer<typeof ExtractQuestionsRequestSchema>;
+
+export const ExtractQuestionsResponseSchema = z.object({
+  extraction: z.object({
+    jobId: z.string().uuid(),
+    /* QUEUED = poll GET /questions/extraction/:jobId; COMPLETED = an
+     * identical extraction already exists — open the returned review. */
+    status: z.enum(['QUEUED', 'COMPLETED']),
+    /* true = a pending/completed identical extraction was reused (idempotency) */
+    reused: z.boolean(),
+  }),
+});
+export type ExtractQuestionsResponse = z.infer<typeof ExtractQuestionsResponseSchema>;
+
+export const QuestionExtractionStatusSchema = z.object({
+  extraction: z.object({
+    jobId: z.string().uuid(),
+    status: z.enum(['queued', 'processing', 'completed', 'failed', 'cancelled', 'cancelling']),
+    result: z
+      .object({
+        status: z.string(),
+        candidateCount: z.number().int().nonnegative(),
+        reviewRequiredCount: z.number().int().nonnegative(),
+        issueCount: z.number().int().nonnegative(),
+        source: z.enum(['ENHANCEMENT', 'TEXT']),
+        materialRevision: z.number().int().positive(),
+      })
+      .nullable(),
+    error: z.object({ message: z.string() }).nullable(),
+    createdAt: z.string().datetime(),
+    startedAt: z.string().datetime().nullable(),
+    completedAt: z.string().datetime().nullable(),
+  }),
+});
+export type QuestionExtractionStatus = z.infer<typeof QuestionExtractionStatusSchema>;
+
+/** One extracted candidate (a stored questions row in REVIEW state) plus its
+ *  flattened extraction provenance for the review UI. */
+export const QuestionExtractionCandidateSchema = z.object({
+  id: z.string().uuid(),
+  stem: z.string(),
+  questionType: z.string(),
+  answerFormat: z.string(),
+  difficulty: z.string(),
+  explanation: z.string().nullable(),
+  payload: z.record(z.string(), z.unknown()),
+  subjectId: z.string().uuid().nullable(),
+  chapterId: z.string().uuid().nullable(),
+  topicId: z.string().uuid().nullable(),
+  approvalStatus: z.string(),
+  status: z.string(),
+  provenance: QuestionExtractionProvenanceSchema,
+});
+export type QuestionExtractionCandidate = z.infer<typeof QuestionExtractionCandidateSchema>;
+
+export const QuestionExtractionCandidatesResponseSchema = z.object({
+  extraction: z.object({
+    jobId: z.string().uuid(),
+    status: z.string(),
+    materialId: z.string().uuid(),
+    materialTitle: z.string(),
+    subjectId: z.string().uuid(),
+    materialRevision: z.number().int().positive().nullable(),
+    source: z.enum(['ENHANCEMENT', 'TEXT']).nullable(),
+    createdAt: z.string().datetime(),
+    completedAt: z.string().datetime().nullable(),
+  }),
+  candidates: z.array(QuestionExtractionCandidateSchema),
+});
+export type QuestionExtractionCandidatesResponse = z.infer<
+  typeof QuestionExtractionCandidatesResponseSchema
+>;
+
+/** Review edit input for a single candidate. questionType/scope changes are
+ *  validated against the institute's question types and academic chain. */
+export const ReviewQuestionCandidateSchema = z.object({
+  stem: z.string().min(1).max(20000).optional(),
+  questionType: z.string().min(1).max(64).optional(),
+  difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']).optional(),
+  explanation: z.string().max(20000).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+  chapterId: z.string().uuid().nullable().optional(),
+  topicId: z.string().uuid().nullable().optional(),
+});
+export type ReviewQuestionCandidate = z.infer<typeof ReviewQuestionCandidateSchema>;
+
+export const QuestionImportResultSchema = z.object({
+  imported: z.number().int().nonnegative(),
+  skipped: z.array(
+    z.object({
+      questionId: z.string().uuid(),
+      reason: z.string(),
+    }),
+  ),
+});
+export type QuestionImportResult = z.infer<typeof QuestionImportResultSchema>;

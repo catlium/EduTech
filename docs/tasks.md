@@ -1,5 +1,68 @@
 # Task Tracker
 
+## Phase 47 — Question extraction into the question bank (2026-09-18)
+
+> Deterministic extraction of reviewable questions from a processed/enhanced
+> material into the question bank. Teacher picks a READY material + required
+> subject, a coordinator-owned `QUESTION_EXTRACT` job (15s sweep, 60s lease,
+> never published to RabbitMQ) detects questions (numbered/lettered groups,
+> section markers, answer lines), maps scope (subject mandatory; chapter/topic
+> only on confident syllabus overlap), and stores candidates as `questions`
+> rows with `status='REVIEW'`, `source='EXTRACTED'`,
+> `approvalStatus='PENDING'`. Review page accepts/discards/imports into the
+> bank. Never guesses: ambiguity surfaces as extraction issues.
+
+- [x] **Contracts:** `QuestionSourceEnum` with `EXTRACTED`; `QuestionExtractionIssueSchema`
+      (code/message/pages/blockIds), `QuestionExtractionProvenanceSchema`
+      (operation, jobId, materialId, materialRevision, subjectId, source,
+      page, blockIds, originalNumber, originalSection, originalMarks, issues,
+      extractedAt), `ExtractQuestionsRequest/ResponseSchema` (idempotency +
+      candidateCount/issueCount/reviewRequiredCount),
+      `ExtractionReviewQuestionSchema`, `QuestionExtractionStatusSchema`
+      (QUEUED/PROCESSING/COMPLETED/FAILED + result), `ExtractionCandidatesResponseSchema`,
+      `ReviewQuestionCandidatePatchSchema`, `ExtractionImportResultSchema`.
+- [x] **`question-extractor.ts` (pure) + 12 tests:** numbered/lettered group
+      scanning, section markers, noise filtering, answer-line capture
+      (line-anchored — a mid-sentence "correct answer." never chops the stem),
+      MCQ/TF/FIB/Numerical/Matching payload building, TEXT-type suggestion
+      (DEFINITION/SHORT/LONG…), explicit-only difficulty, never guesses:
+      `ANSWER_MISSING`/`ANSWER_OPTION_MISMATCH`/`MATCH_UNPARSEABLE` issues.
+- [x] **`question-extraction.service.ts`:** `requestExtraction` guard (READY
+      material, subject required) + idempotency (reuse active job; return
+      existing completed run at same material+revision+subject);
+      sweep/lease sync job; extraction input prefers **raw `textContent`**
+      (real line breaks preserved — enhanced paragraph blocks collapse lines
+      and break numbered-question scanning; enhancement is only the fallback);
+      per-candidate scope resolution (subject mandatory, chapter/topic on
+      confident `significantWords`/`segmentMatches` overlap, never forced);
+      `validateQuestionPayload` gate in jobs sync + review patches; accept →
+      `status=ACTIVE`, discard → `deletedAt`, discard-all/import-all batch.
+      Purge on re-sweep requires `eq(questions.updatedBy, questions.createdBy)`.
+- [x] **API surface:** `POST /questions/extract-from-material`,
+      `GET /questions/extraction/:jobId`, `GET …/candidates`,
+      `PATCH …/candidates/:questionId`, `POST …/accept`, `POST …/discard`,
+      `POST …/import`, `POST …/discard` (all under `@Controller('questions')`
+      + AccessToken/Tenant/Roles guards, WRITE_ROLES). `QUESTION_EXTRACT`
+      registered in allowed job types + excluded from `publishJob`.
+- [x] **Questions service:** `QuestionSource` alias + `'EXTRACTED'`; REVIEW
+      rows excluded from `listQuestions` via `not(eq(status,'REVIEW'))`;
+      public `validateQuestionPayload`; module exports shared services.
+- [x] **Web:** "Extract" button on the question bank page →
+      `question-extraction-dialog.tsx` (READY material + required subject,
+      optional chapter/topic as context-only constraint) → navigates to the
+      extraction review page (`/questions/extractions/[jobId]`) with 3s status
+      poll, per-candidate stem/difficulty/explanation/scope + payload editors
+      (MCQ/TF/FIB/Text/Numerical; matching read-only), Save/Accept/Discard,
+      Accept-all & discard-all.
+- [x] **Validation:** contracts/database/api/web typecheck clean; api lint
+      clean (web has no lint script); API suite **188/188**; live E2E on dev
+      stack verified TEXT-source extraction of 4 questions (DEFINITION,
+      SHORT_ANSWER, MCQ, TRUE_FALSE) with correct stems, clean per-candidate
+      issues, candidate patch/add-answer, accept → ACTIVE/APPROVED, batch
+      discard, and full demo-data cleanup. Mid-sentence "Choose the correct
+      answer." stem bug + per-candidate issue pollution (runIssues spread to
+      every candidate) both fixed and regression-tested.
+
 ## Phase 46 — Paper-pattern extraction from materials (Phase B, 2026-09-18)
 
 > Deterministic extraction of a reviewable Paper Pattern from an existing

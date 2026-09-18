@@ -111,13 +111,14 @@ export class JobsService {
   }
 
   async publishJob(job: Job): Promise<void> {
-    // OCR, enhancement and pattern extraction are coordinator-owned: never
-    // published to RabbitMQ (no consumer in the distributed design). Their
-    // sweeps adopt queued jobs instead.
+    // OCR, enhancement, pattern extraction and question extraction are
+    // coordinator-owned: never published to RabbitMQ (no consumer in the
+    // distributed design). Their sweeps adopt queued jobs instead.
     if (
       job.type === 'MATERIAL_PROCESS' ||
       job.type === 'MATERIAL_ENHANCE' ||
-      job.type === 'MATERIAL_PATTERN_EXTRACT'
+      job.type === 'MATERIAL_PATTERN_EXTRACT' ||
+      job.type === 'QUESTION_EXTRACT'
     ) {
       return;
     }

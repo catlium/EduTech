@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -15,6 +16,7 @@ import {
   ChevronUp,
   Circle,
   CircleCheck,
+  FileSearch,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -30,6 +32,7 @@ import { useTenant, canManage } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
 import { AnswerText } from '@/components/export/answer-text';
 import { QuestionBankWizard } from '@/components/questions/question-bank-wizard';
+import { QuestionExtractionDialog } from '@/components/questions/question-extraction-dialog';
 import { QuestionBankSets } from '@/components/questions/question-bank-sets';
 import { PageHeader } from '@/components/app/page-header';
 import { ScopeCascade, FilterChip } from '@/components/app/scope-cascade';
@@ -424,6 +427,8 @@ export default function QuestionsListPage() {
 
   const [createCascade, setCreateCascade] = useState<Cascade>(DEFAULT_CASCADE);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [extractionOpen, setExtractionOpen] = useState(false);
+  const router = useRouter();
 
   const [questionTypes, setQuestionTypes] = useState<QuestionTypeDefinition[]>([]);
 
@@ -865,6 +870,9 @@ export default function QuestionsListPage() {
         actions={
           isTeacher && (
             <>
+              <Button size="sm" onClick={() => setExtractionOpen(true)}>
+                <FileSearch className="mr-1 size-3.5" /> Extract
+              </Button>
               <Button size="sm" onClick={() => setWizardOpen(true)}>
                 <Sparkles className="mr-1 size-3.5" /> Wizard
               </Button>
@@ -892,6 +900,15 @@ export default function QuestionsListPage() {
         chapters={chapters}
         topics={topics}
         onChanged={() => void refresh()}
+      />
+
+      <QuestionExtractionDialog
+        open={extractionOpen}
+        onOpenChange={setExtractionOpen}
+        subjects={subjects}
+        chapters={chapters}
+        topics={topics}
+        onCreated={(jobId) => router.push(`/questions/extractions/${jobId}`)}
       />
 
       <div className="mb-4">

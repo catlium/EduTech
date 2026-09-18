@@ -2,8 +2,8 @@
 
 ## Current test inventory (verified 2026-09-18)
 
-- API native suite: **160/160** across 20 node:test files in `apps/api/src`
-  (17 Material Intelligence enhancer tests).
+- API native suite: **188/188** across node:test files in `apps/api/src`
+  (incl. 12 question-extractor + 17 Material Intelligence enhancer tests).
 - Worker AI/material: **83** pytest (12 files) + ruff + mypy clean
   (`apps/workers/tests`).
 - OCR engine: **21** (`apps/ocr/ocr_engine`), ocr-worker: **10**
@@ -13,6 +13,60 @@
   `node --test` — no `test` script in `apps/web/package.json`).
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
+
+## Phase 47 — Question extraction into the question bank (2026-09-18)
+
+**Status: implementation + validation + live E2E complete; commit pending.**
+
+Teacher picks a READY material + required subject; a coordinator-owned
+`QUESTION_EXTRACT` job (15s sweep, 60s lease, never published to RabbitMQ)
+deterministically detects questions and stores them as `questions` rows with
+`status='REVIEW'`, `source='EXTRACTED'`, `approvalStatus='PENDING'` and
+extraction provenance. The question-bank review page accepts, edits,
+discards, or bulk-imports candidates into the bank. Ambiguity is never
+guessed: candidates surface `ANSWER_MISSING` / `ANSWER_OPTION_MISMATCH` /
+`MATCH_UNPARSEABLE` / scope issues the teacher resolves on the review page.
+
+### Completed work
+
+- **Contracts:** `QuestionSourceEnum` + `EXTRACTED`; extraction issue,
+  provenance, request/response (idempotency + candidate/issue/review counts),
+  status (+result), candidates response, review-candidate patch, and import
+  result schemas; `ReviewQuestionSchema`.
+- **Extractor** (`question-extractor.ts`, pure + 12 tests): numbered/lettered
+  group scanning, section markers, noise filtering, line-anchored answer-line
+  capture (a stem ending "…correct answer." is never chopped), MCQ/TF/FIB/
+  Numerical/Matching payload building, TEXT-type suggestion, explicit-only
+  difficulty.
+- **API:** `POST /questions/extract-from-material` +
+  `GET extraction/:jobId` + candidates + patch + accept + discard +
+  import-all/discard-all; `question-extraction.service.ts` (READY guard,
+  active-job + completed-run idempotency, sweep/lease sync job,
+  per-candidate scope resolution, re-sweep purge guarded by
+  updatedBy=createdBy); `QUESTION_EXTRACT` registered + never published.
+- **Questions service:** `'EXTRACTED'` source alias, REVIEW excluded from
+  listings (`not(eq(status,'REVIEW'))`), public `validateQuestionPayload`.
+- **Web:** Extract button → material+subject dialog (optional chapter/topic
+  as context-only constraints) → review page with 3s poll, per-candidate
+  stem/scope/payload editors, Save/Accept/Discard + bulk actions.
+
+### Validation
+
+- Typecheck clean: contracts, database, api, web. API suite **188/188**
+  (12 extractor tests incl. mid-sentence answer-marker regression). Lint clean.
+- Live E2E (dev stack, teacher@catlium.dev): TEXT material with 4 questions
+  → extraction completed (source TEXT, all 4 correct stems —
+  DEFINITION/SHORT_ANSWER/MCQ/TRUE_FALSE), clean per-candidate issues
+  (True/False ANSWER_MISSING no longer leaks onto other candidates), accept →
+  ACTIVE/APPROVED in bank, batch discard, and all smoke artifacts removed
+  from the demo DB. Two extractor bugs found and fixed: enhanced paragraph
+  blocks collapse line breaks (extraction now prefers raw `textContent`),
+  and run-level issues were spread onto every candidate.
+
+### Next task
+
+Full academic export redesign (per-topic/per-resource export) remains
+deferred until scheduled. No open work blocks the current phase.
 
 ## Phase 46 — Paper-pattern extraction from materials (2026-09-18)
 

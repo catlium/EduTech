@@ -449,7 +449,7 @@ function buildBlocks(
   return blocks;
 }
 
-function significantWords(title: string): string[] {
+export function significantWords(title: string): string[] {
   return title
     .toLowerCase()
     .replace(/[^a-z0-9 ]/g, ' ')
@@ -509,7 +509,7 @@ function buildSegments(sections: MaterialEnhancedBlock[]): EnhancedSegment[] {
   return segments;
 }
 
-function segmentMatches(target: SyllabusTarget, text: string): { hits: number; ratio: number; sigLen: number } {
+export function segmentMatches(target: SyllabusTarget, text: string): { hits: number; ratio: number; sigLen: number } {
   const sig = significantWords(target.title);
   if (sig.length === 0) return { hits: 0, ratio: 0, sigLen: 0 };
   const norm = normalizeLine(text).toLowerCase();

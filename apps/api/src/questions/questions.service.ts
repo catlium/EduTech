@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc, ilike, inArray, isNull, type SQL } from 'drizzle-orm';
+import { eq, and, desc, ilike, inArray, isNull, not, type SQL } from 'drizzle-orm';
 import { questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import {
@@ -12,7 +12,7 @@ import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { QuestionTypesService } from './question-types.service.js';
 
 type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
-type QuestionSource = 'MANUAL' | 'AI_GENERATED';
+type QuestionSource = 'MANUAL' | 'AI_GENERATED' | 'EXTRACTED';
 type QuestionApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 interface ListQuestionFilters {
@@ -93,6 +93,10 @@ export class QuestionsService {
   async listQuestions(instituteId: string, filters: ListQuestionFilters = {}) {
     const conditions: SQL[] = [
       eq(questions.instituteId, instituteId),
+      // Extraction candidates live in REVIEW while pending import; the bank
+      // list (and practice/examination pickers below it) must never surface
+      // un-imported REVIEW rows as ordinary questions.
+      not(eq(questions.status, 'REVIEW')),
       isNull(questions.deletedAt),
     ];
 
@@ -239,6 +243,17 @@ export class QuestionsService {
   }
 
   // ── Helpers ───────────────────────────────
+
+  /** Public payload validation for a question-type code (used by question
+   *  extraction acceptance, which stores candidates in a REVIEW state first). */
+  async validateQuestionPayload(
+    instituteId: string,
+    questionType: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const type = await this.typesService.findByCode(instituteId, questionType);
+    this.validatePayload(type, payload);
+  }
 
   private validatePayload(type: QuestionTypeDefinition, payload: Record<string, unknown>): void {
     /* Per-format payload schema (a custom type reusing a known answer format
