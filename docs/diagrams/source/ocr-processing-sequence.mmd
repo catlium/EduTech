@@ -1,0 +1,59 @@
+---
+title: CatLium EduTech — Distributed OCR Material Processing (coordinator + ocr-worker)
+---
+%%{init: {'htmlLabels':false,'sequence':{'useMaxWidth':false}}}%%
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant N as nginx
+    participant MC as MaterialsController
+    participant MS as MaterialsService
+    participant JS as JobsService
+    participant CO as OcrCoordinatorService<br/>(in-API sweep, every 15 s)
+    participant OW as API worker endpoints<br/>/api/v1/ocr/workers/:id/*
+    participant WK as ocr-worker (standalone or dev)<br/>heartbeat · claim · fetch · extract · submit
+    participant DB as PostgreSQL
+    participant ST as storage volume
+
+    B->>N: POST /materials/upload (multipart)
+    N->>MC: /api/v1/materials/upload
+    MC->>MS: store file (local) → material (UPLOADED)
+    B->>N: POST /materials/:id/process
+    MC->>JS: INSERT jobs (MATERIAL_PROCESS, status='queued')
+    Note over JS: MATERIAL_PROCESS is NEVER published to RabbitMQ<br/>(OCR is coordinator-owned).
+    MS-->>B: 202 {jobId}
+
+    loop Coordinator sweep (every 15 s)
+        CO->>DB: adopt queued MATERIAL_PROCESS jobs
+        CO->>DB: material → PROCESSING, job → processing
+        CO->>DB: materialize chunk 1 (pages 1..CHUNK_SIZE=10) → ocr_chunks pending
+    end
+
+    loop ocr-worker pull loop
+        WK->>OW: POST heartbeat {status: idle|processing} (every 10 s)
+        WK->>OW: POST claim
+        OW->>CO: find oldest pending (or lease-expired) chunk, FOR UPDATE SKIP LOCKED
+        CO->>DB: chunk → claimed, claimedBy, leaseExpiresAt (300 s), attempts+1
+        OW-->>WK: {chunk: {id, index, startPage, endPage, pageCount, sourceType, sourceId}}
+    end
+
+    WK->>OW: GET source/:chunkId
+    OW->>ST: read source bytes
+    ST-->>WK: file bytes
+    WK->>WK: ocr_engine.extract_range(start, end):<br/>PyMuPDF embedded text ≥5 chars/page → else rasterize → PaddleOCR
+    alt success
+        WK->>OW: POST chunks/:chunkId/result {pages[], text, totalPages?}
+        CO->>CO: validate page range against chunk
+        CO->>DB: chunk → submitted
+        alt totalPages reported > first chunk end
+            CO->>DB: materialize chunks 2..ceil(N/10) (missing indexes only)
+        end
+    else failure
+        WK->>OW: POST chunks/:chunkId/fail {error, permanent}
+        CO->>CO: attempts below MAX=3 and not permanent → chunk back to pending (retried)
+    end
+
+    CO->>DB: all chunks submitted + contiguous pages 1..N ⇒ persist text
+    CO->>DB: material → READY, job → completed
+    Note over DB: Lease-expired or disabled-worker chunks reclaimed by sweep.<br/>Settled failure → material FAILED and job failed (terminal after 3 attempts).
+    B->>B: poll material until READY (OCR pages viewable, corrections allowed)

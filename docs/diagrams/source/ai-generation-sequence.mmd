@@ -1,0 +1,47 @@
+---
+title: CatLium EduTech — Async AI Generation (job lifecycle)
+---
+%%{init: {'htmlLabels':false,'sequence':{'useMaxWidth':false}}}%%
+sequenceDiagram
+    autonumber
+    participant B as Browser (Next.js)
+    participant N as nginx
+    participant GC as GenerationController<br/>(or QuestionBank…)
+    participant G as GenerationService
+    participant JS as JobsService
+    participant RMQ as RabbitMQ (ai_generation)
+    participant W as worker-ai consumer (concurrency 5)
+    participant AI as OmniRoute gateway<br/>POST /v1/chat/completions
+    participant DB as PostgreSQL
+
+    B->>N: POST /content/generate {materialId, operation}
+    N->>GC: /api/v1/content/generate
+    GC->>G: validate scope (material ACTIVE+READY, dedup key)
+    G->>JS: issueJob(type=AI_GENERATE_*)
+    JS->>DB: INSERT jobs (status='queued')
+    JS->>RMQ: publish(message {jobId, instituteId, type, payload})
+    RMQ-->>JS: ack
+    JS-->>G: job
+    G-->>B: 202 ACCEPTED {jobId}  (async, never blocks)
+
+    loop Every WORKER_AI_CONCURRENCY seconds — client polls
+        B->>GC: GET /content/generation-status / jobs/:jobId
+        GC->>DB: SELECT job
+        DB-->>GC: status
+        GC-->>B: {status: queued|processing|completed|failed}
+    end
+
+    RMQ->>W: deliver message (prefetch 1)
+    W->>DB: UPDATE jobs SET status='processing', startedAt
+    W->>DB: resolve source → READY materials (ACTIVE), build context chunks (40k char budget)
+    loop Each context chunk (12k chars, 400 overlap)
+        W->>AI: POST /chat/completions {model, messages, temperature:0.2}
+        AI-->>W: raw JSON response
+    end
+    W->>W: parse_json_object → Pydantic schema validate (per-type)
+    W->>W: aggregate + deterministic dedup (questions by stem, flashcards front/back…)
+    W->>DB: persist content_items / questions (AI_GENERATED + provenance, PENDING)
+    W->>DB: UPDATE jobs SET status='completed', result, completedAt
+    Note over W,DB: Failure: transient responses and transport errors retried with backoff (max 3).<br/>Terminal error → job marked 'failed', never left 'processing'.
+
+    B->>B: render fetched content / question bank

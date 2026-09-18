@@ -7,6 +7,7 @@ import { jobs, materials, ocrChunks, ocrPageCorrections, ocrWorkers } from '@cat
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService } from '../jobs/jobs.service.js';
+import { MaterialEnhancementService } from '../material-enhancement/enhancement.service.js';
 import { STORAGE_PROVIDER } from '../materials/storage/storage-provider.interface.js';
 import type { StorageProvider } from '../materials/storage/storage-provider.interface.js';
 import {
@@ -51,6 +52,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly jobsService: JobsService,
+    private readonly enhancements: MaterialEnhancementService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
@@ -379,7 +381,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
 
       const allSubmitted = chunks.every((c) => c.status === 'submitted');
       if (allSubmitted) {
-        await this.finalizeReady(job.id, materialId, chunks);
+        await this.finalizeReady(job.instituteId, job.id, materialId, chunks);
         continue;
       }
 
@@ -423,6 +425,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
 
   /** READY only after all chunks submitted + contiguous 1..N coverage. */
   private async finalizeReady(
+    instituteId: string,
     jobId: string,
     materialId: string,
     chunks: ChunkRow[],
@@ -461,6 +464,10 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       textLength: text.length,
       pages: documentPages,
     });
+
+    // Phase A: enqueue the derived clean/enhance run — coordinator-owned,
+    // adopted by the enhancement sweep (best-effort; never blocks OCR).
+    this.enhancements.requestEnhancement(instituteId, materialId, 'OCR_COMPLETE').catch(() => undefined);
   }
 
   // ── Admin-facing page inspection / correction ─────────────────────────
@@ -584,7 +591,12 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
   }
 
   private async reapplyAggregate(
-    material: { id: string; textContent: string | null; revision: number },
+    material: {
+      id: string;
+      instituteId: string;
+      textContent: string | null;
+      revision: number;
+    },
     chunks: ChunkRow[],
   ): Promise<void> {
     if (!chunks.length) return;
@@ -594,6 +606,8 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
         .update(materials)
         .set({ textContent: text, revision: material.revision + 1, updatedAt: new Date() })
         .where(eq(materials.id, material.id));
+      // Phase A: corrected text is new raw → re-derive the enhancement.
+      this.enhancements.requestEnhancement(material.instituteId, material.id, 'CORRECTION').catch(() => undefined);
     }
   }
 

@@ -10,6 +10,7 @@ import { AcademicModule } from '../academic/academic.module.js';
 import { ContentModule } from '../content/content.module.js';
 import { MaterialsModule } from '../materials/materials.module.js';
 import { OcrModule } from '../ocr/ocr.module.js';
+import { MaterialEnhancementModule } from '../material-enhancement/material-enhancement.module.js';
 import { QuestionsModule } from '../questions/questions.module.js';
 import { ExaminationsModule } from '../examinations/examinations.module.js';
 import { SyllabusModule } from '../syllabus/syllabus.module.js';
@@ -48,6 +49,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     ContentModule,
     MaterialsModule,
     OcrModule,
+    MaterialEnhancementModule,
     QuestionsModule,
     ExaminationsModule,
     SyllabusModule,

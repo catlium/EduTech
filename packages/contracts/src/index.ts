@@ -642,6 +642,122 @@ export const MaterialProcessResponseSchema = z.object({
 });
 export type MaterialProcessResponse = z.infer<typeof MaterialProcessResponseSchema>;
 
+// ── Material Intelligence Contracts — cleaning & enhancement ─────────────
+//
+// The enhanced material is a DERIVED, versioned artifact. The raw extraction
+// stays untouched on `materials.text_content`; this payload is the structured
+// form (sections/blocks with page + engine provenance) plus quality findings.
+// Findings never silently drop content: EXCLUDE carries the discarded original
+// text and a reason; uncertain content is kept and flagged REVIEW.
+
+export const MaterialFindingLevelEnum = z.enum(['KEEP', 'EXCLUDE', 'REVIEW']);
+export type MaterialFindingLevel = z.infer<typeof MaterialFindingLevelEnum>;
+
+export const MaterialEnhancementFindingSchema = z.object({
+  id: z.string().min(1),
+  level: MaterialFindingLevelEnum,
+  kind: z.string().min(1),
+  reason: z.string().min(1),
+  page: z.number().int().positive(),
+  line: z.number().int().nonnegative().optional(),
+  blockId: z.string().optional(),
+  // Original text for EXCLUDE (so nothing is silently discarded); context
+  // excerpt for KEEP/REVIEW.
+  content: z.string().optional(),
+});
+export type MaterialEnhancementFinding = z.infer<typeof MaterialEnhancementFindingSchema>;
+
+export const MaterialEnhancedBlockKindEnum = z.enum([
+  'heading',
+  'paragraph',
+  'list',
+  'table',
+  'equation',
+  'other',
+]);
+export type MaterialEnhancedBlockKind = z.infer<typeof MaterialEnhancedBlockKindEnum>;
+
+export const MaterialEnhancedBlockSchema = z.object({
+  id: z.string().min(1),
+  kind: MaterialEnhancedBlockKindEnum,
+  // Normalized text; the original wording and numbering are preserved verbatim
+  // (the enhancer never rewrites source content).
+  content: z.string(),
+  page: z.number().int().positive(),
+  source: z.enum(['pymupdf', 'paddleocr']).nullable(),
+  lineStart: z.number().int().nonnegative(),
+  lineEnd: z.number().int().nonnegative(),
+});
+export type MaterialEnhancedBlock = z.infer<typeof MaterialEnhancedBlockSchema>;
+
+export const MaterialEnhancementPayloadSchema = z.object({
+  pages: z.number().int().positive(),
+  sections: z.array(MaterialEnhancedBlockSchema),
+  // Re-composed cleaned plaintext (derived from sections) for downstream
+  // consumers; the raw materials.text_content is never modified.
+  cleanedText: z.string(),
+  summary: z.object({
+    blocks: z.number().int().nonnegative(),
+    findings: z.object({
+      keep: z.number().int().nonnegative(),
+      exclude: z.number().int().nonnegative(),
+      review: z.number().int().nonnegative(),
+    }),
+  }),
+});
+export type MaterialEnhancementPayload = z.infer<typeof MaterialEnhancementPayloadSchema>;
+
+export const MaterialAlignmentLevelEnum = z.enum(['KEEP', 'REVIEW']);
+export type MaterialAlignmentLevel = z.infer<typeof MaterialAlignmentLevelEnum>;
+
+// Syllabus alignment as ANALYSIS METADATA ONLY — a mapping from enhanced blocks
+// to a subject's confirmed syllabus units. Alignment never rewrites or destroys
+// source content; it is stored beside (not inside) the enhanced payload.
+export const MaterialAlignmentSchema = z.object({
+  syllabusId: z.string().uuid(),
+  unitTitle: z.string(),
+  blockIds: z.array(z.string()),
+  matchedText: z.string(),
+  confidence: z.number().min(0).max(1),
+  level: MaterialAlignmentLevelEnum,
+});
+export type MaterialAlignment = z.infer<typeof MaterialAlignmentSchema>;
+
+export const MaterialEnhancementResponseSchema = z.object({
+  id: z.string().uuid(),
+  materialId: z.string().uuid(),
+  version: z.number().int().positive(),
+  trigger: z.string(),
+  sourceRevision: z.number().int().positive(),
+  sourceTextHash: z.string(),
+  payload: MaterialEnhancementPayloadSchema,
+  alignment: z.array(MaterialAlignmentSchema).nullable(),
+  createdBy: z.string().uuid().nullable(),
+  createdAt: z.string().datetime(),
+});
+export type MaterialEnhancementResponse = z.infer<typeof MaterialEnhancementResponseSchema>;
+
+export const MaterialEnhancementSummarySchema = z.object({
+  version: z.number().int().positive(),
+  trigger: z.string(),
+  sourceRevision: z.number().int().positive(),
+  findings: MaterialEnhancementPayloadSchema.shape.summary.shape.findings,
+  createdAt: z.string().datetime(),
+});
+export type MaterialEnhancementSummary = z.infer<typeof MaterialEnhancementSummarySchema>;
+
+export const MaterialEnhancementVersionsSchema = z.object({
+  enhancements: z.array(MaterialEnhancementSummarySchema),
+});
+export type MaterialEnhancementVersions = z.infer<typeof MaterialEnhancementVersionsSchema>;
+
+export const MaterialEnhanceResponseSchema = z.object({
+  materialId: z.string().uuid(),
+  jobId: z.string().uuid(),
+  enhancementStatus: z.literal('QUEUED'),
+});
+export type MaterialEnhanceResponse = z.infer<typeof MaterialEnhanceResponseSchema>;
+
 // ── OCR Distributed Workers Contracts ────────
 //
 // The worker protocol is bearer-authenticated (no institute context): workers

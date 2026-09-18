@@ -1,5 +1,83 @@
 # Task Tracker
 
+## Phase 45 A — Material Intelligence: cleaning & enhancement (2026-09-18)
+
+> Material Intelligence Phase A: a generic, determinist, versioned pipeline
+> that turns the RAW extraction (`materials.text_content`) into a structured,
+> cleaned ENHANCED material — sections/blocks with page + engine provenance,
+> KEEP/EXCLUDE/REVIEW quality findings, recomposed cleaned text, and syllabus
+> alignment metadata. Later Paper Pattern extraction and Question extraction
+> phases consume this output. The raw never changes; OCR stays extraction-only.
+
+- [x] **`material_enhancements` table (append-only, versioned).** FKs to
+      materials (cascade) + users; `UNIQUE(material_id, version)`; columns
+      `trigger`, `source_revision`, `source_text_hash` (audit + idempotency),
+      `payload` (sections + findings + cleanedText), `alignment`.
+      Migration `0036_material_enhancements.sql` + journal idx 36 (no snapshot,
+      matching the post-0023 convention).
+- [x] **Contracts.** Zod schemas/types in `@catlium/contracts`
+      (`src/index.ts`): `MaterialEnhancementPayloadSchema`, block kinds
+      (heading/paragraph/list/table/equation/other), finding levels
+      (KEEP/EXCLUDE/REVIEW), alignment (metadata only), response/versions/
+      enqueue-response schemas.
+- [x] **Pure engine `apps/api/src/material-enhancement/enhancer.ts`.**
+      Normalization (NBSP/ZW join), hyphenation join, running header/footer +
+      page-number margin exclusion (confident repeats only), consecutive
+      duplicate line/page exclusion (content preserved in findings), block
+      building with numbered-heading-vs-list run disambiguation, orphan/
+      garbled REVIEW findings, syllabus alignment scoring. `sourceFingerprint`
+      = sha256 of per-page texts (idempotency).
+- [x] **Server-side, coordinator-owned jobs.** `MATERIAL_ENHANCE` added to
+      `ALLOWED_JOB_TYPES` + never published to RabbitMQ (mirrors
+      `MATERIAL_PROCESS`); `MaterialEnhancementService` sweeps queued jobs
+      (same `WORKER_SWEEP_INTERVAL_MS` timer pattern), guards READY, computes
+      fingerprint, no-ops when the latest version already matches
+      (status `unchanged`), else inserts next version (transaction) and
+      completes (status `enhanced`). One-at-a-time sequential sweep.
+- [x] **Enqueue sites.** `finalizeReady` → `OCR_COMPLETE`;
+      `reapplyAggregate` (text actually changed) → `CORRECTION`;
+      `createTextMaterial` + `updateMaterial` contentChanged → `TEXT_SOURCE`
+      (best-effort, never fails creation); `POST /materials/:id/enhancement`
+      → `MANUAL` with user attribution. Active-job dedup guard.
+- [x] **Read API.** `GET /materials/:id/enhancement` (latest version),
+      `GET /materials/:id/enhancement/versions` (history). No machine-generated
+      docs page yet (docs/api/materials.md unchanged pending Phase-C completion).
+- [x] **Module wiring.** `MaterialEnhancementModule` (imports JobsModule only)
+      registered in AppModule, imported by OcrModule (coordinator enqueues) and
+      MaterialsModule (TEXT enqueues) — no dependency cycle.
+- [x] **Validation.** 12 node tests (`enhancer.test.ts`) across structure/
+      provenance, margins, dedupe, hyphenation, garbled/orphan REVIEW,
+      alignment, fingerprint, empty-input, and numbered-list-vs-heading;
+      API typecheck + lint + full suite (155/155) green.
+- [x] **Docs.** `docs/tasks.md` + `docs/project-status.md` + architecture
+      `materials.md` updated. Commit excludes the uncommitted Phase 44
+      heartbeat fix (web/worker/config/docs stay unstaged).
+
+## Phase 44 — Heartbeat fix: RabbitMQ kills long AI jobs → autofill never fired (2026-09-18)
+
+> After Phase 43, auto-fill still didn't fire in practice. The AI worker blocks
+> its pika connection thread for the entire `service.generate()` call (AI +
+> validation retries = minutes); RabbitMQ's stock 60s heartbeat killed the
+> connection mid-job, requeuing the same message for a re-run loop. Batches
+> took 6+ min (past the web's 5-min poll) → autofill timed out → stale paper.
+
+- [x] **Raise RabbitMQ heartbeat to 1800s on server AND clients.** New
+      `infrastructure/compose/rabbitmq.conf` (`heartbeat = 1800`) mounted into
+      the rabbitmq container; `?heartbeat=1800` appended to
+      `RABBITMQ_URL`/`WORKER_RABBITMQ_URL` in `docker-compose.yml` and to the
+      `rabbitmq_url` default in `apps/workers/worker/config.py`. Pika negotes
+      min(client, server) so both sides must be raised. Verified live:
+      `rabbitmqctl list_connections timeout` = 1800 on all connections.
+- [x] **Autofill reuses the shared helper.** Replaced the inline poll loop in
+      `autofillAfterGeneration` with `waitForBankBatch` from
+      `apps/web/src/lib/api.ts` (15-min timeout); deleted the unused
+      `BankBatchStatus` interface. Shuffle semantics confirmed already correct
+      (`planAutoSelection` excludes linked IDs; selection deletes + re-inserts).
+- [x] **Validation.** API + web typecheck clean, worker ruff clean; containers
+      rebuilt; live 3-job real AI batch (zero-bank CASE_STUDY pattern) went
+      terminal in 16 s with 3/3 completed and 0 connection resets in
+      `docker logs catlium-worker-ai` (vs 6+ min + requeue loop before).
+
 ## Phase 43 — Generation UX: deficit-driven generate-missing, export fixes, AI validation retry + auto-fill (2026-09-18)
 
 > After Phase 39 (authoritative scope), "Generate Missing" reported "resource

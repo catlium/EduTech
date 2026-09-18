@@ -157,6 +157,27 @@ export function aggregatePagesText(chunks: ChunkLike[], corrections: Map<number,
   return lines.filter((t) => t.length > 0).join('\n\n');
 }
 
+/** Per-page text with corrections applied — the enhancement input. One entry
+ *  per page (blank pages included, source = null): both the plain per-page
+ *  scan and any user correction contribute the same winning text, mirroring
+ *  aggregatePagesText but preserving page + engine provenance per page. */
+export function pagesWithText(
+  chunks: ChunkLike[],
+  corrections: Map<number, CorrectionLike>,
+  pageCount: number,
+): Array<{ page: number; source: 'pymupdf' | 'paddleocr' | null; text: string }> {
+  const pages: Array<{ page: number; source: 'pymupdf' | 'paddleocr' | null; text: string }> = [];
+  for (let page = 1; page <= pageCount; page++) {
+    const correction = corrections.get(page);
+    pages.push({
+      page,
+      source: correction ? null : sourceOf(chunks, page),
+      text: correction ? correction.correctedText : (textOf(chunks, page) ?? ''),
+    });
+  }
+  return pages;
+}
+
 function sourceOf(chunks: ChunkLike[], page: number): 'pymupdf' | 'paddleocr' | null {
   const chunk = chunkContaining(chunks, page);
   if (!chunk) return null;

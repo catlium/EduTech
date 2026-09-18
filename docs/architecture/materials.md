@@ -419,3 +419,49 @@ the batch endpoints group by it. Cancellation is honest: queued → `cancelled`;
 processing → `cancelling` (worker settles to `cancelled` at chunk/persist
 boundaries and persists nothing afterwards); completed resources are never
 deleted. The worker never reports a cancelled job as `failed`.
+
+## Material Intelligence — cleaning & enhancement (Phase 45 A, implemented)
+
+The DERIVED, versioned, auditable clean form of a material. The raw
+`materials.text_content` is never modified by this pipeline; OCR remains
+extraction-only.
+
+```
+OCR chunks + page corrections        TEXT material.textContent
+        ↓ (pagesWithText, per-page)                ↓ (single synthetic page)
+        pure enhancer (enhancer.ts) — deterministic, no LLM
+        ↓
+material_enhancements.payload   ← sections (block kind, verbatim content,
+                                    page + source provenance, line range),
+                                    KEEP/EXCLUDE/REVIEW findings (EXCLUDE
+                                    keeps the original), recomposed cleanedText
+material_enhancements.alignment ← syllabus-unit match metadata (never edits)
+```
+
+- **Table:** `material_enhancements`, append-only per material, `version`
+  numbered 1..N, `UNIQUE(material_id, version)`, cascade on material delete.
+  `trigger` ∈ OCR_COMPLETE | CORRECTION | TEXT_SOURCE | MANUAL.
+  `source_revision` + `source_text_hash` = the exact raw fingerprint; rerunning
+  the same raw is a no-op (idempotent — no duplicate versions).
+- **Jobs:** `MATERIAL_ENHANCE` is coordinator-owned (like `MATERIAL_PROCESS`):
+  never published to RabbitMQ; a sweep in `MaterialEnhancementService` adopts
+  queued jobs on the `WORKER_SWEEP_INTERVAL_MS` timer. Enqueue sites:
+  `finalizeReady` (OCR_COMPLETE), `reapplyAggregate` on real text change
+  (CORRECTION), TEXT create/update (TEXT_SOURCE), `POST /materials/:id/
+  enhancement` (MANUAL). Active-job dedup prevents stacking. Fetch fingerprint
+  match → completed `unchanged`.
+- **Enhancer rules:** normalization (NBSP/ZWJ cleanup), broken-hyphenation
+  join, confident running header/footer + page-number margin exclusion,
+  consecutive duplicate line/page exclusion (content preserved in findings),
+  block building (headings incl. numbered runs, bullet/numbered lists, table
+  rows by tab/pipe cells, equations, paragraphs), REVIEW for garbled ASCII and
+  lone short fragments (kept, never dropped). Syllabus alignment uses keyword
+  overlap on a confirmed syllabus's `context.units` titles → confidence 0..1 +
+  KEEP/REVIEW.
+- **Reads:** `GET /materials/:id/enhancement` (latest version + payload),
+  `GET /materials/:id/enhancement/versions` (history summary). Enhancer is a
+  pure module (no NestJS); the service imports JobsModule only — the
+  coordinator and materials services enqueue via the exported service, avoiding
+  a module cycle.
+- **Future phases:** paper-pattern extraction and question extraction read
+  `payload.sections` + `alignment`.

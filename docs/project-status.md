@@ -2,7 +2,8 @@
 
 ## Current test inventory (verified 2026-09-18)
 
-- API native suite: **143/143** across 18 node:test files in `apps/api/src`.
+- API native suite: **155/155** across 19 node:test files in `apps/api/src`
+  (12 new Material Intelligence enhancer tests).
 - Worker AI/material: **83** pytest (12 files) + ruff + mypy clean
   (`apps/workers/tests`).
 - OCR engine: **21** (`apps/ocr/ocr_engine`), ocr-worker: **10**
@@ -12,6 +13,75 @@
   `node --test` — no `test` script in `apps/web/package.json`).
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
+
+## Phase 45 A — Material Intelligence: cleaning & enhancement (2026-09-18)
+
+**Status: implementation + validation complete; commit + push pending (Phase
+A only; the Phase 44 heartbeat-fix code and its docs stay uncommitted).**
+
+Generic, deterministic Material Intelligence Phase A. The enhanced material is
+DERIVED and versioned: `materials.text_content` stays the untouched raw
+extraction; each `material_enhancements` row stores the structured clean form
+(sections/blocks with page + engine provenance), a KEEP/EXCLUDE/REVIEW quality
+report (nothing silently discarded — EXCLUDE always carries the original
+text + reason), the recomposed `cleanedText`, and syllabus alignment as pure
+metadata. OCR stays extraction-only; no paper-pattern/question extraction yet
+(deferred to later phases consuming this output).
+
+### Completed work
+
+- **`material_enhancements`** — append-only per material, `version` bumped per
+  derivation, `UNIQUE(material_id, version)`; `trigger` ∈ OCR_COMPLETE |
+  CORRECTION | TEXT_SOURCE | MANUAL; `source_revision` + `source_text_hash`
+  fingerprint the exact raw derivation for audit + idempotency. Migration
+  `0036_material_enhancements.sql` (+ journal idx 36; no snapshot per
+  post-0023 convention).
+- **Contracts** (`@catlium/contracts`): payload (sections, findings,
+  cleanedText, summary), block kinds, finding levels, alignment, and
+  response/versions/enhance-response wire schemas.
+- **Pure engine `enhancer.ts`** — normalize (NBSP/non-breaking spaces, runs),
+  join broken hyphenation, exclude confident running headers/footers +
+  page numbers at page boundaries, exclude consecutive duplicate lines and
+  verbatim duplicate pages (content preserved in findings), structure block
+  building (headings incl. numbered runs, lists, tables via tab/pipe cells,
+  equations, paragraphs), REVIEW flags for garbled ASCII and lone short
+  fragments (kept), and keyword-overlap syllabus alignment (confidence +
+  KEEP/REVIEW, never rewrites content).
+- **Coordinator-owned jobs** — `MATERIAL_ENHANCE` joins `ALLOWED_JOB_TYPES`
+  and is never published to RabbitMQ; `MaterialEnhancementService` sweeps
+  queued jobs on the same `WORKER_SWEEP_INTERVAL_MS` timer as the OCR
+  coordinator. Fingerprint match → completed `unchanged` (no new version);
+  else next-version insert in a transaction → completed `enhanced`. Failed
+  jobs are marked `failed` with the message; the material stays READY.
+- **Enqueue sites** — OCR `finalizeReady` (OCR_COMPLETE), `reapplyAggregate`
+  only when the corrected aggregate actually changed text (CORRECTION), TEXT
+  material create + content-changing update (TEXT_SOURCE), and
+  `POST /materials/:id/enhancement` (MANUAL, user-authored). Active-job dedup
+  guard; best-effort system enqueues never fail material create/OCR.
+- **Reads** — `GET /materials/:id/enhancement` (latest), `GET
+  /materials/:id/enhancement/versions` (history). Writes guarded by the
+  existing WRITE_ROLES (INSTITUTE_ADMIN | TEACHER).
+- **Data flow note** — enhancement input per OCR page comes from a new pure
+  `pagesWithText()` (ocr-coordinator.util) with corrections applied; TEXT
+  materials use a single synthetic page. No circular dependency: the
+  enhancement module imports only JobsModule.
+
+### Validation
+
+- API native suite **155/155** (12 new enhancer tests covering structure +
+  provenance, margin exclusions, duplicate line/page, hyphenation join,
+  garbled/orphan REVIEW, alignment, fingerprint determinism, empty-input
+  rejection, numbered heading-vs-list), API typecheck + lint clean; contract
+  + database packages typecheck clean.
+- Migration not yet applied to a live DB in this session (hand-written SQL
+  validated against the table definition).
+
+### Next task
+
+Phase B/C of Material Intelligence when scheduled: paper-pattern extraction
+and question extraction consume `material_enhancements.payload.sections`/
+`alignment`. Then commit + push the Phase A checkpoint (and separately the
+held-back Phase 44 completion).
 
 ## Phase 44 — Generation UX: deficit-driven generate-missing, export fixes, AI retry + auto-fill (2026-09-18)
 
@@ -73,6 +143,67 @@ generated questions never surfaced in the paper until a manual shuffle.
 Commit + push this Phase 44 checkpoint, then run the full e2e suite
 (`paper_pattern_e2e.sh`, `attempts_e2e.sh`, `sec14_e2e.sh`, `demo_e2e.sh`,
 `p8_e2e.sh`) against the rebuilt demo/dev stack.
+
+## Phase 45 — Generation UX follow-up: RabbitMQ heartbeat fix + autofill via waitForBankBatch (2026-09-18)
+
+**Status: implementation + validation complete; commit pending.**
+
+After Phase 44 shipped, live testing showed auto-fill still never firing and
+the user reported shuffle should not reuse questions. Both traced to the
+worker/RabbitMQ connection dying mid-job.
+
+### Root cause (verified live)
+
+- The AI worker (`apps/workers/worker/ai/consumer.py` and
+  `apps/workers/worker/consumer.py`) blocks its pika connection thread for the
+  ENTIRE `service.generate()` call (AI generation + up to 3 validation
+  retries — minutes). RabbitMQ's negotiated **60s heartbeat** killed the
+  connection mid-job, the unacked message was requeued, and the SAME job
+  re-ran in a loop. Batches then took 6+ minutes (observed live: job
+  `0a2c7762` completed twice), far beyond the web's 5-minute poll window →
+  autofill timeout → "shuffle manually later" toast, so the fresh questions
+  never appeared automatically.
+- Shuffle itself was already correct — `planAutoSelection`
+  (`apps/api/src/examinations/paper-selection.ts`) excludes currently-linked
+  (`taken`) question IDs, and `autoSelectFromPattern` deletes all links then
+  re-inserts a fully-new set. The stale look came from autofill never running.
+
+### Completed work
+
+- **RabbitMQ heartbeat raised to 1800s on both sides.** Server:
+  `infrastructure/compose/rabbitmq.conf` (`heartbeat = 1800`) mounted into the
+  rabbitmq container. Clients: `?heartbeat=1800` added to every
+  `WORKER_RABBITMQ_URL`/`RABBITMQ_URL` in `docker-compose.yml` and to the
+  `rabbitmq_url` default in `apps/workers/worker/config.py`. Pika negotiates
+  min(client, server), so both must be raised. After rebuild,
+  `rabbitmqctl list_connections timeout` showed **1800 on all 6 connections**.
+- **Web autofill reuses the shared helper.** Replaced the inline poll loop in
+  `autofillAfterGeneration` (`apps/web/.../question-papers/[paperId]/page.tsx`)
+  with the existing `waitForBankBatch` from `apps/web/src/lib/api.ts`
+  (15-minute timeout), deleted the now-unused `BankBatchStatus` interface.
+
+### Validation
+
+- API + web typecheck clean, worker ruff clean.
+- Containers rebuilt; `rabbitmqctl list_connections timeout` = 1800 everywhere.
+- Live end-to-end: created a MATCHING→CASE_STUDY pattern with zero bank
+  questions → paper create queued a 3-job real AI batch → **batch terminal in
+  16 s, 3/3 completed, 0 failed** (pre-fix the same scenario looped for 6+ min
+  and reset connections). `docker logs catlium-worker-ai`: 0 connection resets.
+- Generated CASE_STUDY questions landed in the bank as ACTIVE (389 bank
+  rows, statuses ACTIVE/ARCHIVED), auto-select filled the paper.
+
+### Known issues / deferred
+
+- Heartbeat raised (not disabled) — a future job longer than 30 min would need
+  a further raise or per-connection `heartbeat=0` + TCP keepalives.
+- Autofill backs off to "shuffle manually later" after 15 min (was 5).
+
+### Exact recommended next task
+
+Commit + push this follow-up, then re-run the manual QP demo flow in the
+browser (Generate Missing on a short paper → questions auto-fill without a
+manual shuffle).
 
 ## Phase 43 — Authoritative question scope (2026-09-18)
 

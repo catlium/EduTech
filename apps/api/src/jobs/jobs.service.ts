@@ -50,7 +50,7 @@ const JOB_QUEUE_BY_TYPE: Record<string, string> = {
 
 // Types the generic `POST /jobs` endpoint accepts. Anything else is rejected
 // up front instead of being consumed (acked) and never progressed by a worker.
-export const ALLOWED_JOB_TYPES = ['MATERIAL_PROCESS', ...Object.keys(JOB_QUEUE_BY_TYPE)] as const;
+export const ALLOWED_JOB_TYPES = ['MATERIAL_PROCESS', 'MATERIAL_ENHANCE', ...Object.keys(JOB_QUEUE_BY_TYPE)] as const;
 
 @Injectable()
 export class JobsService {
@@ -106,10 +106,10 @@ export class JobsService {
   }
 
   async publishJob(job: Job): Promise<void> {
-    // OCR is coordinator-owned: MATERIAL_PROCESS is never published to
-    // RabbitMQ (no consumer in the distributed design). The coordinator
-    // adopts queued OCR jobs from its sweep instead.
-    if (job.type === 'MATERIAL_PROCESS') return;
+    // OCR and enhancement are coordinator-owned: MATERIAL_PROCESS and
+    // MATERIAL_ENHANCE are never published to RabbitMQ (no consumer in the
+    // distributed design). Their sweeps adopt queued jobs instead.
+    if (job.type === 'MATERIAL_PROCESS' || job.type === 'MATERIAL_ENHANCE') return;
     const queue = JOB_QUEUE_BY_TYPE[job.type] ?? 'jobs';
     await this.rabbitmq.publish(queue, {
       jobId: job.id,

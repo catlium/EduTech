@@ -5,11 +5,12 @@ import { OcrWorkersService } from './ocr-workers.service.js';
 import { OcrCoordinatorService } from './ocr-coordinator.service.js';
 import { OcrWorkerAuthGuard } from './guards/ocr-worker-auth.guard.js';
 import { JobsModule } from '../jobs/jobs.module.js';
+import { MaterialEnhancementModule } from '../material-enhancement/material-enhancement.module.js';
 import { LocalStorageProvider } from '../materials/storage/local-storage.provider.js';
 import { STORAGE_PROVIDER } from '../materials/storage/storage-provider.interface.js';
 
 @Module({
-  imports: [JobsModule],
+  imports: [JobsModule, MaterialEnhancementModule],
   controllers: [OcrWorkersController, OcrWorkerController],
   providers: [
     OcrWorkersService,

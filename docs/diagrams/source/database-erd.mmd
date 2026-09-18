@@ -1,0 +1,298 @@
+---
+title: CatLium EduTech — Database Schema (Drizzle / PostgreSQL 17)
+---
+%%{init: {'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    users ||--o{ auth_sessions : "user_id"
+    users ||--o{ memberships : "user_id"
+    institutes ||--o{ memberships : "institute_id"
+    memberships ||--o{ membership_roles : "membership_id"
+
+    institutes ||--o{ subjects : "institute_id"
+    subjects ||--o{ chapters : "subject_id"
+    chapters ||--o{ topics : "chapter_id"
+
+    institutes ||--o{ jobs : "institute_id"
+    institutes ||--o{ content_items : "institute_id"
+    content_items ||--o{ content_versions : "content_id"
+    content_items ||--o{ practice_sessions : "content_id"
+    institutes ||--o{ materials : "institute_id"
+    materials o|--o{ paper_patterns : "source_material_id"
+
+    institutes ||--o{ question_types : "institute_id"
+    institutes ||--o{ questions : "institute_id"
+    paper_patterns o|--o{ questions : "source_pattern_id"
+    questions ||--o{ assessment_questions : "question_id"
+    questions ||--o{ question_paper_questions : "question_id"
+    questions ||--o{ attempt_questions : "question_id"
+
+    institutes ||--o{ assessments : "institute_id"
+    paper_patterns o|--o{ assessments : "blueprint_id"
+    assessments ||--o{ assessment_questions : "assessment_id"
+    institutes ||--o{ question_papers : "institute_id"
+    paper_patterns o|--o{ question_papers : "blueprint_id"
+    question_papers ||--o{ question_paper_questions : "paper_id"
+
+    paper_patterns ||--o{ paper_pattern_subjects : "pattern_id"
+    subjects ||--o{ paper_pattern_subjects : "subject_id"
+    subjects ||--o{ syllabi : "subject_id"
+    jobs o|--o{ syllabi : "processing/analysis_job_id"
+    institutes ||--o{ syllabi : "institute_id"
+
+    assessments ||--o{ attempts : "assessment_id"
+    users ||--o{ attempts : "student_id"
+    attempts ||--o{ attempt_questions : "attempt_id"
+    attempt_questions ||--o{ attempt_responses : "attempt_question_id"
+
+    institutes ||--o{ practice_sessions : "institute_id"
+    practice_sessions ||--o{ practice_session_items : "session_id"
+    practice_session_items ||--o{ practice_session_responses : "session_item_id"
+
+    workers o|--o{ ocr_chunks : "claimed_by"
+    jobs ||--o{ ocr_chunks : "job_id"
+    institutes ||--o{ ocr_chunks : "institute_id"
+    users ||--o{ ocr_page_corrections : "corrected_by"
+
+    users {
+        uuid id PK
+        varchar email UK
+        varchar name
+        varchar password_hash
+        varchar status
+    }
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        varchar status
+    }
+    auth_sessions {
+        uuid id PK
+        uuid user_id FK
+        varchar refresh_token_hash
+        timestamp expires_at
+        timestamp revoked_at
+    }
+    memberships {
+        uuid id PK
+        uuid user_id FK
+        uuid institute_id FK
+        varchar status
+    }
+    membership_roles {
+        uuid membership_id FK
+        varchar role
+    }
+    subjects {
+        uuid id PK
+        uuid institute_id FK
+        varchar name
+        varchar slug
+        int sort_order
+    }
+    chapters {
+        uuid id PK
+        uuid subject_id FK
+        varchar name
+        varchar slug
+        int sort_order
+    }
+    topics {
+        uuid id PK
+        uuid chapter_id FK
+        varchar name
+        varchar slug
+        int sort_order
+    }
+    jobs {
+        uuid id PK
+        uuid institute_id FK
+        varchar type
+        varchar status
+        jsonb payload
+        timestamp completed_at
+    }
+    content_items {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK
+        uuid chapter_id FK
+        uuid topic_id FK
+        varchar type
+        varchar status
+        varchar source
+        int current_version
+    }
+    content_versions {
+        uuid id PK
+        uuid content_id FK
+        int version
+        jsonb payload
+        text rendered_html
+        jsonb ai_context
+        jsonb source_reference
+    }
+    materials {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK
+        uuid chapter_id FK
+        uuid topic_id FK
+        varchar material_type
+        varchar source_type
+        varchar processing_status
+        varchar storage_key
+        text text_content
+        int revision
+    }
+    question_types {
+        uuid id PK
+        uuid institute_id FK "NULL = global starter"
+        varchar code
+        varchar answer_format
+        varchar kind
+        int default_marks
+    }
+    questions {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK
+        uuid chapter_id FK
+        uuid topic_id FK
+        text stem
+        varchar question_type
+        varchar answer_format
+        jsonb payload
+        varchar difficulty
+        varchar approval_status
+        uuid source_pattern_id FK
+    }
+    paper_patterns {
+        uuid id PK
+        uuid institute_id FK
+        varchar title
+        varchar status "DRAFT->REVIEW->APPROVED"
+        int version
+        varchar source_type
+        jsonb structure
+        timestamp approved_at
+    }
+    paper_pattern_subjects {
+        uuid pattern_id PK,FK
+        uuid subject_id PK,FK
+    }
+    assessments {
+        uuid id PK
+        uuid institute_id FK
+        varchar title
+        int duration_minutes
+        int max_marks
+        varchar status
+        uuid blueprint_id FK
+    }
+    assessment_questions {
+        uuid assessment_id FK
+        uuid question_id FK
+        int sort_order
+        int marks
+        varchar section
+    }
+    question_papers {
+        uuid id PK
+        uuid institute_id FK
+        varchar title
+        uuid blueprint_id FK
+        int max_marks
+    }
+    question_paper_questions {
+        uuid paper_id FK
+        uuid question_id FK
+        int marks
+        varchar section
+    }
+    syllabi {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK
+        int version
+        varchar source_type
+        varchar processing_status
+        varchar analysis_status
+        jsonb context
+        jsonb structure
+        varchar status "PROPOSED->CONFIRMED"
+    }
+    attempts {
+        uuid id PK
+        uuid institute_id FK
+        uuid assessment_id FK
+        uuid student_id FK
+        varchar status "IN_PROGRESS->SUBMITTED"
+        int score
+        int total_marks
+        timestamp submitted_at
+    }
+    attempt_questions {
+        uuid attempt_id FK
+        uuid question_id FK
+        text stem
+        jsonb payload "sanitized server-side"
+        varchar question_type
+        int marks
+    }
+    attempt_responses {
+        uuid attempt_question_id FK
+        jsonb answer
+        boolean is_correct
+        int marks_awarded
+    }
+    practice_sessions {
+        uuid id PK
+        uuid institute_id FK
+        uuid student_id FK
+        varchar mode "FLASHCARD|QUESTION"
+        varchar status "IN_PROGRESS->COMPLETED"
+        uuid content_id FK
+        uuid topic_id FK
+    }
+    practice_session_items {
+        uuid session_id FK
+        varchar source_key
+        text prompt
+        text reveal
+        jsonb payload "sanitized server-side"
+    }
+    practice_session_responses {
+        uuid session_item_id FK
+        jsonb answer
+        varchar rating "FLASHCARD self-rating"
+        boolean is_correct
+    }
+    workers {
+        uuid id PK
+        varchar name
+        varchar token_hash UK "SHA-256 of owr_* key"
+        boolean enabled
+        timestamp last_heartbeat_at
+        jsonb capabilities
+    }
+    ocr_chunks {
+        uuid id PK
+        uuid job_id FK
+        uuid institute_id FK
+        varchar source_type "polymorphic: materials|syllabi"
+        uuid source_id
+        int chunk_index
+        int start_page
+        int end_page
+        varchar status "pending|claimed|submitted|failed|cancelled"
+        uuid claimed_by FK
+        timestamp lease_expires_at
+        int attempts
+    }
+    ocr_page_corrections {
+        uuid source_id "polymorphic source"
+        int page
+        text corrected_text
+        varchar source_type
+    }

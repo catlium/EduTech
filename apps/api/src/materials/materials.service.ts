@@ -17,6 +17,7 @@ import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
 import { OcrCoordinatorService } from '../ocr/ocr-coordinator.service.js';
+import { MaterialEnhancementService } from '../material-enhancement/enhancement.service.js';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface.js';
 import type { StorageProvider } from './storage/storage-provider.interface.js';
 import { ALLOWED_FILE_TYPES } from './materials.constants.js';
@@ -58,6 +59,7 @@ export class MaterialsService {
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     private readonly jobsService: JobsService,
     private readonly ocrCoordinator: OcrCoordinatorService,
+    private readonly enhancements: MaterialEnhancementService,
   ) {}
 
   // ── Create ────────────────────────────────
@@ -86,6 +88,11 @@ export class MaterialsService {
         updatedBy: createdBy,
       })
       .returning();
+
+    // Phase A: derive the enhanced form in the background. Best-effort — a
+    // queue hiccup must not fail an already-persisted material creation
+    // (recoverable via POST /materials/:id/enhancement).
+    this.enhancements.requestEnhancement(instituteId, material!.id, 'TEXT_SOURCE').catch(() => undefined);
 
     return material!;
   }
@@ -258,6 +265,12 @@ export class MaterialsService {
 
     if (!updated) {
       throw new NotFoundException('Material not found');
+    }
+
+    // Phase A: replaced text is new raw → re-derive the enhanced form
+    // (best-effort, same rationale as create).
+    if (contentChanged) {
+      this.enhancements.requestEnhancement(instituteId, materialId, 'TEXT_SOURCE').catch(() => undefined);
     }
 
     return updated;
