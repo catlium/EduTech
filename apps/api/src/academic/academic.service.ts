@@ -1,7 +1,16 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { eq, and, asc, count } from 'drizzle-orm';
-import { subjects, chapters, topics, questions, materials, contentItems, syllabi, paperPatternSubjects } from '@catlium/database';
+import { eq, and, asc, count, desc, inArray, isNull, isNotNull } from 'drizzle-orm';
+import {
+  subjects,
+  chapters,
+  topics,
+  questions,
+  materials,
+  contentItems,
+  syllabi,
+  paperPatternSubjects,
+} from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 
@@ -42,8 +51,19 @@ export class AcademicService {
     const rows = await this.db
       .select()
       .from(subjects)
-      .where(eq(subjects.instituteId, instituteId))
+      .where(and(eq(subjects.instituteId, instituteId), isNull(subjects.deletedAt)))
       .orderBy(asc(subjects.sortOrder), asc(subjects.name));
+
+    return rows;
+  }
+
+  /** Soft-deleted subjects (the trash). */
+  async listDeletedSubjects(instituteId: string) {
+    const rows = await this.db
+      .select()
+      .from(subjects)
+      .where(and(eq(subjects.instituteId, instituteId), isNotNull(subjects.deletedAt)))
+      .orderBy(desc(subjects.deletedAt));
 
     return rows;
   }
@@ -52,7 +72,13 @@ export class AcademicService {
     const [subject] = await this.db
       .select()
       .from(subjects)
-      .where(and(eq(subjects.id, subjectId), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(subjects.id, subjectId),
+          eq(subjects.instituteId, instituteId),
+          isNull(subjects.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!subject) {
@@ -93,36 +119,203 @@ export class AcademicService {
     }
   }
 
-/** Deletes a subject. Every FK that references subjects cascades, so a
-   *  careless delete would silently remove the whole academic structure,
-   *  question bank, materials, content and syllabi under it. By default the
-   *  delete is refused when dependents exist (the caller should remove them
-   *  or archive the subject); `force` performs the delete anyway and lets the
-   *  DB cascade remove everything under it. */
-  async deleteSubject(instituteId: string, subjectId: string, force = false) {
+  /** Soft-deletes a subject and its whole tree — chapters, topics, questions,
+   *  materials, content items and syllabi under it — in one transaction. Every
+   *  row is flagged deleted_at, never removed, so a careless delete is
+   *  reversible with restoreSubject. */
+  async deleteSubject(instituteId: string, subjectId: string) {
     await this.getSubject(instituteId, subjectId);
 
-    const dependents = await this.subjectDependents(instituteId, subjectId);
-    if (dependents.length > 0 && !force) {
-      throw new ConflictException(
-        `Cannot delete subject: it has ${dependents.join(', ')}. Remove or archive them first, or force delete.`,
-      );
-    }
+    await this.db.transaction(async (tx) => {
+      const chapterIds = (
+        await tx
+          .select({ id: chapters.id })
+          .from(chapters)
+          .where(and(eq(chapters.subjectId, subjectId), isNull(chapters.deletedAt)))
+      ).map((c) => c.id);
 
-    const [deleted] = await this.db.delete(subjects).where(eq(subjects.id, subjectId)).returning();
-    if (!deleted) throw new NotFoundException('Subject not found');
-    return deleted;
+      const [subj] = await tx
+        .update(subjects)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(subjects.id, subjectId), eq(subjects.instituteId, instituteId)))
+        .returning();
+      if (!subj) throw new NotFoundException('Subject not found');
+
+      if (chapterIds.length > 0) {
+        await tx
+          .update(chapters)
+          .set({ deletedAt: new Date(), updatedAt: new Date() })
+          .where(
+            and(inArray(chapters.id, chapterIds), isNull(chapters.deletedAt)),
+          );
+        await tx
+          .update(topics)
+          .set({ deletedAt: new Date(), updatedAt: new Date() })
+          .where(
+            and(inArray(topics.chapterId, chapterIds), isNull(topics.deletedAt)),
+          );
+      }
+    });
+
+    await this.markSubjectIdDependentsDeleted(instituteId, subjectId);
+    return { deleted: true };
   }
 
-  /** Human-readable summary of everything that references a subject and would
-   *  cascade-delete with it when forced. */
+  /** Reverses deleteSubject: clears deleted_at on the subject and every row
+   *  that was soft-deleted with it. */
+  async restoreSubject(instituteId: string, subjectId: string) {
+    await this.getDeletedSubject(instituteId, subjectId);
+
+    await this.db.transaction(async (tx) => {
+      const chapterIds = (
+        await tx
+          .select({ id: chapters.id })
+          .from(chapters)
+          .where(eq(chapters.subjectId, subjectId))
+      ).map((c) => c.id);
+
+      const [subj] = await tx
+        .update(subjects)
+        .set({ deletedAt: null, updatedAt: new Date() })
+        .where(and(eq(subjects.id, subjectId), eq(subjects.instituteId, instituteId)))
+        .returning();
+      if (!subj) throw new NotFoundException('Subject not found');
+
+      if (chapterIds.length > 0) {
+        await tx
+          .update(chapters)
+          .set({ deletedAt: null, updatedAt: new Date() })
+          .where(and(inArray(chapters.id, chapterIds), isNotNull(chapters.deletedAt)));
+        await tx
+          .update(topics)
+          .set({ deletedAt: null, updatedAt: new Date() })
+          .where(and(inArray(topics.chapterId, chapterIds), isNotNull(topics.deletedAt)));
+      }
+    });
+
+    await this.markSubjectIdDependentsRestored(instituteId, subjectId);
+    return { restored: true };
+  }
+
+  private async markSubjectIdDependentsDeleted(instituteId: string, subjectId: string) {
+    await this.db
+      .update(questions)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(questions.subjectId, subjectId),
+          eq(questions.instituteId, instituteId),
+          isNull(questions.deletedAt),
+        ),
+      );
+    await this.db
+      .update(materials)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(materials.subjectId, subjectId),
+          eq(materials.instituteId, instituteId),
+          isNull(materials.deletedAt),
+        ),
+      );
+    await this.db
+      .update(contentItems)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(contentItems.subjectId, subjectId),
+          eq(contentItems.instituteId, instituteId),
+          isNull(contentItems.deletedAt),
+        ),
+      );
+    await this.db
+      .update(syllabi)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(syllabi.subjectId, subjectId),
+          eq(syllabi.instituteId, instituteId),
+          isNull(syllabi.deletedAt),
+        ),
+      );
+  }
+
+  private async markSubjectIdDependentsRestored(instituteId: string, subjectId: string) {
+    await this.db
+      .update(questions)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(questions.subjectId, subjectId),
+          eq(questions.instituteId, instituteId),
+          isNotNull(questions.deletedAt),
+        ),
+      );
+    await this.db
+      .update(materials)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(materials.subjectId, subjectId),
+          eq(materials.instituteId, instituteId),
+          isNotNull(materials.deletedAt),
+        ),
+      );
+    await this.db
+      .update(contentItems)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(contentItems.subjectId, subjectId),
+          eq(contentItems.instituteId, instituteId),
+          isNotNull(contentItems.deletedAt),
+        ),
+      );
+    await this.db
+      .update(syllabi)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(syllabi.subjectId, subjectId),
+          eq(syllabi.instituteId, instituteId),
+          isNotNull(syllabi.deletedAt),
+        ),
+      );
+  }
+
+  private async getDeletedSubject(instituteId: string, subjectId: string) {
+    const [subject] = await this.db
+      .select()
+      .from(subjects)
+      .where(
+        and(
+          eq(subjects.id, subjectId),
+          eq(subjects.instituteId, instituteId),
+          isNotNull(subjects.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!subject) throw new NotFoundException('Subject is not in the trash');
+    return subject;
+  }
+
+  /** Human-readable summary of everything under a subject (used by the
+   *  delete/restore confirmation dialogs). */
   async subjectDependents(instituteId: string, subjectId: string): Promise<string[]> {
-    await this.getSubject(instituteId, subjectId);
+    const base = await this.db
+      .select({ id: subjects.id })
+      .from(subjects)
+      .where(and(eq(subjects.id, subjectId), eq(subjects.instituteId, instituteId)))
+      .limit(1);
+    if (!base[0]) throw new NotFoundException('Subject not found');
     const counts = await Promise.all([
       this.db.select({ n: count() }).from(chapters).where(eq(chapters.subjectId, subjectId)),
       this.db.select({ n: count() }).from(questions).where(eq(questions.subjectId, subjectId)),
       this.db.select({ n: count() }).from(materials).where(eq(materials.subjectId, subjectId)),
-      this.db.select({ n: count() }).from(contentItems).where(eq(contentItems.subjectId, subjectId)),
+      this.db
+        .select({ n: count() })
+        .from(contentItems)
+        .where(eq(contentItems.subjectId, subjectId)),
       this.db.select({ n: count() }).from(syllabi).where(eq(syllabi.subjectId, subjectId)),
       this.db
         .select({ n: count() })
@@ -152,7 +345,13 @@ export class AcademicService {
     return this.db
       .select()
       .from(chapters)
-      .where(and(eq(chapters.subjectId, subjectId), eq(chapters.status, 'active')))
+      .where(
+        and(
+          eq(chapters.subjectId, subjectId),
+          eq(chapters.status, 'active'),
+          isNull(chapters.deletedAt),
+        ),
+      )
       .orderBy(asc(chapters.sortOrder), asc(chapters.name));
   }
 
@@ -161,7 +360,14 @@ export class AcademicService {
       .select({ chapter: chapters })
       .from(chapters)
       .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-      .where(and(eq(chapters.id, chapterId), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(chapters.id, chapterId),
+          eq(subjects.instituteId, instituteId),
+          isNull(subjects.deletedAt),
+          isNull(chapters.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!chapter) {
@@ -212,7 +418,9 @@ export class AcademicService {
     return this.db
       .select()
       .from(topics)
-      .where(and(eq(topics.chapterId, chapterId), eq(topics.status, 'active')))
+      .where(
+        and(eq(topics.chapterId, chapterId), eq(topics.status, 'active'), isNull(topics.deletedAt)),
+      )
       .orderBy(asc(topics.sortOrder), asc(topics.name));
   }
 
@@ -222,7 +430,15 @@ export class AcademicService {
       .from(topics)
       .innerJoin(chapters, eq(topics.chapterId, chapters.id))
       .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-      .where(and(eq(topics.id, topicId), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(topics.id, topicId),
+          eq(subjects.instituteId, instituteId),
+          isNull(subjects.deletedAt),
+          isNull(chapters.deletedAt),
+          isNull(topics.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!topic) {

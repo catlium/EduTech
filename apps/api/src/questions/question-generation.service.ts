@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
-import { eq, and, sql, asc, inArray, type SQL } from 'drizzle-orm';
+import { eq, and, sql, asc, inArray, isNull, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
   topics,
@@ -310,6 +310,7 @@ export class QuestionGenerationService {
           eq(materials.topicId, topicId),
           eq(materials.status, 'ACTIVE'),
           eq(materials.processingStatus, 'READY'),
+          isNull(materials.deletedAt),
           sql`length(btrim(${materials.textContent})) > 0`,
         ),
       )
@@ -551,6 +552,7 @@ export class QuestionGenerationService {
     const conditions: SQL[] = [
       eq(questions.instituteId, instituteId),
       eq(questions.status, 'ACTIVE'),
+      isNull(questions.deletedAt),
     ];
     if (scope.subjectId) conditions.push(eq(questions.subjectId, scope.subjectId));
     if (scope.chapterId) conditions.push(eq(questions.chapterId, scope.chapterId));
@@ -618,6 +620,7 @@ export class QuestionGenerationService {
           eq(questions.instituteId, instituteId),
           eq(questions.approvalStatus, 'APPROVED'),
           eq(questions.status, 'ACTIVE'),
+          isNull(questions.deletedAt),
           resolved.kind === 'subject'
             ? eq(questions.subjectId, resolved.id)
             : resolved.kind === 'chapter'
@@ -955,6 +958,7 @@ export class QuestionGenerationService {
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, approvalStatus),
       eq(questions.status, 'ACTIVE'),
+      isNull(questions.deletedAt),
     ];
     if (subjectIds.length > 0) conditions.push(inArray(questions.subjectId, subjectIds));
 
@@ -1020,7 +1024,15 @@ export class QuestionGenerationService {
       .from(topics)
       .innerJoin(chapters, eq(topics.chapterId, chapters.id))
       .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-      .where(and(eq(topics.id, topicId), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(topics.id, topicId),
+          eq(subjects.instituteId, instituteId),
+          isNull(topics.deletedAt),
+          isNull(chapters.deletedAt),
+          isNull(subjects.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!row) throw new NotFoundException('Topic not found');
@@ -1039,7 +1051,13 @@ export class QuestionGenerationService {
       const [row] = await this.db
         .select({ id: subjects.id })
         .from(subjects)
-        .where(and(eq(subjects.id, scope.id), eq(subjects.instituteId, instituteId)))
+        .where(
+          and(
+            eq(subjects.id, scope.id),
+            eq(subjects.instituteId, instituteId),
+            isNull(subjects.deletedAt),
+          ),
+        )
         .limit(1);
       if (!row) throw new NotFoundException('Subject not found');
       return;
@@ -1048,7 +1066,14 @@ export class QuestionGenerationService {
       .select({ id: chapters.id })
       .from(chapters)
       .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-      .where(and(eq(chapters.id, scope.id), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(chapters.id, scope.id),
+          eq(subjects.instituteId, instituteId),
+          isNull(chapters.deletedAt),
+          isNull(subjects.deletedAt),
+        ),
+      )
       .limit(1);
     if (!row) throw new NotFoundException('Chapter not found');
   }
@@ -1087,7 +1112,14 @@ export class QuestionGenerationService {
         .select({ subjectId: subjects.id })
         .from(chapters)
         .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-        .where(and(eq(chapters.id, scope.id), eq(subjects.instituteId, instituteId)))
+        .where(
+          and(
+            eq(chapters.id, scope.id),
+            eq(subjects.instituteId, instituteId),
+            isNull(chapters.deletedAt),
+            isNull(subjects.deletedAt),
+          ),
+        )
         .limit(1);
       if (!row) throw new NotFoundException('Chapter not found');
       return row.subjectId;
@@ -1104,6 +1136,7 @@ export class QuestionGenerationService {
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'APPROVED'),
       eq(questions.status, 'ACTIVE'),
+      isNull(questions.deletedAt),
     ];
 
     if (scope.kind === 'subject') conditions.push(eq(questions.subjectId, scope.id));
@@ -1152,6 +1185,7 @@ export class QuestionGenerationService {
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'PENDING'),
       eq(questions.status, 'ACTIVE'),
+      isNull(questions.deletedAt),
     ];
 
     if (scope.kind === 'subject') conditions.push(eq(questions.subjectId, scope.id));

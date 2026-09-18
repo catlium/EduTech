@@ -39,6 +39,7 @@ export const questions = pgTable(
     }),
     approvalStatus: varchar('approval_status', { length: 20 }).notNull().default('PENDING'),
     status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),

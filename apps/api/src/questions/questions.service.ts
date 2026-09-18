@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc, ilike, inArray, type SQL } from 'drizzle-orm';
+import { eq, and, desc, ilike, inArray, isNull, type SQL } from 'drizzle-orm';
 import { questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import {
@@ -91,7 +91,10 @@ export class QuestionsService {
   // ── Read ──────────────────────────────────
 
   async listQuestions(instituteId: string, filters: ListQuestionFilters = {}) {
-    const conditions: SQL[] = [eq(questions.instituteId, instituteId)];
+    const conditions: SQL[] = [
+      eq(questions.instituteId, instituteId),
+      isNull(questions.deletedAt),
+    ];
 
     if (filters.questionType !== undefined) {
       conditions.push(eq(questions.questionType, filters.questionType));
@@ -126,7 +129,13 @@ export class QuestionsService {
     const [question] = await this.db
       .select()
       .from(questions)
-      .where(and(eq(questions.id, questionId), eq(questions.instituteId, instituteId)))
+      .where(
+        and(
+          eq(questions.id, questionId),
+          eq(questions.instituteId, instituteId),
+          isNull(questions.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!question) {

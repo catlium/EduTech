@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
 import { materials, paperPatterns, paperPatternSubjects, subjects } from '@catlium/database';
 import { normalizePaperPatternStructure, type PaperPatternStructure } from '@catlium/contracts';
@@ -99,9 +99,13 @@ export class PaperPatternsService {
       version?: number;
     },
   ) {
-    const row = await this.requirePattern(instituteId, patternId);
-    if (row.isLocked) {
-      throw new ConflictException('Paper pattern is locked — unlock it before editing');
+const row = await this.requirePattern(instituteId, patternId);
+    // The lock guards structure/data edits, not naming: renaming a pattern
+    // (title/description) stays allowed while locked so typo fixes don't need
+    // an unlock.
+    const touchesStructure = input.structure !== undefined || input.subjectIds !== undefined;
+    if (row.isLocked && touchesStructure) {
+      throw new ConflictException('Paper pattern is locked — unlock it before editing its structure');
     }
     if (input.version !== undefined && input.version !== row.version) {
       throw new ConflictException('Paper pattern has been modified — refresh and retry');
@@ -252,8 +256,11 @@ export class PaperPatternsService {
 
   async approve(instituteId: string, userId: string, patternId: string) {
     const row = await this.requirePattern(instituteId, patternId);
-    if (row.status !== 'DRAFT' && row.status !== 'REVIEW') {
-      throw new ConflictException(`Paper pattern is already ${row.status}`);
+    // DRAFT / REVIEW approve as before; an APPROVED pattern re-approves after
+    // an unlock (the structure was edited and needs re-validation). A locked
+    // APPROVED pattern stays immutable.
+    if (row.status === 'APPROVED' && row.isLocked) {
+      throw new ConflictException('Paper pattern is already approved and locked');
     }
     if (!row.structure) {
       throw new BadRequestException('Paper pattern has no structure to approve');
@@ -378,7 +385,13 @@ export class PaperPatternsService {
     const ids = await this.db
       .select({ id: subjects.id })
       .from(subjects)
-      .where(and(eq(subjects.instituteId, instituteId), inArray(subjects.id, subjectIds)));
+      .where(
+        and(
+          eq(subjects.instituteId, instituteId),
+          isNull(subjects.deletedAt),
+          inArray(subjects.id, subjectIds),
+        ),
+      );
     const ownedIds = new Set(ids.map((s) => s.id));
     const foreign = foreignSubjectIds(subjectIds, ownedIds);
     if (foreign.length > 0) {
@@ -454,7 +467,13 @@ export class PaperPatternsService {
       const [material] = await this.db
         .select()
         .from(materials)
-        .where(and(eq(materials.id, source.id), eq(materials.instituteId, instituteId)))
+        .where(
+          and(
+            eq(materials.id, source.id),
+            eq(materials.instituteId, instituteId),
+            isNull(materials.deletedAt),
+          ),
+        )
         .limit(1);
       if (!material) {
         throw new NotFoundException('Source material not found in this institute');
@@ -492,6 +511,7 @@ export class PaperPatternsService {
             eq(materials.id, existingSourceMaterialId),
             eq(materials.instituteId, instituteId),
             eq(materials.materialType, 'TEXT'),
+            isNull(materials.deletedAt),
           ),
         )
         .limit(1);

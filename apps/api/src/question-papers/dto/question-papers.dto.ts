@@ -17,6 +17,10 @@ export class CreateQuestionPaperDto {
   patternId!: string;
 
   @IsOptional()
+  @IsUUID()
+  subjectId?: string;
+
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(255)

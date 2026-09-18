@@ -93,6 +93,51 @@ Roles: `INSTITUTE_ADMIN`, `TEACHER`. All fields optional.
 
 Response: `{ "subject": Subject }`
 
+### Soft-delete subject (whole tree)
+
+```
+DELETE /academic/subjects/:subjectId
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`.
+
+Soft-deletes the subject **and its whole tree** — chapters, topics, questions,
+materials, content items, and syllabi become `deletedAt`-stamped and are
+hidden from all queries and scope resolution. This is **reversible**: restore
+(`POST /academic/subjects/:subjectId/restore`) brings back the entire tree.
+
+The `force` flag was removed; deletion no longer takes a query parameter.
+
+Response: `204` on success.
+
+Also bear in mind any question papers scoped to a General paper pattern remain
+independent: they retain their data and are not deleted with the subject.
+
+### List deleted subjects
+
+```
+GET /academic/subjects/deleted
+```
+
+Returns only subjects that are soft-deleted (`deletedAt` set), ordered by
+`deletedAt` descending (most recently deleted first), for the active institute.
+
+Response: `{ "subjects": Subject[] }`
+
+### Restore subject (whole tree)
+
+```
+POST /academic/subjects/:subjectId/restore
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER`.
+
+Clears `deletedAt` on the subject and restores its whole tree (chapters,
+topics, questions, materials, content items, syllabi) in one transaction.
+`404` if the subject is not found or is not soft-deleted.
+
+Response: `{ "restored": true }`
+
 ## Chapters
 
 ### List chapters of a subject

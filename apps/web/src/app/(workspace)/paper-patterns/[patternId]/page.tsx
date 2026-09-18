@@ -16,6 +16,7 @@ import {
   Eye,
   Loader2,
   Lock,
+  Pencil,
   Plus,
   Trash2,
   Unlock,
@@ -144,6 +145,11 @@ export default function PatternBuilderPage() {
   const [approving, setApproving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  /* inline title rename (works even while locked — backend allows title edits) */
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   const [assessmentOpen, setAssessmentOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -368,6 +374,26 @@ export default function PatternBuilderPage() {
       await loadPattern();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Lock update failed');
+    }
+  }
+
+  async function onRename() {
+    if (!pattern) return;
+    const newTitle = titleDraft.trim();
+    if (!newTitle) return;
+    setRenaming(true);
+    try {
+      const { pattern: updated } = await api<{ pattern: PaperPattern }>(
+        `/paper-patterns/${pattern.id}`,
+        { method: 'PATCH', body: { title: newTitle, version: pattern.version } },
+      );
+      setPattern(updated);
+      setTitleEditing(false);
+      toast.success('Pattern renamed');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Rename failed');
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -596,10 +622,10 @@ export default function PatternBuilderPage() {
     );
   }
 
-  const canApprove = pattern.status !== 'APPROVED';
   // Approved patterns stay editable; only AI re-analysis stays blocked.
-  const canAnalyze = pattern.status !== 'APPROVED';
   const locked = pattern.isLocked;
+  const canApprove = pattern.status !== 'APPROVED' || !locked;
+  const canAnalyze = pattern.status !== 'APPROVED';
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -616,6 +642,51 @@ export default function PatternBuilderPage() {
         <PageHeader
           title={pattern.title || 'Untitled pattern'}
           description={pattern.description ?? undefined}
+          children={
+            isTeacher &&
+            (titleEditing ? (
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  className="max-w-xs"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void onRename();
+                    if (e.key === 'Escape') setTitleEditing(false);
+                  }}
+                  autoFocus
+                />
+                <Button
+                  size="sm"
+                  onClick={() => void onRename()}
+                  disabled={renaming || !titleDraft.trim()}
+                >
+                  {renaming && <Loader2 className="mr-1 size-3 animate-spin" />}
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setTitleEditing(false)}
+                  disabled={renaming}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs text-muted-foreground"
+                onClick={() => {
+                  setTitleDraft(pattern.title);
+                  setTitleEditing(true);
+                }}
+              >
+                <Pencil className="mr-1 size-3" /> Rename
+              </Button>
+            ))
+          }
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={pattern.status} />
@@ -634,6 +705,23 @@ export default function PatternBuilderPage() {
                       </TooltipTrigger>
                       <TooltipContent>
                         Unlock to edit or delete this pattern. Approving auto-locks it.
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {!locked && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void onSetLocked(true)}
+                          disabled={saving || deleting}
+                        >
+                          <Lock className="mr-1 size-3.5" /> Lock
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Lock to prevent accidental changes. Save/approve also locks.
                       </TooltipContent>
                     </Tooltip>
                   )}

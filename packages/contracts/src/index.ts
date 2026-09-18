@@ -1586,6 +1586,7 @@ export const QuestionPaperResponseSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
   blueprintId: z.string().uuid().nullable(),
+  subjectId: z.string().uuid().nullable(),
   durationMinutes: z.number().int().nullable(),
   maxMarks: z.number().int().nullable(),
   instructions: z.record(z.string(), z.unknown()).nullable(),
@@ -1603,6 +1604,7 @@ export type QuestionPaperListItem = z.infer<typeof QuestionPaperListItemSchema>;
 
 export const CreateQuestionPaperRequestSchema = z.object({
   patternId: z.string().uuid(),
+  subjectId: z.string().uuid().optional(),
   title: z.string().min(1).max(255).optional(),
   description: z.string().max(5000).optional(),
 });

@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import type { Database } from '@catlium/database';
@@ -133,8 +133,12 @@ export class SyllabusService {
       .from(syllabi)
       .where(
         subjectId
-          ? and(eq(syllabi.instituteId, instituteId), eq(syllabi.subjectId, subjectId))
-          : eq(syllabi.instituteId, instituteId),
+          ? and(
+              eq(syllabi.instituteId, instituteId),
+              eq(syllabi.subjectId, subjectId),
+              isNull(syllabi.deletedAt),
+            )
+          : and(eq(syllabi.instituteId, instituteId), isNull(syllabi.deletedAt)),
       )
       .orderBy(desc(syllabi.createdAt));
 
@@ -200,7 +204,16 @@ export class SyllabusService {
     input: UpdateSyllabusInput,
   ) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
-    this.assertUnlocked(row, 'Syllabus');
+    // The lock guards structure/data edits, not naming: title stays editable
+    // while locked so typo fixes don't need an unlock.
+    const touchesData =
+      input.program !== undefined ||
+      input.academicYear !== undefined ||
+      input.context !== undefined ||
+      input.structure !== undefined;
+    if (row.isLocked && touchesData) {
+      throw new ConflictException('Syllabus is locked — unlock it before editing its data');
+    }
 
     if (row.processingStatus === 'PROCESSING' || row.analysisStatus === 'PROCESSING') {
       throw new ConflictException(
@@ -375,7 +388,12 @@ export class SyllabusService {
 
   async confirmSyllabus(instituteId: string, userId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
-    this.assertNotConfirmed(row, 'Syllabus');
+    // Confirming applies the analyzed structure to the hierarchy and auto-locks.
+    // A CONFIRMED syllabus re-confirms after an unlock (structure was edited and
+    // needs re-application); a locked row is immutable regardless of status.
+    if (row.isLocked) {
+      throw new ConflictException('Syllabus is locked — unlock it before confirming');
+    }
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Archived syllabi cannot be confirmed');
     }
@@ -393,7 +411,6 @@ export class SyllabusService {
         .for('update')
         .limit(1);
       if (!locked) throw new NotFoundException('Syllabus not found');
-      this.assertNotConfirmed(locked, 'Syllabus');
 
       const structure = this.parseStructure(locked.structure);
       report = await this.applyStructure(tx, locked, structure, userId);
@@ -431,7 +448,13 @@ export class SyllabusService {
     const existingChapters: (typeof chapters.$inferSelect)[] = await tx
       .select()
       .from(chapters)
-      .where(and(eq(chapters.subjectId, syllabusRow.subjectId), eq(chapters.status, 'active')));
+      .where(
+        and(
+          eq(chapters.subjectId, syllabusRow.subjectId),
+          eq(chapters.status, 'active'),
+          isNull(chapters.deletedAt),
+        ),
+      );
 
     const existingTopics: (typeof topics.$inferSelect)[] = existingChapters.length
       ? await tx
@@ -643,7 +666,13 @@ export class SyllabusService {
     const [subject] = await this.db
       .select({ id: subjects.id })
       .from(subjects)
-      .where(and(eq(subjects.id, subjectId), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(subjects.id, subjectId),
+          eq(subjects.instituteId, instituteId),
+          isNull(subjects.deletedAt),
+        ),
+      )
       .limit(1);
     if (!subject) throw new NotFoundException('Subject not found');
   }
@@ -652,7 +681,13 @@ export class SyllabusService {
     const [row] = await this.db
       .select()
       .from(syllabi)
-      .where(and(eq(syllabi.id, syllabusId), eq(syllabi.instituteId, instituteId)))
+      .where(
+        and(
+          eq(syllabi.id, syllabusId),
+          eq(syllabi.instituteId, instituteId),
+          isNull(syllabi.deletedAt),
+        ),
+      )
       .limit(1);
     if (!row) throw new NotFoundException('Syllabus not found');
     return row;
@@ -684,12 +719,6 @@ export class SyllabusService {
   private assertUnlocked(row: { isLocked: boolean }, what: string) {
     if (row.isLocked) {
       throw new ConflictException(`${what} is locked — unlock it before editing`);
-    }
-  }
-
-  private assertNotConfirmed(row: { status: string }, what: string) {
-    if (row.status === 'CONFIRMED') {
-      throw new ConflictException(`${what} is already confirmed`);
     }
   }
 

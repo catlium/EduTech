@@ -37,6 +37,7 @@ export const materials = pgTable(
     processingStatus: varchar('processing_status', { length: 20 }).notNull().default('UPLOADED'),
     progress: jsonb('progress'),
     status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     revision: integer('revision').notNull().default(1),
     metadata: jsonb('metadata'),
     createdBy: uuid('created_by')

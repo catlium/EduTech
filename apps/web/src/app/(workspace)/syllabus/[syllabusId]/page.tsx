@@ -282,13 +282,11 @@ export default function SyllabusDetailPage() {
     if (busy || !editTitle.trim()) return;
     setBusy('edit');
     try {
-      const body: Record<string, string | null> = {
-        title: editTitle.trim(),
-        ...(editProgram.trim() ? { program: editProgram.trim() } : { program: null }),
-        ...(editAcademicYear.trim()
-          ? { academicYear: editAcademicYear.trim() }
-          : { academicYear: null }),
-      };
+      const body: Record<string, string | null> = { title: editTitle.trim() };
+      if (!syllabus?.isLocked) {
+        body.program = editProgram.trim() || null;
+        body.academicYear = editAcademicYear.trim() || null;
+      }
       await api(`/syllabus/${syllabusId}`, { method: 'PATCH', body });
       setEditOpen(false);
       toast.success('Syllabus updated');
@@ -378,7 +376,7 @@ export default function SyllabusDetailPage() {
             Analyze
           </Button>
         )}
-      {actionable && syllabus.status === 'PROPOSED' && syllabus.analysisStatus === 'READY' && syllabus.structure && (
+      {isTeacher && !locked && (syllabus.status === 'PROPOSED' || syllabus.status === 'CONFIRMED') && syllabus.analysisStatus === 'READY' && syllabus.structure && (
         <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)}>
           <CheckCircle2 className="mr-1 size-3.5" /> Confirm structure
         </Button>
@@ -402,7 +400,7 @@ export default function SyllabusDetailPage() {
           <Lock className="mr-1 size-3.5" /> Lock
         </Button>
       )}
-      {actionable && !processing && !analyzing && (
+      {isTeacher && !processing && !analyzing && (
         <Button size="sm" variant="outline" onClick={openEdit} disabled={busy !== null}>
           <Pencil className="mr-1 size-3.5" /> Edit
         </Button>
@@ -606,7 +604,11 @@ export default function SyllabusDetailPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit syllabus</DialogTitle>
-            <DialogDescription>Update the syllabus details.</DialogDescription>
+            <DialogDescription>
+              {locked
+                ? 'This syllabus is locked — only the title can be edited. Unlock it to change the program, year or structure.'
+                : 'Update the syllabus details.'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid gap-2">
@@ -623,6 +625,7 @@ export default function SyllabusDetailPage() {
                 id="edit-program"
                 value={editProgram}
                 placeholder="e.g. B.Sc. Computer Science"
+                disabled={locked}
                 onChange={(e) => setEditProgram(e.target.value)}
               />
             </div>
@@ -632,6 +635,7 @@ export default function SyllabusDetailPage() {
                 id="edit-year"
                 value={editAcademicYear}
                 placeholder="e.g. 2026-27"
+                disabled={locked}
                 onChange={(e) => setEditAcademicYear(e.target.value)}
               />
             </div>

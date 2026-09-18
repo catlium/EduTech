@@ -96,6 +96,7 @@ export class ExportService {
         eq(questions.instituteId, instituteId),
         eq(questions.approvalStatus, 'APPROVED'),
         eq(questions.status, 'ACTIVE'),
+        isNull(questions.deletedAt),
       ),
     ];
     // A pattern is the *arrangement rule* for the bank export, not a filter:
@@ -522,6 +523,7 @@ export class ExportService {
         and(
           inArray(subjects.id, subjectIds.map((r) => r.subjectId)),
           eq(subjects.instituteId, instituteId),
+          isNull(subjects.deletedAt),
         ),
       );
     return rows.map((r) => r.name);

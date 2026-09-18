@@ -5,7 +5,7 @@ import {
   ConflictException,
   Inject,
 } from '@nestjs/common';
-import { eq, and, desc, asc, inArray, count, max } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, count, max, isNull } from 'drizzle-orm';
 import {
   assessments,
   assessmentQuestions,
@@ -511,6 +511,7 @@ export class ExaminationsService {
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'APPROVED'),
       eq(questions.status, 'ACTIVE'),
+      isNull(questions.deletedAt),
     ];
     if (subjectIds.length > 0) conditions.push(inArray(questions.subjectId, subjectIds));
     if (typeCodes.size > 0) conditions.push(inArray(questions.questionType, [...typeCodes]));

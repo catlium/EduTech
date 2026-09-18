@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc, ilike } from 'drizzle-orm';
+import { eq, and, desc, ilike, isNull } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { contentItems, contentVersions } from '@catlium/database';
 import type { Database } from '@catlium/database';
@@ -97,7 +97,10 @@ export class ContentService {
   // ── Read ──────────────────────────────────
 
   async listContent(instituteId: string, filters: ListContentFilters) {
-    const conditions: SQL[] = [eq(contentItems.instituteId, instituteId)];
+    const conditions: SQL[] = [
+      eq(contentItems.instituteId, instituteId),
+      isNull(contentItems.deletedAt),
+    ];
 
     if (filters.type) conditions.push(eq(contentItems.type, filters.type));
     if (filters.status) conditions.push(eq(contentItems.status, filters.status));
@@ -142,7 +145,13 @@ export class ContentService {
       const [locked] = await tx
         .select()
         .from(contentItems)
-        .where(and(eq(contentItems.id, contentId), eq(contentItems.instituteId, instituteId)))
+        .where(
+          and(
+            eq(contentItems.id, contentId),
+            eq(contentItems.instituteId, instituteId),
+            isNull(contentItems.deletedAt),
+          ),
+        )
         .for('update')
         .limit(1);
 
@@ -242,7 +251,13 @@ export class ContentService {
     const [item] = await this.db
       .select()
       .from(contentItems)
-      .where(and(eq(contentItems.id, contentId), eq(contentItems.instituteId, instituteId)))
+      .where(
+        and(
+          eq(contentItems.id, contentId),
+          eq(contentItems.instituteId, instituteId),
+          isNull(contentItems.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!item) {

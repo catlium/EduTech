@@ -277,7 +277,11 @@ export default function QuestionPaperDetailPage() {
       <PageHeader
         title={paper.title}
         description={[
-          paper.subjects?.length > 0 ? `${paper.subjects.join(', ')}` : null,
+          paper.subjectId && paper.subjects?.length > 0
+            ? `Subject: ${paper.subjects.join(', ')}`
+            : paper.subjects?.length > 0
+              ? `${paper.subjects.join(', ')}`
+              : null,
           paper.durationMinutes && `${paper.durationMinutes} min`,
           paper.maxMarks && `${paper.maxMarks} marks`,
           `${questions.length} question${questions.length !== 1 ? 's' : ''}`,

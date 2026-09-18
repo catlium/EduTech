@@ -75,6 +75,7 @@ export const syllabi = pgTable(
     structure: jsonb('structure'),
     status: varchar('status', { length: 20 }).notNull().default('PROPOSED'),
     isLocked: boolean('is_locked').notNull().default(false),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()

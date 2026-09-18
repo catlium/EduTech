@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
 import { chapters, subjects, topics } from '@catlium/database';
 
@@ -41,7 +41,15 @@ export async function resolveScopeChain(
       .from(topics)
       .innerJoin(chapters, eq(topics.chapterId, chapters.id))
       .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-      .where(and(eq(topics.id, input.topicId), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(topics.id, input.topicId),
+          eq(subjects.instituteId, instituteId),
+          isNull(topics.deletedAt),
+          isNull(chapters.deletedAt),
+          isNull(subjects.deletedAt),
+        ),
+      )
       .limit(1);
     if (!topic) throw new NotFoundException('Topic not found');
     if (input.chapterId !== undefined && input.chapterId !== topic.chapterId) {
@@ -58,7 +66,14 @@ export async function resolveScopeChain(
       .select({ chapterId: chapters.id, subjectId: subjects.id })
       .from(chapters)
       .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
-      .where(and(eq(chapters.id, input.chapterId), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(chapters.id, input.chapterId),
+          eq(subjects.instituteId, instituteId),
+          isNull(chapters.deletedAt),
+          isNull(subjects.deletedAt),
+        ),
+      )
       .limit(1);
     if (!chapter) throw new NotFoundException('Chapter not found');
     if (input.subjectId !== undefined && input.subjectId !== chapter.subjectId) {
@@ -71,7 +86,13 @@ export async function resolveScopeChain(
     const [subject] = await db
       .select({ id: subjects.id })
       .from(subjects)
-      .where(and(eq(subjects.id, input.subjectId), eq(subjects.instituteId, instituteId)))
+      .where(
+        and(
+          eq(subjects.id, input.subjectId),
+          eq(subjects.instituteId, instituteId),
+          isNull(subjects.deletedAt),
+        ),
+      )
       .limit(1);
     if (!subject) throw new NotFoundException('Subject not found');
     return { subjectId: subject.id, chapterId: null, topicId: null };

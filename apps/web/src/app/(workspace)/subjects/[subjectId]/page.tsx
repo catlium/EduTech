@@ -30,7 +30,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import type {
   SubjectResponse,
   ChapterResponse,
@@ -56,7 +55,6 @@ export default function SubjectDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteDependents, setDeleteDependents] = useState<string[]>([]);
   const [confirmName, setConfirmName] = useState('');
-  const [confirmForce, setConfirmForce] = useState(false);
   const [starting, setStarting] = useState(false);
   const [batch, setBatch] = useState<{
     batchId: string;
@@ -147,7 +145,6 @@ export default function SubjectDetailPage() {
 
   async function openDelete() {
     setConfirmName('');
-    setConfirmForce(false);
     setDeleting(true);
     setDeleteOpen(true);
     try {
@@ -165,14 +162,12 @@ export default function SubjectDetailPage() {
   async function handleDelete() {
     setDeleting(true);
     try {
-      await api(`/academic/subjects/${subjectId}?force=${confirmForce ? 'true' : 'false'}`, {
-        method: 'DELETE',
-      });
-      toast.success('Subject deleted');
+      await api(`/academic/subjects/${subjectId}`, { method: 'DELETE' });
+      toast.success('Subject moved to trash — restore it from Deleted subjects');
       setDeleteOpen(false);
       router.push('/subjects');
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Delete failed — subject may have dependents');
+      toast.error(err instanceof ApiError ? err.message : 'Delete failed');
     } finally {
       setDeleting(false);
     }
@@ -324,25 +319,19 @@ export default function SubjectDetailPage() {
           <DialogHeader>
             <DialogTitle>Delete &ldquo;{subject.name}&rdquo;?</DialogTitle>
             <DialogDescription>
-              This cannot be undone. Everything under this subject will be removed too.
+              The subject and everything under it are moved to the trash. You can restore the whole
+              tree from Deleted subjects.
             </DialogDescription>
           </DialogHeader>
 
           {deleteDependents.length > 0 && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
               <p className="font-medium">This subject still contains:</p>
               <ul className="mt-1 list-inside list-disc">
                 {deleteDependents.map((d) => (
                   <li key={d}>{d}</li>
                 ))}
               </ul>
-              <label className="mt-3 flex items-center gap-2">
-                <Checkbox
-                  checked={confirmForce}
-                  onCheckedChange={(v) => setConfirmForce(Boolean(v))}
-                />
-                Force delete — remove this subject and all of the above
-              </label>
             </div>
           )}
 
@@ -358,11 +347,7 @@ export default function SubjectDetailPage() {
             </Button>
             <Button
               variant="destructive"
-              disabled={
-                deleting ||
-                confirmName !== subject.name ||
-                (deleteDependents.length > 0 && !confirmForce)
-              }
+              disabled={deleting || confirmName !== subject.name}
               onClick={() => void handleDelete()}
             >
               {deleting ? 'Deleting…' : 'Delete subject'}

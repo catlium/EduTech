@@ -46,6 +46,7 @@ export class QuestionPapersController {
       patternId: dto.patternId,
       title: dto.title,
       description: dto.description,
+      subjectId: dto.subjectId,
     });
   }
 

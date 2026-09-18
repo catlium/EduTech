@@ -28,6 +28,7 @@ export const contentItems = pgTable(
     type: varchar('type', { length: 50 }).notNull(),
     title: varchar('title', { length: 255 }).notNull(),
     status: varchar('status', { length: 20 }).notNull().default('DRAFT'),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     source: varchar('source', { length: 30 }).notNull(),
     currentVersion: integer('current_version').notNull().default(1),
     createdBy: uuid('created_by')

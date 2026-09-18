@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import {
   questionPapers,
   questionPaperQuestions,
@@ -28,6 +28,8 @@ export interface CreateQuestionPaperInput {
   patternId: string;
   title?: string;
   description?: string;
+  /** Scopes a General (no-subject) pattern's question selection to one subject. */
+  subjectId?: string;
 }
 
 /** A Question Paper is a fixed, teacher-selected paper built from an approved
@@ -50,6 +52,12 @@ export class QuestionPapersService {
   ) {
     const pattern = await this.requireApprovedPattern(instituteId, input.patternId);
     const structure = normalizePaperPatternStructure(pattern.structure);
+
+    let subjectId: string | null = null;
+    if (input.subjectId) {
+      await this.assertSubjectInInstitute(instituteId, input.subjectId);
+      subjectId = input.subjectId;
+    }
 
     // Never create a paper the bank cannot fully supply. If questions are
     // missing we queue generation and report back; the caller polls and retries.
@@ -80,6 +88,7 @@ export class QuestionPapersService {
         title: input.title ?? `${pattern.title} — Question Paper`,
         description: input.description ?? pattern.description,
         blueprintId: pattern.id,
+        subjectId,
         durationMinutes: structure.durationMinutes,
         maxMarks: structure.totalMarks,
         instructions: structuredIntoInstructions(structure),
@@ -119,7 +128,7 @@ export class QuestionPapersService {
 
   async getPaper(instituteId: string, paperId: string) {
     const paper = await this.requirePaper(instituteId, paperId);
-    const subjects = await this.paperSubjects(instituteId, paper.blueprintId);
+    const subjects = await this.paperSubjects(instituteId, paper);
     return { ...paper, subjects };
   }
 
@@ -185,11 +194,7 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
     const structure = normalizePaperPatternStructure(pattern.structure);
     const sections = flattenPatternRules(structure);
 
-    const subjectRows = await this.db
-      .select({ subjectId: paperPatternSubjects.subjectId })
-      .from(paperPatternSubjects)
-      .where(eq(paperPatternSubjects.patternId, pattern.id));
-    const subjectIds = subjectRows.map((r) => r.subjectId);
+    const subjectIds = await this.patternSubjectIds(pattern.id, paper.subjectId);
 
     const linked = await this.db
       .select({ questionId: questionPaperQuestions.questionId })
@@ -204,6 +209,7 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'APPROVED'),
       eq(questions.status, 'ACTIVE'),
+      isNull(questions.deletedAt),
     ];
     if (subjectIds.length > 0) conditions.push(inArray(questions.subjectId, subjectIds));
     if (typeCodes.size > 0) conditions.push(inArray(questions.questionType, [...typeCodes]));
@@ -283,12 +289,10 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
     const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
     const structure = normalizePaperPatternStructure(pattern.structure);
 
-    const subjectRows = await this.db
-      .select({ subjectId: paperPatternSubjects.subjectId })
-      .from(paperPatternSubjects)
-      .where(eq(paperPatternSubjects.patternId, pattern.id));
-    const subjectIds = subjectRows.map((r) => r.subjectId);
-    const subjectId = subjectIds[0];
+    const subjectIds = await this.patternSubjectIds(pattern.id, paper.subjectId);
+    // A scoped paper always generates into its own subject; an unscoped paper
+    // that reached a single-subject pattern uses that subject.
+    const subjectId = paper.subjectId ?? subjectIds[0];
     if (!subjectId) {
       throw new BadRequestException('Paper pattern has no subject scope');
     }
@@ -297,8 +301,12 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'APPROVED'),
       eq(questions.status, 'ACTIVE'),
+      isNull(questions.deletedAt),
+      inArray(
+        questions.subjectId,
+        paper.subjectId ? [paper.subjectId] : subjectIds.length > 0 ? subjectIds : [],
+      ),
     ];
-    if (subjectIds.length > 0) scopeConditions.push(inArray(questions.subjectId, subjectIds));
 
     const bank = await this.db
       .select({ questionType: questions.questionType, difficulty: questions.difficulty })
@@ -396,23 +404,68 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
 
   // ── Internals ─────────────────────────────
 
-  /** Subject names for a paper's blueprint (empty when none). */
+  /** Subject names for a paper: a scoped paper shows its own subject, otherwise
+   * the paper's blueprint subjects (empty when the pattern is General). */
   private async paperSubjects(
     instituteId: string,
-    blueprintId: string | null,
+    paper: {
+      subjectId: string | null;
+      blueprintId: string | null;
+    },
   ): Promise<string[]> {
-    if (!blueprintId) return [];
+    if (paper.subjectId) {
+      const rows = await this.db
+        .select({ name: subjects.name })
+        .from(subjects)
+        .where(
+          and(eq(subjects.id, paper.subjectId), eq(subjects.instituteId, instituteId)),
+        );
+      return rows.map((r) => r.name);
+    }
+    if (!paper.blueprintId) return [];
     const rows = await this.db
       .select({ name: subjects.name })
       .from(paperPatternSubjects)
       .innerJoin(subjects, eq(paperPatternSubjects.subjectId, subjects.id))
       .where(
         and(
-          eq(paperPatternSubjects.patternId, blueprintId),
+          eq(paperPatternSubjects.patternId, paper.blueprintId),
           eq(subjects.instituteId, instituteId),
         ),
       );
     return rows.map((r) => r.name);
+  }
+
+  /** Effective question-selection subject scope for a paper: the paper's own
+   * subject when scoped, else the pattern's subjects (empty = General). */
+  private async patternSubjectIds(
+    patternId: string,
+    paperSubjectId: string | null,
+  ): Promise<string[]> {
+    if (paperSubjectId) return [paperSubjectId];
+    const subjectRows = await this.db
+      .select({ subjectId: paperPatternSubjects.subjectId })
+      .from(paperPatternSubjects)
+      .innerJoin(subjects, eq(paperPatternSubjects.subjectId, subjects.id))
+      .where(
+        and(eq(paperPatternSubjects.patternId, patternId), isNull(subjects.deletedAt)),
+      );
+    return subjectRows.map((r) => r.subjectId);
+  }
+
+  private async assertSubjectInInstitute(instituteId: string, subjectId: string) {
+    const [subject] = await this.db
+      .select({ id: subjects.id })
+      .from(subjects)
+      .where(
+        and(
+          eq(subjects.id, subjectId),
+          eq(subjects.instituteId, instituteId),
+          isNull(subjects.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!subject) throw new NotFoundException('Subject not found in this institute');
   }
 
   private async requirePaper(instituteId: string, paperId: string) {

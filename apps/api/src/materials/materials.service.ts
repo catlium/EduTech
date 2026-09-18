@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { eq, and, desc, ilike, or } from 'drizzle-orm';
+import { eq, and, desc, ilike, isNull, or } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
@@ -143,7 +143,10 @@ export class MaterialsService {
   // ── Read ──────────────────────────────────
 
   async listMaterials(instituteId: string, filters: ListMaterialFilters) {
-    const conditions: SQL[] = [eq(materials.instituteId, instituteId)];
+    const conditions: SQL[] = [
+      eq(materials.instituteId, instituteId),
+      isNull(materials.deletedAt),
+    ];
 
     if (filters.materialType) conditions.push(eq(materials.materialType, filters.materialType));
     if (filters.sourceType) conditions.push(eq(materials.sourceType, filters.sourceType));
@@ -432,7 +435,13 @@ export class MaterialsService {
     const [material] = await this.db
       .select()
       .from(materials)
-      .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
+      .where(
+        and(
+          eq(materials.id, materialId),
+          eq(materials.instituteId, instituteId),
+          isNull(materials.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!material) {

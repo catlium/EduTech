@@ -1,7 +1,7 @@
 import { Injectable, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { and, asc, eq, inArray, lt, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lt, or } from 'drizzle-orm';
 
 import { jobs, materials, ocrChunks, ocrPageCorrections, ocrWorkers } from '@catlium/database';
 import type { Database } from '@catlium/database';
@@ -200,7 +200,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       const [material] = await this.db
         .select()
         .from(materials)
-        .where(eq(materials.id, chunk.sourceId))
+        .where(and(eq(materials.id, chunk.sourceId), isNull(materials.deletedAt)))
         .limit(1);
       if (!material) {
         throw new Error('Source material not found');
@@ -332,7 +332,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       const [material] = await this.db
         .select({ processingStatus: materials.processingStatus })
         .from(materials)
-        .where(eq(materials.id, materialId))
+        .where(and(eq(materials.id, materialId), isNull(materials.deletedAt)))
         .limit(1);
       if (!material || material.processingStatus === 'READY') continue;
       await this.enqueueJob(job, materialId);
@@ -601,7 +601,13 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     const [material] = await this.db
       .select()
       .from(materials)
-      .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
+      .where(
+        and(
+          eq(materials.id, materialId),
+          eq(materials.instituteId, instituteId),
+          isNull(materials.deletedAt),
+        ),
+      )
       .limit(1);
     if (!material) {
       throw new NotFoundException('Material not found');

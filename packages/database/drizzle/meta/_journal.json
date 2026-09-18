@@ -239,6 +239,13 @@
       "when": 1790350000000,
       "tag": "0033_resource_locks",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790400000000,
+      "tag": "0034_subject_soft_delete",
+      "breakpoints": true
     }
   ]
 }

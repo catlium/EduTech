@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import {
   chapters,
@@ -319,6 +319,7 @@ export class PracticeService {
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'APPROVED'),
       eq(questions.status, 'ACTIVE'),
+      isNull(questions.deletedAt),
     ];
     if (topicId) {
       const [topic] = await this.db
@@ -326,7 +327,15 @@ export class PracticeService {
         .from(topics)
         .innerJoin(chapters, eq(chapters.id, topics.chapterId))
         .innerJoin(subjects, eq(subjects.id, chapters.subjectId))
-        .where(and(eq(topics.id, topicId), eq(subjects.instituteId, instituteId)))
+        .where(
+          and(
+            eq(topics.id, topicId),
+            eq(subjects.instituteId, instituteId),
+            isNull(topics.deletedAt),
+            isNull(chapters.deletedAt),
+            isNull(subjects.deletedAt),
+          ),
+        )
         .limit(1);
       if (!topic) throw new NotFoundException('Topic not found');
       scope.push(eq(questions.topicId, topicId));

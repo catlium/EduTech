@@ -13,12 +13,14 @@ import { institutes } from './institutes.js';
 import { users } from './users.js';
 import { questions } from './questions.js';
 import { paperPatterns } from './paper-patterns.js';
+import { subjects } from './academic.js';
 
 export const questionPapers = pgTable('question_papers', {
   id: uuid('id').primaryKey().defaultRandom(),
   instituteId: uuid('institute_id')
     .notNull()
     .references(() => institutes.id, { onDelete: 'cascade' }),
+  subjectId: uuid('subject_id').references(() => subjects.id, { onDelete: 'set null' }),
   title: varchar('title', { length: 255 }).notNull(),
   description: text('description'),
   blueprintId: uuid('blueprint_id').references(() => paperPatterns.id, {
