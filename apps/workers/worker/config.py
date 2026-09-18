@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     ai_max_retries: int = 3
     ai_retry_backoff_seconds: float = 2.0
     ai_retry_backoff_max_seconds: float = 60.0
+    # AI output that fails deterministic validation (malformed / schema-non-
+    # conforming) is re-requested from the provider this many times before the
+    # job fails. A retry issues a fresh provider call with the same jobId;
+    # nothing is persisted unless validation passes, so a retry is duplicate-
+    # free. Transient garbage is the norm, permanent garbage ends the job.
+    ai_validation_retries: int = 2
     # A job stuck in `processing` this long (worker crash, connection loss) is
     # reset to `queued` and re-published on worker startup.
     ai_stale_processing_minutes: int = 60

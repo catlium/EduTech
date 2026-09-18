@@ -1,5 +1,45 @@
 # Task Tracker
 
+## Phase 43 — Generation UX: deficit-driven generate-missing, export fixes, AI validation retry + auto-fill (2026-09-18)
+
+> After Phase 39 (authoritative scope), "Generate Missing" reported "resource
+> already present" even when the paper was short, QP preview broke on date/time
+> exports, the exported paper omitted the scoped subject, and completed
+> generations never surfaced in the paper without a manual shuffle.
+
+- [x] **Generate-missing deficit root cause.** `patternShortageBuckets` passed
+      pre-computed *shortages* into `computeDeficitsAndGenerateMore`, which
+      subtracted the in-scope bank again → deficit always 0 when the bank
+      covered the shortage. Extracted pure `buildPatternDemandBuckets()`
+      (`question-papers/pattern-demand.ts` + 5 unit tests): each section
+      contributes its full presented count M (attempt-N-of-M → the full M must
+      exist in the bank), split with largest-remainder across its difficulty
+      distribution, merged per `(type, difficulty)` when sections share a type.
+      Covered sections simply yield deficit 0 (NO_ACTION); real shortfalls
+      now queue exactly the shortfall.
+- [x] **QP export preview URL fix** (`question-papers/[paperId]/page.tsx`):
+      `dateTimeQuery()` returned `&date=...` but was appended after `/preview`
+      (no `?`), producing `Cannot GET …/preview&date=…`. Now `/preview?date=…&time=…`.
+- [x] **QP export shows the scoped subject.** `buildQuestionPaperDoc` pulled
+      subjects from the blueprint only; added `subjectNamesForPaper()`
+      (resolves from `paper.subjectId`, falls back to blueprint pattern subjects
+      for legacy rows) so the exported header carries the paper's subject.
+- [x] **AI validation auto-retry (worker)** — `WORKER_AI_VALIDATION_RETRIES`
+      (default 2). `_complete_validated()` re-requests the provider with the
+      same jobId when output fails deterministic validation (parse/schema);
+      nothing is persisted until validation passes, so retries are duplicate-free.
+      Applied to all provider-call sites (generic chunk flow, question single-
+      type, bank mode, content package, syllabus analysis, blueprint analysis).
+- [x] **Auto-fill the paper after generation (web).** Generate Missing now
+      fires `autofillAfterGeneration`: polls `GET /questions/bank/batches/:batchId`
+      every 3s (≤5 min) until terminal, then auto-runs Shuffle/Regenerate so the
+      freshly generated questions appear in the paper; toasts per failed job.
+- [x] **Validation.** api node tests 143/143 (5 new demand tests), web 15/15,
+      API+web typecheck, web eslint/prettier, worker pytest 83/83 + ruff + mypy
+      clean. Containers rebuilt (web + worker-ai) and verified live: new code
+      present in running containers; `preview?date=` route resolves (401 unauth,
+      not 404).
+
 ## Phase 39 — Authoritative Question Scope (2026-09-18)
 
 Subject/Chapter/Topic scope becomes the authoritative source of questions on

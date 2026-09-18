@@ -144,7 +144,7 @@ export class ExportService {
     // arrangement rule (section order, per-question marks, attempt N of M),
     // and the generated bank questions fill it. Without a pattern it stays a
     // flat practice pool grouped by question type.
-    let pattern: (typeof paperPatterns.$inferSelect) | undefined;
+    let pattern: typeof paperPatterns.$inferSelect | undefined;
     let sections: PaperPatternRuleRow[] = [];
     if (scope.patternId) {
       const [row] = await this.db
@@ -157,8 +157,8 @@ export class ExportService {
       if (!row) throw new NotFoundException('Paper pattern not found');
       pattern = row;
       sections = row.structure
-        ? flattenPatternRules(normalizePaperPatternStructure(row.structure)).filter((s) =>
-            s.questionType,
+        ? flattenPatternRules(normalizePaperPatternStructure(row.structure)).filter(
+            (s) => s.questionType,
           )
         : [];
     }
@@ -190,26 +190,17 @@ export class ExportService {
     if (sections.length > 0) {
       // Group the bank by the pattern's sections (matching on questionType).
       for (const section of sections) {
-        const sectionQuestions = selected.filter(
-          (q) => q.questionType === section.questionType,
-        );
+        const sectionQuestions = selected.filter((q) => q.questionType === section.questionType);
         if (sectionQuestions.length === 0) continue;
         blocks.push({ kind: 'heading', text: section.name });
-        if (
-          include === 'paper' &&
-          !section.compulsory &&
-          section.attemptCount &&
-          section.count
-        ) {
+        if (include === 'paper' && !section.compulsory && section.attemptCount && section.count) {
           blocks.push({
             kind: 'paragraph',
             text: `Attempt any ${section.attemptCount} of ${section.count} questions in this section.`,
           });
         }
         blocks.push(
-          ...sectionQuestions.map((q) =>
-            questionBlock(q, section.marksPerQuestion ?? undefined),
-          ),
+          ...sectionQuestions.map((q) => questionBlock(q, section.marksPerQuestion ?? undefined)),
         );
       }
       const general = selected.filter(
@@ -236,15 +227,22 @@ export class ExportService {
     return {
       title:
         include === 'paper'
-          ? (pattern ? `${pattern.title} — Question Paper` : 'Question Bank Export')
-          : (pattern ? `${pattern.title} — Question Bank Answer Key` : 'Question Bank Answer Key'),
+          ? pattern
+            ? `${pattern.title} — Question Paper`
+            : 'Question Bank Export'
+          : pattern
+            ? `${pattern.title} — Question Bank Answer Key`
+            : 'Question Bank Answer Key',
       blocks,
     };
   }
 
   /** Teacher-facing assessment results: the attempt ledger plus the computed
    * analysis (aggregates only — never per-student answers or answer keys). */
-  async buildAssessmentResultsDoc(instituteId: string, assessmentId: string): Promise<DocumentModel> {
+  async buildAssessmentResultsDoc(
+    instituteId: string,
+    assessmentId: string,
+  ): Promise<DocumentModel> {
     const [assessmentRow] = await this.db
       .select()
       .from(assessments)
@@ -484,12 +482,9 @@ export class ExportService {
       .where(eq(questionPaperQuestions.paperId, paperId))
       .orderBy(asc(questionPaperQuestions.sortOrder));
 
-    const patternSections = await this.patternSectionsForBlueprint(
-      instituteId,
-      paper.blueprintId,
-    );
+    const patternSections = await this.patternSectionsForBlueprint(instituteId, paper.blueprintId);
 
-    const subjects = await this.subjectNamesForBlueprint(instituteId, paper.blueprintId);
+    const subjects = await this.subjectNamesForPaper(instituteId, paper);
 
     const blocks = exportPaperBlocks({
       title: paper.title,
@@ -503,6 +498,34 @@ export class ExportService {
       scope: 'paper',
     });
     return { title: paper.title, blocks };
+  }
+
+  /** Subject display names for the paper's authoritative scope subject (the
+   * paper may restrict to subject/chapter/topic but the header shows the
+   * subject), falling back to the blueprint's pattern subjects for legacy
+   * papers that predate the scoped subject. */
+  private async subjectNamesForPaper(
+    instituteId: string,
+    paper: {
+      subjectId: string | null;
+      blueprintId: string | null;
+    },
+  ): Promise<string[]> {
+    if (paper.subjectId) {
+      const [row] = await this.db
+        .select({ name: subjects.name })
+        .from(subjects)
+        .where(
+          and(
+            eq(subjects.id, paper.subjectId),
+            eq(subjects.instituteId, instituteId),
+            isNull(subjects.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (row) return [row.name];
+    }
+    return this.subjectNamesForBlueprint(instituteId, paper.blueprintId);
   }
 
   /** Subject display names for a paper-pattern blueprint (empty when none). */
@@ -521,7 +544,10 @@ export class ExportService {
       .from(subjects)
       .where(
         and(
-          inArray(subjects.id, subjectIds.map((r) => r.subjectId)),
+          inArray(
+            subjects.id,
+            subjectIds.map((r) => r.subjectId),
+          ),
           eq(subjects.instituteId, instituteId),
           isNull(subjects.deletedAt),
         ),
@@ -539,12 +565,7 @@ export class ExportService {
     const [pattern] = await this.db
       .select({ structure: paperPatterns.structure })
       .from(paperPatterns)
-      .where(
-        and(
-          eq(paperPatterns.id, blueprintId),
-          eq(paperPatterns.instituteId, instituteId),
-        ),
-      )
+      .where(and(eq(paperPatterns.id, blueprintId), eq(paperPatterns.instituteId, instituteId)))
       .limit(1);
     if (pattern?.structure) {
       return flattenPatternRules(normalizePaperPatternStructure(pattern.structure));

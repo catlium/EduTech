@@ -17,6 +17,7 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
 import { QuestionGenerationService } from '../questions/question-generation.service.js';
 import { resolveScopeChain, scopeFilter } from '../common/utils/scope-resolver.js';
+import { buildPatternDemandBuckets } from './pattern-demand.js';
 import {
   planAutoSelection,
   computePatternCoverage,
@@ -302,10 +303,14 @@ export class QuestionPapersService {
 
   // ── Generate missing (shortage fill) ─────────────────
 
-  /* Count APPROVED+ACTIVE questions in the paper's stored scope per section
-   * (same filter the web builder's sectionPool uses: question type, then
-   * difficulty distribution). Returns the deficit buckets, letting the
-   * caller preview (dryRun) or queue. Generation happens into the same scope. */
+  /* Demand buckets for a paper: each section contributes its PRESENTED count
+   * (M — for attempt-N-of-M sections the full M must sit in the bank before
+   * N can be presented), split across its difficulty distribution. This is
+   * DEMAND (what the paper needs), not a pre-computed shortage: the caller
+   * (computeDeficitsAndGenerateMore) subtracts the in-scope bank + pending
+   * exactly once so the reported deficit survives. Sections sharing a type
+   * demand distinct questions — two 3-question MCQ sections need 6 in the
+   * bank — so buckets merge per (type, difficulty). */
   private async patternShortageBuckets(
     instituteId: string,
     paperId: string,
@@ -321,45 +326,10 @@ export class QuestionPapersService {
     const structure = normalizePaperPatternStructure(pattern.structure);
     const scope = await this.paperScope(paper);
 
-    const bank = await this.db
-      .select({ questionType: questions.questionType, difficulty: questions.difficulty })
-      .from(questions)
-      .where(
-        and(
-          eq(questions.instituteId, instituteId),
-          eq(questions.approvalStatus, 'APPROVED'),
-          eq(questions.status, 'ACTIVE'),
-          isNull(questions.deletedAt),
-          scopeFilter(scope),
-        ),
-      );
-
-    const DIFFS: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
-    const buckets: { questionType: string; difficulty: Difficulty; count: number }[] = [];
-    for (const rule of flattenPatternRules(structure)) {
-      const required = rule.count ?? 0;
-      const type = rule.questionType;
-      if (!type || required <= 0) continue;
-      const dist = rule.difficultyDistribution;
-      const pool = bank.filter((q) => {
-        if (q.questionType !== type) return false;
-        if (!dist) return true;
-        return (dist[q.difficulty as keyof typeof dist] ?? 0) > 0;
-      });
-      const shortage = required - pool.length;
-      if (shortage < 0) continue;
-      const share = DIFFS.filter((d) => (dist && (dist[d] ?? 0) > 0) || !dist);
-      if (share.length === 0) {
-        buckets.push({ questionType: type, difficulty: 'MEDIUM', count: shortage });
-      } else {
-        for (const difficulty of share) {
-          const n = Math.round((shortage * ((dist && dist[difficulty]) ?? 0)) / 100);
-          buckets.push({ questionType: type, difficulty, count: n });
-        }
-      }
-    }
-
-    return { scope, buckets };
+    return {
+      scope,
+      buckets: buildPatternDemandBuckets(structure),
+    };
   }
 
   async generateMissing(instituteId: string, userId: string, paperId: string, dryRun = false) {

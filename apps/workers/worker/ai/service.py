@@ -521,10 +521,13 @@ def generate(
         for index, chunk in enumerate(chunks):
             _check_cancelled(job_id)
             part = _part_label(label, chunks, index)
-            raw = provider.complete(
-                operation.build_messages(chunk, part, academic_context=academic_context)
+            outputs.append(
+                _complete_validated(
+                    provider,
+                    operation,
+                    operation.build_messages(chunk, part, academic_context=academic_context),
+                )
             )
-            outputs.append(_validate_output(operation, raw))
 
         output = outputs[0] if len(outputs) == 1 else _aggregate(operation, outputs)
         _check_cancelled(job_id)
@@ -667,18 +670,21 @@ def _generate_questions(
     for index, chunk in enumerate(chunks):
         _check_cancelled(job_id)
         label = _part_label(_source_label(source, materials, institute_id), chunks, index)
-        raw = provider.complete(
-            operation.build_messages(
-                chunk,
-                label,
-                type_=type_,
-                count=per_chunk_count,
-                difficulty=difficulty,
-                answer_format=answer_format,
-                academic_context=academic_context,
+        outputs.append(
+            _complete_validated(
+                provider,
+                operation,
+                operation.build_messages(
+                    chunk,
+                    label,
+                    type_=type_,
+                    count=per_chunk_count,
+                    difficulty=difficulty,
+                    answer_format=answer_format,
+                    academic_context=academic_context,
+                ),
             )
         )
-        outputs.append(_validate_output(operation, raw))
 
     assert operation.aggregate is not None
     aggregated = operation.model.model_validate(
@@ -770,17 +776,20 @@ def _generate_bank_questions(
     for index, chunk in enumerate(chunks):
         _check_cancelled(job_id)
         label = _part_label(_source_label(source, materials, institute_id), chunks, index)
-        raw = provider.complete(
-            generation.questions.build_bank_messages(
-                chunk,
-                label,
-                quota_desc=quota_desc,
-                total=total_requested,
-                format_map=format_map,
-                academic_context=academic_context,
+        outputs.append(
+            _complete_validated(
+                provider,
+                operation,
+                generation.questions.build_bank_messages(
+                    chunk,
+                    label,
+                    quota_desc=quota_desc,
+                    total=total_requested,
+                    format_map=format_map,
+                    academic_context=academic_context,
+                ),
             )
         )
-        outputs.append(_validate_output(operation, raw))
 
     aggregated = _aggregate_questions(outputs, limit=total_requested)
     validated = operation.model.model_validate(aggregated).model_dump()
@@ -917,19 +926,13 @@ def _generate_content_package(
     for index, chunk in enumerate(chunks):
         _check_cancelled(job_id)
         label = _part_label(_source_label(source, materials, institute_id), chunks, index)
-        raw = provider.complete(
-            operation.build_messages(chunk, label, types=types, academic_context=academic_context)
+        pkg_dump = _complete_validated(
+            provider,
+            operation,
+            operation.build_messages(
+                chunk, label, types=types, academic_context=academic_context
+            ),
         )
-        try:
-            parsed = operation.parse(raw)
-        except ValueError as exc:
-            raise GenerationError("AI returned an invalid response") from exc
-        try:
-            pkg = operation.model.model_validate(parsed)
-        except ValidationError as exc:
-            logger.warning("Content package output failed validation: %s", exc)
-            raise GenerationError("AI output failed validation") from exc
-        pkg_dump = pkg.model_dump()
         for t in types:
             raw_payload = pkg_dump.get(t)
             if isinstance(raw_payload, dict):
@@ -1040,8 +1043,9 @@ def _analyze_syllabus(
         for index, chunk in enumerate(chunks):
             _check_cancelled(job_id)
             part = _part_label(label, chunks, index)
-            raw = provider.complete(operation.build_messages(chunk, part))
-            outputs.append(_validate_output(operation, raw))
+            outputs.append(
+                _complete_validated(provider, operation, operation.build_messages(chunk, part))
+            )
 
         assert operation.aggregate is not None
         aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
@@ -1313,8 +1317,9 @@ def _generate_blueprint(
         label = _part_label(
             _source_label(source, materials, institute_id), chunks, index, coverage=False
         )
-        raw = provider.complete(operation.build_messages(chunk, label))
-        outputs.append(_validate_output(operation, raw))
+        outputs.append(
+            _complete_validated(provider, operation, operation.build_messages(chunk, label))
+        )
 
     assert operation.aggregate is not None
     aggregated = operation.model.model_validate(operation.aggregate(outputs)).model_dump()
@@ -1599,6 +1604,34 @@ def _validate_output(operation: Operation, raw: str) -> dict[str, Any]:
         raise GenerationError("AI output failed validation") from exc
 
     return model.model_dump()
+
+
+def _complete_validated(
+    provider: Any, operation: Operation, messages: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Call the provider and validate the result, re-requesting on validation
+    failure so a transient garbage response retries automatically instead of
+    failing the job. Nothing is persisted until validation passes, so each
+    retry is duplicate-free. Permanent garbage (still invalid after the cap)
+    surfaces as the final validation error.
+    """
+    last: GenerationError | None = None
+    for attempt in range(settings.ai_validation_retries + 1):
+        raw = provider.complete(messages)
+        try:
+            return _validate_output(operation, raw)
+        except GenerationError as exc:
+            last = exc
+            if attempt < settings.ai_validation_retries:
+                logger.warning(
+                    "AI %s output validation failed (attempt %d/%d), retrying: %s",
+                    operation.content_type,
+                    attempt + 1,
+                    settings.ai_validation_retries,
+                    exc,
+                )
+    assert last is not None  # loop always raised or returned
+    raise last
 
 
 def _resolve_scope(

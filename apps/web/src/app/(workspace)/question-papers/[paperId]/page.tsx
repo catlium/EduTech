@@ -79,6 +79,15 @@ interface GenerateMissingResult {
   totalDeficit: number;
 }
 
+interface BankBatchStatus {
+  batchId: string;
+  total: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  active: number;
+}
+
 export default function QuestionPaperDetailPage() {
   const router = useRouter();
   const params = useParams<{ paperId: string }>();
@@ -277,8 +286,9 @@ export default function QuestionPaperDetailPage() {
   }
 
   const loadPreview = useCallback(async (): Promise<ExportPreviewValue> => {
+    const dateTime = dateTimeQuery();
     const { preview } = await api<{ preview: ExportPreviewValue }>(
-      `/export/question-paper/${params.paperId}/preview${dateTimeQuery()}`,
+      `/export/question-paper/${params.paperId}/preview${dateTime ? `?${dateTime.slice(1)}` : ''}`,
     );
     return preview;
   }, [params.paperId, exportDate, exportTime]);
@@ -314,17 +324,45 @@ export default function QuestionPaperDetailPage() {
         },
       );
       setGenEffect(result);
+      setGenOpen(false);
       if (result.totalDeficit === 0) {
         toast.success('All sections fully covered — nothing to generate');
       } else if (result.batchId) {
-        toast.success('Generation queued — questions will appear once approved');
+        toast.success('Generation queued — questions will appear in the paper when complete');
+        void autofillAfterGeneration(result.batchId);
       }
       await fetchPaper();
-      setGenOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to generate questions');
     } finally {
       setGenerating(false);
+    }
+  }
+
+  /* Poll the bank batch until every job is terminal, then reshuffle the paper
+     so the freshly generated questions appear (the API only fills the bank;
+     the existing links stay untouched until selection runs again). */
+  async function autofillAfterGeneration(batchId: string) {
+    try {
+      const deadline = Date.now() + 5 * 60_000;
+      let failed = 0;
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const batch = await api<BankBatchStatus>(`/questions/bank/batches/${batchId}`);
+        if (batch.active === 0) {
+          failed = batch.failed;
+          break;
+        }
+        if (Date.now() >= deadline) throw new Error('Generation is taking longer than expected');
+      }
+      await onAutoSelect();
+      if (failed > 0) {
+        toast.error(`${failed} question generation job${failed === 1 ? '' : 's'} failed`);
+      } else {
+        toast.success('New questions added to the paper');
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Generation still running — shuffle manually later');
     }
   }
 

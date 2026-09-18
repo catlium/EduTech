@@ -2,7 +2,7 @@
 
 ## Current test inventory (verified 2026-09-18)
 
-- API native suite: **138/138** across 18 node:test files in `apps/api/src`.
+- API native suite: **143/143** across 18 node:test files in `apps/api/src`.
 - Worker AI/material: **83** pytest (12 files) + ruff + mypy clean
   (`apps/workers/tests`).
 - OCR engine: **21** (`apps/ocr/ocr_engine`), ocr-worker: **10**
@@ -12,6 +12,67 @@
   `node --test` — no `test` script in `apps/web/package.json`).
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
+
+## Phase 44 — Generation UX: deficit-driven generate-missing, export fixes, AI retry + auto-fill (2026-09-18)
+
+**Status: implementation + validation complete; commit + push pending.**
+
+Generate Missing silently no-oped after the Phase 43 scope work (reporting the
+resource "already present" while the paper was still short), QP date/time
+preview 404'd, the exported QP dropped its scoped subject, and freshly
+generated questions never surfaced in the paper until a manual shuffle.
+
+### Completed work
+
+- **Generate-missing demand fix.** Root cause: `patternShortageBuckets`
+  passed pre-computed *shortages* into `computeDeficitsAndGenerateMore`, which
+  subtracted the in-scope bank *again* → deficit 0 whenever the bank covered the
+  shortage. New pure `buildPatternDemandBuckets()`
+  (`question-papers/pattern-demand.ts` + 5 unit tests) returns full section
+  DEMAND — M per section (attempt-N-of-M demands all M in the bank), split
+  largest-remainder across the difficulty distribution, merged per
+  `(type, difficulty)` — so the deficit is computed exactly once and real
+  shortfalls queue. Covered sections yield NO_ACTION with accurate totals.
+- **QP export preview URL.** `dateTimeQuery()` started with `&` but was joined
+  straight onto `/preview` → `Cannot GET …/preview&date=…`. Preview now builds
+  `/preview?date=…&time=…`.
+- **QP export subject header.** `subjectNamesForPaper()` resolves the paper's
+  authoritative `subjectId` (fall back to blueprint pattern subjects for legacy
+  rows); the exported header carries the subject.
+- **AI validation auto-retry (worker).** `WORKER_AI_VALIDATION_RETRIES`
+  (default 2). `_complete_validated()` re-requests the provider with the same
+  jobId when output fails parse/schema validation; nothing persists until a
+  validation passes so retries are duplicate-free. Applied at every
+  provider call site (generic chunk flow, questions single-type, bank mode,
+  content package, syllabus analysis, blueprint analysis).
+- **Auto-fill after generation (web).** Generate Missing now polls
+  `GET /questions/bank/batches/:batchId` every 3 s (≤5 min) until terminal,
+  auto-runs Shuffle/Regenerate, and refreshes — the generated questions appear
+  in the paper without a manual shuffle; per-job failures surface as toasts.
+
+### Validation
+
+- API **143/143** (5 new pattern-demand tests), web **15/15**, API + web
+  typecheck clean, web eslint/prettier applied, worker pytest **83/83** +
+  ruff + mypy clean.
+- Containers rebuilt (`web`, `worker-ai`) and verified live: running containers
+  bundle `autofillAfterGeneration` (web) and `ai_validation_retries` +
+  `_complete_validated` (worker installed site-packages).
+- Live route check: `GET /api/v1/export/question-paper/…/preview?date=…&time=…`
+  resolves (401 unauthenticated, not 404).
+
+### Known issues / deferred
+
+- The web auto-fill maxes out at ~5 minutes of polling; a slower generation
+  falls back to "shuffle manually later".
+- `retry-failed` stays manual for non-validation failures (API batch endpoint
+  already exists); only validation-output failures auto-retry at the worker.
+
+### Exact recommended next task
+
+Commit + push this Phase 44 checkpoint, then run the full e2e suite
+(`paper_pattern_e2e.sh`, `attempts_e2e.sh`, `sec14_e2e.sh`, `demo_e2e.sh`,
+`p8_e2e.sh`) against the rebuilt demo/dev stack.
 
 ## Phase 43 — Authoritative question scope (2026-09-18)
 
