@@ -9,7 +9,7 @@ questions. Known remaining work is flagged inline as `KNOWN-GAP` and listed in
 
 | Entity            | Schema                                          | Role                                                              |
 | ----------------- | ----------------------------------------------- | ----------------------------------------------------------------- |
-| `paper_patterns`  | `packages/database/src/schema/paper-patterns.ts` | The blueprint: subject scope, sections, per-section type×difficulty marks + count rules, attempt lines. Must be `APPROVED` before questions are generated from it. |
+| `paper_patterns`  | `packages/database/src/schema/paper-patterns.ts` | The blueprint: sections, per-section type×difficulty marks + count rules, attempt lines. **Pure structure/evaluation — it never supplies, infers, expands, or overrides the question scope.** Must be `APPROVED` before questions are generated from it. |
 | `questions`       | `schema/questions.ts`                            | Bank items. `source_pattern_id` (provenance) written at generation. |
 | `question_papers` | `schema/question-papers.ts` + `question_paper_questions` junction | A fixed snapshot of the bank for a real exam: `blueprintId`, duration, maxMarks, instructions, per-question `marks`/`section`/`sortOrder` copied at selection time. |
 | `assessments`     | `schema/examinations.ts` (+ `AssessmentQuestions`) | The live deliverable: state machine DRAFT→PUBLISHED→ACTIVE→COMPLETED, `blueprintId` retained, every attempt graded. |
@@ -26,6 +26,25 @@ Provenance columns:
 > reads it. `blueprintId` on papers/assessments IS read (pattern-coverage,
 > attempt-N-of-M, subject-name resolution, section grouping).
 
+## 1a. Authoritative question scope
+
+Every **question paper and assessment** carries an explicit, required scope:
+`subject_id` (always) + optional `chapter_id` / `topic_id`, enforced by the
+`*_scope_chain` CHECK (topic ⇒ chapter ⇒ subject) and resolved/validated by
+`apps/api/src/common/utils/scope-resolver.ts` (`resolveScopeChain`). The scope
+is the **only** source of questions, for both manual selection and AI
+generation:
+
+- **topic** → only questions with `topic_id = scope.topicId`
+- **chapter** → only that chapter's questions (its own + its topics')
+- **subject** → only that subject's questions
+
+The most specific stored level wins (`scopeFilter` / `scopeCoversRow`).
+Creation is blocked without a subject; generation/selection/publish are blocked
+for any legacy row that has no scope. The paper pattern supplies **only**
+structure and marks — it never defines or constrains the scope. There is no
+pattern-to-subject fallback.
+
 ## 2. Flow overview
 
 ```
@@ -39,10 +58,10 @@ Question Bank generation
    │   type/difficulty mismatches are dropped, never muddled)
    ▼
 Question Paper
-   │  POST /question-papers                      (from an approved pattern)
-   │  POST /question-papers/:id/select-from-pattern  (planAutoSelection)
+   │  POST /question-papers  (from an approved pattern; explicit scope required)
+   │  POST /question-papers/:id/select-from-pattern  (planAutoSelection, scoped)
    │  GET  /question-papers/:id/pattern-coverage (OK/SHORT/EXCESS/TYPE_MISMATCH)
-   │  POST /question-papers/:id/generate-missing  (deficit fill [+buffer])
+   │  POST /question-papers/:id/generate-missing  (deficit fill within scope)
    │  GET  /question-papers/:id/questions (sectioned, marks, attempt lines)
    ▼
 Assessment
@@ -68,10 +87,10 @@ Exports  → paper (student scope), answer key (teacher scope), results
   bucket is applied (a `...SHUFFLE` comment exists but no `ORDER BY RANDOM`).
   Systematically different, but correct, papers are not generated.
 
-## 4. Replenishment / buffer (`generate-more`, `generate-missing`)
+## 4. Replenishment (`generate-more`, `generate-missing`)
 
 Two endpoints share one pipeline (`computeDeficitsAndGenerateMore`,
-`apps/api/src/questions/question-generation.service.ts:744`):
+`apps/api/src/questions/question-generation.service.ts:744`, always scoped):
 
 1. `countApprovedQuestions` per (type,difficulty) bucket in scope.
 2. `countPendingQuestions` — a teacher's outstanding (unapproved) generation
@@ -81,11 +100,9 @@ Two endpoints share one pipeline (`computeDeficitsAndGenerateMore`,
 4. If deficit is 0, a **dry-run** returns `status: 'NO_ACTION'`; with
    `dryRun:false` it **queues bank generation for the deficit buckets only**
    (the surplus stays untouched) and polls the resulting batch.
-5. `POST /question-papers/:id/generate-missing` adds an optional **buffer**
-   (`{buffer, dryRun?}`): every bucket's target becomes
-   `count + buffer` before the deficit is computed, so the paper keeps a few
-   spares. The dry-run shortage preview feeds the builder wizard; the teacher
-   confirms before real queueing (`question-papers.service.ts:319-340`).
+5. `POST /question-papers/:id/generate-missing` (`{dryRun?}`) fills only the
+   paper's scope deficits; the dry-run shortage preview feeds the builder
+   wizard, and the teacher confirms before real queueing.
 6. Chunked batching (`planQuestionBankJobs`): each bucket is split into chunks
    ≤ the type's max batch size; per-chunk dedup keys
    (`qbank:<batchId>:<type>:<difficulty>:<sub>`) make retries idempotent.

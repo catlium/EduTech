@@ -11,6 +11,7 @@ import type { Database } from '@catlium/database';
 import { materials, paperPatterns, paperPatternSubjects, subjects } from '@catlium/database';
 import { normalizePaperPatternStructure, type PaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { MaterialsService } from '../materials/materials.service.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
@@ -99,13 +100,15 @@ export class PaperPatternsService {
       version?: number;
     },
   ) {
-const row = await this.requirePattern(instituteId, patternId);
+    const row = await this.requirePattern(instituteId, patternId);
     // The lock guards structure/data edits, not naming: renaming a pattern
     // (title/description) stays allowed while locked so typo fixes don't need
     // an unlock.
     const touchesStructure = input.structure !== undefined || input.subjectIds !== undefined;
     if (row.isLocked && touchesStructure) {
-      throw new ConflictException('Paper pattern is locked — unlock it before editing its structure');
+      throw new ConflictException(
+        'Paper pattern is locked — unlock it before editing its structure',
+      );
     }
     if (input.version !== undefined && input.version !== row.version) {
       throw new ConflictException('Paper pattern has been modified — refresh and retry');
@@ -288,12 +291,7 @@ const row = await this.requirePattern(instituteId, patternId);
 
   /** Lock or unlock a pattern. Approving auto-locks; locking is an explicit
    *  accidental-mutation guard, not a status change. */
-  async setLocked(
-    instituteId: string,
-    userId: string,
-    patternId: string,
-    isLocked: boolean,
-  ) {
+  async setLocked(instituteId: string, userId: string, patternId: string, isLocked: boolean) {
     await this.requirePattern(instituteId, patternId);
     const [updated] = await this.db
       .update(paperPatterns)
@@ -309,7 +307,13 @@ const row = await this.requirePattern(instituteId, patternId);
     instituteId: string,
     userId: string,
     patternId: string,
-    input: { title?: string; description?: string },
+    input: {
+      title?: string;
+      description?: string;
+      subjectId?: string;
+      chapterId?: string;
+      topicId?: string;
+    },
   ) {
     const row = await this.requirePattern(instituteId, patternId);
     if (row.status !== 'APPROVED' || !row.structure) {
@@ -322,8 +326,20 @@ const row = await this.requirePattern(instituteId, patternId);
 
     const structure = this.asStructure(row.structure);
 
-    // Never create an assessment the bank cannot fully supply.
-    const coverage = await this.generation.ensurePatternCoverage(instituteId, userId, row.id);
+    // The scope is the authoritative source of questions. The pattern never
+    // supplies it, so a missing subject hard-blocks creation.
+    const scope = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: true },
+      input,
+    );
+    if (!scope.subjectId) throw new BadRequestException('A question scope requires a subject');
+
+    // Never create an assessment the bank cannot fully supply within the scope.
+    const coverage = await this.generation.ensurePatternCoverage(instituteId, userId, row.id, {
+      subjectId: scope.subjectId,
+      chapterId: scope.chapterId ?? undefined,
+      topicId: scope.topicId ?? undefined,
+    });
     if (!coverage.covered) {
       if (coverage.status === 'GENERATING') {
         return {
@@ -350,6 +366,9 @@ const row = await this.requirePattern(instituteId, patternId);
       maxMarks: structure.totalMarks,
       instructions: { text: structure.instructions.join('. ') },
       blueprintId: row.id,
+      subjectId: scope.subjectId,
+      chapterId: scope.chapterId ?? undefined,
+      topicId: scope.topicId ?? undefined,
     });
     return assessment;
   }

@@ -185,15 +185,19 @@ ok "$PD" 200 "PP-08 current version edit 200"
 body_has '"version":2' "PP-08 optimistic bump to 2"
 
 echo "== PP-09 assessment from an APPROVED blueprint =="
-AS=$(req POST "/paper-patterns/$PAT1/assessment" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" -d '{}')
+# Scope is required and authoritative — the pattern only supplies structure.
+AS=$(req POST "/paper-patterns/$PAT1/assessment" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" -d "{\"subjectId\":\"$SUBJ\",\"topicId\":\"$TOPIC\"}")
 ok "$AS" 201 "PP-09 assessment 201"
 ASSESS=$(jget id)
 body_has '"blueprintId":"'$PAT1'"' "PP-09 blueprint provenance"
 body_has '"durationMinutes":40' "PP-09 duration from blueprint"
 body_has '"maxMarks":20' "PP-09 maxMarks from blueprint"
 body_has '"status":"DRAFT"' "PP-09 draft assessment"
-AN=$(req POST "/paper-patterns/$PAT3/assessment" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" -d '{}')
+body_has '"subjectId":"'$SUBJ'"' "PP-09 explicit scope stored"
+AN=$(req POST "/paper-patterns/$PAT3/assessment" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" -d "{\"subjectId\":\"$SUBJ\",\"topicId\":\"$TOPIC\"}")
 ok "$AN" 400 "PP-09 assessment from non-approved -> 400"
+NS=$(req POST "/paper-patterns/$PAT1/assessment" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" -d '{}')
+ok "$NS" 400 "PP-09 assessment without scope -> 400"
 
 echo "== PP-10 marks override when linking questions =="
 # Reuse the 3 AI-generated MCQs: approve them, then link with a marks override.

@@ -1,7 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
-import { chapters, subjects, topics } from '@catlium/database';
+import { chapters, questions, subjects, topics } from '@catlium/database';
 
 export interface ScopeInput {
   subjectId?: string;
@@ -102,4 +103,31 @@ export async function resolveScopeChain(
     throw new BadRequestException('subjectId is required');
   }
   return { subjectId: null, chapterId: null, topicId: null };
+}
+
+export interface ScopeRow {
+  subjectId: string | null;
+  chapterId: string | null;
+  topicId: string | null;
+}
+
+/** Any scope shape (nullable and/or optional ids) accepted by the helpers. */
+export interface ScopeLike {
+  subjectId?: string | null;
+  chapterId?: string | null;
+  topicId?: string | null;
+}
+
+/** Most specific stored scope level wins: topic -> chapter (covers its topics too) -> subject. */
+export function scopeFilter(scope: ScopeLike): SQL | undefined {
+  if (scope.topicId) return eq(questions.topicId, scope.topicId);
+  if (scope.chapterId) return eq(questions.chapterId, scope.chapterId);
+  return scope.subjectId ? eq(questions.subjectId, scope.subjectId) : undefined;
+}
+
+/** True when a question row falls within the scope's most specific stored level. */
+export function scopeCoversRow(scope: ScopeLike, row: ScopeRow): boolean {
+  if (scope.topicId) return row.topicId === scope.topicId;
+  if (scope.chapterId) return row.chapterId === scope.chapterId;
+  return scope.subjectId != null && row.subjectId === scope.subjectId;
 }

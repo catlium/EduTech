@@ -16,6 +16,7 @@ import { QuestionPapersService } from './question-papers.service.js';
 import {
   CreateQuestionPaperDto,
   RenameQuestionPaperDto,
+  SetQuestionPaperScopeDto,
   GenerateMissingQuestionPaperDto,
 } from './dto/question-papers.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
@@ -47,6 +48,8 @@ export class QuestionPapersController {
       title: dto.title,
       description: dto.description,
       subjectId: dto.subjectId,
+      chapterId: dto.chapterId,
+      topicId: dto.topicId,
     });
   }
 
@@ -92,10 +95,7 @@ export class QuestionPapersController {
     @Tenant() tenant: TenantContext,
     @Param('paperId', ParseUUIDPipe) paperId: string,
   ) {
-    const questions = await this.questionPapersService.listQuestions(
-      tenant.instituteId,
-      paperId,
-    );
+    const questions = await this.questionPapersService.listQuestions(tenant.instituteId, paperId);
     return { questions };
   }
 
@@ -125,6 +125,17 @@ export class QuestionPapersController {
     return { coverage };
   }
 
+  @Patch(':paperId/scope')
+  @RequiredRoles(...WRITE_ROLES)
+  async setScope(
+    @Tenant() tenant: TenantContext,
+    @Param('paperId', ParseUUIDPipe) paperId: string,
+    @Body() dto: SetQuestionPaperScopeDto,
+  ) {
+    const paper = await this.questionPapersService.setScope(tenant.instituteId, paperId, dto);
+    return { paper };
+  }
+
   @Post(':paperId/generate-missing')
   @RequiredRoles(...WRITE_ROLES)
   async generateMissing(
@@ -137,7 +148,6 @@ export class QuestionPapersController {
       tenant.instituteId,
       user.userId,
       paperId,
-      dto.buffer ?? 0,
       dto.dryRun ?? false,
     );
     return { result };

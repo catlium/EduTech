@@ -16,6 +16,7 @@ import { ExaminationsService } from './examinations.service.js';
 import { CreateAssessmentDto } from './dto/create-assessment.dto.js';
 import { UpdateAssessmentDto } from './dto/update-assessment.dto.js';
 import { AddQuestionsDto } from './dto/add-questions.dto.js';
+import { SetAssessmentScopeDto } from './dto/set-assessment-scope.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -93,6 +94,21 @@ export class ExaminationsController {
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     await this.examinationsService.deleteAssessment(tenant.instituteId, assessmentId);
+  }
+
+  @Patch(':assessmentId/scope')
+  @RequiredRoles(...WRITE_ROLES)
+  async setScope(
+    @Tenant() tenant: TenantContext,
+    @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
+    @Body() dto: SetAssessmentScopeDto,
+  ) {
+    const assessment = await this.examinationsService.setScope(
+      tenant.instituteId,
+      assessmentId,
+      dto,
+    );
+    return { assessment };
   }
 
   @Post(':assessmentId/publish')

@@ -1,23 +1,22 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import {
   questionPapers,
   questionPaperQuestions,
   paperPatterns,
-  paperPatternSubjects,
   questions,
   subjects,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
-import { flattenPatternRules, normalizePaperPatternStructure, type PaperPatternStructure } from '@catlium/contracts';
+import {
+  flattenPatternRules,
+  normalizePaperPatternStructure,
+  type PaperPatternStructure,
+} from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
 import { QuestionGenerationService } from '../questions/question-generation.service.js';
+import { resolveScopeChain, scopeFilter } from '../common/utils/scope-resolver.js';
 import {
   planAutoSelection,
   computePatternCoverage,
@@ -26,10 +25,19 @@ import {
 
 export interface CreateQuestionPaperInput {
   patternId: string;
+  /** Authoritative question scope. Subject is always required; Chapter/Topic
+   * are optional refinements. The pattern never supplies scope. */
+  subjectId: string;
+  chapterId?: string;
+  topicId?: string;
   title?: string;
   description?: string;
-  /** Scopes a General (no-subject) pattern's question selection to one subject. */
-  subjectId?: string;
+}
+
+export interface QuestionScope {
+  subjectId: string;
+  chapterId?: string;
+  topicId?: string;
 }
 
 /** A Question Paper is a fixed, teacher-selected paper built from an approved
@@ -53,15 +61,27 @@ export class QuestionPapersService {
     const pattern = await this.requireApprovedPattern(instituteId, input.patternId);
     const structure = normalizePaperPatternStructure(pattern.structure);
 
-    let subjectId: string | null = null;
-    if (input.subjectId) {
-      await this.assertSubjectInInstitute(instituteId, input.subjectId);
-      subjectId = input.subjectId;
-    }
+    // The scope is the authoritative source of questions; the pattern never
+    // supplies or infers it. Subject is always required, chapter/topic are
+    // optional refinements (topic requires chapter requires subject).
+    const scope = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: true },
+      input,
+    );
+    if (!scope.subjectId) throw new BadRequestException('A question scope requires a subject');
 
     // Never create a paper the bank cannot fully supply. If questions are
     // missing we queue generation and report back; the caller polls and retries.
-    const coverage = await this.generation.ensurePatternCoverage(instituteId, createdBy, pattern.id);
+    const coverage = await this.generation.ensurePatternCoverage(
+      instituteId,
+      createdBy,
+      pattern.id,
+      {
+        subjectId: scope.subjectId,
+        chapterId: scope.chapterId ?? undefined,
+        topicId: scope.topicId ?? undefined,
+      },
+    );
     if (!coverage.covered) {
       if (coverage.status === 'GENERATING') {
         return {
@@ -88,7 +108,9 @@ export class QuestionPapersService {
         title: input.title ?? `${pattern.title} — Question Paper`,
         description: input.description ?? pattern.description,
         blueprintId: pattern.id,
-        subjectId,
+        subjectId: scope.subjectId,
+        chapterId: scope.chapterId,
+        topicId: scope.topicId,
         durationMinutes: structure.durationMinutes,
         maxMarks: structure.totalMarks,
         instructions: structuredIntoInstructions(structure),
@@ -132,7 +154,7 @@ export class QuestionPapersService {
     return { ...paper, subjects };
   }
 
-async renamePaper(instituteId: string, paperId: string, title: string) {
+  async renamePaper(instituteId: string, paperId: string, title: string) {
     const existing = await this.requirePaper(instituteId, paperId);
     if (!title.trim()) {
       throw new BadRequestException('Title cannot be blank');
@@ -194,7 +216,7 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
     const structure = normalizePaperPatternStructure(pattern.structure);
     const sections = flattenPatternRules(structure);
 
-    const subjectIds = await this.patternSubjectIds(pattern.id, paper.subjectId);
+    const scope = await this.paperScope(paper);
 
     const linked = await this.db
       .select({ questionId: questionPaperQuestions.questionId })
@@ -202,26 +224,32 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
       .where(eq(questionPaperQuestions.paperId, paperId));
     const taken = new Set(linked.map((r) => r.questionId));
 
-    const typeCodes = new Set(
-      sections.flatMap((s) => (s.questionType ? [s.questionType] : [])),
-    );
+    const typeCodes = new Set(sections.flatMap((s) => (s.questionType ? [s.questionType] : [])));
     const conditions = [
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'APPROVED'),
       eq(questions.status, 'ACTIVE'),
       isNull(questions.deletedAt),
+      scopeFilter(scope),
     ];
-    if (subjectIds.length > 0) conditions.push(inArray(questions.subjectId, subjectIds));
     if (typeCodes.size > 0) conditions.push(inArray(questions.questionType, [...typeCodes]));
 
     const rows = await this.db
-      .select({ id: questions.id, questionType: questions.questionType, difficulty: questions.difficulty })
+      .select({
+        id: questions.id,
+        questionType: questions.questionType,
+        difficulty: questions.difficulty,
+      })
       .from(questions)
       .where(and(...conditions));
 
     const plan = planAutoSelection(
       sections,
-      rows.map((r) => ({ id: r.id, questionType: r.questionType, difficulty: r.difficulty as Difficulty })),
+      rows.map((r) => ({
+        id: r.id,
+        questionType: r.questionType,
+        difficulty: r.difficulty as Difficulty,
+      })),
       taken,
     );
 
@@ -272,46 +300,39 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
     };
   }
 
-  // ── Generate missing (shortage fill with buffer) ────────────────
+  // ── Generate missing (shortage fill) ─────────────────
 
-  /* Count APPROVED+ACTIVE questions in the pattern's subject scope per
-   * section (same filter the web builder's sectionPool uses: question type,
-   * then difficulty distribution). Returns the deficit buckets, letting the
-   * caller preview (dryRun) or queue. */
+  /* Count APPROVED+ACTIVE questions in the paper's stored scope per section
+   * (same filter the web builder's sectionPool uses: question type, then
+   * difficulty distribution). Returns the deficit buckets, letting the
+   * caller preview (dryRun) or queue. Generation happens into the same scope. */
   private async patternShortageBuckets(
     instituteId: string,
     paperId: string,
-  ): Promise<{ subjectId: string; buckets: { questionType: string; difficulty: Difficulty; count: number }[] }> {
+  ): Promise<{
+    scope: QuestionScope;
+    buckets: { questionType: string; difficulty: Difficulty; count: number }[];
+  }> {
     const paper = await this.requirePaper(instituteId, paperId);
     if (!paper.blueprintId) {
       throw new BadRequestException('Question paper has no paper-pattern blueprint');
     }
     const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
     const structure = normalizePaperPatternStructure(pattern.structure);
-
-    const subjectIds = await this.patternSubjectIds(pattern.id, paper.subjectId);
-    // A scoped paper always generates into its own subject; an unscoped paper
-    // that reached a single-subject pattern uses that subject.
-    const subjectId = paper.subjectId ?? subjectIds[0];
-    if (!subjectId) {
-      throw new BadRequestException('Paper pattern has no subject scope');
-    }
-
-    const scopeConditions = [
-      eq(questions.instituteId, instituteId),
-      eq(questions.approvalStatus, 'APPROVED'),
-      eq(questions.status, 'ACTIVE'),
-      isNull(questions.deletedAt),
-      inArray(
-        questions.subjectId,
-        paper.subjectId ? [paper.subjectId] : subjectIds.length > 0 ? subjectIds : [],
-      ),
-    ];
+    const scope = await this.paperScope(paper);
 
     const bank = await this.db
       .select({ questionType: questions.questionType, difficulty: questions.difficulty })
       .from(questions)
-      .where(and(...scopeConditions));
+      .where(
+        and(
+          eq(questions.instituteId, instituteId),
+          eq(questions.approvalStatus, 'APPROVED'),
+          eq(questions.status, 'ACTIVE'),
+          isNull(questions.deletedAt),
+          scopeFilter(scope),
+        ),
+      );
 
     const DIFFS: Difficulty[] = ['EASY', 'MEDIUM', 'HARD'];
     const buckets: { questionType: string; difficulty: Difficulty; count: number }[] = [];
@@ -338,21 +359,13 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
       }
     }
 
-    return { subjectId, buckets };
+    return { scope, buckets };
   }
 
-  async generateMissing(
-    instituteId: string,
-    userId: string,
-    paperId: string,
-    buffer = 0,
-    dryRun = false,
-  ) {
-    const { subjectId, buckets } = await this.patternShortageBuckets(instituteId, paperId);
-    const buffered = buckets
-      .map((b) => ({ ...b, count: b.count + buffer }))
-      .filter((b) => b.count > 0);
-    if (buffered.length === 0) {
+  async generateMissing(instituteId: string, userId: string, paperId: string, dryRun = false) {
+    const { scope, buckets } = await this.patternShortageBuckets(instituteId, paperId);
+    const filtered = buckets.filter((b) => b.count > 0);
+    if (filtered.length === 0) {
       return {
         generated: false,
         batchId: null,
@@ -365,16 +378,41 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
       };
     }
     return this.generation.computeDeficitsAndGenerateMore(instituteId, userId, {
-      subjectId,
-      buckets: buffered,
+      subjectId: scope.subjectId,
+      chapterId: scope.chapterId,
+      topicId: scope.topicId,
+      buckets: filtered,
       dryRun,
     });
+  }
+
+  // ── Scope ─────────────────────────────────
+
+  async setScope(instituteId: string, paperId: string, scope: QuestionScope) {
+    const existing = await this.requirePaper(instituteId, paperId);
+    const resolved = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: true },
+      scope,
+    );
+    if (!resolved.subjectId) throw new BadRequestException('A question scope requires a subject');
+    const [updated] = await this.db
+      .update(questionPapers)
+      .set({
+        subjectId: resolved.subjectId,
+        chapterId: resolved.chapterId,
+        topicId: resolved.topicId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(questionPapers.id, paperId), eq(questionPapers.instituteId, instituteId)))
+      .returning();
+    return updated ?? existing;
   }
 
   // ── Convert to assessment ─────────────────
 
   async createAssessmentFromPaper(instituteId: string, userId: string, paperId: string) {
     const paper = await this.requirePaper(instituteId, paperId);
+    const scope = await this.paperScope(paper);
     const links = await this.listQuestions(instituteId, paperId);
 
     if (links.length === 0) {
@@ -386,9 +424,11 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
       description: paper.description ?? undefined,
       durationMinutes: paper.durationMinutes ?? undefined,
       maxMarks: paper.maxMarks ?? undefined,
-      instructions:
-        (paper.instructions as Record<string, unknown> | null | undefined) ?? undefined,
+      instructions: (paper.instructions as Record<string, unknown> | null | undefined) ?? undefined,
       blueprintId: paper.blueprintId ?? undefined,
+      subjectId: scope.subjectId,
+      chapterId: scope.chapterId,
+      topicId: scope.topicId,
     });
 
     await this.examinations.addQuestions(
@@ -404,68 +444,38 @@ async renamePaper(instituteId: string, paperId: string, title: string) {
 
   // ── Internals ─────────────────────────────
 
-  /** Subject names for a paper: a scoped paper shows its own subject, otherwise
-   * the paper's blueprint subjects (empty when the pattern is General). */
+  /** Subject names for a paper's stored scope (empty when the paper has no
+   * scope — legacy rows that never set one). */
   private async paperSubjects(
     instituteId: string,
-    paper: {
-      subjectId: string | null;
-      blueprintId: string | null;
-    },
+    paper: { subjectId: string | null },
   ): Promise<string[]> {
-    if (paper.subjectId) {
-      const rows = await this.db
-        .select({ name: subjects.name })
-        .from(subjects)
-        .where(
-          and(eq(subjects.id, paper.subjectId), eq(subjects.instituteId, instituteId)),
-        );
-      return rows.map((r) => r.name);
-    }
-    if (!paper.blueprintId) return [];
+    if (!paper.subjectId) return [];
     const rows = await this.db
       .select({ name: subjects.name })
-      .from(paperPatternSubjects)
-      .innerJoin(subjects, eq(paperPatternSubjects.subjectId, subjects.id))
-      .where(
-        and(
-          eq(paperPatternSubjects.patternId, paper.blueprintId),
-          eq(subjects.instituteId, instituteId),
-        ),
-      );
+      .from(subjects)
+      .where(and(eq(subjects.id, paper.subjectId), eq(subjects.instituteId, instituteId)));
     return rows.map((r) => r.name);
   }
 
-  /** Effective question-selection subject scope for a paper: the paper's own
-   * subject when scoped, else the pattern's subjects (empty = General). */
-  private async patternSubjectIds(
-    patternId: string,
-    paperSubjectId: string | null,
-  ): Promise<string[]> {
-    if (paperSubjectId) return [paperSubjectId];
-    const subjectRows = await this.db
-      .select({ subjectId: paperPatternSubjects.subjectId })
-      .from(paperPatternSubjects)
-      .innerJoin(subjects, eq(paperPatternSubjects.subjectId, subjects.id))
-      .where(
-        and(eq(paperPatternSubjects.patternId, patternId), isNull(subjects.deletedAt)),
+  /** The paper's own stored scope, always present for new papers. Legacy
+   * unscoped papers must set one before selection/generation/conversion. */
+  private async paperScope(paper: {
+    subjectId: string | null;
+    chapterId: string | null;
+    topicId: string | null;
+  }): Promise<QuestionScope> {
+    if (!paper.subjectId) {
+      throw new BadRequestException(
+        'This paper has no question scope — set a subject (with optional chapter/topic) first',
       );
-    return subjectRows.map((r) => r.subjectId);
-  }
-
-  private async assertSubjectInInstitute(instituteId: string, subjectId: string) {
-    const [subject] = await this.db
-      .select({ id: subjects.id })
-      .from(subjects)
-      .where(
-        and(
-          eq(subjects.id, subjectId),
-          eq(subjects.instituteId, instituteId),
-          isNull(subjects.deletedAt),
-        ),
-      )
-      .limit(1);
-    if (!subject) throw new NotFoundException('Subject not found in this institute');
+    }
+    // The DB scope-chain CHECK guarantees topic ⇒ chapter ⇒ subject consistency.
+    return {
+      subjectId: paper.subjectId,
+      chapterId: paper.chapterId ?? undefined,
+      topicId: paper.topicId ?? undefined,
+    };
   }
 
   private async requirePaper(instituteId: string, paperId: string) {

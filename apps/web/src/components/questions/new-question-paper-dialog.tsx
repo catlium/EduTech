@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, Plus } from 'lucide-react';
 
 import { api, ApiError, waitForBankBatch } from '@/lib/api';
-import type { PaperPattern, SubjectResponse } from '@catlium/contracts';
+import type { PaperPattern, SubjectResponse, ChapterResponse, TopicResponse } from '@catlium/contracts';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ScopeCascade, emptyCascade, type ScopeCascade as Scope } from '@/components/app/scope-cascade';
 
 type CreateFromPatternResponse =
   | { paper: { id: string } }
@@ -35,7 +36,7 @@ export function NewQuestionPaperDialog({
   onOpenChange,
   kind = 'paper',
   title = 'New Question Paper',
-  description = 'Pick an approved Paper Pattern — the paper is created and populated from your question bank in one step.',
+  description = 'Choose the question scope (subject required) and an approved Paper Pattern — the paper is created and populated from your bank within that scope.',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,10 +47,13 @@ export function NewQuestionPaperDialog({
   const router = useRouter();
   const [patterns, setPatterns] = useState<PaperPattern[]>([]);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
-  const [subjectId, setSubjectId] = useState('');
+  const [chapters, setChapters] = useState<ChapterResponse[]>([]);
+  const [topics, setTopics] = useState<TopicResponse[]>([]);
+  const [cascade, setCascade] = useState<Scope>(emptyCascade);
   const [patternId, setPatternId] = useState('');
   const [creating, setCreating] = useState(false);
   const isAssessment = kind === 'assessment';
+  const hasScope = !!cascade.subjectId;
 
   useEffect(() => {
     if (!open) return;
@@ -60,30 +64,70 @@ export function NewQuestionPaperDialog({
     api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal: ctrl.signal })
       .then(({ subjects }) => setSubjects(subjects))
       .catch(() => setSubjects([]));
-    setSubjectId('');
+    setCascade(emptyCascade());
     setPatternId('');
     return () => ctrl.abort();
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !cascade.subjectId) {
+      setChapters([]);
+      setTopics([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    api<{ chapters: ChapterResponse[] }>(
+      `/academic/subjects/${cascade.subjectId}/chapters`,
+      { signal: ctrl.signal },
+    )
+      .then(({ chapters }) => setChapters(chapters))
+      .catch(() => setChapters([]));
+    return () => ctrl.abort();
+  }, [open, cascade.subjectId]);
+
+  useEffect(() => {
+    if (!open || !cascade.chapterId) {
+      setTopics([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    api<{ topics: TopicResponse[] }>(`/academic/chapters/${cascade.chapterId}/topics`, {
+      signal: ctrl.signal,
+    })
+      .then(({ topics }) => setTopics(topics))
+      .catch(() => setTopics([]));
+    return () => ctrl.abort();
+  }, [open, cascade.chapterId]);
+
+  const handleCascadeChange = useCallback((next: Scope) => {
+    setCascade(next);
+  }, []);
 
   const available = patterns
     .filter(
       (p) =>
         p.status === 'APPROVED' &&
-        (p.subjectIds.length === 0 || !subjectId || p.subjectIds.includes(subjectId)),
+        (p.subjectIds.length === 0 || !cascade.subjectId || p.subjectIds.includes(cascade.subjectId)),
     )
     .sort((a, b) => a.title.localeCompare(b.title));
 
+  const scopeBody = {
+    subjectId: cascade.subjectId || undefined,
+    chapterId: cascade.chapterId || undefined,
+    topicId: cascade.topicId || undefined,
+  };
+
   async function createPaper() {
-    if (!patternId) return;
+    if (!patternId || !hasScope) return;
     setCreating(true);
     try {
       if (isAssessment) {
-        // The API only creates when the bank fully covers the pattern; on a
-        // shortfall it queues generation and returns the batch to wait on.
+        // The API only creates when the bank fully covers the pattern within
+        // the scope; on a shortfall it queues generation and returns the batch.
         for (let attempt = 0; attempt < 20; attempt += 1) {
           const res = await api<CreateFromPatternResponse>(
             `/paper-patterns/${patternId}/assessment`,
-            { method: 'POST', body: {} },
+            { method: 'POST', body: scopeBody },
           );
           if ('assessment' in res) {
             await api(`/assessments/${res.assessment.id}/select-from-pattern`, { method: 'POST' });
@@ -103,7 +147,7 @@ export function NewQuestionPaperDialog({
         for (let attempt = 0; attempt < 20; attempt += 1) {
           const res = await api<CreateFromPatternResponse>('/question-papers', {
             method: 'POST',
-            body: { patternId },
+            body: { patternId, ...scopeBody },
           });
           if ('paper' in res) {
             await api(`/question-papers/${res.paper.id}/select-from-pattern`, { method: 'POST' });
@@ -141,22 +185,13 @@ export function NewQuestionPaperDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid gap-2">
-            <Label>Subject</Label>
-            <Select value={subjectId} onValueChange={setSubjectId}>
-              <SelectTrigger>
-                <SelectValue placeholder="All subjects" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">All subjects</SelectItem>
-                {subjects.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <ScopeCascade
+            cascade={cascade}
+            subjects={subjects}
+            chapters={chapters}
+            topics={topics}
+            onChange={handleCascadeChange}
+          />
           <div className="grid gap-2">
             <Label>Approved paper pattern</Label>
             <Select value={patternId} onValueChange={setPatternId}>
@@ -182,8 +217,8 @@ export function NewQuestionPaperDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={() => void createPaper()} disabled={!patternId || creating}>
-            {creating ? 'Creating…' : isAssessment ? 'Create Assessment' : 'Create Question Paper'}
+          <Button onClick={() => void createPaper()} disabled={!patternId || !hasScope || creating}>
+            {creating ? <Loader2 className="size-4 animate-spin" /> : isAssessment ? 'Create Assessment' : 'Create Question Paper'}
           </Button>
         </DialogFooter>
       </DialogContent>

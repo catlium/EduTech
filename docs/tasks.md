@@ -1,5 +1,34 @@
 # Task Tracker
 
+## Phase 39 — Authoritative Question Scope (2026-09-18)
+
+Subject/Chapter/Topic scope becomes the authoritative source of questions on
+every Paper and Assessment. The paper pattern is pure structure/evaluation and
+never supplies, infers, expands, or overrides scope. The generate-missing
+buffer is removed. Legacy unscoped rows are blocked at
+generation/selection/publish and repaired via the set-scope endpoints.
+
+- [x] DB: scope columns (`subject_id`/`chapter_id`/`topic_id`) + `*_scope_chain`
+      CHECK + indexes on `question_papers` and `assessments`; migration
+      `0035_question_scope.sql` applied and recorded in
+      `drizzle.__drizzle_migrations` (id 35).
+- [x] Shared contracts: `QuestionScopeSchema`; QP + assessment create/response
+      schemas carry scope (subject required).
+- [x] API: `resolveScopeChain` + `scopeFilter`/`scopeCoversRow` in
+      `common/utils/scope-resolver.ts`; pattern-coverage counting scoped;
+      QP + examinations services enforce scope on create/link/select/publish;
+      new `PATCH /question-papers/:id/scope` and `PATCH /assessments/:id/scope`;
+      generate-missing buffer removed; dead pattern-subject scope inference
+      deleted from the generation service.
+- [x] Web: paper + assessment detail pages display scope, gate
+      shuffle/generate-missing/add-questions/publish until scoped, and offer
+      set-scope dialogs; new-paper dialog sends the full scope.
+- [x] Tests: `scope-resolver.test.ts` unit tests; e2e suites
+      (paper_pattern/attempts/sec14/demo/p8) updated to send required scope.
+- [x] Validation: API 138/138, web 15/15, API+web typecheck, eslint clean,
+      api/web containers rebuilt, migrate green.
+
+
 ## Phase 38 — Standalone Question Paper entity + shortage wizard (2026-09-16)
 
 Question Paper becomes a separate entity from Assessment: its own table, API,

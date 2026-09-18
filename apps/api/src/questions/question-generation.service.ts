@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   Inject,
 } from '@nestjs/common';
-import { eq, and, sql, asc, inArray, isNull, type SQL } from 'drizzle-orm';
+import { eq, and, sql, asc, isNull, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
   topics,
@@ -22,10 +22,10 @@ import type { Database } from '@catlium/database';
 import {
   flattenPatternRules,
   normalizePaperPatternStructure,
-  type PaperPatternStructure,
 } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
+import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { QuestionTypesService } from './question-types.service.js';
 import {
@@ -35,7 +35,6 @@ import {
 } from './build-bank-buckets.js';
 import { planQuestionBankJobs } from './build-question-batch.js';
 import { questionTypeBatchLimits } from './build-question-batch.js';
-import { patternMatchesSubject } from '../paper-patterns/paper-pattern-subjects.js';
 
 const OPERATION = 'AI_GENERATE_QUESTIONS';
 
@@ -79,7 +78,7 @@ export class QuestionGenerationService {
   // ── Legacy single-type generation (backward compatible) ────────────
 
   async requestGeneration(instituteId: string, userId: string, input: GenerateQuestionsInput) {
-    const topic = await this.assertTopicInInstitute(instituteId, input.topicId);
+    await this.assertTopicInInstitute(instituteId, input.topicId);
 
     const typeFormats = await this.resolveTypeFormats(instituteId, [input.questionType]);
 
@@ -97,11 +96,10 @@ export class QuestionGenerationService {
 
     // Blueprint-constrained generation: the approved pattern's structure is
     // attached to the job so the worker can target it and report satisfaction.
+    // The pattern never constrains the question source — the generation scope
+    // is always the authoritative scope.
     if (input.blueprintId) {
       const pattern = await this.loadApprovedPattern(instituteId, input.blueprintId);
-      if (!patternMatchesSubject(pattern.subjectIds, topic.subjectId)) {
-        throw new BadRequestException('Blueprint subject must match the generation topic subject');
-      }
       payload['params'] = {
         ...(payload['params'] as Record<string, unknown>),
         blueprint: { patternId: pattern.id, structure: normalizePaperPatternStructure(pattern.structure) },
@@ -474,19 +472,7 @@ export class QuestionGenerationService {
 
   // ── Blueprint-driven bank generation ────────────────────────────────
 
-  async getApprovedPattern(
-    instituteId: string,
-    blueprintId: string,
-  ): Promise<{ id: string; subjectIds: string[]; structure: PaperPatternStructure }> {
-    const pattern = await this.loadApprovedPattern(instituteId, blueprintId);
-    return {
-      id: pattern.id,
-      subjectIds: pattern.subjectIds,
-      structure: normalizePaperPatternStructure(pattern.structure),
-    };
-  }
-
-  /** Load an APPROVED pattern with its subject associations (empty = General). */
+  /** Load an APPROVED pattern, validating it exists and has a structure. */
   private async loadApprovedPattern(instituteId: string, blueprintId: string) {
     const [pattern] = await this.db
       .select()
@@ -500,14 +486,7 @@ export class QuestionGenerationService {
     if (!pattern.structure) {
       throw new BadRequestException('Blueprint has no structure to generate from');
     }
-    const subjectRows = await this.db
-      .select({ subjectId: paperPatternSubjects.subjectId })
-      .from(paperPatternSubjects)
-      .where(eq(paperPatternSubjects.patternId, pattern.id));
-    return {
-      ...pattern,
-      subjectIds: subjectRows.map((r) => r.subjectId),
-    };
+    return pattern;
   }
 
   async generateFromBlueprint(
@@ -515,14 +494,12 @@ export class QuestionGenerationService {
     userId: string,
     input: { blueprintId: string; subjectId?: string; chapterId?: string; topicId?: string },
   ) {
-    const pattern = await this.getApprovedPattern(instituteId, input.blueprintId);
-    const scope = await this.resolveScopeOrThrow(instituteId, input);
-    const scopeSubjectId = await this.scopeSubjectId(instituteId, scope);
-    if (!patternMatchesSubject(pattern.subjectIds, scopeSubjectId)) {
-      throw new BadRequestException('Blueprint subject must match the generation scope subject');
-    }
+    const pattern = await this.loadApprovedPattern(instituteId, input.blueprintId);
+    await this.resolveScopeOrThrow(instituteId, input);
 
-    const buckets = buildBucketsFromBlueprint(flattenPatternRules(pattern.structure));
+    const buckets = buildBucketsFromBlueprint(
+      flattenPatternRules(normalizePaperPatternStructure(pattern.structure)),
+    );
     if (buckets.length === 0) {
       throw new BadRequestException(
         'Blueprint has no section with a concrete question type and count to generate',
@@ -820,15 +797,18 @@ export class QuestionGenerationService {
 
   /** Full-coverage gate for paper/assessment generation. Selection only ever
    * takes APPROVED+ACTIVE questions, so "covered" means the approved bank
-   * fully supplies every (questionType, difficulty, count) the pattern needs.
-   * PENDING questions cannot be selected — they are treated as already
-   * addressed to avoid duplicate generation, but still block creation until
-   * approved. On a real deficit it queues exactly the shortfall via the normal
-   * bank generator. */
+   * fully supplies every (questionType, difficulty, count) the pattern needs
+   * WITHIN the authoritative question scope. PENDING questions cannot be
+   * selected — they are treated as already addressed to avoid duplicate
+   * generation, but still block creation until approved. On a real deficit it
+   * queues exactly the shortfall via the normal bank generator into the same
+   * scope. The scope is the ONLY source of questions; the pattern contributes
+   * structure only and never supplies/infers scope. */
   async ensurePatternCoverage(
     instituteId: string,
     userId: string,
     blueprintId: string,
+    scope: { subjectId: string; chapterId?: string; topicId?: string },
     options: { dryRun?: boolean } = {},
   ) {
     const pattern = await this.loadApprovedPattern(instituteId, blueprintId);
@@ -854,10 +834,20 @@ export class QuestionGenerationService {
     };
     if (requested.length === 0) return covered;
 
-    const subjectIds = pattern.subjectIds;
+    const chain = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: true },
+      scope,
+    );
+    if (!chain.subjectId) throw new BadRequestException('A question scope requires a subject');
+    const scopeRef: { kind: 'subject' | 'chapter' | 'topic'; id: string } = chain.topicId
+      ? { kind: 'topic', id: chain.topicId }
+      : chain.chapterId
+        ? { kind: 'chapter', id: chain.chapterId }
+        : { kind: 'subject', id: chain.subjectId };
+
     const [approved, pending] = await Promise.all([
-      this.countPatternBank(instituteId, subjectIds, requested, 'APPROVED'),
-      this.countPatternBank(instituteId, subjectIds, requested, 'PENDING'),
+      this.countApprovedQuestions(instituteId, scopeRef, requested),
+      this.countPendingQuestions(instituteId, scopeRef, requested),
     ]);
 
     const buckets = requested.map((b) => {
@@ -878,14 +868,6 @@ export class QuestionGenerationService {
 
     if (totalDeficit === 0) return { ...covered, buckets, totalExisting };
 
-    // A General (0 subjects) or multi-subject pattern is a pure structure
-    // template — there is no single subject scope to auto-fill missing
-    // questions, so creation proceeds with whatever the bank covers instead
-    // of blocking on the shortfall.
-    if (subjectIds.length !== 1) {
-      return { ...covered, buckets, totalExisting, totalDeficit };
-    }
-
     // PENDING covers every gap → generation already produced what the bank
     // needs, but it is still awaiting teacher approval before selection.
     const everyGapPending = buckets.every((b) => b.existing + b.pending >= b.requested);
@@ -901,8 +883,8 @@ export class QuestionGenerationService {
       };
     }
 
-    // A subject-scoped shortfall that cannot be auto-filled (dry-run preflight
-    // only) is reported; the real flow falls through to generation.
+    // A scoped shortfall that cannot be auto-filled (dry-run preflight only) is
+    // reported; the real flow falls through to generation.
     if (options.dryRun) {
       return {
         covered: false as const,
@@ -927,7 +909,9 @@ export class QuestionGenerationService {
       instituteId,
       userId,
       {
-        subjectId: subjectIds[0],
+        subjectId: chain.subjectId,
+        chapterId: chain.chapterId ?? undefined,
+        topicId: chain.topicId ?? undefined,
         count: deficitBuckets.reduce((s, b) => s + b.count, 0),
         blueprintId: pattern.id,
       },
@@ -943,54 +927,6 @@ export class QuestionGenerationService {
       batchId: generation.batchId,
       jobIds: generation.jobIds,
     };
-  }
-
-  /** Count bank questions per (type, difficulty) bucket across a set of
-   * subjects (empty set = the whole institute, matching a General pattern's
-   * selection scope). */
-  private async countPatternBank(
-    instituteId: string,
-    subjectIds: string[],
-    buckets: BankBucket[],
-    approvalStatus: 'APPROVED' | 'PENDING',
-  ): Promise<Map<string, number>> {
-    const conditions: SQL[] = [
-      eq(questions.instituteId, instituteId),
-      eq(questions.approvalStatus, approvalStatus),
-      eq(questions.status, 'ACTIVE'),
-      isNull(questions.deletedAt),
-    ];
-    if (subjectIds.length > 0) conditions.push(inArray(questions.subjectId, subjectIds));
-
-    const types = [...new Set(buckets.map((b) => b.questionType))];
-    const diffs = [...new Set(buckets.map((b) => b.difficulty))];
-    const rows = await this.db
-      .select({
-        questionType: questions.questionType,
-        difficulty: questions.difficulty,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(questions)
-      .where(
-        and(
-          ...conditions,
-          sql`${questions.questionType} IN (${sql.join(
-            types.map((t) => sql`${t}`),
-            sql`,`,
-          )})`,
-          sql`${questions.difficulty} IN (${sql.join(
-            diffs.map((d) => sql`${d}`),
-            sql`,`,
-          )})`,
-        ),
-      )
-      .groupBy(questions.questionType, questions.difficulty);
-
-    const map = new Map<string, number>();
-    for (const row of rows) {
-      map.set(`${row.questionType}|${row.difficulty}`, row.count);
-    }
-    return map;
   }
 
   private async resolveScopeOrThrow(

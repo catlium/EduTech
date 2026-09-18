@@ -27,8 +27,17 @@ import { EmptyState } from '@/components/app/empty-state';
 import { ErrorState } from '@/components/app/error-state';
 import { ConfirmDialog } from '@/components/app/confirm-dialog';
 import { PageLoader } from '@/components/app/loading';
+import { ScopeBreadcrumb } from '@/components/app/scope-cascade';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -42,6 +51,9 @@ import type {
   QuestionPaperResponse,
   QuestionPaperQuestion,
   PatternCoverageResponse,
+  SubjectResponse,
+  ChapterResponse,
+  TopicResponse,
 } from '@catlium/contracts';
 
 interface PaperWithSubjects extends QuestionPaperResponse {
@@ -95,6 +107,15 @@ export default function QuestionPaperDetailPage() {
 
   const [exportDate, setExportDate] = useState('');
   const [exportTime, setExportTime] = useState('');
+
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [scopeSaving, setScopeSaving] = useState(false);
+  const [scopeSubjects, setScopeSubjects] = useState<SubjectResponse[]>([]);
+  const [scopeChapters, setScopeChapters] = useState<ChapterResponse[]>([]);
+  const [scopeTopics, setScopeTopics] = useState<TopicResponse[]>([]);
+  const [scopeCascade, setScopeCascade] = useState({ subjectId: '', chapterId: '', topicId: '' });
+
+  const hasScope = !!paper?.subjectId;
 
   const isPatternBased = !!paper?.blueprintId;
   const patternSections = (coverage?.sections ?? []).filter((s) => s.requiredCount > 0);
@@ -172,6 +193,68 @@ export default function QuestionPaperDetailPage() {
     } finally {
       setCreatingAssess(false);
       setCreateAssessOpen(false);
+    }
+  }
+
+  async function openSetScope() {
+    setScopeOpen(true);
+    setScopeCascade({ subjectId: '', chapterId: '', topicId: '' });
+    try {
+      const { subjects } = await api<{ subjects: SubjectResponse[] }>('/academic/subjects');
+      setScopeSubjects(subjects);
+    } catch {
+      setScopeSubjects([]);
+    }
+  }
+
+  useEffect(() => {
+    if (!scopeOpen || !scopeCascade.subjectId) {
+      setScopeChapters([]);
+      setScopeTopics([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    api<{ chapters: ChapterResponse[] }>(`/academic/subjects/${scopeCascade.subjectId}/chapters`, {
+      signal: ctrl.signal,
+    })
+      .then(({ chapters }) => setScopeChapters(chapters))
+      .catch(() => setScopeChapters([]));
+    return () => ctrl.abort();
+  }, [scopeOpen, scopeCascade.subjectId]);
+
+  useEffect(() => {
+    if (!scopeOpen || !scopeCascade.chapterId) {
+      setScopeTopics([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    api<{ topics: TopicResponse[] }>(`/academic/chapters/${scopeCascade.chapterId}/topics`, {
+      signal: ctrl.signal,
+    })
+      .then(({ topics }) => setScopeTopics(topics))
+      .catch(() => setScopeTopics([]));
+    return () => ctrl.abort();
+  }, [scopeOpen, scopeCascade.chapterId]);
+
+  async function onSaveScope() {
+    if (!scopeCascade.subjectId) return;
+    setScopeSaving(true);
+    try {
+      await api(`/question-papers/${params.paperId}/scope`, {
+        method: 'PATCH',
+        body: {
+          subjectId: scopeCascade.subjectId,
+          chapterId: scopeCascade.chapterId || undefined,
+          topicId: scopeCascade.topicId || undefined,
+        },
+      });
+      toast.success('Question scope saved');
+      setScopeOpen(false);
+      await fetchPaper();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to set question scope');
+    } finally {
+      setScopeSaving(false);
     }
   }
 
@@ -277,17 +360,20 @@ export default function QuestionPaperDetailPage() {
       <PageHeader
         title={paper.title}
         description={[
-          paper.subjectId && paper.subjects?.length > 0
-            ? `Subject: ${paper.subjects.join(', ')}`
-            : paper.subjects?.length > 0
-              ? `${paper.subjects.join(', ')}`
-              : null,
+          hasScope
+            ? 'Scope: '
+            : 'No question scope set yet',
           paper.durationMinutes && `${paper.durationMinutes} min`,
           paper.maxMarks && `${paper.maxMarks} marks`,
           `${questions.length} question${questions.length !== 1 ? 's' : ''}`,
         ]
           .filter(Boolean)
           .join(' · ')}
+        children={
+          hasScope ? (
+            <ScopeBreadcrumb subjectId={paper.subjectId} chapterId={paper.chapterId} topicId={paper.topicId} />
+          ) : null
+        }
         actions={
           isTeacher && (
             <div className="flex flex-wrap gap-2">
@@ -300,21 +386,38 @@ export default function QuestionPaperDetailPage() {
                     setGenEffect(null);
                     setGenOpen(true);
                   }}
-                  disabled={coverage === null || patternSections.length === 0}
+                  disabled={coverage === null || patternSections.length === 0 || !hasScope}
+                  title={hasScope ? undefined : 'Set a question scope first'}
                 >
                   <Wand2 className="mr-1 size-3.5" /> Generate Missing
                 </Button>
               )}
               {isPatternBased && (
-                <Button variant="outline" size="sm" onClick={() => void onAutoSelect()} disabled={autoSelecting}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void onAutoSelect()}
+                  disabled={autoSelecting || !hasScope}
+                  title={hasScope ? undefined : 'Set a question scope first'}
+                >
                   <Wand2 className="mr-1 size-3.5" />
                   {autoSelecting ? 'Shuffling…' : 'Shuffle / Regenerate'}
+                </Button>
+              )}
+              {!hasScope && (
+                <Button variant="outline" size="sm" onClick={() => void openSetScope()}>
+                  <Wand2 className="mr-1 size-3.5" /> Set Question Scope
                 </Button>
               )}
               <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
                 <Download className="mr-1 size-3.5" /> Export
               </Button>
-              <Button size="sm" onClick={() => setCreateAssessOpen(true)}>
+              <Button
+                size="sm"
+                onClick={() => setCreateAssessOpen(true)}
+                disabled={!hasScope}
+                title={hasScope ? undefined : 'Set a question scope first'}
+              >
                 <ClipboardList className="mr-1 size-3.5" /> Create Assessment
               </Button>
               <Button
@@ -434,6 +537,74 @@ export default function QuestionPaperDetailPage() {
           )}
         </div>
       )}
+
+      {/* ── Set Question Scope dialog ── */}
+      <Dialog open={scopeOpen} onOpenChange={setScopeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set Question Scope</DialogTitle>
+            <DialogDescription>
+              The scope is the authoritative source of questions — subject required, chapter/topic
+              optional. This paper was created before scopes existed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Subject</Label>
+              <Select value={scopeCascade.subjectId} onValueChange={(v) => setScopeCascade({ subjectId: v, chapterId: '', topicId: '' })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopeSubjects.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Chapter</Label>
+              <Select
+                value={scopeCascade.chapterId}
+                onValueChange={(v) => setScopeCascade({ ...scopeCascade, chapterId: v, topicId: '' })}
+                disabled={!scopeCascade.subjectId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select chapter" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopeChapters.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Topic</Label>
+              <Select
+                value={scopeCascade.topicId}
+                onValueChange={(v) => setScopeCascade({ ...scopeCascade, topicId: v })}
+                disabled={!scopeCascade.chapterId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select topic" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopeTopics.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScopeOpen(false)}>Cancel</Button>
+            <Button onClick={() => void onSaveScope()} disabled={!scopeCascade.subjectId || scopeSaving}>
+              {scopeSaving ? 'Saving…' : 'Save Scope'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Export dialog ── */}
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>

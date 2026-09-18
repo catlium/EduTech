@@ -13,6 +13,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { QuestionScopeDto } from '../common/dto/question-scope.dto.js';
 
 export class CreatePaperPatternDto {
   @IsString()
@@ -93,7 +94,7 @@ export class AnalyzePaperPatternDto {
   source!: AnalyzePaperPatternSourceDto;
 }
 
-export class CreateAssessmentFromBlueprintDto {
+export class CreateAssessmentFromBlueprintDto extends QuestionScopeDto {
   @IsOptional()
   @IsString()
   @MinLength(1)

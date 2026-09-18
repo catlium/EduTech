@@ -11,8 +11,9 @@ import {
   MinLength,
   IsUUID,
 } from 'class-validator';
+import { QuestionScopeDto } from '../../common/dto/question-scope.dto.js';
 
-export class CreateAssessmentDto {
+export class CreateAssessmentDto extends QuestionScopeDto {
   @IsString()
   @IsDefined()
   @MinLength(1)

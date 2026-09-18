@@ -132,7 +132,7 @@ EN_SCHED=$(date -u -d "+2 days" +"%Y-%m-%dT%H:%M:%S.000Z")
 
 create_ass() { # create_ass <title> <startsAt> <endsAt> — creates DRAFT with 60min/100 marks
   req POST /assessments -H 'Content-Type: application/json' \
-    -d "{\"title\":\"$1\",\"description\":\"d\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"},\"startsAt\":\"$2\",\"endsAt\":\"$3\"}" >/dev/null
+    -d "{\"title\":\"$1\",\"description\":\"d\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"},\"startsAt\":\"$2\",\"endsAt\":\"$3\",\"subjectId\":\"$SUBJ\",\"chapterId\":\"$CHID\",\"topicId\":\"$TOPIC\"}" >/dev/null
   jget id
 }
 link_approve_publish() { # link_approve_publish <assessmentId>

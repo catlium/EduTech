@@ -1,24 +1,18 @@
 import {
   IsBoolean,
   IsDefined,
-  IsInt,
   IsOptional,
   IsString,
   IsUUID,
-  Max,
   MaxLength,
-  Min,
   MinLength,
 } from 'class-validator';
+import { QuestionScopeDto } from '../../common/dto/question-scope.dto.js';
 
-export class CreateQuestionPaperDto {
+export class CreateQuestionPaperDto extends QuestionScopeDto {
   @IsUUID()
   @IsDefined()
   patternId!: string;
-
-  @IsOptional()
-  @IsUUID()
-  subjectId?: string;
 
   @IsOptional()
   @IsString()
@@ -40,13 +34,9 @@ export class RenameQuestionPaperDto {
   title!: string;
 }
 
-export class GenerateMissingQuestionPaperDto {
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(50)
-  buffer?: number;
+export class SetQuestionPaperScopeDto extends QuestionScopeDto {}
 
+export class GenerateMissingQuestionPaperDto {
   @IsOptional()
   @IsBoolean()
   dryRun?: boolean;

@@ -34,6 +34,7 @@ import { ErrorState } from '@/components/app/error-state';
 import { StatusBadge } from '@/components/app/status-badge';
 import { ConfirmDialog } from '@/components/app/confirm-dialog';
 import { PageLoader } from '@/components/app/loading';
+import { ScopeBreadcrumb } from '@/components/app/scope-cascade';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -64,6 +65,9 @@ import type {
   QuestionListItem,
   PatternCoverageResponse,
   PaperAutoSelectResponse,
+  SubjectResponse,
+  ChapterResponse,
+  TopicResponse,
 } from '@catlium/contracts';
 import { CreateAssessmentRequestSchema, UpdateAssessmentRequestSchema } from '@catlium/contracts';
 
@@ -158,6 +162,15 @@ export default function AssessmentDetailPage() {
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [sectionMap, setSectionMap] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
+
+  // Question scope (authoritative source of questions; never the pattern)
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [scopeSaving, setScopeSaving] = useState(false);
+  const [scopeSubjects, setScopeSubjects] = useState<SubjectResponse[]>([]);
+  const [scopeChapters, setScopeChapters] = useState<ChapterResponse[]>([]);
+  const [scopeTopics, setScopeTopics] = useState<TopicResponse[]>([]);
+  const [scopeCascade, setScopeCascade] = useState({ subjectId: '', chapterId: '', topicId: '' });
+  const hasScope = !!assessment?.subjectId;
 
   const linkedIds = useRef(new Set(questions.map((q) => q.questionId)));
 
@@ -295,12 +308,81 @@ export default function AssessmentDetailPage() {
     setSearch('');
     setTypeFilter('ALL');
     setAddOpen(true);
-    api<{ questions: QuestionListItem[] }>('/questions')
-      .then(({ questions: qs }) => setBankQuestions(qs))
+    // Load the bank scoped to the assessment's authoritative scope, so only
+    // in-scope questions can be picked (the API enforces this too).
+    const scopeParams = new URLSearchParams();
+    if (assessment?.subjectId) scopeParams.set('subjectId', assessment.subjectId);
+    if (assessment?.chapterId) scopeParams.set('chapterId', assessment.chapterId);
+    if (assessment?.topicId) scopeParams.set('topicId', assessment.topicId);
+    const qs = scopeParams.toString();
+    api<{ questions: QuestionListItem[] }>(`/questions${qs ? `?${qs}` : ''}`)
+      .then(({ questions: qs2 }) => setBankQuestions(qs2))
       .catch((err) =>
         toast.error(err instanceof ApiError ? err.message : 'Failed to load questions'),
       )
       .finally(() => setBankLoading(false));
+  }
+
+  async function openSetScope() {
+    setScopeOpen(true);
+    setScopeCascade({ subjectId: '', chapterId: '', topicId: '' });
+    try {
+      const { subjects } = await api<{ subjects: SubjectResponse[] }>('/academic/subjects');
+      setScopeSubjects(subjects);
+    } catch {
+      setScopeSubjects([]);
+    }
+  }
+
+  useEffect(() => {
+    if (!scopeOpen || !scopeCascade.subjectId) {
+      setScopeChapters([]);
+      setScopeTopics([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    api<{ chapters: ChapterResponse[] }>(`/academic/subjects/${scopeCascade.subjectId}/chapters`, {
+      signal: ctrl.signal,
+    })
+      .then(({ chapters }) => setScopeChapters(chapters))
+      .catch(() => setScopeChapters([]));
+    return () => ctrl.abort();
+  }, [scopeOpen, scopeCascade.subjectId]);
+
+  useEffect(() => {
+    if (!scopeOpen || !scopeCascade.chapterId) {
+      setScopeTopics([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    api<{ topics: TopicResponse[] }>(`/academic/chapters/${scopeCascade.chapterId}/topics`, {
+      signal: ctrl.signal,
+    })
+      .then(({ topics }) => setScopeTopics(topics))
+      .catch(() => setScopeTopics([]));
+    return () => ctrl.abort();
+  }, [scopeOpen, scopeCascade.chapterId]);
+
+  async function onSaveScope() {
+    if (!scopeCascade.subjectId) return;
+    setScopeSaving(true);
+    try {
+      await api(`/assessments/${params.assessmentId}/scope`, {
+        method: 'PATCH',
+        body: {
+          subjectId: scopeCascade.subjectId,
+          chapterId: scopeCascade.chapterId || undefined,
+          topicId: scopeCascade.topicId || undefined,
+        },
+      });
+      toast.success('Question scope saved');
+      setScopeOpen(false);
+      fetchData();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to set question scope');
+    } finally {
+      setScopeSaving(false);
+    }
   }
 
   function toggleSelect(id: string) {
@@ -416,10 +498,11 @@ export default function AssessmentDetailPage() {
       setAutoResult(res.result);
       const short = res.result.sections.filter((s) => s.shortages.length > 0);
       if (short.length === 0) {
-        toast.success(`Auto-selected ${res.result.totalSelected} questions (${res.result.totalMarks} marks)`);
+        toast.success(
+          `Auto-selected ${res.result.totalSelected} questions (${res.result.totalMarks} marks)`,
+        );
       } else {
-        const totalShort =
-          short.reduce((sum, s) => sum + (s.requested - s.found), 0);
+        const totalShort = short.reduce((sum, s) => sum + (s.requested - s.found), 0);
         toast.warning(
           `Added ${res.result.totalSelected} questions — ${totalShort} not found in the Question Bank`,
           {
@@ -446,7 +529,9 @@ export default function AssessmentDetailPage() {
         `/export/assessment/${assessment.id}?format=${format}&include=${include}`,
         `${assessment.title.replace(/[^a-z0-9]+/gi, '-')}${suffix}.${format}`,
       );
-      toast.success(`Exported ${include === 'answers' ? 'answer key' : 'paper'} (${format.toUpperCase()})`);
+      toast.success(
+        `Exported ${include === 'answers' ? 'answer key' : 'paper'} (${format.toUpperCase()})`,
+      );
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Export failed');
     } finally {
@@ -543,7 +628,8 @@ export default function AssessmentDetailPage() {
                   <Button
                     size="sm"
                     onClick={() => setConfirmAction('publish')}
-                    disabled={working || questions.length === 0}
+                    disabled={working || questions.length === 0 || !hasScope}
+                    title={hasScope ? undefined : 'Set a question scope first'}
                   >
                     Publish
                   </Button>
@@ -625,6 +711,29 @@ export default function AssessmentDetailPage() {
               Created: {formatDate(assessment.createdAt)}
             </span>
           </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {hasScope ? (
+              <>
+                <span className="text-muted-foreground">Scope:</span>
+                <ScopeBreadcrumb
+                  subjectId={assessment.subjectId}
+                  chapterId={assessment.chapterId}
+                  topicId={assessment.topicId}
+                />
+              </>
+            ) : (
+              <>
+                <span className="text-amber-600 dark:text-amber-400">
+                  No question scope set — questions cannot be selected or published.
+                </span>
+                {isTeacher && editable && (
+                  <Button variant="outline" size="sm" onClick={() => void openSetScope()}>
+                    Set Question Scope
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
           {scheduleRange(assessment.startsAt, assessment.endsAt) && (
             <p className="mt-1 text-muted-foreground">
               {scheduleRange(assessment.startsAt, assessment.endsAt)}
@@ -655,8 +764,8 @@ export default function AssessmentDetailPage() {
                 <Layers className="size-4" /> Pattern coverage
               </CardTitle>
               <CardDescription>
-                Live per-section status against “{coverage.patternTitle}”. Satisfied
-                sections are ready for the fixed question paper.
+                Live per-section status against “{coverage.patternTitle}”. Satisfied sections are
+                ready for the fixed question paper.
               </CardDescription>
             </div>
           </CardHeader>
@@ -682,15 +791,13 @@ export default function AssessmentDetailPage() {
                     </Badge>
                   )}
                   <span className="text-muted-foreground">
-                    {s.presentCount}/{s.requiredCount} added · {s.presentMarks}/
-                    {s.requiredMarks} marks
+                    {s.presentCount}/{s.requiredCount} added · {s.presentMarks}/{s.requiredMarks}{' '}
+                    marks
                   </span>
                   <Badge variant="outline" className={`ml-auto ${tone}`}>
                     {s.status}
                   </Badge>
-                  {s.message && (
-                    <p className="w-full text-xs text-muted-foreground">{s.message}</p>
-                  )}
+                  {s.message && <p className="w-full text-xs text-muted-foreground">{s.message}</p>}
                 </div>
               );
             })}
@@ -714,14 +821,29 @@ export default function AssessmentDetailPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => void onAutoSelect()}
-                  disabled={working || autoSelecting}
-                  title="Randomly re-select questions from the bank per pattern section"
+                  disabled={working || autoSelecting || !hasScope}
+                  title={
+                    hasScope
+                      ? 'Randomly re-select questions from the bank per pattern section'
+                      : 'Set a question scope first'
+                  }
                 >
                   <Wand2 className="mr-1 size-3.5" />
                   {autoSelecting ? 'Shuffling…' : 'Shuffle / Regenerate from pattern'}
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={openAddDialog}>
+              {!hasScope && (
+                <Button size="sm" variant="outline" onClick={() => void openSetScope()}>
+                  <Wand2 className="mr-1 size-3.5" /> Set Question Scope
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={openAddDialog}
+                disabled={!hasScope}
+                title={hasScope ? undefined : 'Set a question scope first'}
+              >
                 <Plus className="mr-1 size-3.5" /> Add Questions
               </Button>
             </div>
@@ -802,6 +924,90 @@ export default function AssessmentDetailPage() {
       {workflowHint(assessment.status) && (
         <p className="text-sm text-muted-foreground">{workflowHint(assessment.status)}</p>
       )}
+
+      {/* ── Set Question Scope dialog ── */}
+      <Dialog open={scopeOpen} onOpenChange={setScopeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set Question Scope</DialogTitle>
+            <DialogDescription>
+              The scope is the authoritative source of questions — subject required, chapter/topic
+              optional. This assessment was created before scopes existed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Subject</Label>
+              <Select
+                value={scopeCascade.subjectId}
+                onValueChange={(v) => setScopeCascade({ subjectId: v, chapterId: '', topicId: '' })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopeSubjects.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Chapter</Label>
+              <Select
+                value={scopeCascade.chapterId}
+                onValueChange={(v) =>
+                  setScopeCascade({ ...scopeCascade, chapterId: v, topicId: '' })
+                }
+                disabled={!scopeCascade.subjectId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select chapter" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopeChapters.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Topic</Label>
+              <Select
+                value={scopeCascade.topicId}
+                onValueChange={(v) => setScopeCascade({ ...scopeCascade, topicId: v })}
+                disabled={!scopeCascade.chapterId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select topic" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopeTopics.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScopeOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void onSaveScope()}
+              disabled={!scopeCascade.subjectId || scopeSaving}
+            >
+              {scopeSaving ? 'Saving…' : 'Save Scope'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Edit dialog ── */}
       <Dialog
@@ -1010,9 +1216,7 @@ export default function AssessmentDetailPage() {
                         {isPatternBased && patternSections.length > 0 && (
                           <Select
                             value={sectionMap[q.id] ?? 'General'}
-                            onValueChange={(v) =>
-                              setSectionMap((m) => ({ ...m, [q.id]: v }))
-                            }
+                            onValueChange={(v) => setSectionMap((m) => ({ ...m, [q.id]: v }))}
                           >
                             <SelectTrigger className="h-8 w-40 text-xs">
                               <SelectValue placeholder="Section" />
@@ -1110,50 +1314,50 @@ export default function AssessmentDetailPage() {
                 >
                   DOCX
                 </Button>
-            </div>
-          </div>
-
-          {assessment?.blueprintId && (
-            <div className="rounded-lg border p-3">
-              <p className="text-sm font-medium">
-                <FileKey2 className="mr-1.5 inline size-4 text-muted-foreground" />
-                Paper Pattern
-              </p>
-              <p className="text-xs text-muted-foreground">
-                The blueprint this assessment was generated from.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setPatternPreviewOpen(true)}
-                  disabled={patternExporting}
-                  title="Preview the paper pattern"
-                >
-                  <Eye className="mr-1 size-3.5" /> Preview
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onPatternExport('pdf')}
-                  disabled={patternExporting}
-                  title="Export the paper pattern (PDF)"
-                >
-                  PDF
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onPatternExport('docx')}
-                  disabled={patternExporting}
-                  title="Export the paper pattern (DOCX)"
-                >
-                  DOCX
-                </Button>
               </div>
             </div>
-          )}
-        </div>
+
+            {assessment?.blueprintId && (
+              <div className="rounded-lg border p-3">
+                <p className="text-sm font-medium">
+                  <FileKey2 className="mr-1.5 inline size-4 text-muted-foreground" />
+                  Paper Pattern
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  The blueprint this assessment was generated from.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPatternPreviewOpen(true)}
+                    disabled={patternExporting}
+                    title="Preview the paper pattern"
+                  >
+                    <Eye className="mr-1 size-3.5" /> Preview
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void onPatternExport('pdf')}
+                    disabled={patternExporting}
+                    title="Export the paper pattern (PDF)"
+                  >
+                    PDF
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void onPatternExport('docx')}
+                    disabled={patternExporting}
+                    title="Export the paper pattern (DOCX)"
+                  >
+                    DOCX
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setExportOpen(false)}>
               Close

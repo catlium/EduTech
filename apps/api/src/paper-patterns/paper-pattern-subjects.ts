@@ -15,12 +15,6 @@ export function dedupeSubjectIds(subjectIds: string[]): string[] {
   return [...new Set(subjectIds)];
 }
 
-// A General pattern (no subjects) matches any scope subject; a scoped pattern
-// matches only when the scope subject is among its associations.
-export function patternMatchesSubject(subjectIds: string[], subjectId: string): boolean {
-  return subjectIds.length === 0 || subjectIds.includes(subjectId);
-}
-
 // Returns the subset of requested subject ids that are NOT owned by the
 // institute, so callers reject cross-institute associations up front.
 export function foreignSubjectIds(subjectIds: string[], ownedSubjectIds: Set<string>): string[] {

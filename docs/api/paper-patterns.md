@@ -284,25 +284,29 @@ POST /paper-patterns/:patternId/assessment
 
 Roles: `INSTITUTE_ADMIN`, `TEACHER`. Returns `201`.
 
-Creates a new assessment pre-filled from the pattern:
+Creates a new assessment pre-filled from the pattern's **structure only**:
 
 - `title` = pattern title
-- `subjectId` = pattern subject
 - `instructions.text` = pattern instructions joined by `. `
 - `durationMinutes` = pattern structure `durationMinutes`
 - `maxMarks` = pattern structure `totalMarks`
 - `blueprintId` = pattern ID (recorded for traceability)
 
-Body accepts optional overrides: `{ "title": "...", "maxMarks": 100 }`.
+Body **requires an explicit question scope**: `subjectId` (always) plus
+optional `chapterId` / `topicId`. The pattern never supplies or infers the
+scope — this is the authoritative source the assessment's questions are drawn
+from. Other optional overrides: `{ "title": "...", "maxMarks": 100 }`.
 
-`400` if the pattern is not APPROVED (only approved patterns may seed
-assessments). The created assessment is in `DRAFT` status.
+`400` if `subjectId` is missing, or if the pattern is not APPROVED (only
+approved patterns may seed assessments). The created assessment is in `DRAFT`
+status.
 
 ## Blueprint-constrained question generation
 
 When creating a question-generation job via `POST /questions/generate` the caller
-may include `"blueprintId": "uuid"` (an APPROVED pattern in the same institute
-and subject as the topic).
+may include `"blueprintId": "uuid"` (an APPROVED pattern in the same institute).
+The pattern contributes structure/evaluation only — the job's scope still comes
+from the caller's explicit `subjectId`/`chapterId`/`topicId`.
 
 After the generated questions are persisted, the worker compares the generated
 quota against the blueprint:

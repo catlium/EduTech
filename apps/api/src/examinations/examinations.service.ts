@@ -6,23 +6,14 @@ import {
   Inject,
 } from '@nestjs/common';
 import { eq, and, desc, asc, inArray, count, max, isNull } from 'drizzle-orm';
-import {
-  assessments,
-  assessmentQuestions,
-  paperPatterns,
-  paperPatternSubjects,
-  questions,
-} from '@catlium/database';
+import { assessments, assessmentQuestions, paperPatterns, questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import type { AssessmentStatus } from '@catlium/contracts';
 import { flattenPatternRules, normalizePaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
-import {
-  planAutoSelection,
-  computePatternCoverage,
-  type Difficulty,
-} from './paper-selection.js';
+import { resolveScopeChain, scopeCoversRow, scopeFilter } from '../common/utils/scope-resolver.js';
+import { planAutoSelection, computePatternCoverage, type Difficulty } from './paper-selection.js';
 
 // Pattern 1 (08-RESEARCH) — the transition lookup table is the single source
 // of truth for lifecycle legality. COMPLETED is terminal (empty list).
@@ -42,6 +33,17 @@ export interface CreateAssessmentInput {
   startsAt?: string;
   endsAt?: string;
   blueprintId?: string;
+  /** Authoritative question scope. Subject is always required; Chapter/Topic
+   * are optional refinements. The pattern never supplies scope. */
+  subjectId: string;
+  chapterId?: string;
+  topicId?: string;
+}
+
+export interface QuestionScope {
+  subjectId: string;
+  chapterId?: string;
+  topicId?: string;
 }
 
 export interface UpdateAssessmentInput {
@@ -107,6 +109,15 @@ export class ExaminationsService {
       }
     }
 
+    // The scope is the authoritative source of questions; the pattern never
+    // supplies or infers it. Subject is always required.
+    const scope = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: true },
+      input,
+    );
+    if (!scope.subjectId)
+      throw new BadRequestException('An assessment requires a question scope with a subject');
+
     const [assessment] = await this.db
       .insert(assessments)
       .values({
@@ -119,6 +130,9 @@ export class ExaminationsService {
         startsAt: input.startsAt ? new Date(input.startsAt) : null,
         endsAt: input.endsAt ? new Date(input.endsAt) : null,
         blueprintId: input.blueprintId ?? null,
+        subjectId: scope.subjectId,
+        chapterId: scope.chapterId,
+        topicId: scope.topicId,
         status: 'DRAFT',
         createdBy,
         updatedBy: createdBy,
@@ -241,6 +255,10 @@ export class ExaminationsService {
       );
     }
 
+    // Every new assessment carries a scope; legacy unscoped assessments must
+    // set one (with a subject) before they can go live.
+    this.requireScope(assessment);
+
     if (!assessment.durationMinutes || assessment.durationMinutes <= 0) {
       throw new BadRequestException('Duration must be configured before publishing');
     }
@@ -348,13 +366,23 @@ export class ExaminationsService {
       throw new BadRequestException('Questions can only be added in DRAFT status');
     }
 
+    // The scope is the authoritative source of questions: every added question
+    // must lie inside the assessment's stored scope (most-specific level).
+    const scope = this.requireScope(existing);
+
     // Pitfall 3 — cross-tenant linking blocked: every question must exist in
     // the active institute, checked on BOTH id and instituteId. The existence
     // (institute-scope) check runs FIRST and keeps the exact Pitfall-3 400; the
     // status check only fires for in-institute questions (no new oracle, T-08-22).
     for (const id of questionIds) {
       const [question] = await this.db
-        .select({ id: questions.id, status: questions.status })
+        .select({
+          id: questions.id,
+          status: questions.status,
+          subjectId: questions.subjectId,
+          chapterId: questions.chapterId,
+          topicId: questions.topicId,
+        })
         .from(questions)
         .where(and(eq(questions.id, id), eq(questions.instituteId, instituteId)))
         .limit(1);
@@ -366,6 +394,9 @@ export class ExaminationsService {
       // defense in depth with the publish gate (WR-03/EXAM-08).
       if (question.status !== 'ACTIVE') {
         throw new BadRequestException(`Question ${id} is not ACTIVE`);
+      }
+      if (!scopeCoversRow(scope, question)) {
+        throw new BadRequestException(`Question ${id} is outside the assessment's question scope`);
       }
     }
 
@@ -492,11 +523,9 @@ export class ExaminationsService {
     const structure = normalizePaperPatternStructure(pattern.structure);
     const sections = flattenPatternRules(structure);
 
-    const subjectRows = await this.db
-      .select({ subjectId: paperPatternSubjects.subjectId })
-      .from(paperPatternSubjects)
-      .where(eq(paperPatternSubjects.patternId, pattern.id));
-    const subjectIds = subjectRows.map((r) => r.subjectId);
+    // Selection stays inside the assessment's stored scope (most-specific
+    // level); the pattern contributes structure only.
+    const scope = this.requireScope(assessment);
 
     const linked = await this.db
       .select({ questionId: assessmentQuestions.questionId })
@@ -504,16 +533,14 @@ export class ExaminationsService {
       .where(eq(assessmentQuestions.assessmentId, assessmentId));
     const taken = new Set(linked.map((r) => r.questionId));
 
-    const typeCodes = new Set(
-      sections.flatMap((s) => (s.questionType ? [s.questionType] : [])),
-    );
+    const typeCodes = new Set(sections.flatMap((s) => (s.questionType ? [s.questionType] : [])));
     const conditions = [
       eq(questions.instituteId, instituteId),
       eq(questions.approvalStatus, 'APPROVED'),
       eq(questions.status, 'ACTIVE'),
       isNull(questions.deletedAt),
+      scopeFilter(scope),
     ];
-    if (subjectIds.length > 0) conditions.push(inArray(questions.subjectId, subjectIds));
     if (typeCodes.size > 0) conditions.push(inArray(questions.questionType, [...typeCodes]));
 
     const rows = await this.db
@@ -587,6 +614,35 @@ export class ExaminationsService {
     };
   }
 
+  // ── Scope ─────────────────────────────────
+
+  /** Replace the assessment's question scope (DRAFT only). Legacy assessments
+   * created before scopes existed must set one before adding questions or
+   * publishing. */
+  async setScope(instituteId: string, assessmentId: string, scope: QuestionScope) {
+    const existing = await this.getAssessment(instituteId, assessmentId);
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException('Question scope can only be changed in DRAFT status');
+    }
+    const resolved = await resolveScopeChain(
+      { db: this.db, instituteId, requireSubject: true },
+      scope,
+    );
+    if (!resolved.subjectId) throw new BadRequestException('A question scope requires a subject');
+    const [updated] = await this.db
+      .update(assessments)
+      .set({
+        subjectId: resolved.subjectId,
+        chapterId: resolved.chapterId,
+        topicId: resolved.topicId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(assessments.id, assessmentId), eq(assessments.instituteId, instituteId)))
+      .returning();
+    if (!updated) throw new NotFoundException('Assessment not found');
+    return updated;
+  }
+
   // ── Read ──────────────────────────────────
 
   async getAssessment(instituteId: string, assessmentId: string) {
@@ -634,5 +690,25 @@ export class ExaminationsService {
       ...row,
       questionCount: countMap.get(row.id) ?? 0,
     }));
+  }
+
+  /** The assessment's stored scope; legacy unscoped assessments must set one
+   * before any question selection/linking or publishing. */
+  private requireScope(assessment: {
+    subjectId: string | null;
+    chapterId: string | null;
+    topicId: string | null;
+  }): QuestionScope {
+    if (!assessment.subjectId) {
+      throw new BadRequestException(
+        'This assessment has no question scope — set a subject (with optional chapter/topic) first',
+      );
+    }
+    // The DB scope-chain CHECK guarantees topic ⇒ chapter ⇒ subject consistency.
+    return {
+      subjectId: assessment.subjectId,
+      chapterId: assessment.chapterId ?? undefined,
+      topicId: assessment.topicId ?? undefined,
+    };
   }
 }

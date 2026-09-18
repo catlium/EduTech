@@ -224,7 +224,7 @@ echo "== DEMO-11 create quiz (draft) =="
 ST_NOW=$(date -u -d '+2 days' +"%Y-%m-%dT%H:%M:%S.000Z")
 EN_NOW=$(date -u -d '+3 days' +"%Y-%m-%dT%H:%M:%S.000Z")
 CA=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" \
-  -d "{\"title\":\"Demo Quiz $RAND\",\"description\":\"Full journey quiz\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"},\"startsAt\":\"$ST_NOW\",\"endsAt\":\"$EN_NOW\"}")
+  -d "{\"title\":\"Demo Quiz $RAND\",\"description\":\"Full journey quiz\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"},\"startsAt\":\"$ST_NOW\",\"endsAt\":\"$EN_NOW\",\"subjectId\":\"$SUBJ\",\"chapterId\":\"$CHAP\",\"topicId\":\"$TOPIC\"}")
 ok "$CA" 201 "DEMO-11 create assessment 201"
 ASSESS=$(jget id)
 sql "UPDATE assessments SET starts_at = now() - interval '1 minute', ends_at = now() + interval '1 day' WHERE id = '$ASSESS'" >/dev/null

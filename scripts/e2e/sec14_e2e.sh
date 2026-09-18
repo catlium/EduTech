@@ -105,7 +105,7 @@ req POST "/questions/$Q1/approve" >/dev/null
 ST=$(date -u -d '+2 days' +"%Y-%m-%dT%H:%M:%S.000Z")
 EN=$(date -u -d '+3 days' +"%Y-%m-%dT%H:%M:%S.000Z")
 req POST /assessments -H 'Content-Type: application/json' \
-  -d "{\"title\":\"Sec14 Quiz $RAND\",\"description\":\"d\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"x\"},\"startsAt\":\"$ST\",\"endsAt\":\"$EN\"}" >/dev/null
+  -d "{\"title\":\"Sec14 Quiz $RAND\",\"description\":\"d\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"x\"},\"startsAt\":\"$ST\",\"endsAt\":\"$EN\",\"subjectId\":\"$SUBJ\",\"chapterId\":\"$CHID\",\"topicId\":\"$TOPIC\"}" >/dev/null
 AID=$(jget id)
 req POST "/assessments/$AID/questions" -H 'Content-Type: application/json' -d "{\"questionIds\":[\"$Q1\"]}" >/dev/null
 req POST "/assessments/$AID/publish" >/dev/null

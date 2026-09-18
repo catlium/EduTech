@@ -13,6 +13,60 @@
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
 
+## Phase 43 — Authoritative question scope (2026-09-18)
+
+**Status: implementation + validation complete; commit pending.**
+
+Scope (subject required; chapter/topic optional) is now the only source of
+questions on every Paper and Assessment. Patterns are pure
+structure/evaluation — they never supply, infer, expand, or override scope. The
+old pattern-subject generation gate and the generate-missing buffer are gone.
+Legacy unscoped rows are blocked at select/generate/publish and repaired via the
+set-scope endpoints.
+
+### Completed work
+
+- **Migration `0035_question_scope.sql`.** `subject_id`/`chapter_id`/`topic_id`
+  on `question_papers` and `assessments` + `*_scope_chain` CHECK (topic ⇒
+  chapter ⇒ subject) + indexes; applied and recorded in
+  `drizzle.__drizzle_migrations` (id 35).
+- **Contracts.** `QuestionScopeSchema`; QP + assessment create/response schemas
+  carry scope (subject required).
+- **API.** `resolveScopeChain` + shared `scopeFilter`/`scopeCoversRow`
+  (`common/utils/scope-resolver.ts`); pattern-coverage counting scoped; QP +
+  examinations services enforce scope on create/link/select/publish; new
+  `PATCH /question-papers/:id/scope` + `PATCH /assessments/:id/scope`;
+  generate-missing `buffer` removed; dead pattern-subject scope inference
+  deleted from `question-generation.service.ts`.
+- **Web.** Paper + assessment detail pages show the scope, gate
+  shuffle/generate-missing/add-questions/publish until scoped, and offer
+  set-scope dialogs; new-paper dialog sends the full scope.
+- **Tests + e2e.** `scope-resolver.test.ts`; paper_pattern/attempts/sec14/demo/p8
+  e2e suites updated to send the required scope.
+
+### Validation
+
+- API **138/138**, web **15/15**, API + web typecheck + eslint clean,
+  `contracts` dist rebuilt, `api`/`web` containers rebuilt and healthy.
+- `migrate` records 0035 and exits 0 (was failing on the hand-applied column).
+- Routes live: `PATCH /assessments/:id/scope` and
+  `PATCH /question-papers/:id/scope` return 401 unauthenticated (not 404).
+
+### Known issues / deferred
+
+- Pattern-subject associations remain **metadata only** (pattern CRUD, the
+  export reference doc, the subject-delete dependents guard, and the bank
+  proposal "signal 2"); none determine question scope.
+- p8's scope fixture resolves the seeded hardcoded topic; its e2e needs that
+  seed present.
+- The deferred Academic Export redesign still reads pattern subjects.
+
+### Exact recommended next task
+
+Run the full e2e suite (`paper_pattern_e2e.sh`, `attempts_e2e.sh`,
+`sec14_e2e.sh`, `demo_e2e.sh`, `p8_e2e.sh`) on a demo/dev stack, then commit +
+push this Phase 43 checkpoint.
+
 ## Phase 42 — Resource locks, subject force-delete, general-pattern QP unblock (2026-09-18)
 
 **Status: implementation + live verification complete; commit pending.**

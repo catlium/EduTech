@@ -8,7 +8,6 @@ import {
   buildSubjectIds,
   dedupeSubjectIds,
   foreignSubjectIds,
-  patternMatchesSubject,
 } from './paper-pattern-subjects.ts';
 
 test('General pattern: no subjects builds an empty set', () => {
@@ -33,34 +32,6 @@ test('legacy single subjectId alias maps onto the subject set', () => {
   assert.deepEqual(buildSubjectIds(undefined, 'legacy'), ['legacy']);
   // Explicit subjectIds wins over the legacy alias.
   assert.deepEqual(buildSubjectIds(['s1'], 'legacy'), ['s1']);
-});
-
-test('a pattern can be shared across multiple subjects', () => {
-  const ids = ['s1', 's2'];
-  assert.ok(patternMatchesSubject(ids, 's1'));
-  assert.ok(patternMatchesSubject(ids, 's2'));
-});
-
-test('one subject can belong to multiple patterns (no constraint blocks it)', () => {
-  const patternA = buildSubjectIds(['s1'], undefined);
-  const patternB = buildSubjectIds(['s1', 's2'], undefined);
-  assert.ok(patternMatchesSubject(patternA, 's1'));
-  assert.ok(patternMatchesSubject(patternB, 's1'));
-});
-
-test('removing all subjects converts the pattern to General', () => {
-  const fromMulti = dedupeSubjectIds([]);
-  assert.deepEqual(fromMulti, []);
-  assert.ok(patternMatchesSubject(fromMulti, 'any-subject'));
-});
-
-test('General patterns match any scope subject; scoped patterns only their own', () => {
-  // General (zero subjects): fully reusable.
-  assert.ok(patternMatchesSubject([], 'anything'));
-  // Scoped: only associated subjects match.
-  assert.ok(patternMatchesSubject(['s1'], 's1'));
-  assert.ok(!patternMatchesSubject(['s1'], 's2'));
-  assert.ok(!patternMatchesSubject(['s1', 's2'], 's3'));
 });
 
 test('cross-institute associations are surfaced by foreign-subject check', () => {

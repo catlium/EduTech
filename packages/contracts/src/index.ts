@@ -1274,6 +1274,22 @@ export const GenerateBankBucketSchema = z.object({
 });
 export type GenerateBankBucket = z.infer<typeof GenerateBankBucketSchema>;
 
+/** Authoritative question scope for a Paper/Assessment. Subject is always
+ * required; Chapter and Topic are optional refinements (topic narrows chapter
+ * narrows subject). The stored scope is the ONLY source of questions — the
+ * paper pattern never determines, infers or overrides it. */
+export const QuestionScopeSchema = z
+  .object({
+    subjectId: z.string().uuid(),
+    chapterId: z.string().uuid().optional(),
+    topicId: z.string().uuid().optional(),
+  })
+  .refine((v) => !v.topicId || v.chapterId, {
+    message: 'topicId requires chapterId',
+    path: ['scope'],
+  });
+export type QuestionScope = z.infer<typeof QuestionScopeSchema>;
+
 export const QuestionBankScopeSchema = z
   .object({
     subjectId: z.string().uuid().optional(),
@@ -1446,6 +1462,7 @@ export const CreateAssessmentRequestSchema = z
     instructions: z.record(z.string(), z.unknown()).optional(),
     startsAt: z.string().datetime().optional(),
     endsAt: z.string().datetime().optional(),
+    ...QuestionScopeSchema.shape,
   })
   .refine(
     (v) =>
@@ -1485,6 +1502,11 @@ export const AssessmentResponseSchema = z.object({
   // (null when created standalone). Drives the pattern panel, auto-select and
   // the attempt-N-of-M preview.
   blueprintId: z.string().uuid().nullable(),
+  // Authoritative question scope — the ONLY source of questions (manual pick
+  // and AI generation). Never derived from the pattern.
+  subjectId: z.string().uuid().nullable(),
+  chapterId: z.string().uuid().nullable(),
+  topicId: z.string().uuid().nullable(),
   createdBy: z.string().uuid(),
   updatedBy: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
@@ -1586,7 +1608,11 @@ export const QuestionPaperResponseSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
   blueprintId: z.string().uuid().nullable(),
+  // Authoritative question scope — the ONLY source of questions (selection and
+  // AI generation). Subject is always set for new papers.
   subjectId: z.string().uuid().nullable(),
+  chapterId: z.string().uuid().nullable(),
+  topicId: z.string().uuid().nullable(),
   durationMinutes: z.number().int().nullable(),
   maxMarks: z.number().int().nullable(),
   instructions: z.record(z.string(), z.unknown()).nullable(),
@@ -1604,7 +1630,7 @@ export type QuestionPaperListItem = z.infer<typeof QuestionPaperListItemSchema>;
 
 export const CreateQuestionPaperRequestSchema = z.object({
   patternId: z.string().uuid(),
-  subjectId: z.string().uuid().optional(),
+  ...QuestionScopeSchema.shape,
   title: z.string().min(1).max(255).optional(),
   description: z.string().max(5000).optional(),
 });
@@ -1613,9 +1639,7 @@ export type CreateQuestionPaperRequest = z.infer<typeof CreateQuestionPaperReque
 export const QuestionPaperAutoSelectResponseSchema = PaperAutoSelectResponseSchema.extend({
   paperId: z.string().uuid(),
 }).omit({ assessmentId: true });
-export type QuestionPaperAutoSelectResponse = z.infer<
-  typeof QuestionPaperAutoSelectResponseSchema
->;
+export type QuestionPaperAutoSelectResponse = z.infer<typeof QuestionPaperAutoSelectResponseSchema>;
 
 // A link row on the question_paper_questions join table with the nested question.
 export const QuestionPaperQuestionSchema = z.object({

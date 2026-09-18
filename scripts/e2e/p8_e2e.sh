@@ -60,6 +60,15 @@ login_user "p8.teacher@catlium.dev" "$CJ"
 CJB="/tmp/opencode/p8_ck_b.txt"; login_user "p8.other@catlium.dev" "$CJB"
 CJS="/tmp/opencode/p8_ck_s.txt"; login_user "p8student1788584106@test.com" "$CJS"
 
+# Scope is required and authoritative on every assessment. Resolve the subject
+# that owns the seeded topic once so every assessment body can carry it.
+curl -s -b "$CJ" "$BASE/academic/topics/$TOPIC" -H "x-institute-id: $IA" -o "$BODY_FILE"
+P8_CHAP=$(jget chapterId)
+curl -s -b "$CJ" "$BASE/academic/chapters/$P8_CHAP" -H "x-institute-id: $IA" -o "$BODY_FILE"
+P8_SUBJ=$(jget subjectId)
+if [ -z "$P8_SUBJ" ]; then echo "  FATAL: could not resolve subject for $TOPIC"; exit 1; fi
+P8_SCOPE="\"subjectId\":\"$P8_SUBJ\",\"topicId\":\"$TOPIC\""
+
 mk_mcq() {
   # deterministic valid choice ids (version 4, variant 8 — satisfies z.string().uuid())
   local tag
@@ -80,12 +89,12 @@ mk_tf() {
 create_ass() { # create_ass <title> [extra_json]
   local title="$1" extra="${2:-}"
   req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" \
-    -d "{\"title\":\"$title\",\"description\":\"d\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"},\"startsAt\":\"2030-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\"$extra}"
+    -d "{\"title\":\"$title\",\"description\":\"d\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"},\"startsAt\":\"2030-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\",$P8_SCOPE$extra}"
 }
 mk_pub() { # mk_pub <title>
   local title="$1"
   req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" \
-    -d "{\"title\":\"$title\",\"durationMinutes\":60,\"maxMarks\":100,\"startsAt\":\"2030-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\"}"
+    -d "{\"title\":\"$title\",\"durationMinutes\":60,\"maxMarks\":100,\"startsAt\":\"2030-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\",$P8_SCOPE}"
 }
 
 # --- fixture: fresh questions -------------------------------------------------
@@ -157,7 +166,7 @@ fi
 
 echo "== EXAM-03 =="
 CR3=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" \
-  -d "{\"title\":\"EXAM-03 $RAND\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"}}")
+  -d "{\"title\":\"EXAM-03 $RAND\",\"durationMinutes\":60,\"maxMarks\":100,\"instructions\":{\"text\":\"Read carefully\"},$P8_SCOPE}")
 A3=$(jget id)
 ok "$CR3" 201 "EXAM-03 create 201"
 body_has '"durationMinutes":60' "EXAM-03 dur 60"
@@ -169,18 +178,18 @@ body_has '"maxMarks":150' "EXAM-03 marks 150"
 body_has '"text":"Updated"' "EXAM-03 instructions updated"
 
 echo "== EXAM-04 =="
-V=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"EXAM-04 valid $RAND\",\"startsAt\":\"2030-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\"}")
+V=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"EXAM-04 valid $RAND\",\"startsAt\":\"2030-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\",$P8_SCOPE}")
 ok "$V" 201 "EXAM-04 valid window 201"
-IR=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"inv $RAND\",\"startsAt\":\"2030-01-01T11:00:00.000Z\",\"endsAt\":\"2030-01-01T09:00:00.000Z\"}")
+IR=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"inv $RAND\",\"startsAt\":\"2030-01-01T11:00:00.000Z\",\"endsAt\":\"2030-01-01T09:00:00.000Z\",$P8_SCOPE}")
 ok "$IR" 400 "EXAM-04 inverted 400"
-PST=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"past $RAND\",\"startsAt\":\"2020-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\"}")
+PST=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"past $RAND\",\"startsAt\":\"2020-01-01T09:00:00.000Z\",\"endsAt\":\"2030-01-01T11:00:00.000Z\",$P8_SCOPE}")
 ok "$PST" 400 "EXAM-04 past start 400"
 
 echo "== 08-06 merged-schedule + DTO validation (WR-01/WR-02) =="
 # Fixture DRAFT A: valid schedule now+2d .. now+2d+2h
 MS_ST=$(date -u -d "+2 days" +"%Y-%m-%dT%H:%M:%S.000Z")
 MS_EN=$(date -u -d "+2 days +2 hours" +"%Y-%m-%dT%H:%M:%S.000Z")
-MA=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"merged $RAND\",\"startsAt\":\"$MS_ST\",\"endsAt\":\"$MS_EN\"}")
+MA=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"merged $RAND\",\"startsAt\":\"$MS_ST\",\"endsAt\":\"$MS_EN\",$P8_SCOPE}")
 MA=$(jget id)
 # 1. PATCH-only-endsAt inverted: endsAt = fixture startsAt - 1h -> 400 (the OLD
 #    non-null-only path validated only patched fields and would have 200'd)
@@ -198,10 +207,10 @@ MS_FUT_EN=$(date -u -d "+3 days" +"%Y-%m-%dT%H:%M:%S.000Z")
 m3=$(req PATCH "/assessments/$MA" -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"endsAt\":\"$MS_FUT_EN\"}")
 ok "$m3" 200 "PATCH endsAt-only (future) still legal -> 200"
 # 4. POST {} -> 400 (required title — @IsDefined on CreateAssessmentDto)
-m4=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d '{}')
+m4=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{$P8_SCOPE}")
 ok "$m4" 400 "POST empty assessment -> 400"
 # 5. POST {title:""} -> 400 (non-blank title — @MinLength(1))
-m5=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d '{"title":""}')
+m5=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"\",$P8_SCOPE}")
 ok "$m5" 400 "POST blank title -> 400"
 
 echo "== EXAM-05 lifecycle =="
@@ -305,9 +314,9 @@ dg3=$(req DELETE "/assessments/$ADONE" -H "x-institute-id: $IA")
 ok "$dg3" 400 "DELETE completed assessment -> 400"
 
 echo "== Security / negative block =="
-ma1=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"ma $RAND\",\"status\":\"PUBLISHED\"}")
+ma1=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"ma $RAND\",\"status\":\"PUBLISHED\",$P8_SCOPE}")
 ok "$ma1" 400 "SEC mass-assign status 400"
-ma2=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"ma2 $RAND\",\"instituteId\":\"$IB\"}")
+ma2=$(req POST /assessments -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"title\":\"ma2 $RAND\",\"instituteId\":\"$IB\",$P8_SCOPE}")
 ok "$ma2" 400 "SEC mass-assign instituteId 400"
 badq=$(req POST /questions -H 'Content-Type: application/json' -H "x-institute-id: $IA" -d "{\"stem\":\"bad $RAND\",\"questionType\":\"MCQ\",\"source\":\"MANUAL\",\"payload\":{\"choices\":[{\"id\":\"11111111-1111-1111-1111-1111111111aa\",\"text\":\"only\"}],\"correctChoiceId\":\"11111111-1111-1111-1111-1111111111aa\"}}")
 ok "$badq" 400 "SEC malformed MCQ 400"
