@@ -67,11 +67,9 @@ export class QuestionPapersService {
         };
       }
       throw new BadRequestException(
-        coverage.status === 'NO_SUBJECT'
-          ? 'This pattern has no subject scope, so missing questions cannot be generated automatically. Link the pattern to a subject or add questions to the bank.'
-          : coverage.status === 'AWAITING_APPROVAL'
-            ? `${coverage.totalDeficit} generated question${coverage.totalDeficit === 1 ? ' is' : 's are'} still awaiting approval — approve them in the Question Bank, then generate the paper again.`
-            : 'The question bank has too few questions for this pattern to generate the missing ones automatically.',
+        coverage.status === 'AWAITING_APPROVAL'
+          ? `${coverage.totalDeficit} generated question${coverage.totalDeficit === 1 ? ' is' : 's are'} still awaiting approval — approve them in the Question Bank, then generate the paper again.`
+          : 'The question bank has too few questions for this pattern to generate the missing ones automatically.',
       );
     }
 

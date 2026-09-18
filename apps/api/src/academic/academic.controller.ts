@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 
 import { AcademicService } from './academic.service.js';
@@ -77,8 +78,25 @@ export class AcademicController {
   async deleteSubject(
     @Tenant() tenant: TenantContext,
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
+    @Query('force') force?: string,
   ) {
-    await this.academicService.deleteSubject(tenant.instituteId, subjectId);
+    await this.academicService.deleteSubject(
+      tenant.instituteId,
+      subjectId,
+      force === 'true',
+    );
+  }
+
+  @Get('subjects/:subjectId/dependents')
+  async getDependents(
+    @Tenant() tenant: TenantContext,
+    @Param('subjectId', ParseUUIDPipe) subjectId: string,
+  ) {
+    const dependents = await this.academicService.subjectDependents(
+      tenant.instituteId,
+      subjectId,
+    );
+    return { dependents };
   }
 
   // ── Chapters ─────────────────────────────

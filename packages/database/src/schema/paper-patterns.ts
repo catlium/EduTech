@@ -1,4 +1,4 @@
-import { pgTable, primaryKey, uuid, varchar, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, primaryKey, uuid, varchar, integer, jsonb, timestamp, boolean } from 'drizzle-orm/pg-core';
 
 import { institutes } from './institutes.js';
 import { subjects } from './academic.js';
@@ -19,6 +19,7 @@ export const paperPatterns = pgTable('paper_patterns', {
   title: varchar('title', { length: 255 }).notNull(),
   description: varchar('description', { length: 1000 }),
   status: varchar('status', { length: 20 }).notNull().default('DRAFT'),
+  isLocked: boolean('is_locked').notNull().default(false),
   version: integer('version').notNull().default(1),
   sourceType: varchar('source_type', { length: 30 }).notNull().default('MANUAL'),
   sourceMaterialId: uuid('source_material_id').references(() => materials.id, {

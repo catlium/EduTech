@@ -15,8 +15,10 @@ import {
   Dice5,
   Eye,
   Loader2,
+  Lock,
   Plus,
   Trash2,
+  Unlock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -358,6 +360,17 @@ export default function PatternBuilderPage() {
     }
   }
 
+  async function onSetLocked(locked: boolean) {
+    if (!pattern) return;
+    try {
+      await api(`/paper-patterns/${pattern.id}/${locked ? 'lock' : 'unlock'}`, { method: 'POST' });
+      toast.success(locked ? 'Pattern locked' : 'Pattern unlocked — edits are now allowed');
+      await loadPattern();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Lock update failed');
+    }
+  }
+
   /* ── export (teacher-facing PDF/DOCX) — preview stays optional ── */
   async function onExport(format: 'pdf' | 'docx') {
     if (!pattern) return;
@@ -586,6 +599,7 @@ export default function PatternBuilderPage() {
   const canApprove = pattern.status !== 'APPROVED';
   // Approved patterns stay editable; only AI re-analysis stays blocked.
   const canAnalyze = pattern.status !== 'APPROVED';
+  const locked = pattern.isLocked;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -607,6 +621,22 @@ export default function PatternBuilderPage() {
               <StatusBadge status={pattern.status} />
               {isTeacher && (
                 <>
+                  {locked && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          onClick={() => void onSetLocked(false)}
+                          disabled={saving || deleting}
+                        >
+                          <Unlock className="mr-1 size-3.5" /> Unlock
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Unlock to edit or delete this pattern. Approving auto-locks it.
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                   {canAnalyze && (
                     <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
                       Analyze
@@ -653,10 +683,15 @@ export default function PatternBuilderPage() {
                       <DropdownMenuItem onClick={() => onExport('docx')}>DOCX</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <Button size="sm" variant="outline" onClick={() => setDeleteOpen(true)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDeleteOpen(true)}
+                    disabled={locked || deleting}
+                  >
                     <Trash2 className="mr-1 size-3.5" /> Delete
                   </Button>
-                  <Button size="sm" onClick={() => setReviewOpen(true)}>
+                  <Button size="sm" onClick={() => setReviewOpen(true)} disabled={locked || saving}>
                     <Eye className="mr-1 size-3.5" /> Review &amp; Save
                   </Button>
                 </>
@@ -665,10 +700,17 @@ export default function PatternBuilderPage() {
           }
         />
 
-        {pattern.status === 'APPROVED' && (
-          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-            Approved patterns remain editable. Saving changes updates the template — it does not
-            alter any assessment already created from it.
+        {locked && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <Lock className="mr-1 inline size-4" /> This pattern is locked — unlock it before
+            editing or deleting. Approving a pattern locks it to prevent accidental changes.
+          </div>
+        )}
+        {pattern.status === 'APPROVED' && !locked && (
+          <div className="mb-4 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300">
+            <Unlock className="mr-1 inline size-4" /> Approved but unlocked — save changes, then
+            lock it again when finished. Saving updates the template; it does not alter any
+            assessment already created from it.
           </div>
         )}
 
@@ -741,7 +783,7 @@ export default function PatternBuilderPage() {
                     <button
                       type="button"
                       className="ml-1 cursor-pointer text-muted-foreground hover:text-foreground"
-                      disabled={savingSubjects}
+                      disabled={savingSubjects || locked}
                       onClick={() => onSaveSubjects(pattern.subjectIds.filter((s) => s !== id))}
                     >
                       ×
@@ -758,9 +800,10 @@ export default function PatternBuilderPage() {
                     void onSaveSubjects([...pattern.subjectIds, id]);
                   }
                 }}
+                disabled={locked}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Add subject…" />
+                  <SelectValue placeholder={locked ? 'Locked' : 'Add subject…'} />
                 </SelectTrigger>
                 <SelectContent>
                   {allSubjects.map((s) => (
@@ -780,7 +823,7 @@ export default function PatternBuilderPage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={savingSubjects}
+                disabled={savingSubjects || locked}
                 onClick={() => onSaveSubjects([])}
               >
                 Make General

@@ -160,6 +160,40 @@ export class SyllabusController {
     return this.syllabusService.confirmSyllabus(tenant.instituteId, user.userId, id);
   }
 
+  @Post(':id/unlock')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async unlock(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const syllabus = await this.syllabusService.setLocked(
+      tenant.instituteId,
+      user.userId,
+      id,
+      false,
+    );
+    return { syllabus };
+  }
+
+  @Post(':id/lock')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async lock(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const syllabus = await this.syllabusService.setLocked(
+      tenant.instituteId,
+      user.userId,
+      id,
+      true,
+    );
+    return { syllabus };
+  }
+
   @Post(':id/archive')
   @RequiredRoles(...WRITE_ROLES)
   async archive(

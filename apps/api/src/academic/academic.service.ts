@@ -93,15 +93,31 @@ export class AcademicService {
     }
   }
 
-  /** Deletes a subject, but only when nothing depends on it. Every FK that
-   * references subjects cascades, so a careless delete would silently remove
-   * the whole academic structure, question bank, materials, content and
-   * syllabi under it. Refuse instead — the caller must remove the dependents
-   * first (or archive the subject). */
-  async deleteSubject(instituteId: string, subjectId: string) {
+/** Deletes a subject. Every FK that references subjects cascades, so a
+   *  careless delete would silently remove the whole academic structure,
+   *  question bank, materials, content and syllabi under it. By default the
+   *  delete is refused when dependents exist (the caller should remove them
+   *  or archive the subject); `force` performs the delete anyway and lets the
+   *  DB cascade remove everything under it. */
+  async deleteSubject(instituteId: string, subjectId: string, force = false) {
     await this.getSubject(instituteId, subjectId);
 
-    const dependents: string[] = [];
+    const dependents = await this.subjectDependents(instituteId, subjectId);
+    if (dependents.length > 0 && !force) {
+      throw new ConflictException(
+        `Cannot delete subject: it has ${dependents.join(', ')}. Remove or archive them first, or force delete.`,
+      );
+    }
+
+    const [deleted] = await this.db.delete(subjects).where(eq(subjects.id, subjectId)).returning();
+    if (!deleted) throw new NotFoundException('Subject not found');
+    return deleted;
+  }
+
+  /** Human-readable summary of everything that references a subject and would
+   *  cascade-delete with it when forced. */
+  async subjectDependents(instituteId: string, subjectId: string): Promise<string[]> {
+    await this.getSubject(instituteId, subjectId);
     const counts = await Promise.all([
       this.db.select({ n: count() }).from(chapters).where(eq(chapters.subjectId, subjectId)),
       this.db.select({ n: count() }).from(questions).where(eq(questions.subjectId, subjectId)),
@@ -121,18 +137,11 @@ export class AcademicService {
       ['syllabus', 'syllabi'],
       ['paper-pattern link', 'paper-pattern links'],
     ];
+    const dependents: string[] = [];
     counts.forEach(([{ n }], i) => {
       if (n > 0) dependents.push(`${n} ${n === 1 ? labels[i]![0] : labels[i]![1]}`);
     });
-    if (dependents.length > 0) {
-      throw new ConflictException(
-        `Cannot delete subject: it has ${dependents.join(', ')}. Remove or archive them first.`,
-      );
-    }
-
-    const [deleted] = await this.db.delete(subjects).where(eq(subjects.id, subjectId)).returning();
-    if (!deleted) throw new NotFoundException('Subject not found');
-    return deleted;
+    return dependents;
   }
 
   // ── Chapters ─────────────────────────────

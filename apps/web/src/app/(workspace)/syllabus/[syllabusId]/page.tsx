@@ -14,6 +14,8 @@ import {
   Trash2,
   Loader2,
   AlertTriangle,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
@@ -243,6 +245,14 @@ export default function SyllabusDetailPage() {
     );
   }
 
+  async function setLock(locked: boolean) {
+    await run(
+      locked ? 'lock' : 'unlock',
+      () => api(`/syllabus/${syllabusId}/${locked ? 'lock' : 'unlock'}`, { method: 'POST' }),
+      locked ? 'Syllabus locked' : 'Syllabus unlocked — edits are now allowed',
+    );
+  }
+
   async function confirmSyllabus() {
     try {
       const { report } = await api<{ report: SyllabusConfirmReport }>(
@@ -325,7 +335,8 @@ export default function SyllabusDetailPage() {
     return <ErrorState description={error ?? 'Syllabus not found.'} onRetry={() => void load()} />;
   }
 
-  const actionable = isTeacher && syllabus.status !== 'CONFIRMED';
+  const locked = syllabus.isLocked;
+  const actionable = isTeacher && !locked;
 
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
@@ -367,9 +378,28 @@ export default function SyllabusDetailPage() {
             Analyze
           </Button>
         )}
-      {actionable && syllabus.analysisStatus === 'READY' && syllabus.structure && (
+      {actionable && syllabus.status === 'PROPOSED' && syllabus.analysisStatus === 'READY' && syllabus.structure && (
         <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)}>
           <CheckCircle2 className="mr-1 size-3.5" /> Confirm structure
+        </Button>
+      )}
+      {isTeacher && locked && (
+        <Button
+          size="sm"
+          onClick={() => void setLock(false)}
+          disabled={busy !== null || processing || analyzing}
+        >
+          <Unlock className="mr-1 size-3.5" /> Unlock
+        </Button>
+      )}
+      {isTeacher && !locked && !processing && !analyzing && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void setLock(true)}
+          disabled={busy !== null}
+        >
+          <Lock className="mr-1 size-3.5" /> Lock
         </Button>
       )}
       {actionable && !processing && !analyzing && (
@@ -439,6 +469,18 @@ export default function SyllabusDetailPage() {
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400">
           <AlertTriangle className="size-4 shrink-0" />
           {syllabus.processingError ?? 'Processing failed'}
+        </div>
+      )}
+      {syllabus.isLocked && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+          <Lock className="size-4 shrink-0" />
+          This syllabus is locked — unlock it before editing, archiving or deleting.
+        </div>
+      )}
+      {syllabus.status === 'CONFIRMED' && !syllabus.isLocked && isTeacher && (
+        <div className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm text-violet-700 dark:text-violet-400">
+          <Unlock className="size-4 shrink-0" />
+          Confirmed but unlocked — edits, archive and delete are allowed until you lock it again.
         </div>
       )}
       {syllabus.status === 'CONFIRMED' && (

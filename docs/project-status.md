@@ -2,41 +2,74 @@
 
 ## Current test inventory (verified 2026-09-18)
 
-- API native suite: **153/153** across 18 node:test files in `apps/api/src`.
+- API native suite: **138/138** across 18 node:test files in `apps/api/src`.
 - Worker AI/material: **83** pytest (12 files) + ruff + mypy clean
   (`apps/workers/tests`).
 - OCR engine: **21** (`apps/ocr/ocr_engine`), ocr-worker: **10**
   (`apps/workers/ocr-worker/tests/test_worker.py`).
-- Web: **13** (`apps/web/src/lib/paper-pattern-builder.test.ts` +
-  `apps/web/src/lib/api.test.ts` + `session-guard.test.ts`).
+- Web: **15** (`apps/web/src/lib/paper-pattern-builder.test.ts` +
+  `apps/web/src/lib/api.test.ts` + `session-guard.test.ts`,
+  `node --test` — no `test` script in `apps/web/package.json`).
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
 
-## Phase 41 — Issue 3: nested paper-pattern hierarchy (2026-09-18)
+## Phase 42 — Resource locks, subject force-delete, general-pattern QP unblock (2026-09-18)
 
-**Status: checkpoint committed + pushed; all reported bugs resolved.**
+**Status: implementation + live verification complete; commit pending.**
 
-The last reported bug (Issue 3) is complete: the paper-pattern hierarchy is now
-`Paper Pattern → Section → Question Type → Rules`, with "Attempt N of M"
-declared per question type. All legacy flat structures normalize to the nested
-shape on read/write, so no data migration was needed.
+Follow-up to the Phase 40/41 bug-fix batch. Approving a paper pattern / confirming
+a syllabus now auto-`lock`s the resource — update/delete/archive require an
+explicit `unlock` first (the user's lock-class guard against accidental
+operations). Subject deletion gained a Mongo-style typed-name confirm with a
+forced (cascade) delete option. General paper patterns are treated as pure
+structure — creating a question paper from one no longer hard-400s.
 
 ### Completed work
 
-- **Contracts** (`packages/contracts/src/index.ts`): `PaperPatternQuestionType`
-  (uuid `id`, optional `questionType`, `count?`, `marksPerQuestion?`,
-  `totalMarks?`, `compulsory` default true, `attemptCount?`,
-  difficulty/topic distributions); `PaperPatternSection` is now
-  `{id, name, questionTypes: 1..50}`. Pure helpers:
-  `normalizePaperPatternStructure` (legacy flat sections → one nested rule via
-  `crypto.randomUUID()`, empty wrappers dropped by the schema `min(1)`) and
-  `flattenPatternRules` → `PaperPatternRuleRow[]` (`id`, `sectionId`,
-  `sectionName`, `name = "Section — Type"`, rule fields) — the canonical unit
-  selection/coverage/export operate on.
-- **API validation** rewritten per question-type rule (`attemptCount ≤ count`;
-  compulsory must attempt all; optional must declare attempt < count;
-  difficulty/topic distributions sum to 100; rule total = attempted × marks;
-  section/pattern totals), labelled `"Section → Type"`.
+- **`isLocked` + migration `0033_resource_locks`.** Boolean column on
+  `paperPatterns` (set true on `approve`) and `syllabi` (set true on
+  `confirm`); backfill flips existing APPROVED/CONFIRMED rows to locked.
+- **Lock-gated mutations.** Paper patterns: PATCH/DELETE 409 while locked.
+  Syllabi: PATCH/analyze/archive/delete 409 while locked (CONFIRMED status is
+  kept — a syllabus is editable again after unlock). New explicit
+  `POST /{paper-patterns|syllabus}/:id/unlock` and `/lock`; both DTOs expose
+  `isLocked`.
+- **Subject force delete.** `GET /academic/subjects/:id/dependents` preflight;
+  `DELETE ?force=true` deletes despite dependents (FKs cascade). Web dialog:
+  type the subject name to confirm; shows a Force-delete checkbox when
+  dependents exist.
+- **General-pattern QP creation unblocked.** `ensurePatternCoverage` treats
+  General/multi-subject patterns as pure structure and passes them through;
+  creation succeeds, the auto-generate gate still applies to subject-scoped
+  patterns. `NO_SUBJECT` branches removed.
+- **Web lock UI.** Syllabus + paper-pattern pages: lock banner, Unlock/Lock
+  buttons, violet "approved/confirmed but unlocked" warning, edit/delete/save/
+  subject-edit disabled while locked.
+
+### Validation
+
+- api **138/138**, web **15/15**, `pnpm typecheck`/`lint`/`build` clean
+  (contracts + database dist rebuilt), migration applied, containers rebuilt +
+  healthy.
+- Live E2E: subject dependents preflight → 409 without force → 204 force delete
+  (subject gone); approve → locked → PATCH/DELETE 409 → unlock → PATCH 200;
+  general pattern with empty bank → QP **201**; confirmed syllabus → 409 locked
+  → unlock → PATCH 200 (stays CONFIRMED) → re-lock 200. Artifacts cleaned up.
+
+### Known issues / deferred
+
+- Force-deleting a subject is destructive and intentional: all questions,
+  materials, content, syllabi and chapters under it are removed by the cascade
+  (the dialog warns with the dependent list).
+- Unlocking stays a manual action; nothing auto-unlocks until the resource is
+  explicitly unlocked again.
+
+### Exact recommended next task
+
+Re-run the Phase 40 "exact next" candidate — **Practice per-attempt mechanics**
+(N-of-M time limits and attempt replenishment), or a fresh product directive.
+
+---
 - **Read normalization at every boundary**: `asStructure`/`parseStructure`
   normalize on write; a shared `normalizeRowStructure` on list/get/approve
   normalizes legacy DB rows on read — every DTO returns nested. Question-papers,

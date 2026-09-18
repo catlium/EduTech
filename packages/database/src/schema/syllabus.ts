@@ -6,6 +6,7 @@ import {
   timestamp,
   text,
   integer,
+  boolean,
   unique,
   check,
 } from 'drizzle-orm/pg-core';
@@ -73,6 +74,7 @@ export const syllabi = pgTable(
     // confirm flow creates/updates the academic hierarchy from it.
     structure: jsonb('structure'),
     status: varchar('status', { length: 20 }).notNull().default('PROPOSED'),
+    isLocked: boolean('is_locked').notNull().default(false),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()

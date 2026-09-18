@@ -200,7 +200,7 @@ export class SyllabusService {
     input: UpdateSyllabusInput,
   ) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
-    this.assertUnconfirmed(row, 'Syllabus');
+    this.assertUnlocked(row, 'Syllabus');
 
     if (row.processingStatus === 'PROCESSING' || row.analysisStatus === 'PROCESSING') {
       throw new ConflictException(
@@ -315,7 +315,7 @@ export class SyllabusService {
 
   async analyzeSyllabus(instituteId: string, userId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
-    this.assertUnconfirmed(row, 'Syllabus');
+    this.assertUnlocked(row, 'Syllabus');
 
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Archived syllabi cannot be analyzed');
@@ -375,7 +375,7 @@ export class SyllabusService {
 
   async confirmSyllabus(instituteId: string, userId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
-    this.assertUnconfirmed(row, 'Syllabus');
+    this.assertNotConfirmed(row, 'Syllabus');
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Archived syllabi cannot be confirmed');
     }
@@ -393,7 +393,7 @@ export class SyllabusService {
         .for('update')
         .limit(1);
       if (!locked) throw new NotFoundException('Syllabus not found');
-      this.assertUnconfirmed(locked, 'Syllabus');
+      this.assertNotConfirmed(locked, 'Syllabus');
 
       const structure = this.parseStructure(locked.structure);
       report = await this.applyStructure(tx, locked, structure, userId);
@@ -575,6 +575,7 @@ export class SyllabusService {
       .update(syllabi)
       .set({
         status: 'CONFIRMED',
+        isLocked: true,
         confirmedAt: new Date(),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -588,11 +589,7 @@ export class SyllabusService {
 
   async archiveSyllabus(instituteId: string, userId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
-    if (row.status === 'CONFIRMED') {
-      throw new ConflictException(
-        'Confirmed syllabi are immutable history — they cannot be archived',
-      );
-    }
+    this.assertUnlocked(row, 'Syllabus');
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Syllabus is already archived');
     }
@@ -608,11 +605,7 @@ export class SyllabusService {
 
   async deleteSyllabus(instituteId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
-    if (row.status === 'CONFIRMED') {
-      throw new ConflictException(
-        'Confirmed syllabi are immutable history — they cannot be deleted',
-      );
-    }
+    this.assertUnlocked(row, 'Syllabus');
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Archived syllabi must be restored before deletion');
     }
@@ -630,6 +623,18 @@ export class SyllabusService {
 
     await this.db.delete(syllabi).where(eq(syllabi.id, syllabusId));
     return { deleted: true };
+  }
+
+  /** Lock or unlock a syllabus. Confirming auto-locks; locking is an explicit
+   *  accidental-mutation guard, not a status change. */
+  async setLocked(instituteId: string, userId: string, syllabusId: string, isLocked: boolean) {
+    await this.getSyllabusRow(instituteId, syllabusId);
+    const [updated] = await this.db
+      .update(syllabi)
+      .set({ isLocked, updatedBy: userId, updatedAt: new Date() })
+      .where(and(eq(syllabi.id, syllabusId), eq(syllabi.instituteId, instituteId)))
+      .returning();
+    return this.toSyllabus(updated!);
   }
 
   // ── Helpers ───────────────────────────────
@@ -676,7 +681,13 @@ export class SyllabusService {
       .where(eq(syllabi.id, syllabusId));
   }
 
-  private assertUnconfirmed(row: { status: string }, what: string) {
+  private assertUnlocked(row: { isLocked: boolean }, what: string) {
+    if (row.isLocked) {
+      throw new ConflictException(`${what} is locked — unlock it before editing`);
+    }
+  }
+
+  private assertNotConfirmed(row: { status: string }, what: string) {
     if (row.status === 'CONFIRMED') {
       throw new ConflictException(`${what} is already confirmed`);
     }
@@ -805,6 +816,7 @@ export class SyllabusService {
       context: row.context as SyllabusContext | null,
       structure: row.structure as SyllabusStructure | null,
       status: row.status,
+      isLocked: row.isLocked,
       confirmedAt: row.confirmedAt?.toISOString() ?? null,
       createdBy: row.createdBy,
       updatedBy: row.updatedBy ?? null,

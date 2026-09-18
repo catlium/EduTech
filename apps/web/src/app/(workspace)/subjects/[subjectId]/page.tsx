@@ -16,7 +16,6 @@ import { SkeletonCards } from '@/components/app/loading';
 import { ErrorState } from '@/components/app/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/app/confirm-dialog';
 import {
   GenerateResourcesDialog,
   batchStartMessages,
@@ -31,6 +30,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import type {
   SubjectResponse,
   ChapterResponse,
@@ -54,6 +54,9 @@ export default function SubjectDetailPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteDependents, setDeleteDependents] = useState<string[]>([]);
+  const [confirmName, setConfirmName] = useState('');
+  const [confirmForce, setConfirmForce] = useState(false);
   const [starting, setStarting] = useState(false);
   const [batch, setBatch] = useState<{
     batchId: string;
@@ -142,10 +145,29 @@ export default function SubjectDetailPage() {
     }
   }
 
+  async function openDelete() {
+    setConfirmName('');
+    setConfirmForce(false);
+    setDeleting(true);
+    setDeleteOpen(true);
+    try {
+      const { dependents } = await api<{ dependents: string[] }>(
+        `/academic/subjects/${subjectId}/dependents`,
+      );
+      setDeleteDependents(dependents);
+    } catch {
+      setDeleteDependents([]);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function handleDelete() {
     setDeleting(true);
     try {
-      await api(`/academic/subjects/${subjectId}`, { method: 'DELETE' });
+      await api(`/academic/subjects/${subjectId}?force=${confirmForce ? 'true' : 'false'}`, {
+        method: 'DELETE',
+      });
       toast.success('Subject deleted');
       setDeleteOpen(false);
       router.push('/subjects');
@@ -211,7 +233,7 @@ export default function SubjectDetailPage() {
                 <Button
                   size="sm"
                   variant="destructive"
-                  onClick={() => setDeleteOpen(true)}
+                  onClick={() => void openDelete()}
                   disabled={Boolean(batch?.status?.active)}
                 >
                   <Trash2 className="mr-1 size-3.5" /> Delete
@@ -291,16 +313,63 @@ export default function SubjectDetailPage() {
         sourceLabel={`every topic in ${subject.name}`}
       />
 
-      <ConfirmDialog
+      <Dialog
         open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title={`Delete "${subject.name}"?`}
-        description="This cannot be undone. If the subject has chapters, questions, syllabi or paper-pattern links, deletion will be blocked."
-        confirmLabel={deleting ? 'Deleting…' : 'Delete subject'}
-        destructive
-        loading={deleting}
-        onConfirm={() => void handleDelete()}
-      />
+        onOpenChange={(o) => {
+          setDeleteOpen(o);
+          if (!o) setConfirmName('');
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete &ldquo;{subject.name}&rdquo;?</DialogTitle>
+            <DialogDescription>
+              This cannot be undone. Everything under this subject will be removed too.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteDependents.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+              <p className="font-medium">This subject still contains:</p>
+              <ul className="mt-1 list-inside list-disc">
+                {deleteDependents.map((d) => (
+                  <li key={d}>{d}</li>
+                ))}
+              </ul>
+              <label className="mt-3 flex items-center gap-2">
+                <Checkbox
+                  checked={confirmForce}
+                  onCheckedChange={(v) => setConfirmForce(Boolean(v))}
+                />
+                Force delete — remove this subject and all of the above
+              </label>
+            </div>
+          )}
+
+          <Input
+            value={confirmName}
+            onChange={(e) => setConfirmName(e.target.value)}
+            placeholder={`Type ${subject.name} to confirm`}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                deleting ||
+                confirmName !== subject.name ||
+                (deleteDependents.length > 0 && !confirmForce)
+              }
+              onClick={() => void handleDelete()}
+            >
+              {deleting ? 'Deleting…' : 'Delete subject'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

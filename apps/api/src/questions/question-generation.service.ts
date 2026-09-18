@@ -875,6 +875,14 @@ export class QuestionGenerationService {
 
     if (totalDeficit === 0) return { ...covered, buckets, totalExisting };
 
+    // A General (0 subjects) or multi-subject pattern is a pure structure
+    // template — there is no single subject scope to auto-fill missing
+    // questions, so creation proceeds with whatever the bank covers instead
+    // of blocking on the shortfall.
+    if (subjectIds.length !== 1) {
+      return { ...covered, buckets, totalExisting, totalDeficit };
+    }
+
     // PENDING covers every gap → generation already produced what the bank
     // needs, but it is still awaiting teacher approval before selection.
     const everyGapPending = buckets.every((b) => b.existing + b.pending >= b.requested);
@@ -890,12 +898,12 @@ export class QuestionGenerationService {
       };
     }
 
-    // A General (0 subjects) or multi-subject pattern has no single generation
-    // scope, so the shortfall cannot be auto-filled — report it for blocking.
-    if (options.dryRun || subjectIds.length !== 1) {
+    // A subject-scoped shortfall that cannot be auto-filled (dry-run preflight
+    // only) is reported; the real flow falls through to generation.
+    if (options.dryRun) {
       return {
         covered: false as const,
-        status: subjectIds.length === 1 ? ('INSUFFICIENT' as const) : ('NO_SUBJECT' as const),
+        status: 'INSUFFICIENT' as const,
         totalDeficit,
         totalExisting,
         buckets,

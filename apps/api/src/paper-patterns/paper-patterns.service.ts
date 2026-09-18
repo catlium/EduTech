@@ -100,6 +100,9 @@ export class PaperPatternsService {
     },
   ) {
     const row = await this.requirePattern(instituteId, patternId);
+    if (row.isLocked) {
+      throw new ConflictException('Paper pattern is locked — unlock it before editing');
+    }
     if (input.version !== undefined && input.version !== row.version) {
       throw new ConflictException('Paper pattern has been modified — refresh and retry');
     }
@@ -147,10 +150,12 @@ export class PaperPatternsService {
   }
 
   async deletePattern(instituteId: string, patternId: string) {
-    // requirePattern gives 404 + tenant scope; the pattern row itself is not
-    // otherwise needed for deletion (junction + assessment-blueprint FKs
-    // self-clean on delete).
-    await this.requirePattern(instituteId, patternId);
+    // requirePattern gives 404 + tenant scope and the lock guard; junction +
+    // assessment-blueprint FKs self-clean on delete.
+    const row = await this.requirePattern(instituteId, patternId);
+    if (row.isLocked) {
+      throw new ConflictException('Paper pattern is locked — unlock it before deleting');
+    }
     // Guard against concurrent worker operations: if a blueprint analysis
     // job is queued or running, refuse deletion rather than race with the
     // worker. Check-then-delete has a small window; concurrent jobs that
@@ -262,6 +267,7 @@ export class PaperPatternsService {
       .update(paperPatterns)
       .set({
         status: 'APPROVED',
+        isLocked: true,
         validatedAt: new Date(),
         approvedAt: new Date(),
         updatedBy: userId,
@@ -271,6 +277,23 @@ export class PaperPatternsService {
       .returning();
 
     return (await this.attachSubjectIds([this.normalizeRowStructure(approved!)]))[0]!;
+  }
+
+  /** Lock or unlock a pattern. Approving auto-locks; locking is an explicit
+   *  accidental-mutation guard, not a status change. */
+  async setLocked(
+    instituteId: string,
+    userId: string,
+    patternId: string,
+    isLocked: boolean,
+  ) {
+    await this.requirePattern(instituteId, patternId);
+    const [updated] = await this.db
+      .update(paperPatterns)
+      .set({ isLocked, updatedBy: userId, updatedAt: new Date() })
+      .where(and(eq(paperPatterns.id, patternId), eq(paperPatterns.instituteId, instituteId)))
+      .returning();
+    return (await this.attachSubjectIds([this.normalizeRowStructure(updated!)]))[0]!;
   }
 
   // ── Assessment creation ───────────────────
@@ -307,11 +330,9 @@ export class PaperPatternsService {
         };
       }
       throw new BadRequestException(
-        coverage.status === 'NO_SUBJECT'
-          ? 'This pattern has no subject scope, so missing questions cannot be generated automatically. Link the pattern to a subject or add questions to the bank.'
-          : coverage.status === 'AWAITING_APPROVAL'
-            ? `${coverage.totalDeficit} generated question${coverage.totalDeficit === 1 ? ' is' : 's are'} still awaiting approval — approve them in the Question Bank, then create the assessment again.`
-            : 'The question bank has too few questions for this pattern to generate the missing ones automatically.',
+        coverage.status === 'AWAITING_APPROVAL'
+          ? `${coverage.totalDeficit} generated question${coverage.totalDeficit === 1 ? ' is' : 's are'} still awaiting approval — approve them in the Question Bank, then create the assessment again.`
+          : 'The question bank has too few questions for this pattern to generate the missing ones automatically.',
       );
     }
 

@@ -161,6 +161,40 @@ export class PaperPatternsController {
     return { pattern };
   }
 
+  @Post(':patternId/unlock')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async unlock(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('patternId', ParseUUIDPipe) patternId: string,
+  ) {
+    const pattern = await this.paperPatternsService.setLocked(
+      tenant.instituteId,
+      user.userId,
+      patternId,
+      false,
+    );
+    return { pattern };
+  }
+
+  @Post(':patternId/lock')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  async lock(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('patternId', ParseUUIDPipe) patternId: string,
+  ) {
+    const pattern = await this.paperPatternsService.setLocked(
+      tenant.instituteId,
+      user.userId,
+      patternId,
+      true,
+    );
+    return { pattern };
+  }
+
   @Post(':patternId/assessment')
   @HttpCode(HttpStatus.CREATED)
   @RequiredRoles(...WRITE_ROLES)

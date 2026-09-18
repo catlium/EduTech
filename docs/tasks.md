@@ -646,6 +646,57 @@ the next scheduled batch.
         (worker source-import verified) + live E2E: nested write→GET→validate→
         approve round-trip, legacy-flat write validates + reads back nested.
 
+## Phase 42 — Resource locks (approve/confirm), subject force-delete, general-pattern QP unblock (2026-09-18)
+
+> Follow-up to the Phase 40/41 batch. Lock/unlock model per the user
+> recommendation: `approve`/`confirm` auto-lock the resource; update/delete/
+> archive require an explicit unlock. Subject delete gains a Mongo-style
+> typed-name confirm with force-cascade. General paper patterns are treated as
+> pure structure (arrangement + marks), so creating a QP from them no longer
+> hard-400s on the auto-fill gate.
+
+- [x] **Schema + migration `0033_resource_locks`.** `isLocked` boolean NOT NULL
+  DEFAULT false on `paperPatterns` and `syllabi`; backfill sets it true for
+  already-APPROVED patterns / CONFIRMED syllabi (preserves the old
+  immutable-after-approval default, now reversible). Migration applied to dev DB
+  (9 patterns + 4 syllabi backfilled).
+- [x] **Paper patterns lock.** `approve()` sets `isLocked=true`;
+  `updatePattern` and `deletePattern` throw 409 "locked — unlock it before
+  editing/deleting" when locked; new `POST /paper-patterns/:id/unlock` and
+  `/lock` (`setLocked`); `PaperPattern` DTO gains `isLocked`.
+- [x] **Syllabus lock.** Confirm sets `isLocked=true` along with CONFIRMED;
+  `updateSyllabus`/`analyzeSyllabus`/`archive`/`delete` gate on `isLocked`
+  (replacing the hard CONFIRMED block) so a confirmed syllabus is editable
+  after unlock while CONFIRMED status is kept; new `POST /syllabus/:id/unlock`
+  and `/lock`; `SyllabusResponse` gains `isLocked`.
+- [x] **Subject force delete.** `DELETE /academic/subjects/:subjectId?force=true`
+  performs the delete anyway — every dependent FK cascades, so the subject,
+  chapters, topics, questions, materials, content and syllabi under it are
+  removed together. New `GET /academic/subjects/:id/dependents` preflight
+  returns the human-readable dependent summary. Web subject page: Mongo-style
+  delete dialog that requires typing the subject name and shows a Force-delete
+  checkbox when dependents exist.
+- [x] **General-pattern QP creation unblocked.** In `ensurePatternCoverage`, a
+  General (0 subjects) or multi-subject pattern now passes through as covered
+  (the pattern is a pure structure template — there is no single scope to
+  auto-fill, so creation proceeds with whatever the bank covers). Subject-scoped
+  shortfalls still auto-generate (or block with INSUFFICIENT in dry-run).
+  Removed the `NO_SUBJECT` branches from both callers.
+- [x] **Web lock UI.** Syllabus + paper-pattern pages show an amber "locked —
+  unlock before editing/deleting" banner, an Unlock button when locked, and a
+  violet "approved/confirmed but unlocked" warning; Edit/Save/Delete/subject
+  pickers are disabled while locked. Pattern builder's Review & Save and
+  subject controls respect the lock.
+- [x] **Validation + live E2E.** api `node --test` 18 files **138/138**; web
+  `node --test` **15/15**; `pnpm typecheck`/`lint`/`build` clean (contracts +
+  database dist rebuilt). Containers rebuilt and healthy; migration applied.
+  Live-verified: subject dependents preflight ("1 chapter") → delete without
+  force = 409 → force delete = 204 (subject 404 after); approve → `isLocked
+  true`, PATCH/DELETE 409 while locked, unlock → PATCH 200; general pattern with
+  empty bank → `POST /question-papers` **201** (was a 400); confirmed syllabus →
+  PATCH 409 locked → unlock → PATCH 200 (status stays CONFIRMED) → re-lock.
+  Test artifacts (temp subject, pattern, question paper) cleaned up.
+
 ---
 
 ## Phase 37 — Export & Assessment Result PDFs: product semantics, result export, Preview == Export (2026-09-16)
