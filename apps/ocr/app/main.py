@@ -8,7 +8,7 @@ from app.config import settings
 from ocr_engine import SUPPORTED_MIME_TYPES, normalize_text
 from ocr_engine.config import EngineConfig
 from ocr_engine.errors import ExtractionError
-from ocr_engine.extract import extract_document
+from ocr_engine.extract import extract_document, extract_range, pdf_page_count
 
 logger = logging.getLogger(__name__)
 
@@ -84,3 +84,52 @@ async def extract(
         raise HTTPException(status_code=422, detail="No text extracted")
 
     return {"text": text, "metadata": {"pages": pages, "sources": sources}}
+
+
+@app.post("/extract/pages")
+async def extract_pages(
+    file: Annotated[UploadFile, File()],
+    x_internal_api_key: Annotated[str | None, Header(alias="x-internal-api-key")] = None,
+) -> dict[str, object]:
+    """Per-page extraction for provenance-aware consumers (e.g. paper-pattern
+    extraction, which keeps page numbers on its blocks).
+
+    Returns ``{"pages": [{page, text, source}], "metadata": {pageCount,
+    sources}}``. PDFs keep their real page numbers (PyMuPDF text first,
+    PaddleOCR per-page fallback); images are a single page via PaddleOCR;
+    text passes through as one page with no OCR.
+    """
+    if settings.internal_api_key and x_internal_api_key != settings.internal_api_key:
+        raise HTTPException(status_code=401, detail="Invalid internal api key")
+
+    content = await file.read()
+    mime_type = (file.content_type or "").lower()
+
+    if mime_type not in SUPPORTED_MIME_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported content type: {mime_type or 'unknown'}",
+        )
+
+    try:
+        pages_to_extract = (
+            pdf_page_count(content, _CONFIG) if mime_type == "application/pdf" else 1
+        )
+        extracted = extract_range(content, mime_type, 1, pages_to_extract, _CONFIG)
+    except ExtractionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    if not extracted or all(not p.text for p in extracted):
+        raise HTTPException(status_code=422, detail="No text extracted")
+
+    sources: dict[str, int] = {"pymupdf": 0, "paddleocr": 0}
+    for page in extracted:
+        sources[page.source] += 1
+
+    return {
+        "pages": [
+            {"page": page.page, "text": page.text, "source": page.source}
+            for page in extracted
+        ],
+        "metadata": {"pageCount": len(extracted), "sources": sources},
+    }

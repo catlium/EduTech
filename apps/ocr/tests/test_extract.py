@@ -36,6 +36,19 @@ def _pdf_with_text() -> bytes:
     return data
 
 
+def _two_page_selectable_pdf() -> bytes:
+    import pymupdf
+
+    doc = pymupdf.open()
+    page1 = doc.new_page()
+    page1.insert_text((72, 72), "Page one selectable text")
+    page2 = doc.new_page()
+    page2.insert_text((72, 72), "Page two selectable text")
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
 def _image_bytes(text: str, fmt: str = "PNG") -> bytes:
     from PIL import Image, ImageDraw, ImageFont
 
@@ -88,6 +101,54 @@ def test_pdf_selectable_text_uses_pymupdf_path() -> None:
     body = response.json()
     assert body["text"] == "Hola CatLium OCR selectable text"
     assert body["metadata"]["sources"] == {"pymupdf": 1, "paddleocr": 0}
+
+
+# ── Per-page extraction (/extract/pages) ────────────────────
+
+
+def test_pages_text_plain_is_one_page() -> None:
+    response = client.post(
+        "/extract/pages",
+        files={"file": ("notes.txt", b"section A\nmcq 10 x 1", TEXT_MIME)},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["metadata"]["pageCount"] == 1
+    assert body["pages"][0]["page"] == 1
+    assert body["pages"][0]["source"] == "pymupdf"
+    assert "section A" in body["pages"][0]["text"]
+
+
+def test_pages_pdf_keeps_page_numbers() -> None:
+    import pymupdf  # noqa: F401
+
+    doc = _two_page_selectable_pdf()
+    response = client.post(
+        "/extract/pages",
+        files={"file": ("two.pdf", doc, PDF_MIME)},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    pages = body["pages"]
+    assert [p["page"] for p in pages] == [1, 2]
+    assert [p["source"] for p in pages] == ["pymupdf", "pymupdf"]
+    assert "Page two" in pages[1]["text"]
+
+
+def test_pages_unsupported_mime_rejected() -> None:
+    response = client.post(
+        "/extract/pages",
+        files={"file": ("x.exe", b"MZ", "application/octet-stream")},
+    )
+    assert response.status_code == 422
+
+
+def test_pages_corrupt_pdf_rejected() -> None:
+    response = client.post(
+        "/extract/pages",
+        files={"file": ("broken.pdf", b"%PDF-1.4 NOT A REAL PDF", PDF_MIME)},
+    )
+    assert response.status_code == 422
 
 
 def test_unsupported_mime_rejected() -> None:

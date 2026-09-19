@@ -17,6 +17,6 @@ import { MaterialEnhancementModule } from '../material-enhancement/material-enha
       useClass: LocalStorageProvider,
     },
   ],
-  exports: [MaterialsService],
+  exports: [MaterialsService, STORAGE_PROVIDER],
 })
 export class MaterialsModule {}

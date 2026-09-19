@@ -106,7 +106,9 @@ export class CreateAssessmentFromBlueprintDto extends QuestionScopeDto {
   description?: string;
 }
 
-export class ExtractFromMaterialDto {
-  @IsUUID()
-  materialId!: string;
+export class ExtractTextDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1_000_000)
+  text!: string;
 }

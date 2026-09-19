@@ -17,7 +17,6 @@ import {
   FileText,
   FileUp,
   BookOpen,
-  ScanSearch,
 } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
@@ -28,8 +27,6 @@ import type {
   MaterialProcessingStatus,
   ContentGenerationStatus,
   ContentGenerationStatusResponse,
-  ExtractPaperPatternResponse,
-  PaperPatternExtractionStatus,
 } from '@catlium/contracts';
 import { PageHeader } from '@/components/app/page-header';
 import { StatusBadge } from '@/components/app/status-badge';
@@ -90,7 +87,6 @@ export default function MaterialDetailPage() {
   const [confirmAction, setConfirmAction] = useState<'archive' | 'activate' | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [genStatus, setGenStatus] = useState<ContentGenerationStatusResponse | null>(null);
-  const [extracting, setExtracting] = useState(false);
 
   const refresh = useCallback(() => {
     if (!institute) return;
@@ -189,50 +185,6 @@ export default function MaterialDetailPage() {
     }
   }
 
-  async function extractPattern() {
-    if (!material || extracting) return;
-    setExtracting(true);
-    try {
-      const { extraction } = await api<ExtractPaperPatternResponse>(
-        '/paper-patterns/extract-from-material',
-        { method: 'POST', body: { materialId: material.id } },
-      );
-      if (extraction.status === 'COMPLETED' && extraction.patternId) {
-        router.push(`/paper-patterns/${extraction.patternId}`);
-        return;
-      }
-      toast.loading('Extracting paper pattern…');
-      const deadline = Date.now() + 60_000;
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const { extraction: status } = await api<PaperPatternExtractionStatus>(
-          `/paper-patterns/extraction/${extraction.jobId}`,
-        );
-        if (status.status === 'completed') {
-          toast.dismiss();
-          if (status.result?.patternId) {
-            router.push(`/paper-patterns/${status.result.patternId}`);
-          } else {
-            toast.error('Extraction finished without a pattern');
-          }
-          return;
-        }
-        if (status.status === 'failed') {
-          toast.dismiss();
-          throw new ApiError(422, status.error?.message ?? 'Paper pattern extraction failed');
-        }
-        if (Date.now() > deadline) {
-          toast.dismiss();
-          throw new ApiError(408, 'Extraction timed out — retry in a moment');
-        }
-      }
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to extract pattern');
-    } finally {
-      setExtracting(false);
-    }
-  }
-
   if (loading) {
     return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
   }
@@ -278,17 +230,6 @@ export default function MaterialDetailPage() {
                 <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
                   <Pencil className="mr-1 size-3.5" /> Edit
                 </Button>
-                {material.status === 'ACTIVE' && material.processingStatus === 'READY' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={extractPattern}
-                    disabled={extracting}
-                  >
-                    <ScanSearch className="mr-1 size-3.5" />
-                    {extracting ? 'Extracting…' : 'Extract Paper Pattern'}
-                  </Button>
-                )}
                 {material.sourceType === 'UPLOAD' && material.processingStatus === 'UPLOADED' && (
                   <Button size="sm" onClick={processMaterial}>
                     <Play className="mr-1 size-3.5" /> Process

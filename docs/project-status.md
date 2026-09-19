@@ -6,13 +6,87 @@
   (incl. 12 question-extractor + 17 Material Intelligence enhancer tests).
 - Worker AI/material: **83** pytest (12 files) + ruff + mypy clean
   (`apps/workers/tests`).
-- OCR engine: **21** (`apps/ocr/ocr_engine`), ocr-worker: **10**
+- OCR engine: **21** (`apps/ocr/ocr_engine`), OCR app suite: **25** (incl. 4
+  new `POST /extract/pages` per-page tests), ocr-worker: **10**
   (`apps/workers/ocr-worker/tests/test_worker.py`).
 - Web: **15** (`apps/web/src/lib/paper-pattern-builder.test.ts` +
   `apps/web/src/lib/api.test.ts` + `session-guard.test.ts`,
   `node --test` — no `test` script in `apps/web/package.json`).
 - e2e scripts under `scripts/e2e/` (syllabus_e2e.sh, resource_ownership_e2e.sh,
   paper_pattern_e2e.sh, attempts_e2e.sh, …).
+
+## Phase 48 A — Generic paper-pattern extraction (2026-09-19)
+
+**Status: implementation + validation + live E2E complete; commit pending.**
+
+Amends Phase 46: paper-pattern extraction is no longer Material-owned. Any
+supported source — pasted text, uploaded PDF, or uploaded image — is a pure
+input to the SAME deterministic `pattern-extractor.ts`; no classification by
+the user, no `sourceMaterialId`, no Material → Paper Pattern ownership. The
+added OCR endpoint keeps per-page provenance. Idempotency now keys on the
+source SHA-256 instead of material+revision.
+
+### Found & fixed during live E2E
+
+- The enqueue endpoints returned the extraction result FLAT
+  (`{jobId,status,reused}`) instead of the contract's `{extraction:{...}}`
+  envelope — this broke the web dialog's poll trigger and step-1 of the E2E.
+  Both `extract-text`/`extract-file` now wrap the response.
+- `titleFrom(undefined)` produced a pattern titled `source` for pasted text;
+  it now defaults to `Extracted Paper Pattern`.
+
+### Completed work
+
+- **Contracts:** `PatternExtractionMetaSchema` → `materialId`/`materialRevision`
+  optional (legacy only), `source` = `ENHANCEMENT|TEXT|OCR`, optional
+  `sourceHash`/`fileName`/`pageCount`; `ExtractPaperPatternRequestSchema`
+  removed; `ExtractPaperPatternTextRequestSchema` (`text` 1..1_000_000).
+- **OCR service:** `POST /extract/pages` → `{pages:[{page,text,source}],
+  metadata:{pageCount,sources}}`; PDFs keep real page numbers (PyMuPDF first,
+  per-page PaddleOCR fallback), images one page, text passes through; 401
+  internal-key / 422 guards. 4 new pytest.
+- **Extraction service (`PATTERN_EXTRACT`):** `requestTextExtraction` +
+  `requestFileExtraction` (PDF/png/jpeg/webp ≤ 20 MB → storage); sweep calls
+  the OCR service synchronously for files; creates REVIEW /
+  PREVIOUS_YEAR_PAPER pattern with no source link; file deleted after OCR;
+  `sourceHash` reuse returns the completed pattern.
+- **API surface:** `POST /paper-patterns/extract-text` + `extract-file`
+  (multipart), `extract-from-material` removed; `MATERIAL_PATTERN_EXTRACT`
+  renamed `PATTERN_EXTRACT` (ALLOWED_JOB_TYPES + publish exclusion);
+  `STORAGE_PROVIDER` exported; API env `OCR_SERVICE_URL` + `INTERNAL_API_KEY`.
+- **Web:** material-detail extraction button removed; paper-patterns list page
+  "Extract from Source" dialog (paste-text / upload-file) → poll → navigate.
+- **DB:** none — the `extraction` jsonb column already held `source` and is
+  reused; `sourceMaterialId` stays NULL for new extractions.
+
+### Validation
+
+- contracts/api/web typecheck + eslint clean; API suite **188/188**; OCR app
+  **25/25**; prettier clean on touched files.
+- Containers rebuilt (api/web/ocr), all healthy; `PATTERN_EXTRACT` and
+  `extract-file` confirmed inside the running api image.
+- Live `/extract/pages` probe against the running ocr service:
+  2-page selectable PDF → correct per-page text, `page` 1/2, `source`
+  pymupdf, `metadata.pageCount` 2.
+- **Authenticated browser E2E (demo stack, 54/54 checks):** paste-text →
+  QUEUED → completed in the `PATTERN_EXTRACT` sweep → REVIEW /
+  PREVIOUS_YEAR_PAPER pattern with `source=TEXT`, sha256 `sourceHash`, no
+  `sourceMaterialId`, 2 sections, MCQ 20 compulsory + Short Answer
+  `attemptCount:5` on the QUESTION TYPE rule (section carries none), no
+  per-question payloads, provenance pages [1]. Idempotent re-request →
+  `COMPLETED reused:true` + SAME pattern; no `questions` rows created by
+  extraction (verified before/after in the DB). Different text → distinct
+  pattern. 2-page PDF upload → `source=OCR`, `pageCount:2`, `fileName` +
+  per-page provenance incl. page 2; repeat upload → same pattern. PNG image
+  → PaddleOCR in the demo container → `source=OCR`, `pageCount:1`. Probe
+  patterns and storage dir removed; only the seed fixtures remain in the
+  demo institute.
+
+### Next task
+
+Commit and push Phase 48 A (docs above), then continue with the next
+scheduled phase. Academic export redesign remains deferred for a future
+phase.
 
 ## Phase 47 — Question extraction into the question bank (2026-09-18)
 

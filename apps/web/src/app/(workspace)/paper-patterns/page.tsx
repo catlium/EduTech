@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useCallback } from 'react';
-import { FileText, Plus } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FileText, FileUp, Plus, ScanSearch, Type } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 import { api, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
@@ -15,6 +16,10 @@ import { SkeletonCards } from '@/components/app/loading';
 import { ErrorState } from '@/components/app/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -22,7 +27,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import type { PaperPattern, SubjectResponse } from '@catlium/contracts';
+import type { ExtractPaperPatternResponse, PaperPatternExtractionStatus } from '@catlium/contracts';
 
 export default function PaperPatternsListPage() {
   const { institute } = useTenant();
@@ -33,6 +47,12 @@ export default function PaperPatternsListPage() {
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [extractOpen, setExtractOpen] = useState(false);
+  const [extractMode, setExtractMode] = useState<'text' | 'file'>('text');
+  const [extractText, setExtractText] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [extracting, setExtracting] = useState(false);
 
   const load = useCallback(() => {
     if (!institute) return;
@@ -63,9 +83,7 @@ export default function PaperPatternsListPage() {
   const filtered =
     subjectFilter === 'all'
       ? patterns
-      : patterns.filter(
-          (p) => p.subjectIds.length === 0 || p.subjectIds.includes(subjectFilter),
-        );
+      : patterns.filter((p) => p.subjectIds.length === 0 || p.subjectIds.includes(subjectFilter));
 
   function patternSubjects(pattern: PaperPattern) {
     if (pattern.subjectIds.length === 0)
@@ -75,6 +93,81 @@ export default function PaperPatternsListPage() {
         {pattern.subjectIds.map((id) => subjectMap[id] ?? 'Unknown subject').join(', ')}
       </span>
     );
+  }
+
+  async function submitExtraction() {
+    if (!institute || extracting) return;
+    let response: ExtractPaperPatternResponse;
+    try {
+      if (extractMode === 'text') {
+        if (!extractText.trim()) {
+          toast.error('Paste the paper text first');
+          return;
+        }
+        response = await api<ExtractPaperPatternResponse>('/paper-patterns/extract-text', {
+          method: 'POST',
+          body: { text: extractText },
+        });
+      } else {
+        const file = fileRef.current?.files?.[0];
+        if (!file) {
+          toast.error('Choose the paper source file first');
+          return;
+        }
+        const form = new FormData();
+        form.append('file', file);
+        response = await api<ExtractPaperPatternResponse>('/paper-patterns/extract-file', {
+          method: 'POST',
+          body: form,
+        });
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to start extraction');
+      return;
+    }
+
+    setExtracting(true);
+    toast.loading('Extracting paper pattern…');
+    try {
+      if (response.extraction.status === 'COMPLETED' && response.extraction.patternId) {
+        toast.dismiss();
+        toast.success('Pattern extracted');
+        router.push(`/paper-patterns/${response.extraction.patternId}`);
+        return;
+      }
+      const deadline = Date.now() + 90_000;
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const { extraction: status } = await api<PaperPatternExtractionStatus>(
+          `/paper-patterns/extraction/${response.extraction.jobId}`,
+        );
+        if (status.status === 'completed') {
+          toast.dismiss();
+          if (status.result?.patternId) {
+            toast.success('Pattern extracted');
+            router.push(`/paper-patterns/${status.result.patternId}`);
+          } else {
+            toast.error('Extraction finished without a pattern');
+          }
+          return;
+        }
+        if (status.status === 'failed') {
+          toast.dismiss();
+          toast.error(status.error?.message ?? 'Paper pattern extraction failed');
+          return;
+        }
+        if (Date.now() > deadline) {
+          toast.dismiss();
+          toast.error('Extraction timed out — check the pattern list shortly');
+          return;
+        }
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to track extraction');
+    } finally {
+      setExtracting(false);
+      setExtractOpen(false);
+    }
   }
 
   return (
@@ -88,14 +181,73 @@ export default function PaperPatternsListPage() {
         }
         actions={
           isTeacher && (
-            <Button size="sm" asChild>
-              <Link href="/paper-patterns/new">
-                <Plus className="mr-1 size-3.5" /> New Pattern
-              </Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setExtractOpen(true)}>
+                <ScanSearch className="mr-1 size-3.5" /> Extract from Source
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/paper-patterns/new">
+                  <Plus className="mr-1 size-3.5" /> New Pattern
+                </Link>
+              </Button>
+            </div>
           )
         }
       />
+
+      <Dialog open={extractOpen} onOpenChange={(open) => !extracting && setExtractOpen(open)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Extract Paper Pattern</DialogTitle>
+            <DialogDescription>
+              Paste the exam paper text or upload a PDF/image of it. Only the structure and
+              evaluation rules are extracted — ready for your review.
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs
+            value={extractMode}
+            onValueChange={(v) => setExtractMode(v === 'file' ? 'file' : 'text')}
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="text">
+                <Type className="mr-1 size-3.5" /> Paste text
+              </TabsTrigger>
+              <TabsTrigger value="file">
+                <FileUp className="mr-1 size-3.5" /> Upload file
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="text" className="space-y-3">
+              <Label htmlFor="extract-text">Exam paper text</Label>
+              <Textarea
+                id="extract-text"
+                rows={10}
+                value={extractText}
+                onChange={(e) => setExtractText(e.target.value)}
+                placeholder={'Total Marks: 80\nTime: 3 hours\nSection A — MCQ (20 marks)\n…'}
+              />
+            </TabsContent>
+            <TabsContent value="file" className="space-y-3">
+              <Label htmlFor="extract-file">PDF or image (PNG/JPEG/WebP)</Label>
+              <Input
+                id="extract-file"
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"
+              />
+              <p className="text-xs text-muted-foreground">
+                The file is OCR&rsquo;d on upload; printed or photographed past papers work.
+                Handwritten-only pages may extract poorly.
+              </p>
+            </TabsContent>
+          </Tabs>
+          <DialogFooter>
+            <Button onClick={submitExtraction} disabled={extracting} className="w-full sm:w-auto">
+              <ScanSearch className="mr-1 size-3.5" />
+              {extracting ? 'Extracting…' : 'Extract Pattern'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {!loading && patterns.length > 0 && (
         <div className="mb-4">
@@ -123,12 +275,17 @@ export default function PaperPatternsListPage() {
         <EmptyState
           icon={<FileText className="size-8" />}
           title="No paper patterns yet"
-          description="Create your first paper pattern to define an exam blueprint."
+          description="Create a pattern manually or extract one from an existing paper."
         >
           {isTeacher && (
-            <Button size="sm" asChild>
-              <Link href="/paper-patterns/new">Create Pattern</Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setExtractOpen(true)}>
+                <ScanSearch className="mr-1 size-3.5" /> Extract from Source
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/paper-patterns/new">Create Pattern</Link>
+              </Button>
+            </div>
           )}
         </EmptyState>
       ) : (

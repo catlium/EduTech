@@ -150,6 +150,8 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
       STORAGE_LOCAL_DIR: /storage
+      OCR_SERVICE_URL: http://ocr:8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
     volumes:
       - storage_data:/storage
     mem_limit: 1g

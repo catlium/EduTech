@@ -10,7 +10,10 @@ import {
   Patch,
   Post,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { BadRequestException, UploadedFile } from '@nestjs/common';
 
 import { PaperPatternsService } from './paper-patterns.service.js';
 import { PaperPatternExtractionService } from './paper-pattern-extraction.service.js';
@@ -18,9 +21,10 @@ import {
   AnalyzePaperPatternDto,
   CreateAssessmentFromBlueprintDto,
   CreatePaperPatternDto,
-  ExtractFromMaterialDto,
+  ExtractTextDto,
   UpdatePaperPatternDto,
 } from './paper-patterns.dto.js';
+import { MAX_FILE_SIZE } from '../materials/materials.constants.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -56,15 +60,50 @@ export class PaperPatternsController {
     return { pattern };
   }
 
-  @Post('extract-from-material')
+  /** Extract a paper pattern from pasted source text. */
+  @Post('extract-text')
   @HttpCode(HttpStatus.OK)
   @RequiredRoles(...WRITE_ROLES)
-  async extractFromMaterial(
+  async extractText(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: ExtractFromMaterialDto,
+    @Body() dto: ExtractTextDto,
   ) {
-    return this.extraction.requestExtraction(tenant.instituteId, dto.materialId, user.userId);
+    return {
+      extraction: await this.extraction.requestTextExtraction(
+        tenant.instituteId,
+        dto.text,
+        user.userId,
+      ),
+    };
+  }
+
+  /** Extract a paper pattern from an uploaded paper source (PDF or image).
+   *  The file is OCR'd via the OCR service before the same deterministic
+   *  extraction. */
+  @Post('extract-file')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
+  async extractFile(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('A source file (PDF or image) is required');
+    }
+    return {
+      extraction: await this.extraction.requestFileExtraction(
+        tenant.instituteId,
+        {
+          buffer: file.buffer,
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+        },
+        user.userId,
+      ),
+    };
   }
 
   @Get('extraction/:jobId')

@@ -53,7 +53,7 @@ const JOB_QUEUE_BY_TYPE: Record<string, string> = {
 export const ALLOWED_JOB_TYPES = [
   'MATERIAL_PROCESS',
   'MATERIAL_ENHANCE',
-  'MATERIAL_PATTERN_EXTRACT',
+  'PATTERN_EXTRACT',
   ...Object.keys(JOB_QUEUE_BY_TYPE),
 ] as const;
 
@@ -117,7 +117,7 @@ export class JobsService {
     if (
       job.type === 'MATERIAL_PROCESS' ||
       job.type === 'MATERIAL_ENHANCE' ||
-      job.type === 'MATERIAL_PATTERN_EXTRACT' ||
+      job.type === 'PATTERN_EXTRACT' ||
       job.type === 'QUESTION_EXTRACT'
     ) {
       return;

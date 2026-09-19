@@ -2417,8 +2417,10 @@ export function normalizePaperPatternStructure(raw: unknown): PaperPatternStruct
 }
 
 /* ── Deterministic paper-pattern extraction (Phase B) ────────────────
- * A pure, rule-based extractor turns an enhanced material (existing
- * paper/past-year paper) into a reviewable PaperPattern. Ambiguity is
+ * A pure, rule-based extractor turns any supported source document (an
+ * existing paper pattern, a previous-year question paper, or another exam
+ * document) into a reviewable PaperPattern. The source is only an input —
+ * it is never owned by or linked to the resulting pattern. Ambiguity is
  * never guessed: unknown values stay null and surface as issues with
  * review info for the teacher. */
 
@@ -2443,10 +2445,20 @@ export type PatternExtractionRuleProvenance = z.infer<typeof PatternExtractionRu
 /** Extraction metadata persisted on a pattern (the extraction column). */
 export const PatternExtractionMetaSchema = z.object({
   extractor: z.literal('v1'),
-  materialId: z.string().uuid(),
-  materialRevision: z.number().int().positive(),
-  /* ENHANCEMENT = parsed from enhanced blocks; TEXT = raw textContent fallback */
-  source: z.enum(['ENHANCEMENT', 'TEXT']),
+  /* Optional legacy fields from when extraction was material-owned (Phase 46);
+   * nothing sets them post-amendment — the source is now only an input. */
+  materialId: z.string().uuid().optional(),
+  materialRevision: z.number().int().positive().optional(),
+  /* What fed the extractor: TEXT = supplied/pasted text (or a raw fallback);
+   * OCR = extracted from an uploaded PDF/image via the OCR service;
+   * ENHANCEMENT = legacy material enhancement blocks (Phase 46 rows only). */
+  source: z.enum(['ENHANCEMENT', 'TEXT', 'OCR']),
+  /* SHA-256 of the source text/bytes — the idempotency key for re-extraction. */
+  sourceHash: z.string().length(64).optional(),
+  /* Original uploaded file name (file inputs only). */
+  fileName: z.string().min(1).max(255).optional(),
+  /* Number of source pages (file inputs only; 1 for text). */
+  pageCount: z.number().int().positive().optional(),
   totalMarksSource: z.enum(['HEADER', 'SECTION_SUM', 'UNKNOWN']),
   durationMinutesSource: z.enum(['HEADER', 'UNKNOWN']),
   issues: z.array(PatternExtractionIssueSchema).max(500),
@@ -2454,10 +2466,10 @@ export const PatternExtractionMetaSchema = z.object({
 });
 export type PatternExtractionMeta = z.infer<typeof PatternExtractionMetaSchema>;
 
-export const ExtractPaperPatternRequestSchema = z.object({
-  materialId: z.string().uuid(),
+export const ExtractPaperPatternTextRequestSchema = z.object({
+  text: z.string().min(1).max(1_000_000),
 });
-export type ExtractPaperPatternRequest = z.infer<typeof ExtractPaperPatternRequestSchema>;
+export type ExtractPaperPatternTextRequest = z.infer<typeof ExtractPaperPatternTextRequestSchema>;
 
 export const ExtractPaperPatternResponseSchema = z.object({
   extraction: z.object({
