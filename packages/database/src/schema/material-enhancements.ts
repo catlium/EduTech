@@ -133,18 +133,19 @@ export const materialEnhancementSegmentMappings = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // A mapping targets exactly one syllabus entity:
+    // A mapping targets exactly one syllabus entity per its `type`, with
+    // ancestor context columns carried as display/filter context:
     //   subject = subject_id
-    //   chapter = chapter_id
+    //   chapter = chapter_id (+ subject/syllabus context)
     //   topic   = topic_id (+ optional chapter context above it)
     //   unit    = syllabus_id + unit_title (Context-units fallback)
     check(
       'material_enhancement_mappings_single_entity',
       sql`(
-        (CASE WHEN ${table.subjectId} IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN ${table.chapterId} IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN ${table.topicId} IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN (${table.syllabusId} IS NOT NULL AND ${table.unitTitle} IS NOT NULL) THEN 1 ELSE 0 END) = 1
+        (${table.type} = 'subject' AND ${table.subjectId} IS NOT NULL AND ${table.chapterId} IS NULL AND ${table.topicId} IS NULL AND ${table.unitTitle} IS NULL)
+        OR (${table.type} = 'chapter' AND ${table.chapterId} IS NOT NULL AND ${table.topicId} IS NULL)
+        OR (${table.type} = 'topic' AND ${table.topicId} IS NOT NULL)
+        OR (${table.type} = 'unit' AND ${table.syllabusId} IS NOT NULL AND ${table.unitTitle} IS NOT NULL AND ${table.chapterId} IS NULL AND ${table.topicId} IS NULL)
       )`,
     ),
     index('material_enhancement_mappings_segment_idx').on(table.segmentId),

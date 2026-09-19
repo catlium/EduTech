@@ -17,9 +17,13 @@ import {
   FileText,
   FileUp,
   BookOpen,
+  Sparkles,
+  Ban,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, waitForJob } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import type {
@@ -27,6 +31,8 @@ import type {
   MaterialProcessingStatus,
   ContentGenerationStatus,
   ContentGenerationStatusResponse,
+  MaterialEnhancementResponse,
+  MaterialResolvedSegment,
 } from '@catlium/contracts';
 import { PageHeader } from '@/components/app/page-header';
 import { StatusBadge } from '@/components/app/status-badge';
@@ -87,6 +93,10 @@ export default function MaterialDetailPage() {
   const [confirmAction, setConfirmAction] = useState<'archive' | 'activate' | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [genStatus, setGenStatus] = useState<ContentGenerationStatusResponse | null>(null);
+  const [enhancement, setEnhancement] = useState<MaterialEnhancementResponse | null>(null);
+  const [enhancing, setEnhancing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [segmentsOpen, setSegmentsOpen] = useState(false);
 
   const refresh = useCallback(() => {
     if (!institute) return;
@@ -114,6 +124,22 @@ export default function MaterialDetailPage() {
     return () => ctrl.abort();
   }, [institute, materialId]);
 
+  const loadEnhancement = useCallback(() => {
+    if (!institute) return;
+    const ctrl = new AbortController();
+    api<{ material: { id: string }; enhancement: MaterialEnhancementResponse | null }>(
+      `/materials/${materialId}/enhancement`,
+      { signal: ctrl.signal },
+    )
+      .then((res) => setEnhancement(res.enhancement))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [institute, materialId]);
+
+  useEffect(() => {
+    return loadEnhancement();
+  }, [loadEnhancement]);
+
   useEffect(() => {
     return refresh();
   }, [refresh]);
@@ -124,6 +150,53 @@ export default function MaterialDetailPage() {
 
   const isProcessing =
     material?.processingStatus === 'QUEUED' || material?.processingStatus === 'PROCESSING';
+
+  // While a cancel is settling the material flips to QUEUED server-side; drop
+  // the transient "Cancelling…" state when the poll sees the move.
+  useEffect(() => {
+    if (!isProcessing) setCancelling(false);
+  }, [isProcessing]);
+
+  async function cancelProcessing() {
+    if (!material?.processJobId) return;
+    setCancelling(true);
+    try {
+      const res = await api<{ job: { status: string } }>(
+        `/jobs/${material.processJobId}/cancel`,
+        { method: 'POST' },
+      );
+      toast.success(
+        res.job.status === 'cancelled'
+          ? 'Processing cancelled'
+          : 'Cancelling — this finishes at the next chunk boundary',
+      );
+    } catch (err) {
+      setCancelling(false);
+      toast.error(err instanceof ApiError ? err.message : 'Failed to cancel processing');
+    }
+  }
+
+  async function enhanceMaterial() {
+    if (!material) return;
+    try {
+      const res = await api<{ jobId: string }>(`/materials/${material.id}/enhancement`, {
+        method: 'POST',
+      });
+      setEnhancing(true);
+      toast.success('Enhancement started');
+      try {
+        await waitForJob(() => api<{ job: { status: string } }>(`/jobs/${res.jobId}`));
+        toast.success('Material enhanced');
+        loadEnhancement();
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : 'Enhancement failed or was cancelled');
+      } finally {
+        setEnhancing(false);
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to start enhancement');
+    }
+  }
 
   useEffect(() => {
     if (!isProcessing || !material) return;
@@ -307,7 +380,13 @@ export default function MaterialDetailPage() {
             <CardTitle className="text-sm">Processing</CardTitle>
           </CardHeader>
           <CardContent>
-            <ProcessingLifecycle material={material} isProcessing={isProcessing} />
+            <ProcessingLifecycle
+              material={material}
+              isProcessing={isProcessing}
+              enhanced={enhancement !== null}
+              cancelling={cancelling}
+              onCancel={cancelProcessing}
+            />
           </CardContent>
         </Card>
       </div>
@@ -337,6 +416,16 @@ export default function MaterialDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <MaterialIntelligenceCard
+        material={material}
+        enhancement={enhancement}
+        enhancing={enhancing}
+        segmentsOpen={segmentsOpen}
+        onToggleSegments={() => setSegmentsOpen((o) => !o)}
+        onEnhance={enhanceMaterial}
+        isTeacher={isTeacher}
+      />
 
       <Card>
         <CardHeader>
@@ -382,9 +471,15 @@ export default function MaterialDetailPage() {
 function ProcessingLifecycle({
   material,
   isProcessing,
+  enhanced,
+  cancelling,
+  onCancel,
 }: {
   material: MaterialResponse;
   isProcessing: boolean;
+  enhanced: boolean;
+  cancelling: boolean;
+  onCancel: () => void;
 }) {
   const currentStep = PROCESSING_STEPS.findIndex((s) => s.status === material.processingStatus);
   const failed = material.processingStatus === 'FAILED';
@@ -432,8 +527,26 @@ function ProcessingLifecycle({
                 <AlertTriangle className="size-3" /> Failed
               </span>
             )}
+            {enhanced && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                <Sparkles className="size-3" /> Enhanced
+              </span>
+            )}
           </div>
           <Progress value={progress} />
+          {isProcessing && material.processJobId && (
+            <div className="flex items-center gap-2">
+              {cancelling ? (
+                <Button size="sm" variant="outline" disabled>
+                  <Loader2 className="size-3.5 animate-spin" /> Cancelling…
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={onCancel}>
+                  <Ban className="size-3.5" /> Cancel Processing
+                </Button>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -806,6 +919,177 @@ function EditMaterialDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const SEGMENT_LEVEL_STYLES: Record<string, string> = {
+  relevant: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
+  uncertain: 'border-amber-500/40 bg-amber-500/10 text-amber-700',
+  irrelevant: 'border-muted-foreground/30 bg-muted/50 text-muted-foreground',
+  unmapped: 'border-muted-foreground/30 bg-muted/50 text-muted-foreground',
+};
+
+function MaterialIntelligenceCard({
+  material,
+  enhancement,
+  enhancing,
+  segmentsOpen,
+  onToggleSegments,
+  onEnhance,
+  isTeacher,
+}: {
+  material: MaterialResponse;
+  enhancement: MaterialEnhancementResponse | null;
+  enhancing: boolean;
+  segmentsOpen: boolean;
+  onToggleSegments: () => void;
+  onEnhance: () => void;
+  isTeacher: boolean;
+}) {
+  const router = useRouter();
+  const ready = material.processingStatus === 'READY' && material.status === 'ACTIVE';
+  const topicPath =
+    material.topicId && material.subjectId
+      ? `/subjects/${material.subjectId}/topics/${material.topicId}`
+      : null;
+
+  const findings = enhancement?.payload.summary.findings;
+  const segCount = enhancement ? enhancement.segments.length : 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <BookOpen className="size-4 text-muted-foreground" />
+          Material intelligence
+          {enhancement && (
+            <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+              v{enhancement.version}
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!ready ? (
+          <p className="text-sm text-muted-foreground">
+            Enhancement is available once the material is processed (READY).
+          </p>
+        ) : enhancing ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" /> Enhancing the material…
+          </p>
+        ) : !enhancement ? (
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-muted-foreground">
+              Not enhanced yet. Enhancement detects chapters/sections, quality
+              issues, and syllabus relevance as a versioned artifact — the
+              source material is never modified.
+            </span>
+            {isTeacher && (
+              <Button size="sm" onClick={onEnhance}>
+                <Sparkles className="size-3.5" /> Enhance Material
+              </Button>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                Trigger <span className="capitalize">{enhancement.trigger.toLowerCase()}</span> ·{' '}
+                {formatDateTime(enhancement.createdAt)}
+              </span>
+              {findings && (
+                <span className="flex items-center gap-2">
+                  {[
+                    { level: 'keep', count: findings.keep, cls: 'text-emerald-600' },
+                    { level: 'exclude', count: findings.exclude, cls: 'text-red-600' },
+                    { level: 'review', count: findings.review, cls: 'text-amber-600' },
+                  ].map((f) => (
+                    <span key={f.level} className={f.cls}>
+                      {f.count} {f.level}
+                    </span>
+                  ))}
+                </span>
+              )}
+              <span>{segCount} segments</span>
+            </div>
+
+            {isTeacher && (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={onEnhance} disabled={enhancing}>
+                  <RefreshCw className="size-3.5" /> Re-enhance
+                </Button>
+                <Button size="sm" variant="outline" onClick={onToggleSegments}>
+                  {segmentsOpen ? (
+                    <ChevronUp className="size-3.5" />
+                  ) : (
+                    <ChevronDown className="size-3.5" />
+                  )}{' '}
+                  {segmentsOpen ? 'Hide segments' : `View segments (${segCount})`}
+                </Button>
+                {topicPath && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => router.push(topicPath)}
+                  >
+                    <ArrowUpRight className="size-3.5" /> Generate Derived Content
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {segmentsOpen && (
+              <ul className="divide-y rounded-lg border">
+                {enhancement.segments.map(({ segment, mappings }) => (
+                  <li key={segment.segmentNo} className="px-3 py-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">
+                        {segment.title ?? `Segment ${segment.segmentNo}`}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize ${
+                          SEGMENT_LEVEL_STYLES[segment.level] ?? ''
+                        }`}
+                      >
+                        {segment.level}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{segment.kind}</span>
+                      <span className="text-xs text-muted-foreground">
+                        pages {segment.startPage}–{segment.endPage}
+                      </span>
+                    </div>
+                    {segment.preview && (
+                      <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                        {segment.preview}
+                      </p>
+                    )}
+                    {mappings.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {mappings.map((m, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                          >
+                            {m.type === 'topic' && `Topic: ${m.topicName ?? m.topicId}`}
+                            {m.type === 'chapter' && `Chapter: ${m.chapterName ?? m.chapterId}`}
+                            {m.type === 'subject' && `Subject`}
+                            {m.type === 'unit' && `Unit: ${m.unitTitle ?? ''}`}
+                            <span className="text-muted-foreground/70">
+                              {Math.round((m.confidence ?? 0) * 100)}%
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

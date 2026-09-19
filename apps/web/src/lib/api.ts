@@ -165,40 +165,155 @@ export interface ChunkProgress {
  *  part (x-upload-id/x-chunk-index/x-chunk-total). The server stores each part
  *  and reassembles them on the final request, answering with the normal final
  *  response. Callers pass the file's non-file form fields for EVERY part so the
- *  assembled request carries identical metadata. */
+ *  assembled request carries identical metadata.
+ *
+ *  Each part goes out over XMLHttpRequest so real byte-level progress of the
+ *  WHOLE file can be reported (fetch exposes no upload progress). Pass a
+ *  signal to abort an in-flight upload. */
 export async function uploadFileWithChunks<T>(
   path: string,
   file: File,
   fields: Record<string, string>,
   onProgress?: (progress: ChunkProgress) => void,
+  signal?: AbortSignal,
 ): Promise<T> {
   const uploadId = crypto.randomUUID();
   const total = Math.max(1, Math.ceil(file.size / CHUNK_BYTES));
+  let sentBase = 0;
   for (let index = 1; index <= total; index++) {
     const start = (index - 1) * CHUNK_BYTES;
     const part = file.slice(start, Math.min(start + CHUNK_BYTES, file.size));
-    const form = new FormData();
-    form.append('file', new File([part], file.name, { type: file.type }));
-    for (const [key, value] of Object.entries(fields)) form.append(key, value);
-
-    const body = await api<{ chunk?: { index: number; total: number } } & T>(path, {
-      method: 'POST',
-      body: form,
-      headers: {
-        'x-upload-id': uploadId,
-        'x-chunk-index': String(index),
-        'x-chunk-total': String(total),
-      },
-    });
-    onProgress?.({
-      sentBytes: Math.min(start + part.size, file.size),
-      totalBytes: file.size,
-    });
+    const body = await uploadChunk(
+      path,
+      uploadId,
+      index,
+      total,
+      part,
+      file.name,
+      file.type,
+      fields,
+      signal,
+      (loaded) =>
+        onProgress?.({
+          sentBytes: sentBase + Math.min(loaded, part.size),
+          totalBytes: file.size,
+        }),
+    );
+    sentBase += part.size;
+    onProgress?.({ sentBytes: sentBase, totalBytes: file.size });
     if (body && 'chunk' in body && body.chunk && body.chunk.index < total) continue;
     return body as T;
   }
   // Unreachable: total >= 1 always yields a final (index === total) response.
   throw new Error('Chunked upload ended without a final response');
+}
+
+interface ChunkBody {
+  chunk?: { index: number; total: number };
+  [key: string]: unknown;
+}
+
+async function uploadChunk(
+  path: string,
+  uploadId: string,
+  index: number,
+  total: number,
+  part: Blob,
+  name: string,
+  type: string,
+  fields: Record<string, string>,
+  signal: AbortSignal | undefined,
+  onChunkProgress: (loaded: number) => void,
+): Promise<ChunkBody> {
+  const attempt = async (): Promise<{ status: number; json: ChunkBody | null }> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_URL}${path}`);
+      xhr.withCredentials = true;
+      const instituteId = getActiveInstituteId();
+      if (instituteId) xhr.setRequestHeader('x-institute-id', instituteId);
+      const csrf = readCookie('csrf_token');
+      if (csrf) xhr.setRequestHeader('x-csrf-token', csrf);
+      xhr.setRequestHeader('x-upload-id', uploadId);
+      xhr.setRequestHeader('x-chunk-index', String(index));
+      xhr.setRequestHeader('x-chunk-total', String(total));
+      xhr.responseType = 'json';
+
+      const abort = () => xhr.abort();
+      signal?.addEventListener('abort', abort, { once: true });
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onChunkProgress(e.loaded);
+      };
+      xhr.onload = () => {
+        signal?.removeEventListener('abort', abort);
+        resolve({ status: xhr.status, json: (xhr.response as ChunkBody | null) ?? null });
+      };
+      xhr.onerror = () => {
+        signal?.removeEventListener('abort', abort);
+        reject(new ApiError(0, 'Network error during upload'));
+      };
+      xhr.onabort = () => {
+        signal?.removeEventListener('abort', abort);
+        reject(new DOMException('The upload was aborted', 'AbortError'));
+      };
+
+      const form = new FormData();
+      form.append('file', new File([part], name, { type }));
+      for (const [key, value] of Object.entries(fields)) form.append(key, value);
+      xhr.send(form);
+    });
+  };
+
+  let result = await attempt();
+  if (result.status === 401) {
+    const outcome = await refreshSession();
+    if (outcome === 'ok') {
+      result = await attempt();
+    } else if (outcome === 'unauthorized') {
+      onUnauthorized();
+      throw new ApiError(401, 'Unauthorized');
+    } else {
+      throw new ApiError(503, 'Session check temporarily unavailable — please retry');
+    }
+  }
+  if (result.status !== 200 && result.status !== 201) {
+    const payload = result.json as { message?: unknown } | null;
+    throw new ApiError(
+      result.status,
+      payload?.message ? parseMessage(payload.message) : `Request failed with status ${result.status}`,
+    );
+  }
+  return result.json ?? {};
+}
+
+/** Best-effort, non-destructive client-side size reduction before upload.
+ *  Re-encodes lossy raster formats (JPEG/WebP) as JPEG at the SAME
+ *  dimensions — never resizes, so OCR-relevant detail is preserved. Returns a
+ *  smaller temp copy or null (not optimizable / no meaningful reduction); the
+ *  original file is never modified. Skips PNG/GIF (transparency / animation). */
+export async function optimizeImageFile(file: File): Promise<File | null> {
+  if (file.type !== 'image/jpeg' && file.type !== 'image/webp') return null;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return null;
+    }
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.8),
+    );
+    if (!blob || blob.size >= file.size) return null;
+    return new File([blob], file.name, { type: 'image/jpeg' });
+  } catch {
+    return null;
+  }
 }
 
 /** Download a file endpoint (export) as a blob and trigger a browser download. */

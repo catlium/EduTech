@@ -1,5 +1,78 @@
 # Task Tracker
 
+## Phase 49 — Upload progress, non-destructive image optimization, Cancel Processing & Material Intelligence UI (2026-09-19)
+
+> Frontend/product workflow phase over Material Processing + Material
+> Intelligence. All backend endpoints reused — no new API surface except one
+> read field:
+>
+> **A. Real upload progress + non-destructive optimization.** `fetch` has no
+> upload-progress API, so `uploadFileWithChunks` is now chunk-by-chunk XHR
+> (`onProgress({sentBytes,totalBytes})` across the whole file) with an abort
+> `signal`. The upload dialog shows a live "Uploading… N% · sent / total" bar
+> + Cancel upload; the dialog's Cancel is disabled while submitting. When the
+> picked file is a JPEG/WebP larger than the optimized re-encode, the dialog
+> offers "Upload a smaller copy instead" (createImageBitmap → same-dimensions
+> canvas → JPEG q0.8) with before/after sizes + % smaller. **Never resizes**
+> (OCR text integrity), **never touches the original file**, PNG/GIF skipped
+> (transparency/animation).
+>
+> **B. Cancel Processing (race-safe) + retry.** `getMaterial` now returns
+> `processJobId` (the list endpoint deliberately does NOT — detail-only read);
+> the material detail page's "Cancel Processing" POSTs the existing
+> `/jobs/{processJobId}/cancel`. The OCR coordinator's 15s `settleActiveJobs`
+> sweep turns the `cancelling` job into `cancelled` and the material back to
+> QUEUED (the stable retryable state — the existing Retry button covers it).
+> `cancelJob` no-ops on terminal jobs, so racing with a completion is safe. A
+> duplicate `cancelling` click toggles to "Cancelling…". Live-verified:
+> processing → cancelling → (20s) job cancelled + material QUEUED; concurrent
+> retry correctly 409-rejected; retry round-trip created a fresh PROCESSING job.
+>
+> **C. Material Intelligence card on the material detail page.** New
+> `MaterialIntelligenceCard` renders the latest enhancement (version badge +
+> trigger/createdAt, findings summary, collapsible segments list with
+> per-mapping level/kind/pages/preview + chapter/topic chips incl. confidence
+> %) and a Re-enhance action (POST enhancement → `waitForJob` poll → reload).
+> "Generate Derived Content" navigates to the topic workspace when the
+> material has topic+subject context (derived-content generation is Phase 48-B
+> deferred — the topic page's existing `/content/generate-batch` entry is the
+> generation surface).
+>
+> **D. Bugfix — segment-mapping single-entity check blocked UPLOAD
+> enhancement.** `material_enhancement_mappings_single_entity` required exactly
+> ONE of subject/chapter/topic/unit per row, but the enhancer writes each
+> mapping with its full ancestor context (a topic row carries chapter_id as the
+> "chapter above it", per the schema comment), so every chapter/topic/unit
+> mapping violated the check, the whole enhancement transaction rolled back,
+> and syllabus-linked UPLOAD materials could never be enhanced (TEXT materials
+> only ever "worked" because their segments were all irrelevant/unmapped → 0
+> mappings). Migration `0038_material_enhancement_mappings_check` re-defines
+> the check **type-aware**: `type` declares the target entity, ancestor
+> context columns are allowed. Root cause proven first (psql repro insert →
+> `violates check constraint`), then fixed live.
+
+- [x] **Contracts:** `MaterialResponseSchema.processJobId`
+      (`z.string().uuid().nullable().optional()`).
+- [x] **API:** `MaterialsService.getMaterial` returns `processJobId: job?.id ?? null`.
+- [x] **DB:** migration `0038_material_enhancement_mappings_check`
+      (drop + re-add type-aware `material_enhancement_mappings_single_entity`);
+      schema `material-enhancements.ts` updated to match.
+- [x] **Web upload:** XHR chunk upload with byte-level progress + abort,
+      progress bar/Cancel-upload in `materials/page.tsx`, dialog-Cancel
+      disabled while submitting, `optimizeImageFile` (JPEG/WebP only, same
+      dims, q0.8) + opt-in checkbox UI.
+- [x] **Web detail:** `processJobId`-driven Cancel Processing (cancelling
+      state), `MaterialIntelligenceCard` (enhancement/segments/mappings/
+      Re-enhance + derived-content nav).
+- [x] **Validation:** typecheck 10/10 + lint 9/9; api/web images rebuilt and
+      healthy; live E2E (tunnel): TEXT enhancement re-run idempotent
+      (`unchanged`, no version bump); UPLOAD material `facc8224` eliminated
+      the check violation → enhancement version 1 **completed** with 40 pages
+      / 516 sections / 116 segments (56 relevant, 27 uncertain, 33 irrelevant)
+      / 83 mapped segments / 796 mappings (606 topic + 190 chapter) — the
+      exact shape the old constraint rejected; `getLatest` returns it via the
+      API. Cancel/retry race round-trip verified post-rebuild (2026-09-19).
+
 ## Phase 48 B — Chunked uploads (524), independent source extraction, incremental page reveal (2026-09-19)
 
 > Three connected fixes, all validated live through the Cloudflare Tunnel:

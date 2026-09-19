@@ -224,6 +224,7 @@ export class MaterialsService {
       processError: job?.error?.message ?? null,
       processStartedAt: job?.startedAt ?? null,
       processCompletedAt: job?.completedAt ?? null,
+      processJobId: job?.id ?? null,
     };
   }
 

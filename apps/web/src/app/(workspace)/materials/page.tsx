@@ -15,9 +15,11 @@ import {
   Eye,
   CheckCircle2,
   Search,
+  X,
 } from 'lucide-react';
 
-import { api, ApiError, uploadFileWithChunks } from '@/lib/api';
+import { api, ApiError, uploadFileWithChunks, optimizeImageFile } from '@/lib/api';
+import type { ChunkProgress } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import {
@@ -38,6 +40,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -80,6 +83,12 @@ interface ScopeState {
   subjectId: string;
   chapterId: string;
   topicId: string;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function materialTypeLabel(m: MaterialResponse): string {
@@ -147,6 +156,10 @@ export default function MaterialsListPage() {
   const uploadFileRef = useRef<HTMLInputElement>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTitle, setUploadTitle] = useState('');
+  const [optimized, setOptimized] = useState<File | null>(null);
+  const [useOptimized, setUseOptimized] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<ChunkProgress | null>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
 
   const textForm = useForm<CreateTextMaterialRequest>({
     resolver: zodResolver(CreateTextMaterialRequestSchema),
@@ -165,6 +178,29 @@ export default function MaterialsListPage() {
   useEffect(() => {
     return fetchSubjects();
   }, [fetchSubjects]);
+
+  // Best-effort client-side size reduction for lossy image uploads. Never
+  // touches the original; hidden entirely when nothing meaningful is gained.
+  useEffect(() => {
+    let cancelled = false;
+    setOptimized(null);
+    setUseOptimized(false);
+    if (!uploadFile) return;
+    optimizeImageFile(uploadFile).then((optimizedCopy) => {
+      if (!cancelled && optimizedCopy) {
+        setOptimized(optimizedCopy);
+        setUseOptimized(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [uploadFile]);
+
+  function onFileChange(file: File | null) {
+    setUploadFile(file);
+    setUploadProgress(null);
+  }
 
   useEffect(() => {
     if (scope.subjects.length === 0) return;
@@ -347,6 +383,7 @@ export default function MaterialsListPage() {
   async function onUpload(e: React.FormEvent) {
     e.preventDefault();
     if (!uploadFile) return;
+    const file = useOptimized && optimized ? optimized : uploadFile;
     if (uploadFile.size > 20 * 1024 * 1024) {
       toast.error('File exceeds 20 MB limit');
       return;
@@ -356,29 +393,46 @@ export default function MaterialsListPage() {
       return;
     }
     setSubmitting(true);
+    setUploadProgress(null);
+    const abort = new AbortController();
+    uploadAbortRef.current = abort;
     try {
       const { material } = await uploadFileWithChunks<{ material: MaterialResponse }>(
         '/materials/upload',
-        uploadFile,
+        file,
         {
           title: uploadTitle.trim(),
           ...(scope.topicId ? { topicId: scope.topicId } : {}),
           ...(scope.chapterId ? { chapterId: scope.chapterId } : {}),
           ...(scope.subjectId ? { subjectId: scope.subjectId } : {}),
         },
+        (progress) => setUploadProgress(progress),
+        abort.signal,
       );
-      toast.success('File uploaded');
+      toast.success(useOptimized && optimized ? 'File uploaded (smaller copy)' : 'File uploaded');
       setDialogMode(null);
       setUploadFile(null);
+      setOptimized(null);
       setUploadTitle('');
+      setUploadProgress(null);
       if (uploadFileRef.current) uploadFileRef.current.value = '';
       setScope((s) => ({ ...s, subjectId: '', chapterId: '', topicId: '' }));
       router.push(`/materials/${material.id}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to upload file');
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        toast.info('Upload cancelled');
+      } else {
+        toast.error(err instanceof ApiError ? err.message : 'Failed to upload file');
+      }
     } finally {
       setSubmitting(false);
+      setUploadProgress(null);
+      uploadAbortRef.current = null;
     }
+  }
+
+  function cancelUpload() {
+    uploadAbortRef.current?.abort();
   }
 
   async function processMaterial(materialId: string) {
@@ -806,14 +860,59 @@ export default function MaterialsListPage() {
                 type="file"
                 accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.rtf,.doc,.docx,.xls,.xlsx"
                 ref={uploadFileRef}
-                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
                 required
               />
               <p className="text-xs text-muted-foreground">Max 20 MB</p>
+              {optimized && uploadFile && (
+                <label className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={useOptimized}
+                    onChange={(e) => setUseOptimized(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Upload a smaller copy instead — {formatBytes(uploadFile.size)} →{' '}
+                    {formatBytes(optimized.size)} (
+                    {Math.round(100 - (optimized.size / uploadFile.size) * 100)}% smaller). Your
+                    original file is untouched.
+                  </span>
+                </label>
+              )}
             </div>
             {scopeSelects()}
+            {submitting && uploadProgress && (
+              <div className="space-y-1.5">
+                <Progress
+                  value={
+                    uploadProgress.totalBytes
+                      ? Math.round((uploadProgress.sentBytes / uploadProgress.totalBytes) * 100)
+                      : 0
+                  }
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span tabular-nums>
+                    Uploading…{' '}
+                    {uploadProgress.totalBytes
+                      ? Math.round((uploadProgress.sentBytes / uploadProgress.totalBytes) * 100)
+                      : 0}
+                    % · {formatBytes(uploadProgress.sentBytes)} /{' '}
+                    {formatBytes(uploadProgress.totalBytes)}
+                  </span>
+                  <Button type="button" size="sm" variant="outline" onClick={cancelUpload}>
+                    <X className="size-3.5" /> Cancel upload
+                  </Button>
+                </div>
+              </div>
+            )}
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setDialogMode(null)}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setDialogMode(null)}
+                disabled={submitting}
+              >
                 Cancel
               </Button>
               <Button

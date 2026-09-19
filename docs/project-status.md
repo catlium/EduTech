@@ -1,5 +1,80 @@
 # Project Status
 
+## Phase 49 — Upload progress, non-destructive image optimization, Cancel Processing & Material Intelligence UI (2026-09-19)
+
+**Status: implementation + validation + live E2E complete.**
+
+### A. Real upload progress + non-destructive client-side optimization
+
+`fetch` has no upload-progress API, so `uploadFileWithChunks` in
+`apps/web/src/lib/api.ts` became a chunk-by-chunk **XMLHttpRequest** whose
+`onProgress` reports whole-file byte progress (`sentBase + loaded-in-chunk`,
+capped at the part size). It accepts an abort `signal`. The upload dialog
+(`materials/page.tsx`) shows "Uploading… N% · sent / total" + a Cancel upload
+button that aborts a half-sent upload; the dialog's own Cancel is disabled
+while submitting. For JPEG/WebP picks, `optimizeImageFile` produces a
+same-dimensions JPEG q0.8 re-encode (via `createImageBitmap` → canvas) and the
+dialog offers "Upload a smaller copy instead" with before/after sizes + %
+smaller. Design constraints honored: **never resizes** (OCR text integrity),
+**never touches the original file**, PNG/GIF skipped (transparency/animation).
+
+### B. Cancel Processing (race-safe) + retry
+
+`MaterialsService.getMaterial` now returns `processJobId` (detail-only — the
+list endpoint deliberately omits it; the jobs list can't filter by materialId,
+so exposing the id on the material is the data the page needs). The material
+detail page's "Cancel Processing" POSTs the existing `/jobs/{processJobId}/cancel`
+(granted to valid cancellees; `cancelJob` no-ops on terminal jobs, so racing a
+completion is safe). The OCR coordinator's 15s `settleActiveJobs` sweep turns
+the `cancelling` job into `cancelled` and the material back to **QUEUED** — the
+stable retryable state the existing Retry button already serves. A duplicate
+cancel click reports "Cancelling…" instead of re-POSTing.
+**Live-verified:** processing → cancelling → ~20s → job cancelled + material
+QUEUED; a concurrent/second retry correctly 409-rejected; a follow-up retry
+created a fresh PROCESSING job and cancelled equally cleanly.
+
+### C. Material Intelligence card on the material detail page
+
+`MaterialIntelligenceCard` renders the latest enhancement: version badge +
+trigger + createdAt, findings summary (keep/exclude/review), a collapsible
+segments list (level, kind, pages, preview, per-mapping chapter/topic chips
+with confidence %), and a **Re-enhance** action (POST enhancement →
+`waitForJob` poll → reload). "Generate Derived Content" navigates to the
+topic workspace when the material has topic+subject context — derived-content
+generation itself remains Phase 48-B deferred; the topic page's existing
+`/content/generate-batch` entry is the generation surface.
+
+### D. Bugfix — segment-mapping single-entity check blocked UPLOAD enhancement
+
+`material_enhancement_mappings_single_entity` required EXACTLY ONE of
+subject/chapter/topic/unit per mapping row, but the enhancer writes each row
+with its full ancestor context (a topic row legitimately carries the chapter
+above it, per the schema comment) — so **every** chapter/topic/unit mapping
+violated the check and the whole enhancement transaction rolled back.
+Syllabus-linked UPLOAD materials could never be enhanced; TEXT materials only
+"worked" because their segments were all irrelevant/unmapped → 0 mappings.
+Root cause **proven** with a direct psql insert reproducing
+`violates check constraint "material_enhancement_mappings_single_entity"`.
+Migration `0038_material_enhancement_mappings_check` re-defines the check
+**type-aware**: `type` declares the target entity and ancestor context columns
+are allowed; `material-enhancements.ts` scheme updated to match.
+
+### Validation
+
+- typecheck 10/10, lint 9/9 (contracts/api/web/database); api+web images
+  rebuilt and running healthy; migration applied via the `migrate` service.
+- Live E2E (tunnel, after fix): UPLOAD material `facc8224` ("CIS Module - 2",
+  40 pages) enhancement **completed** → version 1, 516 sections, 116 segments
+  (56 relevant / 27 uncertain / 33 irrelevant), 83 mapped segments, 796
+  mappings (606 topic + 190 chapter) — the exact shape the old constraint
+  rejected; `GET /materials/:id/enhancement` returns it through the API.
+  TEXT material re-enhance stays idempotent (`unchanged`, no version bump).
+- Cancel/retry round-trip re-verified after the api rebuild.
+
+### Next task
+
+Commit and push Phase 49 (this section), then the next scheduled phase.
+
 ## Phase 48 B — Chunked uploads (524), independent source extraction, incremental OCR reveal (2026-09-19)
 
 **Status: implementation + validation + live E2E complete; commit pending.**
@@ -329,9 +404,8 @@ source SHA-256 instead of material+revision.
 
 ### Next task
 
-Commit and push Phase 48 A (docs above), then continue with the next
-scheduled phase. Academic export redesign remains deferred for a future
-phase.
+Committed (Phase 49 is the current phase at the top of this file); academic
+export redesign remains deferred for a future phase.
 
 ## Phase 47 — Question extraction into the question bank (2026-09-18)
 
