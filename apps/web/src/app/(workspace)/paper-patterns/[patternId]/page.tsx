@@ -534,11 +534,14 @@ export default function PatternBuilderPage() {
      it into an online assessment via an explicit step. */
   async function onCreateAssessment() {
     if (!pattern) return;
+    if (!assessmentSubjectId) {
+      toast.error('Select a subject for this question paper');
+      return;
+    }
     setCreatingAssessment(true);
     try {
-      const body: Record<string, unknown> = {};
+      const body: Record<string, unknown> = { subjectId: assessmentSubjectId };
       if (assessmentTitle.trim()) body.title = assessmentTitle.trim();
-      if (assessmentSubjectId) body.subjectId = assessmentSubjectId;
 
       // The API refuses to create a paper the bank cannot fully supply. It
       // queues the missing questions and returns their batch instead; wait for
@@ -748,6 +751,7 @@ export default function PatternBuilderPage() {
                         setAssessmentTitle(
                           pattern.title ? `${pattern.title} — Question Paper` : 'Question Paper',
                         );
+                        setAssessmentSubjectId('');
                         setAssessmentOpen(true);
                       }}
                     >
@@ -815,7 +819,7 @@ export default function PatternBuilderPage() {
         {pattern.extraction && pattern.extraction.issues.length > 0 && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
             <p className="mb-1 font-medium">
-              Extracted from material — review these findings before saving:
+              Extracted from source — review these findings before saving:
             </p>
             <ul className="list-disc space-y-0.5 pl-4">
               {pattern.extraction.issues.map((issue, i) => (
@@ -1609,28 +1613,26 @@ export default function PatternBuilderPage() {
                   onChange={(e) => setAssessmentTitle(e.target.value)}
                 />
               </div>
-              {/* General patterns have no fixed subject, so the teacher must pick
-                  the paper's subject here — otherwise the paper is unscoped and
-                  the bank would flood it with questions from every subject. */}
-              {(pattern as PaperPattern).subjectIds.length === 0 ? (
-                <div className="grid gap-2">
-                  <Label htmlFor="assess-subject">
-                    Subject <span className="text-destructive">*</span>
-                  </Label>
-                  <Select value={assessmentSubjectId} onValueChange={setAssessmentSubjectId}>
-                    <SelectTrigger id="assess-subject">
-                      <SelectValue placeholder="Select the paper's subject" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allSubjects.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
+              {/* Subject is always required — the Question Scope DTO rejects
+                  papers without one, and the bank must not flood an unscoped
+                  paper with questions from every subject. */}
+              <div className="grid gap-2">
+                <Label htmlFor="assess-subject">
+                  Subject <span className="text-destructive">*</span>
+                </Label>
+                <Select value={assessmentSubjectId} onValueChange={setAssessmentSubjectId}>
+                  <SelectTrigger id="assess-subject">
+                    <SelectValue placeholder="Select the paper's subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allSubjects.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid gap-2">
                 <span className="text-sm font-medium">Total marks</span>
                 <p className="rounded-md bg-muted px-3 py-2 text-sm">

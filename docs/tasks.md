@@ -67,6 +67,28 @@
       (PaddleOCR in the demo container) → `source=OCR`, `pageCount:1`.
       Probe artifacts (patterns + storage dir) removed; only seed fixtures
       remain in the demo institute.
+- [x] **Core-flow + UI integration audit (2026-09-19, fix):** all nine audit
+      areas verified compliant EXCEPT the pattern detail page's "Generate
+      Question Paper" dialog: it hid the required Subject select whenever the
+      pattern was subject-scoped (only shown for General patterns), so
+      `createQuestionPaper` 400'd (`A question scope requires a subject`,
+      `question-scope.dto.ts`) for scoped patterns. Fixed: dialog now always
+      renders the mandatory Subject select (resets `assessmentSubjectId` on
+      open, guards submission without one). Also corrected the stale REVIEW
+      banner copy "Extracted from material" → "Extracted from source"
+      (extraction has no material ownership).
+- [x] **UI integration investigation (2026-09-19, live stack):** reproduced
+      "Extract from Source" missing — root cause was a STALE `web` container
+      (.next/BUILD_ID 09-18, pre-Phase 48 A; turbo restored the cached web
+      bundle during the 09-03 build), fixed by rebuilding the web image and
+      verifying the live bundle (fresh BUILD_ID + extract-text/extract-file
+      present). Material upload verified working live (201, dialog close,
+      list refresh, detail renders); fixed the real flow gap — `onUpload` in
+      `materials/page.tsx` now redirects to `/materials/{material.id}` on
+      success (was list-refresh only). Extraction happy path verified in a
+      real browser (paste → job → completed → REVIEW detail page). Layout
+      verified (no overflow; shadcn-only). Web typecheck/lint/prettier clean;
+      paper-pattern test suites 15/15, 18/18, 6/6. Test artifacts cleaned.
 
 ## Phase 47 — Question extraction into the question bank (2026-09-18)
 

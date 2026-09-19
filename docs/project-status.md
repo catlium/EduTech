@@ -1,5 +1,80 @@
 # Project Status
 
+## UI integration investigation (2026-09-19, live-stack)
+
+Task: investigate/fix reported UI integration problems (Paper Pattern "Extract
+from Source" missing, Material PDF upload stuck/"Uploading…", Material
+visibility), reproduced against the **running compose stack** with a real
+headless Chrome (CDP journeys), then validate/commit/push.
+
+**Finding 1 — "Extract from Source" missing = STALE `web` bundle, not a code
+bug.** The running `web` image's `.next/BUILD_ID` was 2026-09-18 02:06 — a day
+before Phase 48 A (`76e0497`, 2026-09-19 06:47) introduced the extraction UI —
+even though the same image's API `dist/` was freshly recompiled (09:03 build).
+Turbo's cache restored the web workspace output untouched while the API
+package rebuilt. Committed source (`paper-patterns/page.tsx`) was already
+correct and un-modified. **Fix:** rebuilt the shared api/web image
+(`docker compose -f docker-compose.yml -f docker-compose.dev.yml
+-f docker-compose.demo.yml up -d --build web`) and verified the live bundle now
+contains `Extract from Source` / `extract-text` / `extract-file` with a fresh
+BUILD_ID. AGENTS.md container rule (rebuild + verify) was the exact remedy.
+
+**Finding 2 — Material upload works; captured the reported flow gap.** Full
+browser journey on the running stack: file set via DataTransfer → title →
+scope pick → Upload → `POST /api/v1/materials/upload` **201** → dialog closes →
+row appears in the ACTIVE-STATUS list → `/materials/{id}` detail renders (200
+material + `/ocr-pages`). The "stuck Uploading…" symptom did NOT reproduce on
+the current stack. However the expected flow ("user redirected to Material
+detail using the returned id") failed in code: `onUpload`
+(`materials/page.tsx`) discarded the returned `material.id` and only refreshed
+the list. **Fix:** redirect `router.push('/materials/' + material.id)` after
+the 201 (kept reset+toast). Verified live: upload → redirect → detail page with
+title + PDF/UPLOADED badges.
+
+**Finding 3 — extraction happy path verified live.** Pasted a structured paper
+(text) in the extraction dialog → job `PATTERN_EXTRACT` → polled → `completed`
+→ auto-redirect to `/paper-patterns/{id}` → "Extracted Paper Pattern" REVIEW
+with 3 sections · 3 rules · per-rule marks, "Extracted from source" banner.
+Weak/unstructured text correctly fails (SECTION_NO_RULES / NO_QUESTIONS_FOUND).
+
+**Finding 4 — layout verified.** No horizontal overflow on pattern detail,
+material detail, or the extraction dialog (512px, `sm:max-w-lg`); only
+shadcn/built-in patterns; no CSS hacks added.
+
+**Validation:** `pnpm typecheck --filter @catlium/web` clean; `pnpm lint`
+(9 tasks) clean; prettier check clean; `test:paper-patterns` 15/15,
+`test:paper-pattern-policy` 18/18, `test:paper-pattern-subjects` 6/6.
+Test artifacts (3 uploads + extracted pattern + their jobs/storage) removed
+from the demo institute.
+
+**Commit:** (this checkpoint)
+
+## Core-flow + UI integration audit (2026-09-19)
+
+Nine-area audit across the Paper Pattern / Question Paper / Assessment /
+Generate-Missing / bank / extraction flows. All areas verified compliant
+except one genuine regression, now fixed:
+
+**Fixed — pattern-page "Generate Question Paper" dialog** (`[patternId]/page.tsx`):
+the dialog only rendered the required Subject select for General patterns
+(`subjectIds.length === 0`); for subject-scoped patterns no `subjectId` was
+sent and `createQuestionPaper` 400'd (`A question scope requires a subject`,
+`question-scope.dto.ts`). The dialog now always renders the mandatory Subject
+select, resets `assessmentSubjectId` on open, and guards submission without
+one. Authoritative sources re-checked and clean: `createQuestionPaper` /
+`createAssessmentFromBlueprint` require a client-supplied subject (never
+derived from the pattern); `resolveScopeChain` validates it; Generate Missing
+(`question-generation.service.ts`) filters strictly within the selected
+academic scope (pattern contributes structure only); hierarchy keeps attempt N
+of M on the Question Type rule, never the Section (extractor +
+`PaperPatternQuestionTypeSchema`).
+
+**Also fixed (copy):** stale REVIEW banner "Extracted from material" →
+"Extracted from source" — extraction no longer has material ownership.
+
+**Validation:** web typecheck + eslint (forced) clean. Frontend-only change;
+running stack is dev posture (web not up) so no container rebuild applies.
+
 ## Repository cleanup checkpoint (2026-09-19)
 
 Classification and commit of the post-Phase-48 A working-tree leftovers

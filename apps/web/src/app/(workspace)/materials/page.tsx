@@ -363,7 +363,7 @@ export default function MaterialsListPage() {
       if (scope.topicId) form.append('topicId', scope.topicId);
       else if (scope.chapterId) form.append('chapterId', scope.chapterId);
       else form.append('subjectId', scope.subjectId);
-      await api<{ material: MaterialResponse }>('/materials/upload', {
+      const { material } = await api<{ material: MaterialResponse }>('/materials/upload', {
         method: 'POST',
         body: form,
       });
@@ -373,7 +373,7 @@ export default function MaterialsListPage() {
       setUploadTitle('');
       if (uploadFileRef.current) uploadFileRef.current.value = '';
       setScope((s) => ({ ...s, subjectId: '', chapterId: '', topicId: '' }));
-      refresh();
+      router.push(`/materials/${material.id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to upload file');
     } finally {
