@@ -13,8 +13,9 @@
 #                 (scripts/e2e/mock_ai_provider.py — stdlib only).
 #   - `seed`:     applies the idempotent demo seed (teacher@catlium.dev /
 #                 student@catlium.dev in the catlium-demo institute).
-#   - worker-ai:  points WORKER_AI_PROVIDER_URL at mock-ai (inside the
-#                 private network) instead of the OmniRoute gateway.
+#   - worker-ai:  points WORKER_AI_PROVIDER_URL at OmniRoute
+#                 (http://omniroute:20128/v1) — the sole AI API provider.
+#                 mock-ai stays defined but is never in the request path.
 #
 # ⚠️  DEMO ONLY — never use in production. For real AI, run the base
 #     compose file and set OMNIROUTE_INITIAL_PASSWORD / OMNIROUTE_JWT_SECRET /
@@ -67,11 +68,10 @@ services:
       seed:
         condition: service_completed_successfully
 
-  # Point the AI worker at the internal mock provider for this demo run.
+  # Point the AI worker at OmniRoute (the sole AI API provider).
   worker-ai:
     environment:
-      WORKER_AI_PROVIDER_URL: http://mock-ai:8899/v1
-      WORKER_AI_API_KEY: demo-not-needed
+      WORKER_AI_PROVIDER_URL: http://omniroute:20128/v1
     depends_on:
-      mock-ai:
+      omniroute:
         condition: service_healthy

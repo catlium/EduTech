@@ -5,15 +5,23 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Headers,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 import { QuestionExtractionService } from './question-extraction.service.js';
 import { ExtractQuestionsDto, ReviewQuestionCandidateDto } from './dto/question-extraction.dto.js';
+import { QuestionPaperExtractionService } from '../question-papers/question-paper-extraction.service.js';
+import { ExtractQuestionPaperTextDto } from '../question-papers/dto/question-papers.dto.js';
+import { UploadChunksService } from '../materials/upload-chunks.service.js';
+import { MAX_FILE_SIZE } from '../materials/materials.constants.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -51,7 +59,11 @@ function toStatus(job: {
 @Controller('questions')
 @UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
 export class QuestionExtractionController {
-  constructor(private readonly extractionService: QuestionExtractionService) {}
+  constructor(
+    private readonly extractionService: QuestionExtractionService,
+    private readonly sourceExtraction: QuestionPaperExtractionService,
+    private readonly chunks: UploadChunksService,
+  ) {}
 
   @Post('extract-from-material')
   @HttpCode(HttpStatus.ACCEPTED)
@@ -62,6 +74,63 @@ export class QuestionExtractionController {
   ) {
     const extraction = await this.extractionService.requestExtraction(tenant.instituteId, dto);
     return { extraction };
+  }
+
+  /** Independent Question Bank extraction from pasted exam-paper text — the
+   *  same deterministic extractor, but candidates land in the Bank REVIEW tray
+   *  (no Question Paper is created). */
+  @Post('extract-source-text')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async extractSourceText(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ExtractQuestionPaperTextDto,
+  ) {
+    return {
+      extraction: await this.sourceExtraction.requestTextExtraction(
+        tenant.instituteId,
+        dto.text,
+        user.userId,
+      ),
+    };
+  }
+
+  /** Independent Question Bank extraction from an uploaded paper PDF/image. */
+  @Post('extract-source-file')
+  @HttpCode(HttpStatus.OK)
+  @RequiredRoles(...WRITE_ROLES)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
+  async extractSourceFile(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file?: Express.Multer.File,
+    @Headers('x-upload-id') uploadId?: string,
+    @Headers('x-chunk-index') chunkIndex?: string,
+    @Headers('x-chunk-total') chunkTotal?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('A source file (PDF or image) is required');
+    }
+    const chunk = this.chunks.parse(uploadId, chunkIndex, chunkTotal);
+    let buffer = file.buffer;
+    if (chunk) {
+      const assembled = await this.chunks.acceptOrAssemble(chunk, tenant.instituteId, file.buffer);
+      if (assembled === null) {
+        return { chunk: { index: chunk.index, total: chunk.total } };
+      }
+      buffer = assembled;
+    }
+    if (buffer.length > MAX_FILE_SIZE) {
+      throw new BadRequestException(`File exceeds the ${MAX_FILE_SIZE / (1024 * 1024)} MB limit`);
+    }
+    return {
+      extraction: await this.sourceExtraction.requestFileExtraction(
+        tenant.instituteId,
+        { buffer, originalname: file.originalname, mimetype: file.mimetype },
+        user.userId,
+      ),
+    };
   }
 
   @Get('extraction/:jobId')

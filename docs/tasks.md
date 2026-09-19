@@ -1,5 +1,73 @@
 # Task Tracker
 
+## Phase 48 B — Chunked uploads (524), independent source extraction, incremental page reveal (2026-09-19)
+
+> Three connected fixes, all validated live through the Cloudflare Tunnel:
+>
+> **A. Chunked uploads to kill the tunnel 524.** The tunnel uplink is slow
+> (~55 KB/s); a large multipart body exceeds the 100s origin budget and
+> Cloudflare returns 524 before the API ever responds. The web client now
+> slices uploads into 2 MB parts (`x-upload-id` / `x-chunk-index` /
+> `x-chunk-total` headers) and the API reassembles them server-side, so each
+> part round-trips in seconds. Applied to the three upload surfaces that
+> carry big files: `/materials/upload`, `/paper-patterns/extract-file`,
+> `/question-papers/extract-file`, plus the new `/questions/extract-source-file`.
+> (The `/syllabus/upload` surface is small files only — intentionally not
+> chunked, tracked as follow-up.)
+>
+> **B. Independent source extraction for Question Bank.** Before this phase
+> the bank's only extraction entry was `/questions/extract-from-material`
+> (requires a READY processed material). `QuestionPaperExtractionService` was
+> generalized: `paperId` is now optional. Paper mode creates a question paper
+> (+ links, totals); **bank mode** creates no paper, lands candidates straight
+> in the REVIEW tray, omits `paperId` from result/provenance, and does not
+> touch paper totals. Idempotent reuse is mode-scoped (paper runs match
+> `payload->>'paperId' IS NOT NULL`, bank runs `IS NULL`) so the same source
+> hash never collides across modes. New endpoints `POST /questions/extract-source-text`
+> (202) and `POST /questions/extract-source-file` (200, chunked); a shared web
+> `QuestionSourceExtractionDialog` (paste-text / upload-file tabs) is wired on
+> both the questions page and the question-papers page. QP/paper-pattern
+> extraction were already source-independent (Phase 48 A / Phase 46).
+>
+> **C. Incremental page reveal in OCR inspection.** Previously chunk 1 held
+> the materialized extent and `materializeRemainingChunks` bulk-inserted every
+> remaining chunk the instant chunk 1 reported `totalPages` — so the page grid
+> revealed the whole document at once. Now only the NEXT chunk is materialized
+> per submission (`materializeNextChunk`), the page grid is bounded by the
+> materialized extent (capped at reported `documentPages`), and the response
+> exposes `chunkSize` so the UI shows the expected total chunk count even
+> while chunks materialize progressively.
+
+- [x] **Chunked upload server:** `UploadChunksService` (parse + acceptOrAssemble,
+      parts under `upload-chunks/{instituteId}/{uploadId}/{index}`, 20 MB
+      `MAX_FILE_SIZE` cap) wired into materials / paper-patterns /
+      question-papers controllers; `MaterialsService.createFromUpload`.
+- [x] **Chunked upload web:** `api()` `headers` option +
+      `uploadFileWithChunks<T>` in `apps/web/src/lib/api.ts` (2 MB chunks);
+      materials + paper-patterns pages switched; material upload now redirects
+      to the material detail on success.
+- [x] **Question Bank extraction:** generalized `QuestionPaperExtractionService`
+      (bank mode, `ExtractionEnqueueResult.paperId` optional);
+      contracts `paperId` nullable in `QuestionPaperExtractionStatusSchema`
+      result and `ExtractQuestionPaperResponseSchema`; `QuestionPapersModule`
+      exports the service, `QuestionExtractionModule` imports it +
+      MaterialsModule; `/questions/extract-source-{text,file}` endpoints;
+      shared `QuestionSourceExtractionDialog` on questions + question-papers pages.
+- [x] **Incremental reveal:** `materializeRemainingChunks` → `materializeNextChunk`,
+      page grid bounded to materialized extent, `chunkSize` in
+      `OcrPageListResponse`, UI expected-chunk count derives from
+      `documentPages / chunkSize`.
+- [x] **Guard/scoping review:** all extraction endpoints under access-token +
+      tenant + roles guards (write = INSTITUTE_ADMIN, TEACHER); every job /
+      material / paper read is institute-scoped; `listCandidates` handles the
+      paper-less (bank) case via provenance `jobId` scoping and nullable
+      `meta.paperId`.
+- [x] **Validation:** `pnpm typecheck` (10/10) green; OCR util tests 18/18;
+      containers rebuilt (api/web healthy); live text-bank extraction through
+      the tunnel — QUEUED → completed → 2 REVIEW candidates (MCQ + TEXT), no
+      paperId, candidates discarded; live chunked material upload earlier
+      (3×2 MB parts → 201 each, material created).
+
 ## Phase 48 A follow-up — material-page extraction entry + stale-image verdict (2026-09-19)
 
 > Amends Phase 48 A (above): the material-detail "Extract Paper Pattern"

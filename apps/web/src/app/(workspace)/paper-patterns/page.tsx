@@ -6,7 +6,7 @@ import { FileText, FileUp, Plus, ScanSearch, Type } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, uploadFileWithChunks } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
@@ -36,7 +36,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import type { PaperPattern, SubjectResponse } from '@catlium/contracts';
-import type { ExtractPaperPatternResponse, PaperPatternExtractionStatus } from '@catlium/contracts';
+import type { ExtractPaperPatternResponse } from '@catlium/contracts';
 
 export default function PaperPatternsListPage() {
   const { institute } = useTenant();
@@ -114,12 +114,11 @@ export default function PaperPatternsListPage() {
           toast.error('Choose the paper source file first');
           return;
         }
-        const form = new FormData();
-        form.append('file', file);
-        response = await api<ExtractPaperPatternResponse>('/paper-patterns/extract-file', {
-          method: 'POST',
-          body: form,
-        });
+        response = await uploadFileWithChunks<ExtractPaperPatternResponse>(
+          '/paper-patterns/extract-file',
+          file,
+          {},
+        );
       }
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to start extraction');
@@ -127,43 +126,18 @@ export default function PaperPatternsListPage() {
     }
 
     setExtracting(true);
-    toast.loading('Extracting paper pattern…');
+    toast.dismiss();
     try {
-      if (response.extraction.status === 'COMPLETED' && response.extraction.patternId) {
-        toast.dismiss();
-        toast.success('Pattern extracted');
-        router.push(`/paper-patterns/${response.extraction.patternId}`);
-        return;
-      }
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const { extraction: status } = await api<PaperPatternExtractionStatus>(
-          `/paper-patterns/extraction/${response.extraction.jobId}`,
-        );
-        if (status.status === 'completed') {
-          toast.dismiss();
-          if (status.result?.patternId) {
-            toast.success('Pattern extracted');
-            router.push(`/paper-patterns/${status.result.patternId}`);
-          } else {
-            toast.error('Extraction finished without a pattern');
-          }
-          return;
-        }
-        if (status.status === 'failed') {
-          toast.dismiss();
-          toast.error(status.error?.message ?? 'Paper pattern extraction failed');
-          return;
-        }
-        if (Date.now() > deadline) {
-          toast.dismiss();
-          toast.error('Extraction timed out — check the pattern list shortly');
-          return;
-        }
-      }
+      // Resource-first: the pattern exists now — land on its page and let the
+      // progress banner track the background extraction (or show the reuse).
+      toast.success(
+        response.extraction.reused ? 'Extraction already done' : 'Extraction started',
+      );
+      router.push(
+        `/paper-patterns/${response.extraction.patternId}?extraction=${response.extraction.jobId}`,
+      );
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to track extraction');
+      toast.error(err instanceof ApiError ? err.message : 'Failed to open extraction');
     } finally {
       setExtracting(false);
       setExtractOpen(false);

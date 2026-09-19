@@ -1,5 +1,103 @@
 # Project Status
 
+## Phase 48 B — Chunked uploads (524), independent source extraction, incremental OCR reveal (2026-09-19)
+
+**Status: implementation + validation + live E2E complete; commit pending.**
+
+### A. Chunked uploads — Cloudflare Tunnel 524 fix
+
+Tunnel uplink is slow (~55 KB/s); a large multipart body in one part exceeds
+Cloudflare's 100s origin deadline → 524 before the API responds. The web
+client now slices uploads into 2 MB parts; the API reassembles server-side.
+
+- `UploadChunksService` (`apps/api/src/materials/upload-chunks.service.ts`):
+  `parse()` validates `x-upload-id` (UUID) + `x-chunk-index`/`x-chunk-total`
+  (1-based) headers — returns null when absent (non-chunked uploads still
+  work), throws on malformed; `acceptOrAssemble()` stores parts under
+  `upload-chunks/{instituteId}/{uploadId}/{index}` and returns the full buffer
+  on the final chunk. 20 MB `MAX_FILE_SIZE` cap on the reassembled file.
+- Wired into `POST /materials/upload`, `/paper-patterns/extract-file`,
+  `/question-papers/extract-file`, and the new `/questions/extract-source-file`.
+  Intermediate parts return `{chunk:{index,total}}`; the final part returns the
+  normal `{material}` / `{extraction}` envelope. Controllers keep the
+  `FileInterceptor` `fileSize` limit (chunks ≤ 2 MB).
+- Web: `api()` gained a `headers` option; `uploadFileWithChunks<T>()`
+  (`apps/web/src/lib/api.ts`, `CHUNK_BYTES = 2 MB`) slices and POSTs
+  sequentially, per-part `new File([part], file.name, {type})` preserving
+  originalname. `materials/page.tsx` + `paper-patterns/page.tsx` use it.
+- **Live E2E (validated 2026-09-19, tunnel):** 5.4 MB PDF → 3×2 MB parts →
+  parts 1–2 HTTP 201 `{chunk:{index,total}}` (~30–43 s each), part 3 → material
+  created (`fileSize: 5400006`, PDF, PROCESSING). Malformed upload-id → 400.
+  Test material archived after verification.
+- Syllabus upload (`/syllabus/upload`) intentionally NOT chunked (small files;
+  follow-up if ever needed).
+
+### B. Independent Question Bank extraction (paperless bank mode)
+
+Before: the bank's only extraction entry was `/questions/extract-from-material`
+(READY material required). `QuestionPaperExtractionService` is generalized:
+
+- `paperId` optional across the flow. **Paper mode** (unchanged): creates a
+  question paper, links `questionPaperQuestions`, updates paper totals,
+  result carries `paperId`. **Bank mode** (new): creates NO paper, no links,
+  no totals update; candidates land in the REVIEW tray; provenance omits
+  `paperId`; result omits it.
+- Idempotent reuse is **mode-scoped**: paper runs match
+  `payload->>'paperId' IS NOT NULL`, bank runs match `IS NULL` — the same
+  source hash never collides across the two modes.
+- Endpoints on `QuestionExtractionController`: `POST /questions/extract-source-text`
+  (202) and `POST /questions/extract-source-file` (200, chunked).
+- Contracts: `QuestionPaperExtractionStatusSchema.result.paperId` +
+  `ExtractQuestionPaperResponseSchema.extraction.paperId` now nullable.
+  `QuestionPapersModule` exports the service; `QuestionExtractionModule`
+  imports QuestionPapersModule + MaterialsModule (no cycles).
+- Web: shared `QuestionSourceExtractionDialog` (`basePath` prop) with
+  paste-text / upload-file tabs, wired on the questions page AND the
+  question-papers page (item C below). Bank runs redirect to the paperless
+  `/questions/extractions/{jobId}` review page.
+- **Live E2E:** text extraction → QUEUED → completed → 2 REVIEW candidates
+  (MCQ + SHORT_ANSWER), `paperId:null` in status/candidates, provenance carries
+  the jobId; candidates discarded after verification.
+
+### C. Incremental OCR page reveal
+
+Chunk 1 always held the initial page extent; the instant chunk 1 reported
+`totalPages`, `materializeRemainingChunks` bulk-inserted every remaining chunk
+→ the inspection grid revealed the whole document at once.
+
+- `submitResult` now calls `materializeNextChunk` — only chunk N+1 is created
+  per submission, so the chunk set (and page grid) grows one chunk at a time.
+- The page grid is bounded by the materialized extent (not `documentPages`),
+  capped at the worker-reported total once known (short docs don't render
+  phantom pages). Settlement is unaffected: the final chunk materializes from
+  the prior submission, so all chunks exist before `every(submitted)`.
+- `OcrPageListResponse` exposes `chunkSize`; `ocr-inspection.tsx` shows the
+  expected total chunk count via `ceil(documentPages / chunkSize)` while
+  chunks materialize progressively.
+
+### Guard/scoping review (item D)
+
+All extraction endpoints sit under access-token + tenant + roles guards (write
+= INSTITUTE_ADMIN, TEACHER); every job/material/paper read is
+institute-scoped; `listCandidates` handles the paper-less bank case via
+provenance `jobId` scoping + nullable `meta.paperId`.
+
+### Known issues / follow-ups
+
+- Orphaned chunk parts from failed/malformed upload attempts remain under
+  `upload-chunks/{instituteId}/{uploadId}/` (no cleanup code — harmless,
+  deferred).
+- Page preview timing checks (previews derive live from chunk results) still to
+  be verified live per item 8; the READY-gated "Source and extracted text"
+  card on the material detail page is unchanged.
+
+### Validation
+
+- `pnpm typecheck` (turbo, 10 tasks) green; OCR util tests 18/18 green.
+- Containers rebuilt: `docker compose up -d --build api web` — api/web healthy.
+- Live tunnel E2E: text bank extraction (above) + chunked material upload
+  reinvoked this phase.
+
 ## UI integration follow-up: stale-image check + material-page extraction (2026-09-19, live-stack)
 
 Follow-up to the report "flow should be upload → material created → extraction

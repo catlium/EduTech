@@ -247,7 +247,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     });
 
     if (result.totalPages) {
-      await this.materializeRemainingChunks(chunk.jobId, result.totalPages);
+      await this.materializeNextChunk(chunk.jobId, chunk, result.totalPages);
     }
     await this.writeProgressForJob(chunk.jobId);
   }
@@ -479,7 +479,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     await this.assertMaterialScoped(instituteId, materialId);
     const job = await this.jobsService.latestMaterialJob(instituteId, materialId);
     if (!job || job.type !== 'MATERIAL_PROCESS') {
-      return { documentPages: null, chunks: [], pages: [] };
+      return { documentPages: null, chunkSize: CHUNK_SIZE, chunks: [], pages: [] };
     }
 
     const chunks = await this.db
@@ -494,10 +494,19 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     const workerNames = new Map(chunks.map((r) => [r.ocr_chunks.id, r.ocr_workers?.name ?? null]));
 
     const documentPages = this.documentPagesOf(chunkRows);
-    const pageCount = documentPages ?? Math.max(0, ...chunkRows.map((c) => c.endPage));
+    // Grid reveals incrementally: bound by the materialized extent (chunks
+    // materialize one at a time as OCR progresses), not documentPages, so
+    // pages appear chunk-by-chunk instead of all at once. Cap at the worker-
+    // reported total once known so short docs don't render phantom pages.
+    // documentPages is still exposed for progress/percent.
+    const pageCount = Math.min(
+      documentPages ?? Infinity,
+      Math.max(0, ...chunkRows.map((c) => c.endPage)),
+    );
 
     return {
       documentPages,
+      chunkSize: CHUNK_SIZE,
       chunks: chunkRows.map((c) => this.chunkSummaryOf(c, workerNames.get(c.id) ?? null)),
       pages: derivePageDetails(
         chunkRows.map((c) => this.chunkLikeOf(c)),
@@ -760,53 +769,36 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       .where(eq(materials.id, materialId));
   }
 
-  /** Materialize chunks 2..ceil(totalPages/chunkSize) once totalPages is known. */
-  private async materializeRemainingChunks(jobId: string, totalPages: number): Promise<void> {
-    const needed = Math.ceil(totalPages / CHUNK_SIZE);
-    const existing = await this.db
-      .select({ chunkIndex: ocrChunks.chunkIndex })
-      .from(ocrChunks)
-      .where(eq(ocrChunks.jobId, jobId));
-    const existingIndexes = new Set(existing.map((e) => e.chunkIndex));
+  /** Materialize exactly the next chunk (N+1) once totalPages is known. The
+   *  page grid therefore grows one chunk at a time as OCR progresses instead
+   *  of revealing the whole document up front. All chunks exist by the time
+   *  the final chunk submits, so coverage/settlement is unaffected.
+   *  `ponytail: serial chunk materialization; if out-of-order page reveal is
+   *  ever wanted, materialize K ahead here and precompute N in enqueueJob.` */
+  private async materializeNextChunk(
+    jobId: string,
+    submitted: ChunkRow,
+    totalPages: number,
+  ): Promise<void> {
+    const nextIndex = submitted.chunkIndex + 1;
+    const startPage = (nextIndex - 1) * CHUNK_SIZE + 1;
+    if (startPage > totalPages) return;
 
     const [job] = await this.db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!job) return;
     const materialId = materialIdOf(job.payload);
     if (!materialId) return;
 
-    // `ponytail: build values inline; a typed "new row" cast keeps drizzle from
-    // widening the union. Only the missing indexes are inserted.`
-    const values: Array<{
-      jobId: string;
-      instituteId: string;
-      sourceType: string;
-      sourceId: string;
-      chunkIndex: number;
-      startPage: number;
-      endPage: number;
-      documentPages: number;
-    }> = [];
-
-    for (let index = 1; index <= needed; index++) {
-      if (existingIndexes.has(index)) continue;
-      const startPage = (index - 1) * CHUNK_SIZE + 1;
-      const endPage = Math.min(index * CHUNK_SIZE, totalPages);
-      if (startPage > totalPages) continue;
-      values.push({
-        jobId,
-        instituteId: job.instituteId,
-        sourceType: 'MATERIAL',
-        sourceId: materialId,
-        chunkIndex: index,
-        startPage,
-        endPage,
-        documentPages: totalPages,
-      });
-    }
-
-    if (values.length) {
-      await this.db.insert(ocrChunks).values(values);
-    }
+    await this.db.insert(ocrChunks).values({
+      jobId,
+      instituteId: job.instituteId,
+      sourceType: 'MATERIAL',
+      sourceId: materialId,
+      chunkIndex: nextIndex,
+      startPage,
+      endPage: Math.min(nextIndex * CHUNK_SIZE, totalPages),
+      documentPages: totalPages,
+    });
   }
 
   // ── Validation / helpers ───────────────────────────────────────────────

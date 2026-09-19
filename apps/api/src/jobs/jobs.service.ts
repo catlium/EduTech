@@ -118,7 +118,8 @@ export class JobsService {
       job.type === 'MATERIAL_PROCESS' ||
       job.type === 'MATERIAL_ENHANCE' ||
       job.type === 'PATTERN_EXTRACT' ||
-      job.type === 'QUESTION_EXTRACT'
+      job.type === 'QUESTION_EXTRACT' ||
+      job.type === 'QP_EXTRACT'
     ) {
       return;
     }

@@ -992,6 +992,10 @@ export type OcrPageDetail = z.infer<typeof OcrPageDetailSchema>;
 
 export const OcrPageListResponseSchema = z.object({
   documentPages: z.number().int().positive().nullable(),
+  // Pages per chunk; the grid's `pages` array only covers the materialized
+  // extent (it grows chunk-by-chunk), so the UI uses chunkSize to render
+  // stable pending placeholders for the not-yet-materialized remainder.
+  chunkSize: z.number().int().positive(),
   chunks: z.array(OcrChunkSchema),
   pages: z.array(OcrPageDetailSchema),
 });
@@ -2479,8 +2483,9 @@ export const ExtractPaperPatternResponseSchema = z.object({
     status: z.enum(['QUEUED', 'COMPLETED']),
     /* true = a pending/completed identical extraction was reused (idempotency) */
     reused: z.boolean(),
-    /* Present when status is COMPLETED: the existing extracted pattern */
-    patternId: z.string().uuid().optional(),
+    /* Resource-first: the extraction creates the pattern immediately, so a
+     * patternId is always present. Open it and show progress in place. */
+    patternId: z.string().uuid(),
   }),
 });
 export type ExtractPaperPatternResponse = z.infer<typeof ExtractPaperPatternResponseSchema>;
@@ -2507,6 +2512,60 @@ export const PaperPatternExtractionStatusSchema = z.object({
   }),
 });
 export type PaperPatternExtractionStatus = z.infer<typeof PaperPatternExtractionStatusSchema>;
+
+/* ── Question paper text extraction (Phase 49) ──────────────────────
+ * A pasted text or uploaded paper source (not a Material) creates the
+ * question paper first, then a QUEUED run extracts the questions with the
+ * same deterministic extractor as Phase 47 and links them into the paper.
+ * Marker-free, OCR-ready: it mirrors ExtractQuestions' staging — the same
+ * REVIEW candidates feed the same review page. */
+
+export const ExtractQuestionPaperTextRequestSchema = z.object({
+  text: z.string().min(1).max(1_000_000),
+});
+export type ExtractQuestionPaperTextRequest = z.infer<typeof ExtractQuestionPaperTextRequestSchema>;
+
+export const ExtractQuestionPaperResponseSchema = z.object({
+  extraction: z.object({
+    jobId: z.string().uuid(),
+    /* QUEUED = poll GET /question-papers/extraction/:jobId; COMPLETED = an
+     * identical extraction already exists — open the returned paper. */
+    status: z.enum(['QUEUED', 'COMPLETED']),
+    /* true = a pending/completed identical extraction was reused (idempotency) */
+    reused: z.boolean(),
+    /* Resource-first question-paper runs always carry a paperId — open it and
+     * show progress in place. Independent Question Bank source runs have no
+     * paper (the review tray at /questions/extractions/:jobId is the landing
+     * page) so paperId is null there. */
+    paperId: z.string().uuid().nullable(),
+  }),
+});
+export type ExtractQuestionPaperResponse = z.infer<typeof ExtractQuestionPaperResponseSchema>;
+
+export const QuestionPaperExtractionStatusSchema = z.object({
+  extraction: z.object({
+    jobId: z.string().uuid(),
+    status: z.enum(['queued', 'processing', 'completed', 'failed', 'cancelled', 'cancelling']),
+    result: z
+      .object({
+        status: z.string(),
+        /* present for paper runs; null for independent bank-source runs */
+        paperId: z.string().uuid().nullable(),
+        source: z.enum(['TEXT', 'OCR']),
+        candidateCount: z.number().int().nonnegative(),
+        reviewRequiredCount: z.number().int().nonnegative(),
+        issueCount: z.number().int().nonnegative(),
+        totalMarks: z.number().nullable(),
+        durationMinutes: z.number().nullable(),
+      })
+      .nullable(),
+    error: z.object({ message: z.string() }).nullable(),
+    createdAt: z.string().datetime(),
+    startedAt: z.string().datetime().nullable(),
+    completedAt: z.string().datetime().nullable(),
+  }),
+});
+export type QuestionPaperExtractionStatus = z.infer<typeof QuestionPaperExtractionStatusSchema>;
 
 export const PaperPatternSchema = z.object({
   id: z.string().uuid(),
@@ -2566,11 +2625,15 @@ export type QuestionExtractionIssue = z.infer<typeof QuestionExtractionIssueSche
 export const QuestionExtractionProvenanceSchema = z.object({
   operation: z.literal('EXTRACT_QUESTIONS'),
   jobId: z.string().uuid(),
-  materialId: z.string().uuid(),
-  materialRevision: z.number().int().positive(),
-  subjectId: z.string().uuid(),
-  /* ENHANCEMENT = parsed from enhanced blocks; TEXT = raw textContent fallback */
-  source: z.enum(['ENHANCEMENT', 'TEXT']),
+  /* Material owned (Phase 47) or, since Phase 49, question papers run from a
+   * pasted text / uploaded paper with no material in between. */
+  materialId: z.string().uuid().optional(),
+  materialRevision: z.number().int().positive().optional(),
+  paperId: z.string().uuid().optional(),
+  subjectId: z.string().uuid().optional(),
+  /* ENHANCEMENT = parsed from enhanced blocks; TEXT = raw textContent
+   * fallback; OCR = blocks from the OCR service. */
+  source: z.enum(['ENHANCEMENT', 'TEXT', 'OCR']),
   page: z.number().int().positive().nullable(),
   blockIds: z.array(z.string()).max(1000),
   originalNumber: z.string().max(50).nullable(),
@@ -2613,8 +2676,8 @@ export const QuestionExtractionStatusSchema = z.object({
         candidateCount: z.number().int().nonnegative(),
         reviewRequiredCount: z.number().int().nonnegative(),
         issueCount: z.number().int().nonnegative(),
-        source: z.enum(['ENHANCEMENT', 'TEXT']),
-        materialRevision: z.number().int().positive(),
+        source: z.enum(['ENHANCEMENT', 'TEXT', 'OCR']),
+        materialRevision: z.number().int().positive().nullable(),
       })
       .nullable(),
     error: z.object({ message: z.string() }).nullable(),
@@ -2648,11 +2711,15 @@ export const QuestionExtractionCandidatesResponseSchema = z.object({
   extraction: z.object({
     jobId: z.string().uuid(),
     status: z.string(),
-    materialId: z.string().uuid(),
-    materialTitle: z.string(),
-    subjectId: z.string().uuid(),
+    /* Material runs (Phase 47) set materialId/materialTitle/subjectId; paper
+     * runs (Phase 49) set paperId/paperTitle instead. */
+    materialId: z.string().uuid().nullable(),
+    materialTitle: z.string().nullable(),
+    paperId: z.string().uuid().nullable(),
+    paperTitle: z.string().nullable(),
+    subjectId: z.string().uuid().nullable(),
     materialRevision: z.number().int().positive().nullable(),
-    source: z.enum(['ENHANCEMENT', 'TEXT']).nullable(),
+    source: z.enum(['ENHANCEMENT', 'TEXT', 'OCR']).nullable(),
     createdAt: z.string().datetime(),
     completedAt: z.string().datetime().nullable(),
   }),

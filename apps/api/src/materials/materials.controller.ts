@@ -17,10 +17,12 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Headers,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { MaterialsService } from './materials.service.js';
+import { UploadChunksService } from './upload-chunks.service.js';
 import { OcrCoordinatorService } from '../ocr/ocr-coordinator.service.js';
 import { CreateTextMaterialDto, UploadMaterialDto, UpdateMaterialDto } from './dto/material.dto.js';
 import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from './materials.constants.js';
@@ -42,6 +44,7 @@ export class MaterialsController {
   constructor(
     private readonly materialsService: MaterialsService,
     private readonly ocrCoordinator: OcrCoordinatorService,
+    private readonly chunks: UploadChunksService,
   ) {}
 
   @Post('text')
@@ -80,18 +83,33 @@ export class MaterialsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UploadMaterialDto,
     @UploadedFile() file?: Express.Multer.File,
+    @Headers('x-upload-id') uploadId?: string,
+    @Headers('x-chunk-index') chunkIndex?: string,
+    @Headers('x-chunk-total') chunkTotal?: string,
   ) {
     if (!file) {
       throw new BadRequestException('A file is required');
     }
 
-    const material = await this.materialsService.createFileMaterial(
+    const chunk = this.chunks.parse(uploadId, chunkIndex, chunkTotal);
+    const result = await this.materialsService.createFromUpload(
       tenant.instituteId,
       user.userId,
       dto,
       file,
+      chunk,
     );
-    return { material };
+    if (!('material' in result)) {
+      return { chunk: { index: result.chunk.index, total: result.chunk.total } };
+    }
+
+    // Upload-first: the material (UPLOADED) is created before any processing is
+    // triggered, then the pipeline auto-starts so the teacher just watches the
+    // detail page progress. Best-effort so a queue hiccup still returns the 201.
+    await this.materialsService
+      .processMaterial(tenant.instituteId, result.material.id)
+      .catch(() => undefined);
+    return { material: result.material };
   }
 
   @Get()

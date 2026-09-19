@@ -83,14 +83,15 @@ export interface ApiOptions {
   body?: unknown;
   signal?: AbortSignal;
   json?: boolean;
+  headers?: Record<string, string>;
 }
 
 export async function api<T>(
   path: string,
-  { method = 'GET', body, signal, json = true }: ApiOptions = {},
+  { method = 'GET', body, signal, json = true, headers: customHeaders }: ApiOptions = {},
 ): Promise<T> {
   const doRequest = async (): Promise<Response> => {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...customHeaders };
     if (body !== undefined && !(body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
@@ -148,6 +149,56 @@ export async function api<T>(
 
 export function jobDone(job: { status: string }): boolean {
   return job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
+}
+
+// 2MB parts keep every chunk request at ~35s over the Cloudflare Tunnel's
+// measured ~55KB/s upload path — well under the 100s origin budget that used
+// to 524 whole-file uploads.
+const CHUNK_BYTES = 2 * 1024 * 1024;
+
+export interface ChunkProgress {
+  sentBytes: number;
+  totalBytes: number;
+}
+
+/** Upload a file in 2MB multipart parts to the same endpoint, one request per
+ *  part (x-upload-id/x-chunk-index/x-chunk-total). The server stores each part
+ *  and reassembles them on the final request, answering with the normal final
+ *  response. Callers pass the file's non-file form fields for EVERY part so the
+ *  assembled request carries identical metadata. */
+export async function uploadFileWithChunks<T>(
+  path: string,
+  file: File,
+  fields: Record<string, string>,
+  onProgress?: (progress: ChunkProgress) => void,
+): Promise<T> {
+  const uploadId = crypto.randomUUID();
+  const total = Math.max(1, Math.ceil(file.size / CHUNK_BYTES));
+  for (let index = 1; index <= total; index++) {
+    const start = (index - 1) * CHUNK_BYTES;
+    const part = file.slice(start, Math.min(start + CHUNK_BYTES, file.size));
+    const form = new FormData();
+    form.append('file', new File([part], file.name, { type: file.type }));
+    for (const [key, value] of Object.entries(fields)) form.append(key, value);
+
+    const body = await api<{ chunk?: { index: number; total: number } } & T>(path, {
+      method: 'POST',
+      body: form,
+      headers: {
+        'x-upload-id': uploadId,
+        'x-chunk-index': String(index),
+        'x-chunk-total': String(total),
+      },
+    });
+    onProgress?.({
+      sentBytes: Math.min(start + part.size, file.size),
+      totalBytes: file.size,
+    });
+    if (body && 'chunk' in body && body.chunk && body.chunk.index < total) continue;
+    return body as T;
+  }
+  // Unreachable: total >= 1 always yields a final (index === total) response.
+  throw new Error('Chunked upload ended without a final response');
 }
 
 /** Download a file endpoint (export) as a blob and trigger a browser download. */

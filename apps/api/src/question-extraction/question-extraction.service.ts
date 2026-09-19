@@ -29,6 +29,7 @@ import {
   jobs,
   materialEnhancements,
   materials,
+  questionPapers,
   questions,
 } from '@catlium/database';
 import type {
@@ -337,11 +338,13 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     meta: {
       jobId: string;
       status: string;
-      materialId: string;
-      materialTitle: string;
-      subjectId: string;
+      materialId: string | null;
+      materialTitle: string | null;
+      paperId: string | null;
+      paperTitle: string | null;
+      subjectId: string | null;
       materialRevision: number | null;
-      source: 'ENHANCEMENT' | 'TEXT' | null;
+      source: 'ENHANCEMENT' | 'TEXT' | 'OCR' | null;
       createdAt: Date;
       completedAt: Date | null;
     };
@@ -350,13 +353,23 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     const job = await this.jobsService.getJob(jobId, instituteId);
     const payload = job.payload ?? {};
     const materialId = String(payload['materialId'] ?? '');
-    const subjectId = String(payload['subjectId'] ?? '');
+    const paperId = String(payload['paperId'] ?? '');
 
-    const [material] = await this.db
-      .select({ id: materials.id, title: materials.title })
-      .from(materials)
-      .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
-      .limit(1);
+    const [material] = materialId
+      ? await this.db
+          .select({ id: materials.id, title: materials.title })
+          .from(materials)
+          .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
+          .limit(1)
+      : [];
+
+    const [paper] = paperId
+      ? await this.db
+          .select({ id: questionPapers.id, title: questionPapers.title })
+          .from(questionPapers)
+          .where(and(eq(questionPapers.id, paperId), eq(questionPapers.instituteId, instituteId)))
+          .limit(1)
+      : [];
 
     const rows = await this.db
       .select()
@@ -377,13 +390,17 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       meta: {
         jobId,
         status: job.status,
-        materialId,
-        materialTitle: material?.title ?? 'Unknown material',
-        subjectId,
+        materialId: materialId || null,
+        materialTitle: material ? material.title : null,
+        paperId: paperId || null,
+        paperTitle: paper ? paper.title : null,
+        subjectId: String(payload['subjectId'] ?? '') || null,
         materialRevision:
           typeof result['materialRevision'] === 'number' ? result['materialRevision'] : null,
         source:
-          result['source'] === 'ENHANCEMENT' || result['source'] === 'TEXT'
+          result['source'] === 'ENHANCEMENT' ||
+          result['source'] === 'TEXT' ||
+          result['source'] === 'OCR'
             ? result['source']
             : null,
         createdAt: job.createdAt,

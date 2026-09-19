@@ -41,3 +41,10 @@ export class GenerateMissingQuestionPaperDto {
   @IsBoolean()
   dryRun?: boolean;
 }
+
+export class ExtractQuestionPaperTextDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1_000_000)
+  text!: string;
+}

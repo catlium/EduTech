@@ -20,7 +20,8 @@ import { OcrCoordinatorService } from '../ocr/ocr-coordinator.service.js';
 import { MaterialEnhancementService } from '../material-enhancement/enhancement.service.js';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface.js';
 import type { StorageProvider } from './storage/storage-provider.interface.js';
-import { ALLOWED_FILE_TYPES } from './materials.constants.js';
+import { UploadChunksService, type ChunkUpload } from './upload-chunks.service.js';
+import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from './materials.constants.js';
 
 type MaterialStatus = 'ACTIVE' | 'ARCHIVED';
 
@@ -57,12 +58,47 @@ export class MaterialsService {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly chunks: UploadChunksService,
     private readonly jobsService: JobsService,
     private readonly ocrCoordinator: OcrCoordinatorService,
     private readonly enhancements: MaterialEnhancementService,
   ) {}
 
   // ── Create ────────────────────────────────
+
+  /** Upload path used by the multipart endpoint. Single-shot unless a chunk
+   *  upload is in flight: parts are stored until the final one, then the
+   *  reassembled buffer flows through the exact same createFileMaterial path
+   *  (validated type, storage, material row). */
+  async createFromUpload(
+    instituteId: string,
+    createdBy: string,
+    input: CreateFileMaterialInput,
+    file: Express.Multer.File,
+    chunk: ChunkUpload | null,
+  ): Promise<
+    | { material: Awaited<ReturnType<MaterialsService['createFileMaterial']>> }
+    | { chunk: ChunkUpload }
+  > {
+    if (!chunk) {
+      return { material: await this.createFileMaterial(instituteId, createdBy, input, file) };
+    }
+
+    const assembled = await this.chunks.acceptOrAssemble(chunk, instituteId, file.buffer);
+    if (assembled === null) {
+      return { chunk };
+    }
+    if (assembled.length > MAX_FILE_SIZE) {
+      throw new BadRequestException('File exceeds 20 MB limit');
+    }
+    return {
+      material: await this.createFileMaterial(instituteId, createdBy, input, {
+        ...file,
+        buffer: assembled,
+        size: assembled.length,
+      }),
+    };
+  }
 
   async createTextMaterial(instituteId: string, createdBy: string, input: CreateTextMaterialInput) {
     const chain = await resolveScopeChain(

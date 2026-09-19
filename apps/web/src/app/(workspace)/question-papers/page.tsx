@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { FileText, Plus } from 'lucide-react';
+import { FileSearch, FileText, Plus } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
@@ -12,6 +13,7 @@ import { EmptyState } from '@/components/app/empty-state';
 import { ErrorState } from '@/components/app/error-state';
 import { SkeletonRows } from '@/components/app/loading';
 import { NewQuestionPaperDialog } from '@/components/questions/new-question-paper-dialog';
+import { QuestionSourceExtractionDialog } from '@/components/questions/question-source-extraction-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { QuestionPaperListItem } from '@catlium/contracts';
@@ -19,10 +21,12 @@ import type { QuestionPaperListItem } from '@catlium/contracts';
 export default function QuestionPapersListPage() {
   const { institute } = useTenant();
   const isTeacher = canManage(institute);
+  const router = useRouter();
   const [papers, setPapers] = useState<QuestionPaperListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [sourceExtractionOpen, setSourceExtractionOpen] = useState(false);
 
   const fetchPapers = () => {
     if (!institute) return;
@@ -52,10 +56,26 @@ export default function QuestionPapersListPage() {
         description={`${papers.length} paper${papers.length !== 1 ? 's' : ''}`}
         actions={
           isTeacher && (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-1 size-3.5" /> New Question Paper
-            </Button>
+            <>
+              <Button size="sm" variant="outline" onClick={() => setSourceExtractionOpen(true)}>
+                <FileSearch className="mr-1 size-3.5" /> Extract from Source
+              </Button>
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus className="mr-1 size-3.5" /> New Question Paper
+              </Button>
+            </>
           )
+        }
+      />
+
+      <QuestionSourceExtractionDialog
+        open={sourceExtractionOpen}
+        onOpenChange={setSourceExtractionOpen}
+        basePath="/question-papers"
+        onStarted={({ jobId, paperId }) =>
+          paperId
+            ? router.push(`/question-papers/${paperId}?extraction=${jobId}`)
+            : router.push(`/questions/extractions/${jobId}`)
         }
       />
 

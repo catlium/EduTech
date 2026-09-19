@@ -33,6 +33,7 @@ import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
 import { AnswerText } from '@/components/export/answer-text';
 import { QuestionBankWizard } from '@/components/questions/question-bank-wizard';
 import { QuestionExtractionDialog } from '@/components/questions/question-extraction-dialog';
+import { QuestionSourceExtractionDialog } from '@/components/questions/question-source-extraction-dialog';
 import { QuestionBankSets } from '@/components/questions/question-bank-sets';
 import { PageHeader } from '@/components/app/page-header';
 import { ScopeCascade, FilterChip } from '@/components/app/scope-cascade';
@@ -428,6 +429,7 @@ export default function QuestionsListPage() {
   const [createCascade, setCreateCascade] = useState<Cascade>(DEFAULT_CASCADE);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [extractionOpen, setExtractionOpen] = useState(false);
+  const [sourceExtractionOpen, setSourceExtractionOpen] = useState(false);
   const router = useRouter();
 
   const [questionTypes, setQuestionTypes] = useState<QuestionTypeDefinition[]>([]);
@@ -873,6 +875,9 @@ export default function QuestionsListPage() {
               <Button size="sm" onClick={() => setExtractionOpen(true)}>
                 <FileSearch className="mr-1 size-3.5" /> Extract
               </Button>
+              <Button size="sm" variant="outline" onClick={() => setSourceExtractionOpen(true)}>
+                <FileSearch className="mr-1 size-3.5" /> Extract from Source
+              </Button>
               <Button size="sm" onClick={() => setWizardOpen(true)}>
                 <Sparkles className="mr-1 size-3.5" /> Wizard
               </Button>
@@ -900,6 +905,13 @@ export default function QuestionsListPage() {
         chapters={chapters}
         topics={topics}
         onChanged={() => void refresh()}
+      />
+
+      <QuestionSourceExtractionDialog
+        open={sourceExtractionOpen}
+        onOpenChange={setSourceExtractionOpen}
+        basePath="/questions"
+        onStarted={({ jobId }) => router.push(`/questions/extractions/${jobId}`)}
       />
 
       <QuestionExtractionDialog

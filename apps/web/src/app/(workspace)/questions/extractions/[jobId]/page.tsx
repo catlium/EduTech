@@ -456,12 +456,14 @@ export default function QuestionExtractionReviewPage() {
     <div>
       <PageHeader
         title="Extracted Questions"
-        description={meta ? meta.materialTitle : 'Reviewing material extraction'}
+        description={
+          meta ? (meta.paperTitle ?? meta.materialTitle ?? 'Reviewing extraction') : 'Reviewing extraction'
+        }
         actions={
           <>
             <Button size="sm" variant="ghost" asChild>
-              <Link href="/questions">
-                <ArrowLeft className="mr-1 size-3.5" /> Back to questions
+              <Link href={meta?.paperId ? `/question-papers/${meta.paperId}` : '/questions'}>
+                <ArrowLeft className="mr-1 size-3.5" /> {meta?.paperId ? 'Back to paper' : 'Back to questions'}
               </Link>
             </Button>
             {!loading && meta && (
@@ -509,7 +511,7 @@ export default function QuestionExtractionReviewPage() {
         <div className="flex flex-col items-center justify-center py-16 text-sm text-muted-foreground">
           <FileSearch className="mb-2 size-8" />
           {status?.status === 'completed'
-            ? 'No candidates were detected for this material.'
+            ? 'No candidates were detected for this source.'
             : `Waiting for the extraction job (${status?.status ?? 'queued'}).`}
         </div>
       )}
@@ -519,7 +521,15 @@ export default function QuestionExtractionReviewPage() {
       {meta && (
         <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary">{formatDate(meta.createdAt)}</Badge>
-          {meta.source && <Badge variant="secondary">{meta.source === 'ENHANCEMENT' ? 'Enhanced text' : 'Raw text'}</Badge>}
+          {meta.source && (
+            <Badge variant="secondary">
+              {meta.source === 'ENHANCEMENT'
+                ? 'Enhanced text'
+                : meta.source === 'OCR'
+                  ? 'OCR text'
+                  : 'Raw text'}
+            </Badge>
+          )}
           {meta.materialRevision && <Badge variant="outline">revision {meta.materialRevision}</Badge>}
           {meta.subjectId && subjectName.get(meta.subjectId) && (
             <Badge variant="outline">{subjectName.get(meta.subjectId)}</Badge>

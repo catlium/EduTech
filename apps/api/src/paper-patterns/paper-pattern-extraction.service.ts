@@ -19,7 +19,7 @@ import {
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm';
 
 import type { Database } from '@catlium/database';
 import { jobs, paperPatterns } from '@catlium/database';
@@ -119,10 +119,8 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     }
     const sourceHash = sha256(file.buffer);
     const storageKey = `pattern-extraction/${instituteId}/${createHash('sha256').update(sourceHash).digest('hex').slice(0, 12)}/source.${extOf(mimeType)}`;
-    const existing = await this.existingPatternFor(instituteId, sourceHash);
-    if (existing || (await this.activeJobFor(instituteId, sourceHash))) {
-      return this.reuseResult(instituteId, sourceHash);
-    }
+    const reused = await this.reuseFor(instituteId, sourceHash);
+    if (reused) return reused;
     await this.storage.save({ key: storageKey, data: file.buffer });
     try {
       return await this.enqueue(instituteId, sourceHash, {
@@ -249,7 +247,8 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       return;
     }
 
-    // A re-swept job must not stack a duplicate pattern for the same source.
+    // A re-swept job must not stack a duplicate pattern for the same source:
+    // if a completed pattern already exists, reference it and stop.
     if (await this.existingPatternFor(instituteId, sourceHash)) {
       const existing = await this.existingPatternFor(instituteId, sourceHash);
       await this.jobsService.updateJobStatus(jobId, 'completed', {
@@ -276,24 +275,43 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       provenance,
     };
 
-    const patternId = (
-      await this.patterns.createPattern(instituteId, userId, {
-        title: titleFrom(fileName),
-        description:
-          source === 'OCR'
-            ? `Extracted from "${fileName ?? 'uploaded source'}"`
-            : 'Extracted from pasted text',
-        structure,
-        sourceType: 'PREVIOUS_YEAR_PAPER',
-        status: 'REVIEW',
-        extraction: extractionMeta,
-      })
-    ).id;
+    // Resource-first: the pattern was created at enqueue (REVIEW, structure
+    // null). Fill that placeholder in place. If it is gone (deleted while the
+    // job was queued), create a fresh pattern so a job never resolves to
+    // nothing.
+    const patternId =
+      typeof jobPayload['patternId'] === 'string' ? jobPayload['patternId'] : undefined;
+    const placeholder = patternId
+      ? await this.patterns.getPattern(instituteId, patternId).catch(() => null)
+      : null;
+
+    let resolvedPatternId: string;
+    if (placeholder && placeholder.structure === null) {
+      await this.db
+        .update(paperPatterns)
+        .set({ structure, extraction: extractionMeta, updatedAt: new Date() })
+        .where(and(eq(paperPatterns.id, placeholder.id), eq(paperPatterns.instituteId, instituteId)));
+      resolvedPatternId = placeholder.id;
+    } else {
+      resolvedPatternId = (
+        await this.patterns.createPattern(instituteId, userId!, {
+          title: titleFrom(fileName),
+          description:
+            source === 'OCR'
+              ? `Extracted from "${fileName ?? 'uploaded source'}"`
+              : 'Extracted from pasted text',
+          structure,
+          sourceType: 'PREVIOUS_YEAR_PAPER',
+          status: 'REVIEW',
+          extraction: extractionMeta,
+        })
+      ).id;
+    }
 
     const ruleCount = structure.sections.reduce((n, s) => n + s.questionTypes.length, 0);
     await this.jobsService.updateJobStatus(jobId, 'completed', {
       status: 'extracted',
-      patternId,
+      patternId: resolvedPatternId,
       totalMarks: structure.totalMarks,
       durationMinutes: structure.durationMinutes,
       sectionCount: structure.sections.length,
@@ -349,15 +367,83 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     sourceHash: string,
     payload: Record<string, unknown>,
   ): Promise<ExtractionEnqueueResult> {
-    const existing = await this.existingPatternFor(instituteId, sourceHash);
-    if (existing || (await this.activeJobFor(instituteId, sourceHash))) {
-      return this.reuseResult(instituteId, sourceHash);
+    // Reuse an active (QUEUED/processing) or already completed run before
+    // ever creating another resource — the source hash is the idempotency key.
+    const reused = await this.reuseFor(instituteId, sourceHash);
+    if (reused) {
+      await this.dropStoredSource(payload);
+      return reused;
     }
-    const job = await this.jobsService.insertJob(instituteId, TYPE, payload);
-    return { jobId: job.id, status: 'QUEUED', reused: false };
+
+    // Resource-first: create the REVIEW placeholder pattern NOW — the sweep
+    // fills its structure in place, so the teacher lands on a real pattern
+    // page (with live progress) the moment the request returns.
+    const source: 'TEXT' | 'OCR' = payload['kind'] === 'file' ? 'OCR' : 'TEXT';
+    const fileName = typeof payload['fileName'] === 'string' ? payload['fileName'] : undefined;
+    const userId = typeof payload['userId'] === 'string' ? payload['userId'] : undefined;
+    const extraction: PatternExtractionMeta = {
+      extractor: 'v1',
+      source,
+      sourceHash,
+      ...(fileName ? { fileName } : {}),
+      totalMarksSource: 'UNKNOWN',
+      durationMinutesSource: 'UNKNOWN',
+      issues: [],
+      provenance: [],
+    };
+    const pattern = await this.patterns.createPattern(instituteId, userId ?? '', {
+      title: titleFrom(fileName),
+      description:
+        source === 'OCR'
+          ? `Extracting from "${fileName ?? 'uploaded source'}"…`
+          : 'Extracted from pasted text',
+      sourceType: 'PREVIOUS_YEAR_PAPER',
+      status: 'REVIEW',
+      extraction,
+    });
+
+    const job = await this.jobsService.insertJob(instituteId, TYPE, {
+      ...payload,
+      patternId: pattern.id,
+    });
+    return { jobId: job.id, status: 'QUEUED', reused: false, patternId: pattern.id };
   }
 
-  /** An identical completed extraction exists — return it, never a duplicate. */
+  /** Reuse the QUEUED/processing run (or the completed extraction) that
+   *  already exists for a source → never a duplicate resource. */
+  private async reuseFor(
+    instituteId: string,
+    sourceHash: string,
+  ): Promise<ExtractionEnqueueResult | null> {
+    const active = await this.activeJobFor(instituteId, sourceHash);
+    if (active) {
+      return { jobId: active.id, status: 'QUEUED', reused: true, patternId: active.patternId };
+    }
+    const existing = await this.existingPatternFor(instituteId, sourceHash);
+    if (existing) {
+      const latest = await this.latestJobFor(instituteId, sourceHash);
+      return {
+        jobId: latest?.id ?? '',
+        status: 'COMPLETED',
+        reused: true,
+        patternId: existing.id,
+      };
+    }
+    return null;
+  }
+
+  /** Drop the transient source file when a reuse makes the just-saved copy
+   *  redundant (best-effort — the sweep clean-up is the reliable path). */
+  private async dropStoredSource(payload: Record<string, unknown>): Promise<void> {
+    const storageKey = payload['storageKey'];
+    if (typeof storageKey === 'string') {
+      await this.storage.delete(storageKey).catch(() => undefined);
+    }
+  }
+
+  /** A completed extraction for the source exists — keyed on the extraction
+   *  meta's sourceHash AND a real structure (the resource-first placeholder
+   *  carries the same hash but null structure until the sweep fills it). */
   private async existingPatternFor(
     instituteId: string,
     sourceHash: string,
@@ -369,6 +455,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
         and(
           eq(paperPatterns.instituteId, instituteId),
           eq(paperPatterns.sourceType, 'PREVIOUS_YEAR_PAPER'),
+          isNotNull(paperPatterns.structure),
           sql`${paperPatterns.extraction}->>'sourceHash' = ${sourceHash}`,
         ),
       )
@@ -379,9 +466,9 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
   private async activeJobFor(
     instituteId: string,
     sourceHash: string,
-  ): Promise<{ id: string } | undefined> {
+  ): Promise<{ id: string; patternId: string } | undefined> {
     const [row] = await this.db
-      .select({ id: jobs.id })
+      .select({ id: jobs.id, patternId: sql<string>`${jobs.payload}->>'patternId'` })
       .from(jobs)
       .where(
         and(
@@ -389,34 +476,31 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
           eq(jobs.instituteId, instituteId),
           sql`${jobs.status} IN ('queued', 'processing')`,
           sql`${jobs.payload}->>'sourceHash' = ${sourceHash}`,
+          sql`${jobs.payload}->>'patternId' IS NOT NULL`,
         ),
       )
+      .orderBy(desc(jobs.createdAt))
       .limit(1);
-    return row;
+    return row?.id && row.patternId ? { id: row.id, patternId: row.patternId } : undefined;
   }
 
-  private async latestJobFor(sourceHash: string): Promise<Job | null> {
+  private async latestJobFor(
+    instituteId: string,
+    sourceHash: string,
+  ): Promise<Job | null> {
     const [row] = await this.db
       .select()
       .from(jobs)
-      .where(and(eq(jobs.type, TYPE), sql`${jobs.payload}->>'sourceHash' = ${sourceHash}`))
+      .where(
+        and(
+          eq(jobs.type, TYPE),
+          eq(jobs.instituteId, instituteId),
+          sql`${jobs.payload}->>'sourceHash' = ${sourceHash}`,
+        ),
+      )
       .orderBy(desc(jobs.createdAt))
       .limit(1);
     return row ? this.jobsService.getJob(row.id, row.instituteId) : null;
-  }
-
-  private async reuseResult(
-    instituteId: string,
-    sourceHash: string,
-  ): Promise<ExtractionEnqueueResult> {
-    const existing = await this.existingPatternFor(instituteId, sourceHash);
-    const latest = await this.latestJobFor(sourceHash);
-    return {
-      jobId: latest?.id ?? existing?.id ?? '',
-      status: 'COMPLETED',
-      reused: true,
-      patternId: existing?.id,
-    };
   }
 }
 
@@ -424,7 +508,7 @@ export interface ExtractionEnqueueResult {
   jobId: string;
   status: 'QUEUED' | 'COMPLETED';
   reused: boolean;
-  patternId?: string;
+  patternId: string;
 }
 
 function payloadOf(payload: unknown): Record<string, unknown> | null {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowDown,
   ArrowLeft,
@@ -70,6 +70,7 @@ import type {
   SubjectResponse,
   MaterialResponse,
   QuestionTypeDefinition,
+  PaperPatternExtractionStatus,
 } from '@catlium/contracts';
 import {
   type BackendSection,
@@ -189,6 +190,45 @@ export default function PatternBuilderPage() {
       alive.current = false;
     };
   }, [loadPattern]);
+
+  /* ── extraction progress banner (?extraction=jobId) ── */
+  const searchParams = useSearchParams();
+  const extractionJobId = searchParams.get('extraction');
+  const [extractStatus, setExtractStatus] = useState<
+    'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'cancelling' | null
+  >(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!extractionJobId) return;
+    let cancelled = false;
+    let stopped = false;
+    const tick = async () => {
+      if (stopped || cancelled) return;
+      try {
+        const { extraction: s } = await api<PaperPatternExtractionStatus>(
+          `/paper-patterns/extraction/${extractionJobId}`,
+        );
+        if (cancelled) return;
+        setExtractStatus(s.status);
+        setExtractError(s.error?.message ?? null);
+        if (s.status === 'completed' || s.status === 'failed') {
+          stopped = true;
+          if (s.status === 'completed') await loadPattern();
+        }
+      } catch {
+        if (!cancelled) {
+          stopped = true;
+          setExtractError('Could not check extraction progress');
+        }
+      }
+    };
+    void tick();
+    const interval = setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [extractionJobId, loadPattern]);
 
   function applyStructure(s: PatternStructure | null) {
     if (!s) {
@@ -643,6 +683,24 @@ export default function PatternBuilderPage() {
             </Link>
           </Button>
         </div>
+
+        {extractionJobId &&
+          (extractStatus === 'queued' || extractStatus === 'processing') && (
+            <div className="mb-4 flex items-center gap-2 rounded-md border bg-muted/30 px-4 py-3 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              Extracting the paper pattern from the source — this page updates automatically.
+            </div>
+          )}
+        {extractionJobId && extractStatus === 'completed' && (
+          <div className="mb-4 flex items-center gap-2 rounded-md border bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
+            Extraction complete — review the pattern below.
+          </div>
+        )}
+        {extractionJobId && extractStatus === 'failed' && (
+          <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            Extraction failed: {extractError ?? 'unknown error'}
+          </div>
+        )}
 
         <PageHeader
           title={pattern.title || 'Untitled pattern'}

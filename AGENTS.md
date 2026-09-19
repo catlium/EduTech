@@ -178,7 +178,8 @@ pnpm db:studio            # Open Drizzle Studio
 docker compose up -d                    # base posture (web+api internal behind nginx)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d   # dev
 #   dev: browse http://localhost:8080 (nginx loopback; routes / -> web, /api/* -> api)
-# Demo (seed + mock AI on top of dev):
+# Demo (seed + AI on top of dev; worker-ai -> OmniRoute, the sole AI API
+# provider — mock-ai stays defined but is never in the request path):
 docker compose -f docker-compose.yml -f docker-compose.dev.yml \
                -f docker-compose.demo.yml up --build
 

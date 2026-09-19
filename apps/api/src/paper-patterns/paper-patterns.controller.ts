@@ -13,7 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { BadRequestException, UploadedFile } from '@nestjs/common';
+import { BadRequestException, Headers, UploadedFile } from '@nestjs/common';
 
 import { PaperPatternsService } from './paper-patterns.service.js';
 import { PaperPatternExtractionService } from './paper-pattern-extraction.service.js';
@@ -25,6 +25,7 @@ import {
   UpdatePaperPatternDto,
 } from './paper-patterns.dto.js';
 import { MAX_FILE_SIZE } from '../materials/materials.constants.js';
+import { UploadChunksService } from '../materials/upload-chunks.service.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -42,6 +43,7 @@ export class PaperPatternsController {
   constructor(
     private readonly paperPatternsService: PaperPatternsService,
     private readonly extraction: PaperPatternExtractionService,
+    private readonly chunks: UploadChunksService,
   ) {}
 
   @Post()
@@ -89,18 +91,29 @@ export class PaperPatternsController {
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file?: Express.Multer.File,
+    @Headers('x-upload-id') uploadId?: string,
+    @Headers('x-chunk-index') chunkIndex?: string,
+    @Headers('x-chunk-total') chunkTotal?: string,
   ) {
     if (!file) {
       throw new BadRequestException('A source file (PDF or image) is required');
     }
+    const chunk = this.chunks.parse(uploadId, chunkIndex, chunkTotal);
+    let buffer = file.buffer;
+    if (chunk) {
+      const assembled = await this.chunks.acceptOrAssemble(chunk, tenant.instituteId, file.buffer);
+      if (assembled === null) {
+        return { chunk: { index: chunk.index, total: chunk.total } };
+      }
+      buffer = assembled;
+    }
+    if (buffer.length > MAX_FILE_SIZE) {
+      throw new BadRequestException(`File exceeds the ${MAX_FILE_SIZE / (1024 * 1024)} MB limit`);
+    }
     return {
       extraction: await this.extraction.requestFileExtraction(
         tenant.instituteId,
-        {
-          buffer: file.buffer,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-        },
+        { buffer, originalname: file.originalname, mimetype: file.mimetype },
         user.userId,
       ),
     };

@@ -17,7 +17,7 @@ import {
   Search,
 } from 'lucide-react';
 
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, uploadFileWithChunks } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import {
@@ -357,16 +357,16 @@ export default function MaterialsListPage() {
     }
     setSubmitting(true);
     try {
-      const form = new FormData();
-      form.append('file', uploadFile);
-      form.append('title', uploadTitle.trim());
-      if (scope.topicId) form.append('topicId', scope.topicId);
-      else if (scope.chapterId) form.append('chapterId', scope.chapterId);
-      else form.append('subjectId', scope.subjectId);
-      const { material } = await api<{ material: MaterialResponse }>('/materials/upload', {
-        method: 'POST',
-        body: form,
-      });
+      const { material } = await uploadFileWithChunks<{ material: MaterialResponse }>(
+        '/materials/upload',
+        uploadFile,
+        {
+          title: uploadTitle.trim(),
+          ...(scope.topicId ? { topicId: scope.topicId } : {}),
+          ...(scope.chapterId ? { chapterId: scope.chapterId } : {}),
+          ...(scope.subjectId ? { subjectId: scope.subjectId } : {}),
+        },
+      );
       toast.success('File uploaded');
       setDialogMode(null);
       setUploadFile(null);

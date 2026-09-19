@@ -134,6 +134,12 @@ export function OcrInspection({
   const percent = totalPages ? Math.min(100, Math.round((done / totalPages) * 100)) : 0;
   const chunksDone = data.chunks.filter((c) => c.status === 'submitted').length;
   const activeChunk = data.chunks.find((c) => c.status === 'claimed');
+  // Chunks materialize incrementally (one per submission), so the expected
+  // total comes from the worker-reported page count / pages-per-chunk, not
+  // the rows materialized so far.
+  const expectedChunks = data.documentPages
+    ? Math.ceil(data.documentPages / data.chunkSize)
+    : Math.max(1, data.chunks.length);
 
   async function saveCorrection() {
     if (!page || draft === null) return;
@@ -209,10 +215,10 @@ export function OcrInspection({
             <span className="flex items-center gap-1.5">
               {activeChunk && <Loader2 className="size-3 animate-spin text-blue-600" />}
               {activeChunk
-                ? `Chunk ${activeChunk.chunkIndex} of ${data.chunks.length} processing${
+                ? `Chunk ${activeChunk.chunkIndex} of ${expectedChunks} processing${
                     activeChunk.workerName ? ` by ${activeChunk.workerName}` : ''
                   }`
-                : `${chunksDone} of ${data.chunks.length} chunks done`}
+                : `${chunksDone} of ${expectedChunks} chunks done`}
             </span>
             <span className="tabular-nums">
               {done} / {totalPages} pages
