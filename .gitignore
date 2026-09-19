@@ -49,6 +49,11 @@ pnpm-debug.log*
 session-ses_*.md
 gs.json
 
+# Scratch / probe scripts (ad-hoc debug, throwaway probe dirs)
+generate/
+*probe*.js
+*probe*.cjs
+
 # Testing
 coverage/
 
