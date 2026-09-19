@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { api, ApiError, downloadFile } from '@/lib/api';
+import { api, ApiError, downloadFile, waitForBankBatch } from '@/lib/api';
 import {
   ExportPreviewDialog,
   type ExportPreviewValue,
@@ -79,14 +79,7 @@ interface GenerateMissingResult {
   totalDeficit: number;
 }
 
-interface BankBatchStatus {
-  batchId: string;
-  total: number;
-  completed: number;
-  failed: number;
-  cancelled: number;
-  active: number;
-}
+
 
 export default function QuestionPaperDetailPage() {
   const router = useRouter();
@@ -341,20 +334,11 @@ export default function QuestionPaperDetailPage() {
 
   /* Poll the bank batch until every job is terminal, then reshuffle the paper
      so the freshly generated questions appear (the API only fills the bank;
-     the existing links stay untouched until selection runs again). */
+     the existing links stay untouched until selection runs again). Reuses the
+     shared waitForBankBatch helper. */
   async function autofillAfterGeneration(batchId: string) {
     try {
-      const deadline = Date.now() + 5 * 60_000;
-      let failed = 0;
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        const batch = await api<BankBatchStatus>(`/questions/bank/batches/${batchId}`);
-        if (batch.active === 0) {
-          failed = batch.failed;
-          break;
-        }
-        if (Date.now() >= deadline) throw new Error('Generation is taking longer than expected');
-      }
+      const { failed } = await waitForBankBatch(batchId, { timeoutMs: 15 * 60 * 1000 });
       await onAutoSelect();
       if (failed > 0) {
         toast.error(`${failed} question generation job${failed === 1 ? '' : 's'} failed`);
