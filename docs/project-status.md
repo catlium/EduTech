@@ -1,5 +1,33 @@
 # Project Status
 
+## Repository cleanup checkpoint (2026-09-19)
+
+Classification and commit of the post-Phase-48 A working-tree leftovers
+(everything untracked/unstaged after `76e0497`), in four commits:
+
+- `3a53add` `chore(infra): raise RabbitMQ heartbeat to 1800 for long worker
+  jobs` — commits the Phase 44/45 heartbeat work: `rabbitmq.conf` (new, server
+  side) + `?heartbeat=1800` on `RABBITMQ_URL`/both `WORKER_RABBITMQ_URL` lines
+  in `docker-compose.yml` + the `rabbitmq_url` default in
+  `apps/workers/worker/config.py`. Workers ruff + mypy clean; live containers
+  already ran with these values.
+- `43a0083` `refactor(question-papers): reuse shared waitForBankBatch helper
+  in autofill` — commits the Phase 45 web half: `[paperId]/page.tsx` drops the
+  inline poll + `BankBatchStatus` in favor of the shared `waitForBankBatch`.
+- `9000d02` `chore(skills): add project-local project-diagrams skill` —
+  versioned `.opencode/skills/project-diagrams/SKILL.md` only (the skill's own
+  `.opencode/.gitignore` excludes its package files; `node_modules/` is
+  globally ignored).
+- `ec989aa` `chore: ignore scratch/probe scripts` — `.gitignore` gains
+  `generate/` + `*probe*.{js,cjs}`.
+
+**Removed (session/debug/probe artifacts):** `host_qp_probe.js`,
+`generate/` (button_gate_probe.js, probe_autofill.js),
+`apps/api/scripts/qp-strict-probe.cjs`. None were referenced by any code.
+
+**State:** `git status` clean; `ec989aa` pushed (`76e0497..ec989aa`). No
+Phase 48 A files touched by the cleanup commits.
+
 ## Current test inventory (verified 2026-09-18)
 
 - API native suite: **188/188** across node:test files in `apps/api/src`
@@ -367,7 +395,8 @@ Commit + push this Phase 44 checkpoint, then run the full e2e suite
 
 ## Phase 45 — Generation UX follow-up: RabbitMQ heartbeat fix + autofill via waitForBankBatch (2026-09-18)
 
-**Status: implementation + validation complete; commit pending.**
+**Status: complete — committed + pushed (`3a53add` infra heartbeat,
+`43a0083` web autofill refactor).**
 
 After Phase 44 shipped, live testing showed auto-fill still never firing and
 the user reported shuffle should not reuse questions. Both traced to the
@@ -422,9 +451,9 @@ worker/RabbitMQ connection dying mid-job.
 
 ### Exact recommended next task
 
-Commit + push this follow-up, then re-run the manual QP demo flow in the
-browser (Generate Missing on a short paper → questions auto-fill without a
-manual shuffle).
+Re-run the manual QP demo flow in the browser (Generate Missing on a short
+paper → questions auto-fill without a manual shuffle), now that the heartbeat
+fix is committed and the web refactor is live.
 
 ## Phase 43 — Authoritative question scope (2026-09-18)
 
