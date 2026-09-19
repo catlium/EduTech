@@ -109,6 +109,10 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-catlium_dev_secret}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      # Heartbeat = 1800 so long AI jobs (which block the worker's pika
+      # connection thread for minutes) never get killed and requeued in a
+      # re-run loop. Workers must request the same value in their URL.
+      - ./infrastructure/compose/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
     restart: unless-stopped
     mem_limit: 768m
     cpus: 1.0
@@ -148,7 +152,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672?heartbeat=1800
       STORAGE_LOCAL_DIR: /storage
       OCR_SERVICE_URL: http://ocr:8000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
@@ -321,7 +325,7 @@ services:
       - .env
     environment:
       WORKER_ROLE: material
-      WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
+      WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672?heartbeat=1800
       WORKER_DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
       WORKER_OCR_URL: http://ocr:8000
       WORKER_INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
@@ -361,7 +365,7 @@ services:
       - .env
     environment:
       WORKER_ROLE: ai
-      WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672
+      WORKER_RABBITMQ_URL: amqp://${RABBITMQ_USER:-catlium}:${RABBITMQ_PASSWORD:-catlium_dev_secret}@rabbitmq:5672?heartbeat=1800
       WORKER_DATABASE_URL: postgresql://${POSTGRES_USER:-catlium}:${POSTGRES_PASSWORD:-catlium_dev_secret}@postgres:5432/${POSTGRES_DB:-catlium_dev}
       WORKER_STORAGE_DIR: /storage
       # Containerized worker reaches the internal OmniRoute gateway by name

@@ -9,7 +9,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    rabbitmq_url: str = "amqp://catlium:catlium_dev_secret@localhost:5672"
+    # ?heartbeat=1800: AI/material jobs block the pika connection thread for
+    # minutes; the stock 60s heartbeat would kill the connection mid-job and
+    # requeue the message (job re-runs in a loop). Must match the server-side
+    # heartbeat in infrastructure/compose/rabbitmq.conf.
+    rabbitmq_url: str = "amqp://catlium:catlium_dev_secret@localhost:5672?heartbeat=1800"
     database_url: str = "postgresql://catlium:catlium_dev_secret@localhost:5432/catlium_dev"
     ocr_url: str = "http://localhost:8000"
     # Shared-secret header sent to internal services only when set
