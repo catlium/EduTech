@@ -23,7 +23,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 
-import { api, ApiError, waitForJob } from '@/lib/api';
+import { api, ApiError, jobDone, waitForJob } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import { useTenant, canManage } from '@/lib/tenant';
 import type {
@@ -96,6 +96,10 @@ export default function MaterialDetailPage() {
   const [enhancement, setEnhancement] = useState<MaterialEnhancementResponse | null>(null);
   const [enhancing, setEnhancing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+// The process job a completed cancel settled; its job id is terminal, so the
+// detail page must not keep offering Cancel for it even though the material
+// body is QUEUED (which still counts as isProcessing).
+const [cancelledJobId, setCancelledJobId] = useState<string | null>(null);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
 
   const refresh = useCallback(() => {
@@ -160,19 +164,38 @@ export default function MaterialDetailPage() {
   async function cancelProcessing() {
     if (!material?.processJobId) return;
     setCancelling(true);
+    const jobId = material.processJobId;
     try {
-      const res = await api<{ job: { status: string } }>(
-        `/jobs/${material.processJobId}/cancel`,
-        { method: 'POST' },
-      );
-      toast.success(
-        res.job.status === 'cancelled'
-          ? 'Processing cancelled'
-          : 'Cancelling — this finishes at the next chunk boundary',
-      );
+      const res = await api<{ job: { status: string } }>(`/jobs/${jobId}/cancel`, {
+        method: 'POST',
+      });
+      if (res.job.status === 'cancelled') {
+        toast.success('Processing cancelled');
+      } else {
+        toast.success('Cancelling — this finishes at the next chunk boundary');
+        // The coordinator's sweep settles the job to cancelled and the material
+        // back to QUEUED. Keep "Cancelling…" until the job reaches a terminal
+        // state (waitForJob treats 'cancelled' as an error, so poll directly).
+        const deadline = Date.now() + 5 * 60 * 1000;
+        do {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          const { job } = await api<{ job: { status: string } }>(`/jobs/${jobId}`);
+          if (jobDone(job)) break;
+        } while (Date.now() < deadline);
+      }
     } catch (err) {
-      setCancelling(false);
       toast.error(err instanceof ApiError ? err.message : 'Failed to cancel processing');
+    } finally {
+      setCancelling(false);
+      // The material has settled (QUEUED after cancel) — show the fresh state
+      // and stop offering Cancel for the now-terminal job.
+      setCancelledJobId(jobId);
+      try {
+        const refreshed = await api<{ material: MaterialResponse }>(`/materials/${materialId}`);
+        setMaterial(refreshed.material);
+      } catch {
+        // keep the previously loaded material; the poll effect retries
+      }
     }
   }
 
@@ -385,6 +408,7 @@ export default function MaterialDetailPage() {
               isProcessing={isProcessing}
               enhanced={enhancement !== null}
               cancelling={cancelling}
+              cancelledJobId={cancelledJobId}
               onCancel={cancelProcessing}
             />
           </CardContent>
@@ -473,12 +497,14 @@ function ProcessingLifecycle({
   isProcessing,
   enhanced,
   cancelling,
+  cancelledJobId,
   onCancel,
 }: {
   material: MaterialResponse;
   isProcessing: boolean;
   enhanced: boolean;
   cancelling: boolean;
+  cancelledJobId: string | null;
   onCancel: () => void;
 }) {
   const currentStep = PROCESSING_STEPS.findIndex((s) => s.status === material.processingStatus);
@@ -534,7 +560,7 @@ function ProcessingLifecycle({
             )}
           </div>
           <Progress value={progress} />
-          {isProcessing && material.processJobId && (
+          {isProcessing && material.processJobId && material.processJobId !== cancelledJobId && (
             <div className="flex items-center gap-2">
               {cancelling ? (
                 <Button size="sm" variant="outline" disabled>

@@ -71,9 +71,31 @@ are allowed; `material-enhancements.ts` scheme updated to match.
   TEXT material re-enhance stays idempotent (`unchanged`, no version bump).
 - Cancel/retry round-trip re-verified after the api rebuild.
 
+### E. Follow-up bugfix — "still cancelling" label stuck after Cancel Processing
+
+User reported a cancelled upload PDF stuck "cancelling". Investigated the live
+stack: **server state was clean** — no jobs in processing/cancelling/queued;
+both MATERIAL_PROCESS jobs were `cancelled` and the material had settled back
+to QUEUED. The stuck label was a **client-only bug**: the detail page defines
+`isProcessing = processingStatus === 'QUEUED' || 'PROCESSING'`, and the effect
+that clears the `cancelling` flag only runs `if (!isProcessing)`. After a
+cancel the sweep sets the material to QUEUED (the retryable state), which still
+counts as `isProcessing`, so `cancelling` was never cleared → "Cancelling…"
+persisted until a manual refresh even though the cancel had completed.
+
+Fix (single file, `materials/[materialId]/page.tsx`): `cancelProcessing` now
+polls the job until it reaches a terminal state (inline loop on the exported
+`jobDone` helper — `waitForJob` can't be reused because it throws on
+`cancelled`), then clears `cancelling`, reloads the material, and records
+`cancelledJobId` so the Cancel button is hidden for that now-terminal job.
+Validation: web typecheck clean (full typecheck 10/10), lint 9/9; web image
+rebuilt + healthy; running container's compiled page chunk contains the new
+`cancelledJobId` state, proving the fix is baked in.
+
 ### Next task
 
-Commit and push Phase 49 (this section), then the next scheduled phase.
+Browser pass on the Phase 49 surfaces (Material Intelligence card, upload
+dialog progress/optimization, cancel-then-retry on the detail page).
 
 ## Phase 48 B — Chunked uploads (524), independent source extraction, incremental OCR reveal (2026-09-19)
 

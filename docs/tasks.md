@@ -72,6 +72,19 @@
       / 83 mapped segments / 796 mappings (606 topic + 190 chapter) — the
       exact shape the old constraint rejected; `getLatest` returns it via the
       API. Cancel/retry race round-trip verified post-rebuild (2026-09-19).
+- [x] **E. Follow-up bugfix — "still cancelling" stuck after Cancel
+      Processing (client-only, 2026-09-19).** User reported a cancelled upload
+      stuck "cancelling". Server state was clean (the sweep had settled the job
+      to `cancelled` + material to QUEUED); the stuck label was a UI bug:
+      `isProcessing = QUEUED || PROCESSING`, so after a cancel the material
+      reloaded to QUEUED and the cleanup effect `if (!isProcessing)
+      setCancelling(false)` NEVER ran → "Cancelling…" persisted until manual
+      refresh. Fix: `cancelProcessing` now polls the job (inline loop using
+      `jobDone`, since `waitForJob` treats `cancelled` as an error) until
+      terminal, then clears `cancelling`, reloads the material, and remembers
+      `cancelledJobId` so the Cancel button isn't re-offered for the now
+      terminal job. Verified: the running web container's page chunk contains
+      `cancelledJobId`; typecheck 10/10 + lint 9/9.
 
 ## Phase 48 B — Chunked uploads (524), independent source extraction, incremental page reveal (2026-09-19)
 
