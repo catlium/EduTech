@@ -224,7 +224,10 @@ export class MaterialsService {
       processError: job?.error?.message ?? null,
       processStartedAt: job?.startedAt ?? null,
       processCompletedAt: job?.completedAt ?? null,
-      processJobId: job?.id ?? null,
+      // Only a live job is cancellable; a terminal (completed/failed/cancelled)
+      // one must not be offered for cancellation on the detail page.
+      processJobId:
+        job && ['queued', 'processing', 'cancelling'].includes(job.status) ? job.id : null,
     };
   }
 

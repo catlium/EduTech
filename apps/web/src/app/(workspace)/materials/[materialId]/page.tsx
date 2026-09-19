@@ -96,10 +96,6 @@ export default function MaterialDetailPage() {
   const [enhancement, setEnhancement] = useState<MaterialEnhancementResponse | null>(null);
   const [enhancing, setEnhancing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-// The process job a completed cancel settled; its job id is terminal, so the
-// detail page must not keep offering Cancel for it even though the material
-// body is QUEUED (which still counts as isProcessing).
-const [cancelledJobId, setCancelledJobId] = useState<string | null>(null);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
 
   const refresh = useCallback(() => {
@@ -187,9 +183,8 @@ const [cancelledJobId, setCancelledJobId] = useState<string | null>(null);
       toast.error(err instanceof ApiError ? err.message : 'Failed to cancel processing');
     } finally {
       setCancelling(false);
-      // The material has settled (QUEUED after cancel) — show the fresh state
-      // and stop offering Cancel for the now-terminal job.
-      setCancelledJobId(jobId);
+      // The material has settled (QUEUED after cancel) — show the fresh state,
+      // which no longer carries a cancellable job id.
       try {
         const refreshed = await api<{ material: MaterialResponse }>(`/materials/${materialId}`);
         setMaterial(refreshed.material);
@@ -408,8 +403,8 @@ const [cancelledJobId, setCancelledJobId] = useState<string | null>(null);
               isProcessing={isProcessing}
               enhanced={enhancement !== null}
               cancelling={cancelling}
-              cancelledJobId={cancelledJobId}
               onCancel={cancelProcessing}
+              onResume={retryMaterial}
             />
           </CardContent>
         </Card>
@@ -497,15 +492,15 @@ function ProcessingLifecycle({
   isProcessing,
   enhanced,
   cancelling,
-  cancelledJobId,
   onCancel,
+  onResume,
 }: {
   material: MaterialResponse;
   isProcessing: boolean;
   enhanced: boolean;
   cancelling: boolean;
-  cancelledJobId: string | null;
   onCancel: () => void;
+  onResume: () => void;
 }) {
   const currentStep = PROCESSING_STEPS.findIndex((s) => s.status === material.processingStatus);
   const failed = material.processingStatus === 'FAILED';
@@ -560,7 +555,7 @@ function ProcessingLifecycle({
             )}
           </div>
           <Progress value={progress} />
-          {isProcessing && material.processJobId && material.processJobId !== cancelledJobId && (
+          {isProcessing && material.processJobId && (
             <div className="flex items-center gap-2">
               {cancelling ? (
                 <Button size="sm" variant="outline" disabled>
@@ -572,6 +567,11 @@ function ProcessingLifecycle({
                 </Button>
               )}
             </div>
+          )}
+          {material.processingStatus === 'QUEUED' && !material.processJobId && (
+            <Button size="sm" variant="outline" onClick={onResume}>
+              <Play className="size-3.5" /> Resume Processing
+            </Button>
           )}
         </>
       )}

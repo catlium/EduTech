@@ -632,7 +632,9 @@ export const MaterialResponseSchema = z.object({
   processError: z.string().nullable().optional(),
   processStartedAt: z.string().datetime().nullable().optional(),
   processCompletedAt: z.string().datetime().nullable().optional(),
-  // Latest MATERIAL_PROCESS job row — lets the UI cancel the running attempt.
+  // Latest MATERIAL_PROCESS job row, but only while it is still live
+  // (queued/processing/cancelling) — lets the UI cancel the running attempt.
+  // Null once the attempt is terminal (completed/failed/cancelled).
   processJobId: z.string().uuid().nullable().optional(),
 });
 export type MaterialResponse = z.infer<typeof MaterialResponseSchema>;
