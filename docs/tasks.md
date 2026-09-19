@@ -1,5 +1,32 @@
 # Task Tracker
 
+## Phase 48 A follow-up — material-page extraction entry + stale-image verdict (2026-09-19)
+
+> Amends Phase 48 A (above): the material-detail "Extract Paper Pattern"
+> button was removed in 76e0497 because extraction became generic (no Material
+> ownership). The user directive ("extraction should start from the material
+> page and it should not start automatically; even if started I should be able
+> to go to material page to see it") reintroduces the entry point WITHOUT
+> ownership: the button POSTs the material's already-extracted `textContent`
+> to the SAME generic `/paper-patterns/extract-text` endpoint — the pattern is
+> still source-independent, no `sourceMaterialId` is ever written.
+
+- [x] **Stale-image verdict:** running containers == freshly built images
+      (web `cbf4b37e…`, api `158f3265…`); live BUILD_ID current; the
+      "Uploading… → nothing created" report did NOT reproduce on the stack
+      (file → title → scope → Upload → **201** → redirect → detail renders).
+      Earlier report was the stale-`.next` bundle of the previous session.
+- [x] **Web — material-page extraction entry** (`[materialId]/page.tsx`):
+      "Extract Paper Pattern" button when `processingStatus === 'READY'` and
+      `textContent` present → POST `/paper-patterns/extract-text` → poll
+      extraction job → redirect to pattern on completion / error toast on
+      failure; user stays on the material page while the job runs. No
+      auto-process/auto-extract on upload (Process remains a manual action).
+- [x] **Validation:** web `tsc --noEmit` clean; `pnpm typecheck` (10 tasks)
+      clean; `pnpm lint` (9 tasks) clean; live E2E: READY material → button →
+      extract → job failed `NO_QUESTIONS_FOUND` (non-paper text rejected
+      correctly, toast surfaced); test uploads/job/storage cleaned up.
+
 ## Phase 48 A — Generic paper-pattern extraction (amendment to Phase 46, 2026-09-19)
 
 > Amends Phase 46: paper-pattern extraction is no longer Material-owned. Any

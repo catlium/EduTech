@@ -1,5 +1,49 @@
 # Project Status
 
+## UI integration follow-up: stale-image check + material-page extraction (2026-09-19, live-stack)
+
+Follow-up to the report "flow should be upload → material created → extraction
+starts from the material page (not automatic); I see Uploading… then nothing is
+created; check for stale image too."
+
+**Stale-image check — NOT stale.** Verified the running containers serve the
+freshly built images: `docker inspect catlium-web --format '{{.Image}}'` ==
+`docker image inspect catlium/web:latest --format '{{.Id}}'` (web
+`cbf4b37e…`, api `158f3265…`). Live `.next/BUILD_ID` current, material-detail
+chunk contains the new "Extract Paper Pattern" button.
+
+**Upload works on the stack.** Reproduced the real flow in a headless Chrome
+journey with a real PDF via the UI: file → title → scope → Upload →
+`POST /materials/upload` **201** → redirect → `/materials/{id}` detail renders
+the title, zero console errors/exceptions. "Uploading… → nothing created" did
+NOT reproduce on the current stack (earlier identical report was the stale
+bundle of Finding 1; the redirect fix of this checkpoint's Finding 2 is
+live).
+
+**Implemented the requested flow — extraction starts from the material page,
+manually, non-automatic.** Material detail page (`[materialId]/page.tsx`)
+gains an "Extract Paper Pattern" button (shown only when
+`processingStatus === 'READY'` and `textContent` present) that POSTs the
+material's extracted text to the generic `/paper-patterns/extract-text`
+endpoint and polls the extraction job to the created REVIEW pattern — NO
+Material ownership re-introduced (extraction stays generic; architecture
+constraint preserved). Upload never auto-processes/auto-extracts; the Process
+button and the new Extract button are both explicit user actions. The user can
+remain on the material page while the job runs (toast + button state; the
+material stays visible) — matching "even if started I should be able to go to
+material page to see it" — and is redirected to the pattern on completion.
+
+**Verified live:** READY material `8169f843` (CIS Module 1, 37 K chars) →
+button visible → click → `POST /paper-patterns/extract-text` 200 → job
+`ad84090b` → polled → `failed` with `NO_QUESTIONS_FOUND` (CIS module text is
+not structured exam content — correct deterministic rejection, surfaced via
+toast). Job/pattern creation + failure path both work end-to-end.
+
+**Validation:** `tsc --noEmit` clean (web), full `pnpm typecheck` (turbo,
+10 tasks) clean, `pnpm lint` (9 tasks) clean. Test artifacts (2 uploads +
+failed job + their storage dirs) removed from the demo institute; only the 4
+legit storage dirs remain.
+
 ## UI integration investigation (2026-09-19, live-stack)
 
 Task: investigate/fix reported UI integration problems (Paper Pattern "Extract
