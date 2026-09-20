@@ -215,14 +215,11 @@ and §14 (role/permission storage); SUPER_ADMIN storage is §15.
   (Phase F) and student (Phase G) assignments build on. Resource scope binding
   (Phase H) then applies the resulting scope to enforcement.
 
-### Open decisions (need resolution before Phase E)
+### Decision: D4/D5 (recorded 2026-09-20)
 
-- What defines a "class" in this product (standard/academic-year-cohort vs a
-  course offering) and whether divisions are sub-units of classes.
-- Whether subjects hang off classes/divisions or off the institute (currently
-  institute) and how the two relate.
-- Whether a student's subject access derives from the class's subject set or an
-  independent per-student subject assignment.
+- Resolved. Class levels + year-bound divisions, institute-wide subjects with
+  per-division offerings, and the teacher/student assignment model. Full
+  model: §16 (structure) and §17 (assignments).
 
 ---
 
@@ -465,10 +462,10 @@ in-flight or done.
   - Schema: classes, divisions (and their institute scoping and relationships).
   - CRUD for classes/divisions (institute-scoped, admin-managed).
   - Seed/migration backfill strategy.
-- **Dependencies:** §5 decisions (what defines a class); general permissions
+- **Dependencies:** §16 decisions (what defines a class); general permissions
   machinery from prior phases for their management endpoints.
-- **Major decisions:** the class/division model (§5 open decisions); subject ↔
-  class/division relationship.
+- **Major decisions:** D4 as recorded (§16) — `academic_years` / `classes` /
+  `divisions` / `division_subjects` offerings; subject-offering semantics.
 - **Expected outcome:** institutes can model classes and divisions;
   class/division IDs are available for assignment and resource scope.
 - **NOT included:** teacher/student assignments (F/G); any change to existing
@@ -482,9 +479,11 @@ in-flight or done.
   - Management endpoints (INSTITUTE_ADMIN assigns).
   - Enforcement surface for teacher-scoped permission application.
 - **Dependencies:** Phase E (structure); Phase B/C (permission machinery).
-- **Major decisions:** whether a teacher's scope is per class-division-subject
-  triple or class-division with subject sets; how assignment changes interact
-  with currently-persisted teacher-owned resources.
+- **Major decisions:** D5 as recorded (§17) — assignments at offering
+  (division + subject) granularity; co-teaching; multi-assignment; scope
+  resolution. How assignment changes interact with currently-persisted
+  teacher-owned resources is a Phase F implementation detail (ownership rows
+  are never rewritten; revocation only affects their future scope).
 - **Expected outcome:** teacher permissions can be evaluated within the
     assigned academic scope; a teacher has no scope in classes/subjects they
     are not assigned to.
@@ -498,10 +497,10 @@ in-flight or done.
   - Assignment model: student → class/division (and subject set resolution).
   - Enforcement surface: student reads are restricted to their academic scope.
 - **Dependencies:** Phase E.
-- **Major decisions:** subject-resolution for a student (from class vs
-  per-student); behavioral change acknowledgment: today students see all
-  institute content readable under their role — after this, they see only what
-  their class/division/subjects grant.
+- **Major decisions:** D5 as recorded (§17) — student placement per
+  (year, student); subject resolution from division offerings ± elective
+  enrollments; behavioral change acknowledged: after this, students see only
+  their cohort's subjects, not all institute content readable under their role.
 - **Expected outcome:** student access is academically scoped; unrelated
   institute content is unreachable.
 - **NOT included:** teacher scope; module reads (Phase I).
@@ -520,8 +519,12 @@ in-flight or done.
   - Policy flow completed per §7.
 - **Dependencies:** Phases B, C, E, F, G (permissions + structure + people
   bindings).
-- **Major decisions:** where scope is resolved (policy object vs query
-  filters); deny-on-no-scope semantics; per-resource ownership attributes.
+- **Major decisions:** D6 as recorded (§18) — scope-sensitive vs
+  institute-wide resource classes; subject-chain + single-`offeringId`
+  derivation; DB-query read scoping, explicit pre-write checks; default-deny
+  with documented exceptions; ownership O1–O3; the single INSTITUTE_ADMIN
+  scope bypass; creation within actor scope. Exact policy-vs-query mechanism is
+  finalized during Phase H implementation.
 - **Expected outcome:** a consistent scope/ownership evaluation used by
   migrated modules.
 - **NOT included:** migrating every module (Phase I).
@@ -666,8 +669,11 @@ in-flight or done.
   `membership_roles` (role FK), `platform_user_roles`. See §14/§15.
 - Platform: SUPER_ADMIN authority, disjoint from institute membership; OCR
   registry and platform lifecycle under platform authorization.
-- Academic scope: classes/divisions → teacher/student assignments → resource
-  scope + ownership policy.
+- Academic scope (D4–D6, §16–§18): academic years/classes/divisions →
+  offerings → teacher & student assignments → resource scope (subject chain +
+  optional single `offeringId`) → ownership policy; default-deny for
+  scope-sensitive operations; the single INSTITUTE_ADMIN whole-institute
+  bypass.
 - Enforcement flow: AccessToken → Membership → Permission → Academic/Resource
   policy → Controller → Service (scoped queries).
 - Roadmap A–M implements and verifies this in phases.
@@ -676,17 +682,13 @@ in-flight or done.
 
 ## Open decisions requiring user input
 
-**D1, D2, D3 are DECIDED** (recorded 2026-09-20) — see §13 (permission model),
-§14 (role/permission storage), §15 (SUPER_ADMIN / platform authorization).
+**D1–D6 are DECIDED** (recorded 2026-09-20): §13 (permission model), §14
+(role/permission storage), §15 (SUPER_ADMIN / platform), §16 (academic
+structure), §17 (teacher/student academic assignments), §18 (resource scope +
+authorization evaluation).
 
-The remaining decisions needed before their respective phases can be
-implemented:
+The remaining decision needed before its phase can be implemented:
 
-- **D4 (Phase E):** class definition and class/division model; subject linkage.
-- **D5 (Phase F/G):** teacher/student assignment granularity; student subject
-  resolution.
-- **D6 (Phase H):** where academic scope is evaluated (policy vs query); no-scope
-  deny semantics.
 - **D7 (Phase K):** the session-hardening decisions in `security-audit.md`
   F1–F6 and Phase-K priority ordering.
 
@@ -758,14 +760,27 @@ there is no wildcard.
 
 Notes:
 
-- There is **no `students` resource** today. The `resource.action` convention
-  is form-only; student administration currently maps to `users.*`
-  (provisioning a user with the STUDENT role = `users.create`; membership
-  status = `users.update`). If a future module (Phase E/F/G) introduces an
-  explicit enrollments/assignment surface, new explicit keys are added then —
-  nothing is added speculatively now.
+- There is **no `students` resource** today, and none is added speculatively.
+  Student administration before assignments maps to `users.*` (provisioning a
+  user with the STUDENT role = `users.create`; membership status =
+  `users.update`). The D5 placement/enrollment/assignment surface (§17) adds
+  the keys in "Catalogue additions required by D4–D6" below when its Phase E–G
+  endpoints exist — keys are never catalogued before their endpoint exists.
 - Permission keys are explicit and listed; **no wildcard keys (`*`,
   `resources.*`) are stored or checked anywhere.**
+
+### Catalogue additions required by D4–D6 (academic structure & assignments)
+
+Keys for the D4–D6 surfaces, added to the institute vocabulary when their
+Phase E–G endpoints exist (built-in role mapping finalized in Phase C):
+
+| resource | actions | notes |
+|---|---|---|
+| `academic-years` | read, manage | academic year setup/lifecycle (D4) |
+| `classes` | read, create, update, delete, manage | class level definitions (D4) |
+| `divisions` | read, create, update, delete, manage | year-bound cohorts (D4) |
+| `offerings` | read, manage | division↔subject offerings (D4/D5) |
+| `assignments` | read, manage | teacher assignments + student placements/enrollments (D5) |
 
 ### Manage implication rule
 
@@ -1033,3 +1048,496 @@ Recorded 2026-09-20. Applies to Phase D. Not yet implemented.
   simultaneously — these are independent authorities.
 - No platform permissions are placed in JWTs; the platform plane is also
   DB-fresh per request.
+
+---
+
+## 16. D4 — Academic structure (DECIDED, not implemented)
+
+Recorded 2026-09-20. Applies to Phase E. Not yet implemented.
+
+### Verified starting point
+
+- Today's academic hierarchy is `subjects` → `chapters` → `topics`,
+  institute-scoped (`packages/database/src/schema/academic.ts`). There are
+  **no classes, divisions, academic-year entities, or assignments** anywhere
+  in the schema or API (verified by grep across `packages/database/src/schema`
+  and `apps/api/src`).
+- Consequence: a member with the STUDENT role can `GET /api/v1/academic/
+  subjects` and see every subject in the institute; a TEACHER can mutate any
+  subject/chapter/topic and every resource in the shared bank with no academic
+  restriction (`apps/api/src/academic/academic.controller.ts`). This is the
+  under-scoping this series fixes.
+- `syllabi.academic_year` and `syllabi.program` exist only as **free-form
+  document metadata** (`varchar`); they are not entities and never grant scope.
+
+### Canonical hierarchy (target)
+
+```
+Institute
+  ├── Academic Year (session)              academic_years           "2026-27"
+  ├── Class (stable level)                 classes                  "Class 10"
+  │     └── Division (year-bound cohort)   divisions                "Class 10 · Division A · 2026-27"
+  │           └── Subject offering         division_subjects        "this Division teaches Mathematics this year"
+  │                 └── Subject            subjects                 "Mathematics"
+  │                       └── Chapter      chapters
+  │                             └── Topic  topics
+```
+
+### Decisions
+
+**D4.1 Academic Year/Session is REQUIRED as a first-class entity.** An
+institute is measured in sessions (2025-26, 2026-27). Scope records that cross
+years (a teacher's assignment, a student's placement) must be pinned to a year,
+and history must survive year rollover. A normalized `academic_years` table
+becomes the authoritative year; the free-form `syllabi.academic_year` column is
+left untouched (displayed metadata, not a scope anchor).
+
+```
+academic_years (
+  id, instituteId, name '2026-27', startsAt, endsAt,
+  status draft|active|closed, isCurrent,
+  UNIQUE (instituteId, name),
+  UNIQUE (instituteId) WHERE isCurrent      -- exactly one current year
+)
+```
+
+`isCurrent` is a UI/setup convenience only — it never substitutes for scope
+resolution; assignments always reference a concrete year (or a division, which
+implies one).
+
+**D4.2 Class and Division ARE separate entities.** A *class* is a stable
+**level** that recurs every year ("Class 10" is Class 10 in both 2025-26 and
+2026-27); it carries identity (name, code, sort order) with no year. A
+*division* is the concrete **year-bound teaching cohort** ("Class 10, Division
+A, 2026-27").
+
+```
+classes (
+  id, instituteId, name, code, sortOrder, status, deletedAt,
+  UNIQUE (instituteId, name)                 -- no year, no FK to year
+)
+```
+
+**D4.3 Division belongs to Class** via `divisions.classId`; the year is carried
+on the division, not on the class. A division therefore encodes
+class-level + year + division-name in one row and is the **smallest unit anyone
+is scoped to**.
+
+```
+divisions (
+  id, instituteId, academicYearId, classId, name 'A'|'B'|'Alpha',
+  sortOrder, status, deletedAt,
+  UNIQUE (academicYearId, classId, name)
+)
+```
+
+**D4.4 Subjects are institute-wide definitions with academic offerings.**
+`subjects` (name, slug) stay institute-wide exactly as today. The mapping
+class/division ↔ subject is the **offering**, at division granularity only
+(there is deliberately no separate class-level subject table):
+
+```
+division_subjects (
+  id, instituteId, divisionId, subjectId, sortOrder,
+  UNIQUE (divisionId, subjectId)             -- a division offers each subject once
+)
+```
+
+To make "Class 10 teaches Mathematics" true every year, admin creates offerings
+on each division (Phase E tooling may copy the previous year's set — a
+data-entry convenience, not an extra schema table).
+
+**D4.5 Chapters/topics inherit academic scope from their subject; coverage
+differences are modeled as distinct subjects, not per-chapter bindings.**
+Subject → chapters → topics stays institute-wide; a resource tagged
+`subjectId/chapterId/topicId` (respecting the existing `scope_chain` checks)
+inherits scope via the subject. Offerings constrain at the **subject** level,
+not the chapter level. When an institute needs *different coverage* of the
+same-named subject across classes (Class 9 Mathematics vs Class 10
+Mathematics), it defines **distinct institute-wide subjects** ("Mathematics —
+Class 9", "Mathematics — Class 10"); each maps to its own offerings and
+chapters. This deliberately avoids binding chapters to offerings
+(`ponytail:` simplification — if a single subject must host class-specific
+chapter subsets later, an offering-level chapter scope can be added then;
+nothing requires it today).
+
+**D4.6 Year rollover preserves history.** Because every scope attachment
+references year-bound entities, existing rows are never mutated:
+
+- a promoted student gets a new placement row for the new year (D5);
+- last year's placements/assignments/offerings remain intact as history;
+- "Class 10-A" 2026-27 and "Class 10-A" 2025-26 are different `divisions`
+  rows, so cohorts are never conflated in analysis or audit.
+
+### Concrete cohort
+
+| Academic year | Class (level) | Division | Offering (subject) |
+|---|---|---|---|
+| 2026-27 | Class 10 | A | Mathematics, Physics |
+| 2026-27 | Class 10 | B | Mathematics, Physics |
+| 2026-27 | Class 11 | A | Mathematics, Chemistry |
+| 2025-26 | Class 10 | A | Mathematics, Physics |
+
+The two "Class 10-A" rows (2025-26 vs 2026-27) are different divisions; "Class
+10" is one stable class row; offerings are per division-year.
+
+### What does NOT change
+
+- `subjects/chapters/topics` keep their existing institute-scoped semantics
+  and remain the only subject-anchored scope anchors (§18).
+- `syllabi.academic_year`/`program` stay free-form metadata. (Optionally a
+  `syllabi` row may later get a nullable `academicYearsId` link in Phase I if a
+  syllabus needs pinning to a cohort; not required for authorization.)
+- **No class/division/offering fields are added to resource tables** — only a
+  single nullable `offeringId` FK mirror on scope-sensitive resources (§18).
+
+---
+
+## 17. D5 — Teacher and student academic assignments (DECIDED, not implemented)
+
+Recorded 2026-09-20. Applies to Phases F/G. Not yet implemented.
+
+### Teacher model
+
+- **Teacher is an institute member** (`memberships` bearing the TEACHER role or
+  a teaching custom role, per D2). The role grants *what* (permission type);
+  assignments grant *where*.
+- **A teacher must be explicitly assigned to every academic scope they operate
+  in.** Having the role (and its permissions) is necessary but not sufficient.
+- **Assignment granularity: the offering** — `(division, subject)` — which
+  resolves to Class + Division + Subject via `division → class` (§16). This
+  satisfies "assigned to Class + Division + Subject" without storing a
+  redundant class column.
+- **Assignments reference the Division directly** (class level and year are
+  derived from it), not both Class and Division. `division_id` implies exactly
+  one class level, one academic year, one institute.
+- **No separate year column on the assignment** — the year is the division's
+  year; a duplicate column would drift.
+- **Multiple teachers may teach the same offering** (co-teaching, graders):
+  the assignment table is many-to-many per offering.
+- **A teacher may be assigned to many divisions/classes/subjects** — one
+  assignment row per offering.
+
+```
+teacher_assignments (
+  id, instituteId, offeringId, teacherId, created_at, updated_at,
+  UNIQUE (offeringId, teacherId)
+)
+```
+
+Assignment-time validation (recorded here; enforced in Phase F/L):
+
+- `offeringId` belongs to the same institute as the assignment row;
+- `teacherId` has an **active membership** in that institute carrying the
+  TEACHER role (or a custom teaching role);
+- assign/unassign is INSTITUTE_ADMIN-only.
+
+**Resolving a teacher's academic scope:** the union of their assigned
+offerings `(division, subject)`. A teacher teaches a subject exactly where an
+assigned offering says so — nowhere else.
+
+### Student model
+
+- **Student = institute member** placed into exactly **one division per
+  academic year.**
+- Placement explicitly needs the **Academic Year/Session**: a student is
+  "Class 10-A, 2026-27".
+- **A student's accessible subjects = the subjects offered by their
+  placement's division** (that division's `division_subjects`).
+- **Electives/opt-outs use an optional explicit enrollment table.** Division
+  offerings are the denominator — sufficient for the common case; when an
+  institute runs electives (or a student opts out of a division subject),
+  `student_subject_enrollments` adjusts the student's set. The table stays
+  empty for institutes that never use electives.
+
+```
+student_placements (
+  id, instituteId, academicYearId, studentId, divisionId, created_at, updated_at,
+  UNIQUE (academicYearId, studentId)          -- one placement per (year, student)
+)
+
+student_subject_enrollments (
+  id, instituteId, placementId, subjectId, kind 'ENROLLED'|'EXCLUDED',
+  created_at, updated_at,
+  UNIQUE (placementId, subjectId)
+)
+```
+
+Placement-time validation:
+
+- one placement per (student, year) — enforced by the unique key;
+- the division belongs to `placement.instituteId` and
+  `placement.academicYearId`;
+- `ENROLLED` subjects are offered by the institute (any offering, or explicitly
+  allowed by admin); `EXCLUDED` subjects must be in the student's division
+  offering set;
+- placement/enrollment management is INSTITUTE_ADMIN-only (Phase G).
+
+**Historical academic assignments are preserved, never overwritten.** A
+promotion adds a new `student_placements` row for the new year/division; prior
+rows remain. UI "current placement" reads resolve via `isCurrent` year, but
+authorization always uses the explicit year/division context of the resource —
+nothing relies on a mutable "current class" field on the user.
+
+### Resolved student subject set
+
+```
+accessible(student) =
+  offerings(student's division for that academic year)
+  ∪ {ENROLLED subjects}
+  − {EXCLUDED subjects}
+```
+
+### Concrete examples
+
+**Teacher A → Class 10 · Division A · Mathematics (2026-27)**
+
+```
+teacher_assignments: Teacher A → offering (division 10-A-2026, subject Mathematics)
+```
+
+- ✅ Teacher A may operate on Mathematics resources **belonging to Class 10-A**
+  (offering = 10-A-2026, subject = Mathematics) — cohort-bound resources
+  (§18.3) plus shared Mathematics bank in scope.
+- ❌ Teacher A does **not** gain Class 10-B Mathematics: 10-B is a different
+  division's offering. A resource *belonging to 10-A* (offeringId set) is
+  visible/editable only within 10-A (offering mismatch → deny); shared
+  subject-bank items are still subject-gated — see the §18 matrix.
+- ❌ Teacher A does **not** gain Class 10-A Physics: Physics is not in their
+  assigned offering set.
+- Teacher A has no scope in Class 11, any other subject, or any other year.
+- Co-teaching: a second Teacher B assigned the same (10-A-2026, Mathematics)
+  offering is allowed — separate assignment row.
+
+**Student A → Class 10 · Division A (2026-27)**
+
+```
+student_placements:   Student A → (2026-27, division 10-A)
+division_subjects:    (10-A-2026) → { Mathematics, Physics }
+```
+
+- ✅ Student A sees only their cohort's scope: Mathematics and Physics
+  resources for Class 10-A 2026-27.
+- ❌ Student A does **not** see Class 10-B, Class 11, or any other division's
+  offerings, and does **not** see every subject in the institute (today's bug)
+  — shared subject-bank access is restricted to the student's resolved set
+  (§18.4/18.9).
+- If the institute adds an elective (e.g. Chemistry via an `ENROLLED` row),
+  Student A's set grows accordingly; an `EXCLUDED` removes Physics.
+- Promotion to Class 11-A in 2027-28 = a second `student_placements` row; the
+  10-A placement row is untouched.
+
+---
+
+## 18. D6 — Resource scope and authorization evaluation (DECIDED, not implemented)
+
+Recorded 2026-09-20. Applies to Phase H (mechanism) and Phase I (module
+enforcement). Not yet implemented.
+
+### The evaluation chain (conceptual, fixed)
+
+```
+Authentication → Institute membership → Role → Permission
+              → Academic scope → Resource policy/ownership → Allow/Deny
+```
+
+The earlier boxes are already decided (D1–D3). D6 resolves the **academic-scope
+and ownership** boxes: how a resource's academic scope is derived, how an
+actor's academic scope is resolved, and how the two combine — without CASL or
+any authorization library (that remains a Phase H implementation decision).
+
+### Two notions of scope
+
+- **Actor academic scope** — where the actor may operate:
+  - *Teacher*: union of their assigned offerings `(division, subject)` (§17).
+  - *Student*: their placement's division offerings ± enrollments (§17).
+  - *Institute admin*: the whole institute (explicit bounded exception,
+    §18.10 / D6.6). A scope-less actor has no academic reach.
+- **Resource academic scope** — where a resource lives (§18.2):
+  - *subject-anchored*: the resource's subject, via the existing
+    `subjectId → chapterId → topicId` chain;
+  - *cohort-bound*: an optional single `offeringId` (`division_subjects` FK)
+    binding the resource to one division's offering of that subject;
+  - *institute-wide*: resources with no resolvable subject, and structural/
+    config records that are not academic content at all.
+
+### 18.1 Which resources require academic scope
+
+Scope-sensitive (academic content — subject-anchored, optional `offeringId`):
+
+| resource | scope anchor |
+|---|---|
+| `content_items` | existing subject/chapter/topic chain + optional offeringId |
+| `materials` | same (subject chain) + optional offeringId |
+| `questions` | same (incl. PENDING candidates) + optional offeringId |
+| `assessments` | same + optional offeringId (inherited by children `attempts`) |
+| `question_papers` | subject chain + optional offeringId |
+| `syllabi` | subject only (per-subject curriculum; no offeringId in v1) |
+| `paper_patterns` | subject set (m2m `paper_pattern_subjects`); no offeringId in v1 |
+| `attempts` / `practice_sessions` | derived from the assessment/topic they belong to + owner scope |
+
+Institute-wide (NOT academically scoped — permission alone, INSTITUTE_ADMIN
+administration surface):
+
+| resource | note |
+|---|---|
+| `users`, `memberships`, `roles`, `permissions`, custom roles | tenancy/identity administration |
+| `academic_years`, `classes`, `divisions`, `division_subjects`, placements, enrollments, `teacher_assignments` | the academic structure/assignment administrative surface (D4/D5) |
+| `question_types`, OCR access, institutes (platform) | config/platform |
+| `exports`, `jobs` | derive scope from the resource they operate on (export of a 10-A set is 10-A-scoped; a job inherits its creator's scope) — never institute-wide by themselves |
+
+Rule: **structure is admin-managed; academic content is scope-evaluated.**
+Teachers/students may read class/division/subject structure for navigation
+(UX), but content visibility is always scope-filtered (§18.4).
+
+### 18.2 Resource academic scope — derivation (no duplicated fields)
+
+- The resource's **subject is the single authority**. Chapters/topics inherit
+  it: `topic → chapter → subject`, `chapter → subject` — the existing
+  `scope_chain` checks make this unambiguous. A resource tagged `topicId` or
+  `chapterId` derives its subject from that parent.
+- One **optional nullable** `offeringId` column (`REFERENCES
+  division_subjects`) is added to the cohort-bound banks: `questions`,
+  `content_items`, `materials`, `assessments`, `question_papers`. A single FK
+  per table — **not** duplicated class/division/subject fields.
+  - `offeringId != NULL`: the resource *belongs to* that offering — only
+    members of that offering may see/touch it.
+  - `offeringId IS NULL` + subject set: the resource is **shared** institute-
+    wide for that subject — any actor whose subject scope includes it may
+    access it.
+  - subject absent + `offeringId IS NULL`: institute-wide, admin-only per the
+    default-deny rule (§18.7).
+- `assessments.offeringId` propagates to everything derived from it
+  (`attempts`): recording an attempt is scoped by the assessment's scope plus
+  the student's placement. `practice_sessions` scope derives from their source
+  topic/subject plus the owning student.
+
+### 18.3 Access decision for scope-sensitive operations
+
+```
+access(resource, action) =
+  tenant_isolation_ok(actor, resource)        -- §6.1
+  AND permission_granted(actor, action(resource))   -- D1 (incl. manage implication)
+  AND academic_scope_match(actor, resource)   -- below
+  AND ownership_policy_passes(actor, resource)      -- §18.6, only where stage rules exist
+
+academic_scope_match(actor, resource):
+  if actor.scope == whole_institute: return true        -- §18.10 admin bypass
+  subject = deriveSubject(resource)
+  if resource.offeringId is not null:
+    return resource.offeringId ∈ actor.offerings        -- cohort-bound
+  else if subject is not null:
+    return subject ∈ actor.subjects                     -- subject-shared
+  else:
+    return false                                        -- no scope → default deny
+```
+
+**Key rule: a permission alone NEVER grants access to every academic resource;
+`academic_scope_match` must hold. `permission + valid scope = access`.**
+
+### 18.4 Where scope is enforced
+
+- **List/read endpoints**: scope is enforced **inside the database query** —
+  the visibility filter (offering ∈ actor's offerings, or subject ∈ actor's
+  subject set) is part of the SQL, so unauthorized rows are *never returned*
+  (no in-memory post-filtering, no detail-IDOR leaks). If a module cannot
+  express the filter directly (e.g. `attempts` via its assessment), the join
+  carries it.
+- **Single-resource reads**: the same predicate applied to the fetched row; a
+  miss resolves to **404** (no existence leak).
+- **Update/delete/write on a specific resource**: an explicit **resource-
+  scope/policy check before mutation** — resolve the target row, evaluate
+  `academic_scope_match` (and ownership policy), only then mutate. A
+  cross-scope write resolves to **403**. This runs even when the caller's
+  permission is valid.
+- **Create**: the new resource is created **within the actor's scope** (§18.5)
+  — it cannot be created against a scope the actor does not hold.
+
+### 18.5 Create-time scope derivation
+
+- A teacher creating a question/material defaults `offeringId` to one of their
+  own offerings — the resource *belongs to that cohort*. The teacher may omit
+  `offeringId` to contribute a shared subject-bank resource when the
+  subject is in their scope (admin decides the institute default).
+- Where the actor has multiple offerings, the request selects the offering;
+  the choice is validated against the actor's scope.
+- Students never create scope-sensitive content; their creations (`attempts`,
+  practice responses) are owner + assessment-scoped.
+
+### 18.6 Ownership policy (stage-gated, where a lifecycle exists)
+
+Ownership is a policy layer on top of scope, only where a draft/approval
+lifecycle exists (content `DRAFT`, questions `PENDING`, paper-pattern `DRAFT`):
+
+- **O1** A draft/research-stage resource is visible/editable only to its
+  `createdBy` actor (if still scope-valid) and institute admins. Other actors
+  are denied even when subject/offering would otherwise match.
+- **O2** Finalized/shared resources follow pure scope rules (§18.3) for all
+  scope-valid actors; ownership does not restrict reads once shared.
+- **O3** Institute admin only: promote/approve/publish another actor's work.
+  Ownership never replaces the required permission — both must pass.
+- No ownership dimension where no lifecycle exists (`question_types`,
+  `academic_years`, structure rows).
+
+### 18.7 No-resolvable-scope behavior
+
+- Scope-sensitive operation on a scope-sensitive resource with no resolvable
+  scope ⇒ **default deny**.
+- Documented legitimate institute-wide exceptions:
+  - **Admin bypass (§18.10):** INSTITUTE_ADMIN = whole-institute scope and may
+    read/write all academically scoped content (still tenant-scoped, still
+    permission-checked, never platform-crossing).
+  - **Institute-wide resources** (subject absent, `offeringId` null): managed
+    by admins only; non-admin scope-sensitive actors cannot reach them.
+  - **Structural/config surfaces** (§18.1 "institute-wide" table): permission
+    alone authorizes; they are not academic content.
+- The current student bug (every student sees every subject) is eliminated:
+  students are scoped before any subject query runs (§17 resolved set).
+
+### 18.8 Teacher checks (recap)
+
+Teacher operating on a Mathematics question in 10-A: `permission
+(questions.update)` AND `offeringId ∈ teacher.offerings` (or shared-subject
+fallback). Teacher A cannot reach 10-B Mathematics (offering mismatch) nor
+10-A Physics (subject not in scope) — the two denials the model exists to
+produce (§17 examples).
+
+### 18.9 Student checks (recap)
+
+Student in 10-A: `permission (questions.read)` AND resource subject ∈ the
+student's resolved set (§17). Enforced at the query layer even for subject-
+shared resources, so e.g. a shared Mathematics question is visible only when
+Mathematics ∈ the student's cohort set.
+
+### 18.10 Admin bypass (the ONLY academic-scope bypass)
+
+- INSTITUTE_ADMIN resolves to **whole-institute** academic scope, plus
+  `.manage` across the institute catalogue. This is the sole academic-scope
+  bypass. It never escapes the institute (platform stays locked per D3);
+  SUPER_ADMIN (platform plane) is a separate authority.
+- Permission still applies: the admin bypass skips the *scope* box, never the
+  permission box.
+
+### 18.11 Custom roles
+
+- Academic scope is **orthogonal to roles**: a custom role grants permission
+  type only. The holder's academic scope still comes from the same surfaces —
+  `teacher_assignments` (teaching scope) or `student_placements` (learning
+  scope) (§17).
+- A custom role holding `questions.manage` is **not** institute-wide: without
+  assignments it has no academic scope, so `academic_scope_match` fails
+  (default deny). Only the built-in INSTITUTE_ADMIN receives whole-institute
+  scope. This is the custom-role analogue of "permission alone is not enough."
+
+### 18.12 Example decision matrix
+
+| Actor | Permission | Resource | Scope match | Result |
+|---|---|---|---|---|
+| Teacher A (10-A Math) | questions.read | question subject=Math, offering=10-A-Math | offering ∈ assignments → true | ✅ |
+| Teacher A (10-A Math) | questions.update | question subject=Math, offering=10-B-Math | not in assignments → false | ❌ 403 |
+| Teacher A (10-A Math) | questions.read | question subject=Physics, offering NULL | subject ∉ scope → false | ❌ 404/403 |
+| Teacher A (10-A Math) | questions.read | shared bank question subject=Math | subject ∈ scope → true | ✅ |
+| Student A (10-A) | questions.read | shared question subject=Math | Math ∈ cohort set → true | ✅ |
+| Student A (10-A) | questions.read | shared question subject=Chemistry | Chemistry ∉ cohort → false | ❌ |
+| INSTITUTE_ADMIN | questions.* (manage) | any 10-A or 10-B question | whole-institute → true | ✅ |
+| Custom 'ExamCoord', no assignment | questions.manage | any question | no scope → false | ❌ deny |

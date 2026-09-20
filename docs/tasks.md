@@ -2,12 +2,12 @@
 
 ## Authorization Overhaul — Architecture & Roadmap (2026-09-20)
 
-> Only the architecture, roadmap, and the D1–D3 design decisions are
+> Only the architecture, roadmap, and the D1–D6 design decisions are
 > documented (`docs/architecture/authorization.md`).
 > **No implementation has been started** — no auth, RBAC, permissions, academic
-> assignment, or authorization code, schema, or frontend changes exist. The
-> phase below tracks the planned roadmap; all items are not-started until their
-> own phase begins.
+> structure, assignment, or authorization code, schema, or frontend changes
+> exist. The phase below tracks the planned roadmap; all items are not-started
+> until their own phase begins.
 
 ### Authorization decisions (2026-09-20)
 
@@ -22,9 +22,19 @@
       `platform_user_roles` join; platform keys `institutes.*`, `ocr-workers.*`;
       separate platform auth plane; INSTITUTE_ADMIN holds zero platform grants
       (recorded in §15).
-- [ ] **D4 — Academic classes & divisions** (Phase E).
-- [ ] **D5 — Teacher/student assignment granularity** (Phase F/G).
-- [ ] **D6 — Resource scope evaluation** (Phase H).
+- [x] **D4 — Academic structure:** `academic_years`, `classes` (stable levels),
+      `divisions` (year-bound cohorts), `division_subjects` offerings; subjects
+      stay institute-wide; chapters/topics inherit scope via subject; history
+      preserved across year rollover (recorded in §16).
+- [x] **D5 — Teacher/student academic assignments:** teacher assignments at
+      offering (division + subject) granularity, co-teaching supported; student
+      placements per (year, student) with division offerings ± elective
+      enrollments; history preserved (recorded in §17).
+- [x] **D6 — Resource scope & evaluation:** scope-sensitive vs institute-wide
+      resources; subject-chain + single `offeringId` derivation; DB-query read
+      scoping, explicit pre-write checks; default-deny on no scope with
+      documented exceptions; ownership O1–O3; the single INSTITUTE_ADMIN
+      bypass (recorded in §18).
 - [ ] **D7 — Session-hardening decisions** (Phase K, per `security-audit.md`
       F1–F6).
 
@@ -43,13 +53,14 @@
       platform permissions; global OCR worker registry moves under platform
       authorization; INSTITUTE_ADMIN gains zero platform rights.
 - [ ] **Phase E — Academic Classes & Divisions:** class/division structural
-      layer (currently none exists).
+      layer (currently none exists). Design recorded in §16 (D4).
 - [ ] **Phase F — Teacher Assignments:** bind teachers to the
-      classes/divisions/subjects they teach.
+      classes/divisions/subjects they teach. Design recorded in §17 (D5).
 - [ ] **Phase G — Student Academic Assignments:** bind students to their
-      class/division; student reads academically scoped.
+      class/division; student reads academically scoped. Design recorded in
+      §17 (D5).
 - [ ] **Phase H — Resource Scope / Policy Engine:** academic scope + ownership
-      policy evaluation.
+      policy evaluation. Design recorded in §18 (D6).
 - [ ] **Phase I — Module-by-Module Authorization Migration:** convert existing
       controllers/services to permission + scope + ownership, module by module.
 - [ ] **Phase J — Frontend Permission & Academic Scope:** align UI gating with
@@ -66,8 +77,9 @@
 
 ### Next task
 
-Phase A has not been issued as an implementation task. Until it is, the
-authorization overhaul remains a documented plan.
+No implementation task is active. D1–D6 are decided and documented;
+the single remaining open decision is D7 (session hardening, Phase K). Until
+Phase A/B is issued, the authorization overhaul remains a documented plan.
 
 ## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
 

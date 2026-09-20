@@ -45,21 +45,38 @@ design document with strict CURRENT vs TARGET separation.
   seeded system rows — §14); D3 SUPER_ADMIN / platform authorization (system
   platform role + `platform_user_roles`, platform keys `institutes.*` +
   `ocr-workers.*`, separate platform auth plane, INSTITUTE_ADMIN holds zero
-  platform grants — §15). D4–D7 remain open.
+  platform grants — §15).
+- **Decisions D4–D6 recorded (2026-09-20) — academic scope:**
+  - **D4 academic structure (§16):** required normalized `academic_years`;
+    `classes` as stable levels vs `divisions` as year-bound cohorts (division
+    belongs to class, carries the year); subjects stay institute-wide with
+    per-division offerings (`division_subjects`); chapters/topics inherit scope
+    via subject; year rollover preserves history.
+  - **D5 teacher/student assignments (§17):** teachers assigned per offering
+    (division + subject; class/year derived from division), co-teaching
+    allowed; students placed per (year, student) with division offerings ±
+    optional elective `ENROLLED`/`EXCLUDED` rows; history append-only.
+  - **D6 resource scope + evaluation (§18):** scope-sensitive vs
+    institute-wide resources; single nullable `offeringId` on the five cohort-
+    bound banks (no duplicated class/division fields); reads enforced in DB
+    queries, writes via explicit pre-mutation scope checks; default-deny on no
+    scope with documented exceptions; ownership O1–O3; single INSTITUTE_ADMIN
+    whole-institute bypass; custom roles always need assignments.
+  - **D7 remains open** (session hardening, Phase K).
 
 ### Validation
 
 - `git diff` reviewed: only documentation changed (new
-  `docs/architecture/authorization.md` with D1–D3 sections, entries in
+  `docs/architecture/authorization.md` with D1–D6 sections, entries in
   `docs/project-status.md` + `docs/tasks.md`). No source, schema, guard,
   controller, service, or frontend code modified.
 
 ### Next task
 
-No implementation task is active. D1–D3 are decided and documented; the
-remaining open decisions are D4–D7 (recorded in `authorization.md` §12).
-Phase B may not be issued until after the D1-related implementation mechanism
-is scheduled.
+No implementation task is active. D1–D6 are decided and documented; the
+remaining open decision is D7 (Phase K session hardening). Phase B may not be
+issued until after the D1-related implementation mechanism is scheduled, and
+Phase E cannot start until Phase A/B/C prerequisites land.
 
 ## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
 
