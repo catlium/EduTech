@@ -59,8 +59,9 @@
       platform permissions; global OCR worker registry moves under platform
       authorization; INSTITUTE_ADMIN gains zero platform rights.
       **COMPLETE 2026-09-20 — see the issued tasks below.**
-- [ ] **Phase E — Academic Classes & Divisions:** class/division structural
-      layer (currently none exists). Design recorded in §16 (D4).
+- [x] **Phase E — Academic Classes & Divisions:** class/division structural
+      layer. **COMPLETE 2026-09-20 — see the issued tasks below.**
+      Design recorded in §16 (D4).
 - [ ] **Phase F — Teacher Assignments:** bind teachers to the
       classes/divisions/subjects they teach. Design recorded in §17 (D5).
 - [ ] **Phase G — Student Academic Assignments:** bind students to their
@@ -82,6 +83,31 @@
       boundary, academic scope, ownership, cross-tenant, revocation).
 - [ ] **Phase M — Final Security Audit + Documentation:** re-audit against the
       new architecture; docs to final-state truth.
+
+## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
+
+> Issued task (recovery session). Implements the revised D4/§16 structural
+> layer: academic years, classes (stable levels), class-level subject
+> offerings and year-bound divisions (student grouping). Subjects stay
+> institute-wide; there is NO `division_subjects` (revised D4).
+> `docs/architecture/authorization.md` §16 is the source of truth.
+> Boundary: NO teacher/student assignments (Phases F/G), NO academic scope /
+> resource policy (Phase H), NO assessment targeting.
+
+- [x] Schema (`packages/database/src/schema/academic.ts`): `academic_years`,
+      `classes`, `class_subjects` (unique `class_id`+`subject_id`),
+      `divisions` (unique `academic_year_id`+`class_id`+`name`); all
+      institute-scoped with cascade FKs.
+- [x] `syllabi` scope anchors: nullable `academic_year_id`/`class_id` with
+      `ON DELETE SET NULL`; free-form `academic_year`/`program` metadata
+      preserved (`packages/database/src/schema/syllabus.ts`).
+- [x] Migration `0041_academic_structure.sql` (journal idx 41) applied on the
+      live compose Postgres (`catlium_dev`, max applied id 41).
+- [x] API module `apps/api/src/academic-structure/`: tenant-scoped
+      CRUD for years/classes/divisions + class-subject offerings; writes
+      INSTITUTE_ADMIN-only; wired into `app.module.ts`.
+- [x] Validation: `pnpm typecheck` 10/10; live constraint inspection
+      (FK cascade/unique/SET NULL as designed).
 
 ## Phase C — Built-in + Custom Roles, part 1: membership role conversion (2026-09-20, COMPLETE)
 

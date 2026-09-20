@@ -8,6 +8,7 @@ import { TenancyModule } from '../tenancy/tenancy.module.js';
 import { AuthorizationModule } from '../authorization/authorization.module.js';
 import { JobsModule } from '../jobs/jobs.module.js';
 import { AcademicModule } from '../academic/academic.module.js';
+import { AcademicStructureModule } from '../academic-structure/academic-structure.module.js';
 import { ContentModule } from '../content/content.module.js';
 import { MaterialsModule } from '../materials/materials.module.js';
 import { OcrModule } from '../ocr/ocr.module.js';
@@ -49,6 +50,7 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     AuthorizationModule,
     JobsModule,
     AcademicModule,
+    AcademicStructureModule,
     ContentModule,
     MaterialsModule,
     OcrModule,

@@ -288,6 +288,13 @@
       "when": 1790800000000,
       "tag": "0040_membership_roles_role_id",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790900000000,
+      "tag": "0041_academic_structure",
+      "breakpoints": true
     }
   ]
 }

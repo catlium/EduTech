@@ -221,7 +221,7 @@ and §14 (role/permission storage); SUPER_ADMIN storage is §15.
 ### Decision: D4/D5 (recorded 2026-09-20)
 
 - Resolved. Class levels + year-bound divisions, institute-wide subjects with
-  per-division offerings, and the teacher/student assignment model. Full
+  class-level offerings, and the teacher/student assignment model. Full
   model: §16 (structure) and §17 (assignments).
 
 ---
@@ -470,7 +470,7 @@ in-flight or done.
 - **Dependencies:** §16 decisions (what defines a class); general permissions
   machinery from prior phases for their management endpoints.
 - **Major decisions:** D4 as recorded (§16) — `academic_years` / `classes` /
-  `divisions` / `division_subjects` offerings; subject-offering semantics.
+  `divisions` / `class_subjects` offerings; subject-offering semantics.
 - **Expected outcome:** institutes can model classes and divisions;
   class/division IDs are available for assignment and resource scope.
 - **NOT included:** teacher/student assignments (F/G); any change to existing
@@ -790,7 +790,7 @@ Phase E–G endpoints exist (built-in role mapping finalized in Phase C):
 | `academic-years` | read, manage | academic year setup/lifecycle (D4) |
 | `classes` | read, create, update, delete, manage | class level definitions (D4) |
 | `divisions` | read, create, update, delete, manage | year-bound cohorts (D4) |
-| `offerings` | read, manage | division↔subject offerings (D4/D5) |
+| `offerings` | read, manage | class↔subject offerings (D4/D5) |
 | `assignments` | read, manage | teacher assignments + student placements/enrollments (D5) |
 
 ### Manage implication rule
@@ -1062,9 +1062,12 @@ Recorded 2026-09-20. Applies to Phase D. Not yet implemented.
 
 ---
 
-## 16. D4 — Academic structure (DECIDED, not implemented)
+## 16. D4 — Academic structure (REVISED 2026-09-20, implemented in Phase E)
 
-Recorded 2026-09-20. Applies to Phase E. Not yet implemented.
+Recorded 2026-09-20; **revised during Phase E implementation** — the offering
+lives at **class** level (`class_subjects`), not division level. Applied by
+migration `0041_academic_structure.sql`. No assignments (Phases F/G), no
+academic scope enforcement (Phase H), no assessment targeting yet.
 
 ### Verified starting point
 
@@ -1087,11 +1090,12 @@ Recorded 2026-09-20. Applies to Phase E. Not yet implemented.
 Institute
   ├── Academic Year (session)              academic_years           "2026-27"
   ├── Class (stable level)                 classes                  "Class 10"
+  │     ├── Subject offering               class_subjects           "Class 10 teaches Mathematics this year"
+  │     │     └── Subject                  subjects                 "Mathematics"
+  │     │           └── Chapter            chapters
+  │     │                 └── Topic        topics
   │     └── Division (year-bound cohort)   divisions                "Class 10 · Division A · 2026-27"
-  │           └── Subject offering         division_subjects        "this Division teaches Mathematics this year"
-  │                 └── Subject            subjects                 "Mathematics"
-  │                       └── Chapter      chapters
-  │                             └── Topic  topics
+  │                                         students grouped only — NO subjects
 ```
 
 ### Decisions
@@ -1143,20 +1147,22 @@ divisions (
 ```
 
 **D4.4 Subjects are institute-wide definitions with academic offerings.**
+**D4.4 Subjects are institute-wide definitions with class-level offerings.**
 `subjects` (name, slug) stay institute-wide exactly as today. The mapping
-class/division ↔ subject is the **offering**, at division granularity only
-(there is deliberately no separate class-level subject table):
+class ↔ subject is the **offering**, at **class** level (`class_subjects`) —
+there is deliberately no separate division-level subject table:
 
 ```
-division_subjects (
-  id, instituteId, divisionId, subjectId, sortOrder,
-  UNIQUE (divisionId, subjectId)             -- a division offers each subject once
+class_subjects (
+  id, instituteId, classId, subjectId, sortOrder,
+  UNIQUE (classId, subjectId)               -- a class offers each subject once
 )
 ```
 
 To make "Class 10 teaches Mathematics" true every year, admin creates offerings
-on each division (Phase E tooling may copy the previous year's set — a
-data-entry convenience, not an extra schema table).
+on the **class** (Phase E tooling may copy the previous year's set — a
+data-entry convenience, not an extra schema table). Divisions inherit their
+class's offering set; nothing is declared per division.
 
 **D4.5 Chapters/topics inherit academic scope from their subject; coverage
 differences are modeled as distinct subjects, not per-chapter bindings.**
@@ -1189,8 +1195,10 @@ references year-bound entities, existing rows are never mutated:
 | 2026-27 | Class 11 | A | Mathematics, Chemistry |
 | 2025-26 | Class 10 | A | Mathematics, Physics |
 
-The two "Class 10-A" rows (2025-26 vs 2026-27) are different divisions; "Class
-10" is one stable class row; offerings are per division-year.
+The two "Class 10-A" rows (2025-26 vs 2026-27) are different `divisions`
+(10-A-2026 and 10-A-2025); "Class 10" is one stable `classes` row; offerings
+are per **class-year** (`class_subjects`), inherited by every division of that
+class-year.
 
 ### What does NOT change
 
@@ -1254,7 +1262,8 @@ assigned offering says so — nowhere else.
 - Placement explicitly needs the **Academic Year/Session**: a student is
   "Class 10-A, 2026-27".
 - **A student's accessible subjects = the subjects offered by their
-  placement's division** (that division's `division_subjects`).
+  placement's division's class** (that class's `class_subjects`, inherited by
+  the year-bound division).
 - **Electives/opt-outs use an optional explicit enrollment table.** Division
   offerings are the denominator — sufficient for the common case; when an
   institute runs electives (or a student opts out of a division subject),
@@ -1324,7 +1333,7 @@ teacher_assignments: Teacher A → offering (division 10-A-2026, subject Mathema
 
 ```
 student_placements:   Student A → (2026-27, division 10-A)
-division_subjects:    (10-A-2026) → { Mathematics, Physics }
+class_subjects:       (Class 10, 2026-27) → { Mathematics, Physics }  # inherited: division 10-A teaches its class's set
 ```
 
 - ✅ Student A sees only their cohort's scope: Mathematics and Physics
@@ -1367,7 +1376,7 @@ any authorization library (that remains a Phase H implementation decision).
 - **Resource academic scope** — where a resource lives (§18.2):
   - *subject-anchored*: the resource's subject, via the existing
     `subjectId → chapterId → topicId` chain;
-  - *cohort-bound*: an optional single `offeringId` (`division_subjects` FK)
+  - *cohort-bound*: an optional single `offeringId` (`class_subjects` FK)
     binding the resource to one division's offering of that subject;
   - *institute-wide*: resources with no resolvable subject, and structural/
     config records that are not academic content at all.
@@ -1393,7 +1402,7 @@ administration surface):
 | resource | note |
 |---|---|
 | `users`, `memberships`, `roles`, `permissions`, custom roles | tenancy/identity administration |
-| `academic_years`, `classes`, `divisions`, `division_subjects`, placements, enrollments, `teacher_assignments` | the academic structure/assignment administrative surface (D4/D5) |
+| `academic_years`, `classes`, `divisions`, `class_subjects`, placements, enrollments, `teacher_assignments` | the academic structure/assignment administrative surface (D4/D5) |
 | `question_types`, OCR access, institutes (platform) | config/platform |
 | `exports`, `jobs` | derive scope from the resource they operate on (export of a 10-A set is 10-A-scoped; a job inherits its creator's scope) — never institute-wide by themselves |
 
@@ -1408,7 +1417,7 @@ Teachers/students may read class/division/subject structure for navigation
   `scope_chain` checks make this unambiguous. A resource tagged `topicId` or
   `chapterId` derives its subject from that parent.
 - One **optional nullable** `offeringId` column (`REFERENCES
-  division_subjects`) is added to the cohort-bound banks: `questions`,
+  class_subjects`) is added to the cohort-bound banks: `questions`,
   `content_items`, `materials`, `assessments`, `question_papers`. A single FK
   per table — **not** duplicated class/division/subject fields.
   - `offeringId != NULL`: the resource *belongs to* that offering — only

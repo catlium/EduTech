@@ -1,5 +1,43 @@
 # Project Status
 
+## Phase E — Academic Classes & Divisions (2026-09-20)
+
+**Status: IMPLEMENTED + VALIDATED — migration applied on live compose Postgres.**
+Implements the revised D4/§16 structural layer: academic years, classes
+(stable levels), class-level subject offerings (`class_subjects` — revised
+from `division_subjects`) and year-bound divisions. Subjects stay
+institute-wide; syllabi gain nullable `academic_year_id`/`class_id` scope
+anchors (`ON DELETE SET NULL`). No assignments (Phases F/G), no academic scope
+enforcement (Phase H).
+
+- **Schema** (`packages/database/src/schema/academic.ts`, +80 lines):
+  `academic_years` (unique `institute_id`+`name`), `classes` (unique
+  `institute_id`+`name`), `class_subjects` (unique `class_id`+`subject_id`),
+  `divisions` (unique `academic_year_id`+`class_id`+`name`). All
+  institute-scoped with cascade FKs to `institutes`.
+- **Syllabus scope anchors** (`packages/database/src/schema/syllabus.ts`):
+  nullable `academic_year_id`/`class_id` referencing the new tables with
+  `ON DELETE SET NULL`; existing free-form `academic_year`/`program` metadata
+  untouched.
+- **Migration** `0041_academic_structure.sql` (journal idx 41). Applied live:
+  `drizzle.__drizzle_migrations` max applied id 41 / 42 applied; the four
+  tables + the two syllabus columns verified present in `catlium_dev`.
+- **API module** `apps/api/src/academic-structure/` (controller/service/dto):
+  tenant-scoped CRUD for years, classes, divisions + class-subject offerings
+  (`GET/POST/DELETE`); writes guarded by `INSTITUTE_ADMIN`; reads open to any
+  active member. Wired into `app.module.ts`.
+- **Validation**: `pnpm typecheck` clean (turbo 10/10); live
+  `pg_constraint`/`information_schema` inspection confirms FKs (cascade),
+  unique constraints and syllabi `ON DELETE SET NULL` as designed.
+
+### Next task
+
+Phase F — Teacher Assignments (bind teachers to classes/divisions/subjects,
+§17/D5). Phases G (student assignments), H (resource scope), I (controller
+migration), J (frontend), K (session hardening), L/M (test matrix, final
+audit) remain not-started. Deferred Phase D follow-ups (NOT built): Super
+Admin management UI/APIs, institutes lifecycle endpoints.
+
 ## Phase D — Super Admin / Platform Boundary (2026-09-20)
 
 **Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**

@@ -14,7 +14,7 @@ import { sql } from 'drizzle-orm';
 
 import { institutes } from './institutes.js';
 import { users } from './users.js';
-import { subjects } from './academic.js';
+import { subjects, academicYears, classes } from './academic.js';
 import { jobs } from './jobs.js';
 
 // The syllabus is the authoritative, first-class source of a subject's
@@ -53,6 +53,14 @@ export const syllabi = pgTable(
     title: varchar('title', { length: 255 }).notNull(),
     program: varchar('program', { length: 255 }),
     academicYear: varchar('academic_year', { length: 20 }),
+    // Phase E scope anchors (D4/§16): a syllabus belongs to an Academic Year +
+    // Class. NULL until an institute links one; the free-form `academic_year` /
+    // `program` columns stay as display metadata. ON DELETE SET NULL preserves
+    // the syllabus if a class/year is removed.
+    academicYearId: uuid('academic_year_id').references(() => academicYears.id, {
+      onDelete: 'set null',
+    }),
+    classId: uuid('class_id').references(() => classes.id, { onDelete: 'set null' }),
     sourceType: varchar('source_type', { length: 20 }).notNull().default('UPLOAD'),
     fileName: varchar('file_name', { length: 255 }),
     mimeType: varchar('mime_type', { length: 120 }),
