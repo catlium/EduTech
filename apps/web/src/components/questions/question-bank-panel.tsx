@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/select';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -361,26 +362,26 @@ export function QuestionBankPanel({
   const perScopeSize =
     scopes.length > 0 ? Math.max(1, Math.min(100, Math.round(size / scopes.length))) : size;
 
-function difficultyDistribution(): { EASY: number; MEDIUM: number; HARD: number } {
-  const dist: { EASY: number; MEDIUM: number; HARD: number } = {
-    EASY: 0,
-    MEDIUM: 0,
-    HARD: 0,
-  };
-  // No difficulties chosen → spread across all (server default), so the empty
-  // case generates a balanced starter instead of zero-size buckets.
-  if (selectedDifficulties.length === 0) {
-    return { EASY: 34, MEDIUM: 33, HARD: 33 };
+  function difficultyDistribution(): { EASY: number; MEDIUM: number; HARD: number } {
+    const dist: { EASY: number; MEDIUM: number; HARD: number } = {
+      EASY: 0,
+      MEDIUM: 0,
+      HARD: 0,
+    };
+    // No difficulties chosen → spread across all (server default), so the empty
+    // case generates a balanced starter instead of zero-size buckets.
+    if (selectedDifficulties.length === 0) {
+      return { EASY: 34, MEDIUM: 33, HARD: 33 };
+    }
+    const each = Math.floor(100 / selectedDifficulties.length);
+    let remainder = 100;
+    for (const d of selectedDifficulties) {
+      dist[d] = each;
+      remainder -= each;
+    }
+    if (selectedDifficulties.length > 0) dist[selectedDifficulties[0]!] += remainder;
+    return dist;
   }
-  const each = Math.floor(100 / selectedDifficulties.length);
-  let remainder = 100;
-  for (const d of selectedDifficulties) {
-    dist[d] = each;
-    remainder -= each;
-  }
-  if (selectedDifficulties.length > 0) dist[selectedDifficulties[0]!] += remainder;
-  return dist;
-}
 
   /** Manual target buckets: selected types × selected difficulties. */
   function manualBuckets() {
@@ -727,7 +728,7 @@ function difficultyDistribution(): { EASY: number; MEDIUM: number; HARD: number 
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>Generate bank questions</DialogTitle>
             <DialogDescription>
@@ -736,374 +737,378 @@ function difficultyDistribution(): { EASY: number; MEDIUM: number; HARD: number 
             </DialogDescription>
           </DialogHeader>
 
-          {/* Scope: subject / multiple chapters / multiple topics */}
-          <div className="space-y-2">
-            <Label>Scope</Label>
-            <div className="flex flex-wrap items-center gap-2">
-              <Chip active={mode === 'subject'} onClick={() => setMode('subject')}>
-                Whole subject
-              </Chip>
-              <Chip active={mode === 'chapters'} onClick={() => setMode('chapters')}>
-                Chapters
-              </Chip>
-              <Chip active={mode === 'topics'} onClick={() => setMode('topics')}>
-                Topics
-              </Chip>
-              <Select value={subjectId} onValueChange={setSubjectId}>
-                <SelectTrigger className="h-8 w-[180px] text-xs">
-                  <SelectValue placeholder="Subject" />
+          <DialogBody className="space-y-3">
+            {/* Scope: subject / multiple chapters / multiple topics */}
+            <div className="space-y-2">
+              <Label>Scope</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip active={mode === 'subject'} onClick={() => setMode('subject')}>
+                  Whole subject
+                </Chip>
+                <Chip active={mode === 'chapters'} onClick={() => setMode('chapters')}>
+                  Chapters
+                </Chip>
+                <Chip active={mode === 'topics'} onClick={() => setMode('topics')}>
+                  Topics
+                </Chip>
+                <Select value={subjectId} onValueChange={setSubjectId}>
+                  <SelectTrigger className="h-8 w-[180px] text-xs">
+                    <SelectValue placeholder="Subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subjects.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {subjectId && mode === 'chapters' && (
+                <div className="rounded-md border p-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs font-medium">Chapters</span>
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline"
+                      onClick={toggleAllChapters}
+                    >
+                      {selectedChapterIds.length === chaptersBySubject.length
+                        ? 'Clear all'
+                        : 'Select all'}
+                    </button>
+                  </div>
+                  <div className="grid max-h-40 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
+                    {chaptersBySubject.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={selectedChapterIds.includes(c.id)}
+                          onCheckedChange={() => toggleChapter(c.id)}
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {subjectId && mode === 'topics' && (
+                <div className="rounded-md border p-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs font-medium">Topics — pick chapters first</span>
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline"
+                      onClick={toggleAllTopics}
+                    >
+                      {selectedTopicIds.length > 0 ? 'Clear all' : 'Select all'}
+                    </button>
+                  </div>
+                  <div className="grid max-h-40 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
+                    {chaptersBySubject.map((c) => {
+                      const chapterTopics = topics.filter((t) => t.chapterId === c.id);
+                      if (chapterTopics.length === 0) return null;
+                      return (
+                        <div key={c.id} className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">{c.name}</p>
+                          {chapterTopics.map((t) => (
+                            <label key={t.id} className="flex items-center gap-2 pl-3 text-sm">
+                              <Checkbox
+                                checked={selectedTopicIds.includes(t.id)}
+                                onCheckedChange={() => toggleTopic(t.id)}
+                              />
+                              {t.name}
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Blueprint-driven generation */}
+            <div className="space-y-2">
+              <Label>
+                Paper pattern (optional){' '}
+                <span className="text-xs font-normal text-muted-foreground">
+                  — derives targets from an approved blueprint
+                </span>
+              </Label>
+              <Select
+                value={blueprintId}
+                onValueChange={(v) => {
+                  setBlueprintId(v === 'none' ? '' : v);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={
+                      subjectId ? 'No pattern — manual targets' : 'Select a subject first'
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {subjects.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
+                  <SelectItem value="none">No pattern — manual targets</SelectItem>
+                  {availablePatterns.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.title}
                     </SelectItem>
                   ))}
+                  {availablePatterns.length === 0 && subjectId && (
+                    <p className="px-2 py-1 text-xs text-muted-foreground">
+                      No approved patterns for this subject yet.
+                    </p>
+                  )}
                 </SelectContent>
               </Select>
             </div>
 
-            {subjectId && mode === 'chapters' && (
-              <div className="rounded-md border p-2">
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-xs font-medium">Chapters</span>
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={toggleAllChapters}
-                  >
-                    {selectedChapterIds.length === chaptersBySubject.length
-                      ? 'Clear all'
-                      : 'Select all'}
-                  </button>
+            {!blueprintId && (
+              <>
+                <div className="space-y-2">
+                  <Label>Question type source</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Chip active={!autoMode} onClick={() => setAutoMode(false)}>
+                      Select manually
+                    </Chip>
+                    <Chip active={autoMode} onClick={() => setAutoMode(true)}>
+                      Automatic — derive from resources
+                    </Chip>
+                  </div>
+                  {autoMode && (
+                    <p className="text-xs text-muted-foreground">
+                      The server inspects existing bank questions and approved paper patterns for
+                      the selected scope and proposes a type × difficulty distribution. Nothing is
+                      generated until you check the bank.
+                    </p>
+                  )}
                 </div>
-                <div className="grid max-h-40 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
-                  {chaptersBySubject.map((c) => (
-                    <label key={c.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={selectedChapterIds.includes(c.id)}
-                        onCheckedChange={() => toggleChapter(c.id)}
-                      />
-                      {c.name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {subjectId && mode === 'topics' && (
-              <div className="rounded-md border p-2">
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-xs font-medium">Topics — pick chapters first</span>
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={toggleAllTopics}
-                  >
-                    {selectedTopicIds.length > 0 ? 'Clear all' : 'Select all'}
-                  </button>
-                </div>
-                <div className="grid max-h-40 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
-                  {chaptersBySubject.map((c) => {
-                    const chapterTopics = topics.filter((t) => t.chapterId === c.id);
-                    if (chapterTopics.length === 0) return null;
-                    return (
-                      <div key={c.id} className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground">{c.name}</p>
-                        {chapterTopics.map((t) => (
-                          <label key={t.id} className="flex items-center gap-2 pl-3 text-sm">
-                            <Checkbox
-                              checked={selectedTopicIds.includes(t.id)}
-                              onCheckedChange={() => toggleTopic(t.id)}
-                            />
-                            {t.name}
-                          </label>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Blueprint-driven generation */}
-          <div className="space-y-2">
-            <Label>
-              Paper pattern (optional){' '}
-              <span className="text-xs font-normal text-muted-foreground">
-                — derives targets from an approved blueprint
-              </span>
-            </Label>
-            <Select
-              value={blueprintId}
-              onValueChange={(v) => {
-                setBlueprintId(v === 'none' ? '' : v);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue
-                  placeholder={subjectId ? 'No pattern — manual targets' : 'Select a subject first'}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No pattern — manual targets</SelectItem>
-                {availablePatterns.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.title}
-                  </SelectItem>
-                ))}
-                {availablePatterns.length === 0 && subjectId && (
-                  <p className="px-2 py-1 text-xs text-muted-foreground">
-                    No approved patterns for this subject yet.
-                  </p>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {!blueprintId && (
-            <>
-              <div className="space-y-2">
-                <Label>Question type source</Label>
-                <div className="flex flex-wrap gap-2">
-                  <Chip active={!autoMode} onClick={() => setAutoMode(false)}>
-                    Select manually
-                  </Chip>
-                  <Chip active={autoMode} onClick={() => setAutoMode(true)}>
-                    Automatic — derive from resources
-                  </Chip>
-                </div>
-                {autoMode && (
-                  <p className="text-xs text-muted-foreground">
-                    The server inspects existing bank questions and approved paper patterns for the
-                    selected scope and proposes a type × difficulty distribution. Nothing is
-                    generated until you check the bank.
-                  </p>
-                )}
-              </div>
-
-              {!autoMode && (
-                <>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Question types</Label>
-                      <button
-                        type="button"
-                        className="text-xs text-primary hover:underline"
-                        onClick={() => setShowCustomType((v) => !v)}
-                      >
-                        {showCustomType ? 'Cancel' : '+ Custom type'}
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {types.map((t) => (
-                        <Chip
-                          key={t.code}
-                          active={selectedTypes.includes(t.code)}
-                          onClick={() => toggleType(t.code)}
+                {!autoMode && (
+                  <>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>Question types</Label>
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline"
+                          onClick={() => setShowCustomType((v) => !v)}
                         >
-                          {t.name}
-                          {t.isGlobal ? '' : ' ★'}
-                        </Chip>
-                      ))}
-                      {types.length === 0 && (
-                        <span className="text-xs text-muted-foreground">Loading types…</span>
+                          {showCustomType ? 'Cancel' : '+ Custom type'}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {types.map((t) => (
+                          <Chip
+                            key={t.code}
+                            active={selectedTypes.includes(t.code)}
+                            onClick={() => toggleType(t.code)}
+                          >
+                            {t.name}
+                            {t.isGlobal ? '' : ' ★'}
+                          </Chip>
+                        ))}
+                        {types.length === 0 && (
+                          <span className="text-xs text-muted-foreground">Loading types…</span>
+                        )}
+                      </div>
+
+                      {showCustomType && (
+                        <div className="grid gap-2 rounded-md border p-2 sm:grid-cols-2">
+                          <Input
+                            placeholder="Type name (e.g. Case Analysis)"
+                            value={customType.name}
+                            onChange={(e) => setCustomType((p) => ({ ...p, name: e.target.value }))}
+                          />
+                          <Select
+                            value={customType.answerFormat}
+                            onValueChange={(v) => setCustomType((p) => ({ ...p, answerFormat: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ANSWER_FORMATS.map((f) => (
+                                <SelectItem key={f} value={f}>
+                                  {ANSWERS_FORMAT_LABEL[f]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={customType.kind}
+                            onValueChange={(v) => setCustomType((p) => ({ ...p, kind: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="OBJECTIVE">Objective</SelectItem>
+                              <SelectItem value="SUBJECTIVE">Subjective</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min={1}
+                              className="w-24"
+                              value={customType.defaultMarks}
+                              onChange={(e) =>
+                                setCustomType((p) => ({
+                                  ...p,
+                                  defaultMarks: Math.max(1, Number(e.target.value) || 1),
+                                }))
+                              }
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={creatingType}
+                              onClick={() => void createCustomType()}
+                            >
+                              {creatingType ? (
+                                <Loader2 className="mr-1 size-3.5 animate-spin" />
+                              ) : null}
+                              Create type
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </div>
 
-                    {showCustomType && (
-                      <div className="grid gap-2 rounded-md border p-2 sm:grid-cols-2">
-                        <Input
-                          placeholder="Type name (e.g. Case Analysis)"
-                          value={customType.name}
-                          onChange={(e) => setCustomType((p) => ({ ...p, name: e.target.value }))}
-                        />
-                        <Select
-                          value={customType.answerFormat}
-                          onValueChange={(v) => setCustomType((p) => ({ ...p, answerFormat: v }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ANSWER_FORMATS.map((f) => (
-                              <SelectItem key={f} value={f}>
-                                {ANSWERS_FORMAT_LABEL[f]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select
-                          value={customType.kind}
-                          onValueChange={(v) => setCustomType((p) => ({ ...p, kind: v }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="OBJECTIVE">Objective</SelectItem>
-                            <SelectItem value="SUBJECTIVE">Subjective</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            min={1}
-                            className="w-24"
-                            value={customType.defaultMarks}
-                            onChange={(e) =>
-                              setCustomType((p) => ({
-                                ...p,
-                                defaultMarks: Math.max(1, Number(e.target.value) || 1),
-                              }))
-                            }
-                          />
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={creatingType}
-                            onClick={() => void createCustomType()}
+                    <div className="space-y-2">
+                      <Label>Difficulty</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {DIFFICULTIES.map((d) => (
+                          <Chip
+                            key={d}
+                            active={selectedDifficulties.includes(d)}
+                            onClick={() => toggleDifficulty(d)}
                           >
-                            {creatingType ? (
-                              <Loader2 className="mr-1 size-3.5 animate-spin" />
-                            ) : null}
-                            Create type
+                            {d}
+                          </Chip>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label>Bank size (total across scope)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={size}
+                    onChange={(e) => setSize(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-32"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {scopes.length > 0
+                      ? `${scopes.length} scope${scopes.length !== 1 ? 's' : ''} → ~${perScopeSize} per scope`
+                      : 'Select a scope above to see the split'}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {deficits.length > 0 && (
+              <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
+                <div className="flex items-center gap-2 font-medium">
+                  <Layers className="size-4" />
+                  {aggregateExisting} existing · {aggregateDeficit} missing across {deficits.length}{' '}
+                  scope{deficits.length !== 1 ? 's' : ''}
+                  {aggregatePending > 0 && (
+                    <span className="font-normal text-amber-600">
+                      · {aggregatePending} pending approval
+                    </span>
+                  )}
+                </div>
+                {deficits.map((d) => (
+                  <div key={d.scopeLabel} className="rounded border bg-background p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold">{d.scopeLabel}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {d.status.totalExisting} have / {d.status.totalDeficit} need
+                      </span>
+                    </div>
+                    {d.status.buckets.map((b) => (
+                      <div
+                        key={`${d.scopeLabel}|${b.questionType}|${b.difficulty}`}
+                        className="flex items-center justify-between text-xs"
+                      >
+                        <span>
+                          {b.questionType} · {b.difficulty}
+                        </span>
+                        <span className="text-muted-foreground">
+                          have {b.existing} / want {b.requested}
+                          {(b.pending ?? 0) > 0 && (
+                            <span className="text-amber-600"> · {b.pending} pending</span>
+                          )}
+                        </span>
+                        <span
+                          className={cn(
+                            b.deficit > 0 ? 'font-medium text-destructive' : 'text-emerald-600',
+                          )}
+                        >
+                          {b.deficit > 0 ? `need ${b.deficit}` : 'ok'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {batches.length > 0 && (
+              <div className="space-y-2 rounded-md border p-3 text-sm">
+                <div className="flex items-center gap-2 font-medium">
+                  {batches.some((b) => (batchProgress[b.batchId]?.active ?? 1) > 0) ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-4 text-emerald-600" />
+                  )}
+                  Generation progress
+                </div>
+                {batches.map((b) => {
+                  const p = batchProgress[b.batchId];
+                  return (
+                    <div key={b.batchId} className="rounded border bg-background p-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold">{b.label}</span>
+                        <span className="text-muted-foreground">
+                          {p
+                            ? `${p.completed} done · ${p.failed} failed · ${p.active} running`
+                            : 'starting…'}
+                        </span>
+                      </div>
+                      {p && p.failed > 0 && p.active === 0 && (
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <span className="text-destructive">
+                            {p.failed} failed — retry regenerates only those buckets
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={retryingBatch !== null}
+                            onClick={() => void retryFailed(b.batchId)}
+                          >
+                            {retryingBatch === b.batchId ? 'Retrying…' : 'Retry failed'}
                           </Button>
                         </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Difficulty</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {DIFFICULTIES.map((d) => (
-                        <Chip
-                          key={d}
-                          active={selectedDifficulties.includes(d)}
-                          onClick={() => toggleDifficulty(d)}
-                        >
-                          {d}
-                        </Chip>
-                      ))}
+                      )}
+                      {p && p.failed === 0 && p.active === 0 && (
+                        <p className="mt-1 text-emerald-600">Complete</p>
+                      )}
                     </div>
-                  </div>
-                </>
-              )}
-
-              <div className="space-y-1.5">
-                <Label>Bank size (total across scope)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={size}
-                  onChange={(e) => setSize(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-32"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {scopes.length > 0
-                    ? `${scopes.length} scope${scopes.length !== 1 ? 's' : ''} → ~${perScopeSize} per scope`
-                    : 'Select a scope above to see the split'}
-                </p>
+                  );
+                })}
               </div>
-            </>
-          )}
-
-          {deficits.length > 0 && (
-            <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
-              <div className="flex items-center gap-2 font-medium">
-                <Layers className="size-4" />
-                {aggregateExisting} existing · {aggregateDeficit} missing across {deficits.length}{' '}
-                scope{deficits.length !== 1 ? 's' : ''}
-                {aggregatePending > 0 && (
-                  <span className="font-normal text-amber-600">
-                    · {aggregatePending} pending approval
-                  </span>
-                )}
-              </div>
-              {deficits.map((d) => (
-                <div key={d.scopeLabel} className="rounded border bg-background p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold">{d.scopeLabel}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {d.status.totalExisting} have / {d.status.totalDeficit} need
-                    </span>
-                  </div>
-                  {d.status.buckets.map((b) => (
-                    <div
-                      key={`${d.scopeLabel}|${b.questionType}|${b.difficulty}`}
-                      className="flex items-center justify-between text-xs"
-                    >
-                      <span>
-                        {b.questionType} · {b.difficulty}
-                      </span>
-                      <span className="text-muted-foreground">
-                        have {b.existing} / want {b.requested}
-                        {(b.pending ?? 0) > 0 && (
-                          <span className="text-amber-600"> · {b.pending} pending</span>
-                        )}
-                      </span>
-                      <span
-                        className={cn(
-                          b.deficit > 0 ? 'font-medium text-destructive' : 'text-emerald-600',
-                        )}
-                      >
-                        {b.deficit > 0 ? `need ${b.deficit}` : 'ok'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {batches.length > 0 && (
-            <div className="space-y-2 rounded-md border p-3 text-sm">
-              <div className="flex items-center gap-2 font-medium">
-                {batches.some((b) => (batchProgress[b.batchId]?.active ?? 1) > 0) ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="size-4 text-emerald-600" />
-                )}
-                Generation progress
-              </div>
-              {batches.map((b) => {
-                const p = batchProgress[b.batchId];
-                return (
-                  <div key={b.batchId} className="rounded border bg-background p-2 text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold">{b.label}</span>
-                      <span className="text-muted-foreground">
-                        {p
-                          ? `${p.completed} done · ${p.failed} failed · ${p.active} running`
-                          : 'starting…'}
-                      </span>
-                    </div>
-                    {p && p.failed > 0 && p.active === 0 && (
-                      <div className="mt-1 flex items-center justify-between gap-2">
-                        <span className="text-destructive">
-                          {p.failed} failed — retry regenerates only those buckets
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={retryingBatch !== null}
-                          onClick={() => void retryFailed(b.batchId)}
-                        >
-                          {retryingBatch === b.batchId ? 'Retrying…' : 'Retry failed'}
-                        </Button>
-                      </div>
-                    )}
-                    {p && p.failed === 0 && p.active === 0 && (
-                      <p className="mt-1 text-emerald-600">Complete</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+            )}
+          </DialogBody>
 
           <DialogFooter>
             <Button

@@ -5,11 +5,15 @@ import { toast } from 'sonner';
 import { FileSearch, Loader2 } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
-import { ScopeCascade, type ScopeCascade as ScopeCascadeType } from '@/components/app/scope-cascade';
+import {
+  ScopeCascade,
+  type ScopeCascade as ScopeCascadeType,
+} from '@/components/app/scope-cascade';
 import { EmptyState } from '@/components/app/empty-state';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -115,69 +119,75 @@ export function QuestionExtractionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSearch className="size-4" /> Extract Questions
           </DialogTitle>
           <DialogDescription>
-            A source material is scanned for numbered, lettered and multi-part questions.
-            Every detected question is stored as a review candidate you accept, edit or discard
-            before it enters the bank.
+            A source material is scanned for numbered, lettered and multi-part questions. Every
+            detected question is stored as a review candidate you accept, edit or discard before it
+            enters the bank.
           </DialogDescription>
         </DialogHeader>
 
-        {readyMaterials.length === 0 ? (
-          <EmptyState
-            icon={<FileSearch className="size-6" />}
-            title="No ready materials"
-            description="Upload and finish processing a material first — extraction needs its final text."
-          />
-        ) : (
-          <div className="space-y-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Source material</label>
-              <Select value={materialId} onValueChange={setMaterialId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a processed material" />
-                </SelectTrigger>
-                <SelectContent>
-                  {readyMaterials.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {materialId
-                  ? 'The material is scanned as-is — its extracted text and enhancement blocks are the only source.'
-                  : 'Only READY materials are listed.'}
-              </p>
-            </div>
+        <DialogBody>
+          {readyMaterials.length === 0 ? (
+            <EmptyState
+              icon={<FileSearch className="size-6" />}
+              title="No ready materials"
+              description="Upload and finish processing a material first — extraction needs its final text."
+            />
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Source material</label>
+                <Select value={materialId} onValueChange={setMaterialId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a processed material" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {readyMaterials.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {materialId
+                    ? 'The material is scanned as-is — its extracted text and enhancement blocks are the only source.'
+                    : 'Only READY materials are listed.'}
+                </p>
+              </div>
 
-            <div className="grid gap-2">
-              <ScopeCascade
-                cascade={cascade}
-                subjects={subjects}
-                chapters={chapters}
-                topics={topics}
-                onChange={setCascade}
-              />
-              <p className="text-xs text-muted-foreground">
-                Subject is required. Chapter or topic are just clues for mapping each question’s
-                scope — a question that doesn’t match is still kept, subject-level.
-              </p>
+              <div className="grid gap-2">
+                <ScopeCascade
+                  cascade={cascade}
+                  subjects={subjects}
+                  chapters={chapters}
+                  topics={topics}
+                  onChange={setCascade}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Subject is required. Chapter or topic are just clues for mapping each question’s
+                  scope — a question that doesn’t match is still kept, subject-level.
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </DialogBody>
 
         <DialogFooter className="sm:justify-end">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button onClick={() => void handleSubmit()} disabled={!canSubmit}>
-            {submitting ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <FileSearch className="mr-1 size-3.5" />}
+            {submitting ? (
+              <Loader2 className="mr-1 size-3.5 animate-spin" />
+            ) : (
+              <FileSearch className="mr-1 size-3.5" />
+            )}
             Extract questions
           </Button>
         </DialogFooter>

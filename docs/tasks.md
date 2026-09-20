@@ -1,5 +1,41 @@
 # Task Tracker
 
+## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
+
+> Frontend polish pass over the shared Dialog + Select primitives and the
+> application's major dialogs. `apps/web` only — no backend or contract
+> changes.
+
+- [x] **Shared Dialog upgrade** (`ui/dialog.tsx`): `DialogContent` gains a
+      `size="lg"` variant (`max-h-[min(70vh,42rem)]`, `overflow-hidden`,
+      flex column, `sm:max-w-[min(66vw,56rem)]`), a new `DialogBody`
+      (`min-h-0 flex-1 overflow-y-auto`) scroll region, and `shrink-0` on both
+      `DialogHeader` and `DialogFooter` so header/footer stay pinned while only
+      the body scrolls.
+- [x] **Login password show/hide toggle** (`login/page.tsx`): `Eye`/`EyeOff`
+      toggle inside the password input (aria-label + title Show/Hide password);
+      the field swaps `type=password` ↔ `text`, autocomplete preserved.
+- [x] **Shared Select long-value truncation** (`ui/select.tsx`): the trigger is
+      now `min-w-0 max-w-full` with the value `flex-1 truncate`, so long values
+      ellipsize inside their container instead of overflowing the dialog.
+- [x] **Large-dialog conversions** (use `size="lg"` + `DialogBody` with pinned
+      header/footer): assessments `[assessmentId]` (Add Questions),
+      paper-patterns `[patternId]` (generate + extraction dialogs),
+      question-papers `[paperId]`, export-preview-dialog, question-bank-panel,
+      question-bank-wizard, question-extraction-dialog,
+      question-source-extraction-dialog.
+- [x] **Question Paper extraction progress banner**
+      (`question-papers/[paperId]/page.tsx`): `?extraction=jobId` query param →
+      poll `/question-papers/extraction/{jobId}` → QUEUED/PROCESSING banner with
+      refresh on completion; failed/cancelled reflected.
+- [x] **Create/Edit Question dialogs** (`questions/page.tsx`): both converted
+      to `size="lg"` + `DialogBody`, keeping the existing `react-hook-form`
+      element as the flex scroll container (`flex min-h-0 flex-1 flex-col`) so
+      the submit handlers and all buttons are unchanged — no duplicate
+      DialogBody/DialogFooter/form tags.
+- [x] **Validation:** web typecheck clean; web lint clean; `next build` clean;
+      prettier clean on the touched file.
+
 ## Phase 49 — Upload progress, non-destructive image optimization, Cancel Processing & Material Intelligence UI (2026-09-19)
 
 > Frontend/product workflow phase over Material Processing + Material

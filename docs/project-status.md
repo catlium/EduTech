@@ -1,5 +1,50 @@
 # Project Status
 
+## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
+
+**Status: implementation + validation complete; committed.**
+
+Frontend polish pass over the shared primitives and the app's major dialogs.
+`apps/web` only — no backend or contract changes.
+
+- **Shared Dialog upgrade** (`ui/dialog.tsx`): `DialogContent` gained a
+  `size="lg"` variant (`max-h-[min(70vh,42rem)]`, `overflow-hidden`, flex
+  column, `sm:max-w-[min(66vw,56rem)]`); new `DialogBody`
+  (`min-h-0 flex-1 overflow-y-auto`); `shrink-0` on `DialogHeader`/`DialogFooter`
+  so header + footer stay pinned while only the body scrolls.
+- **Large-dialog conversions** — all switched to `size="lg"` + `DialogBody`
+  with pinned header/footer: assessments `[assessmentId]` Add Questions,
+  paper-patterns `[patternId]` generate + extraction dialogs,
+  question-papers `[paperId]`, `export-preview-dialog`, `question-bank-panel`,
+  `question-bank-wizard`, `question-extraction-dialog`,
+  `question-source-extraction-dialog`. Form-based dialogs kept their
+  `<form>` as the flex scroll container so `react-hook-form` submit behavior is
+  untouched.
+- **Login password show/hide toggle** (`login/page.tsx`): `Eye`/`EyeOff` toggle
+  inside the password input, `type=password` ↔ `text`, autocomplete preserved.
+- **Shared Select long-value truncation** (`ui/select.tsx`): trigger
+  `min-w-0 max-w-full`, value `flex-1 truncate` — long values ellipsize instead
+  of overflowing the dialog.
+- **Question Paper extraction progress banner**
+  (`question-papers/[paperId]/page.tsx`): `?extraction=jobId` → poll
+  `/question-papers/extraction/{jobId}` → QUEUED/PROCESSING banner that refreshes
+  on completion; failed/cancelled surfaced.
+- **Create/Edit Question dialogs** (`questions/page.tsx`): converted to
+  `size="lg"` + `DialogBody` with the form as the flex container; every
+  submit/button handler preserved, no duplicate DialogBody/DialogFooter tags.
+- Checkpoint verification script added: `scripts/e2e/verify_ui_polish.mjs`.
+
+### Validation
+
+- Web typecheck clean (`tsc --noEmit`); web lint clean; `next build`
+  (`turbo build --filter=@catlium/web`, contracts rebuilt) succeeds; prettier
+  clean on the touched file.
+
+### Next task
+
+None — polish phase complete. Backend phase work / new product directives are
+the next candidates.
+
 ## Phase 49 — Upload progress, non-destructive image optimization, Cancel Processing & Material Intelligence UI (2026-09-19)
 
 **Status: implementation + validation + live E2E complete.**

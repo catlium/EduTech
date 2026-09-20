@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -186,9 +187,10 @@ export function QuestionBankWizard({
   const [types, setTypes] = useState<QuestionTypeDefinition[]>([]);
 
   const [deficit, setDeficit] = useState<GenerateMoreQuestionsResponse | null>(null);
-  const [batch, setBatch] = useState<{ id: string; status: QuestionBankBatchResponse | null } | null>(
-    null,
-  );
+  const [batch, setBatch] = useState<{
+    id: string;
+    status: QuestionBankBatchResponse | null;
+  } | null>(null);
   const [checking, setChecking] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -247,9 +249,10 @@ export function QuestionBankWizard({
       mode === 'pattern'
         ? [
             ...new Set(
-              (activePattern?.structure ? flattenPatternRules(activePattern.structure) : []).flatMap(
-                (r) => (r.questionType ? [r.questionType] : []),
-              ),
+              (activePattern?.structure
+                ? flattenPatternRules(activePattern.structure)
+                : []
+              ).flatMap((r) => (r.questionType ? [r.questionType] : [])),
             ),
           ]
         : selectedTypes,
@@ -279,7 +282,13 @@ export function QuestionBankWizard({
 
   const buckets = useMemo<GenerateBankBucket[]>(
     () =>
-      buildTargets(mode, activePattern?.structure ?? null, selectedTypes, selectedDifficulties, counts),
+      buildTargets(
+        mode,
+        activePattern?.structure ?? null,
+        selectedTypes,
+        selectedDifficulties,
+        counts,
+      ),
     [mode, activePattern, selectedTypes, selectedDifficulties, counts],
   );
 
@@ -393,7 +402,10 @@ export function QuestionBankWizard({
   async function onExport(format: 'pdf' | 'docx') {
     setExporting(true);
     try {
-      await downloadFile(`/export/questions?${exportParams}&format=${format}`, `question-bank.${format}`);
+      await downloadFile(
+        `/export/questions?${exportParams}&format=${format}`,
+        `question-bank.${format}`,
+      );
       toast.success(`Exported as ${format.toUpperCase()}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Export failed');
@@ -414,7 +426,7 @@ export function QuestionBankWizard({
           if (!o) reset();
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="size-4" /> Question Bank Wizard
@@ -425,310 +437,317 @@ export function QuestionBankWizard({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Step indicator */}
-          <ol className="flex flex-wrap items-center gap-2 text-xs">
-            {STEPS.map((label, i) => (
-              <li key={label} className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    'flex size-5 items-center justify-center rounded-full border',
-                    i < step
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : i === step
-                        ? 'border-primary text-primary'
-                        : 'text-muted-foreground',
-                  )}
-                >
-                  {i < step ? <Check className="size-3" /> : i + 1}
-                </span>
-                <span className={i === step ? 'font-medium' : 'text-muted-foreground'}>{label}</span>
-                {i < STEPS.length - 1 && <span className="text-muted-foreground">·</span>}
-              </li>
-            ))}
-          </ol>
+          <DialogBody className="space-y-4">
+            {/* Step indicator */}
+            <ol className="flex flex-wrap items-center gap-2 text-xs">
+              {STEPS.map((label, i) => (
+                <li key={label} className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      'flex size-5 items-center justify-center rounded-full border',
+                      i < step
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : i === step
+                          ? 'border-primary text-primary'
+                          : 'text-muted-foreground',
+                    )}
+                  >
+                    {i < step ? <Check className="size-3" /> : i + 1}
+                  </span>
+                  <span className={i === step ? 'font-medium' : 'text-muted-foreground'}>
+                    {label}
+                  </span>
+                  {i < STEPS.length - 1 && <span className="text-muted-foreground">·</span>}
+                </li>
+              ))}
+            </ol>
 
-          {/* ── Step 0: Scope ── */}
-          {step === 0 && (
-            <div className="space-y-3">
-              <ScopeCascadeFields
-                cascade={cascade}
-                subjects={subjects}
-                chapters={chapters}
-                topics={topics}
-                onChange={setCascade}
-              />
-              <p className="text-xs text-muted-foreground">
-                Subject is required; pick a chapter or topic to narrow the bank.
-              </p>
-            </div>
-          )}
-
-          {/* ── Step 1: Source ── */}
-          {step === 1 && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMode('pattern')}
-                  className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-medium',
-                    mode === 'pattern'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'text-muted-foreground',
-                  )}
-                >
-                  Paper pattern
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('manual')}
-                  className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-medium',
-                    mode === 'manual'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'text-muted-foreground',
-                  )}
-                >
-                  Manual selection
-                </button>
+            {/* ── Step 0: Scope ── */}
+            {step === 0 && (
+              <div className="space-y-3">
+                <ScopeCascadeFields
+                  cascade={cascade}
+                  subjects={subjects}
+                  chapters={chapters}
+                  topics={topics}
+                  onChange={setCascade}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Subject is required; pick a chapter or topic to narrow the bank.
+                </p>
               </div>
+            )}
 
-              {mode === 'pattern' ? (
-                availablePatterns.length > 0 ? (
-                  <div className="grid gap-2">
-                    <Label>Approved pattern</Label>
-                    <Select value={patternId} onValueChange={setPatternId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a pattern" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availablePatterns.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.title}
-                          </SelectItem>
+            {/* ── Step 1: Source ── */}
+            {step === 1 && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('pattern')}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs font-medium',
+                      mode === 'pattern'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'text-muted-foreground',
+                    )}
+                  >
+                    Paper pattern
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('manual')}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs font-medium',
+                      mode === 'manual'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'text-muted-foreground',
+                    )}
+                  >
+                    Manual selection
+                  </button>
+                </div>
+
+                {mode === 'pattern' ? (
+                  availablePatterns.length > 0 ? (
+                    <div className="grid gap-2">
+                      <Label>Approved pattern</Label>
+                      <Select value={patternId} onValueChange={setPatternId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a pattern" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availablePatterns.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {activePattern?.structure && (
+                        <p className="text-xs text-muted-foreground">
+                          {flattenPatternRules(activePattern.structure).length} sections ·{' '}
+                          {activePattern.structure.totalMarks} marks — the pattern sets the question
+                          types.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={<FileText className="size-6" />}
+                      title="No approved patterns"
+                      description="Approve a paper pattern for this subject, or switch to manual selection."
+                    />
+                  )
+                ) : (
+                  <>
+                    <div className="grid gap-2">
+                      <Label>Question types</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {types.map((t) => (
+                          <button
+                            key={t.code}
+                            type="button"
+                            onClick={() =>
+                              setSelectedTypes((prev) =>
+                                prev.includes(t.code)
+                                  ? prev.filter((x) => x !== t.code)
+                                  : [...prev, t.code],
+                              )
+                            }
+                            className={cn(
+                              'rounded-full border px-3 py-1 text-xs font-medium',
+                              selectedTypes.includes(t.code)
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'text-muted-foreground',
+                            )}
+                          >
+                            {t.name}
+                          </button>
                         ))}
-                      </SelectContent>
-                    </Select>
-                    {activePattern?.structure && (
-                      <p className="text-xs text-muted-foreground">
-                        {flattenPatternRules(activePattern.structure).length} sections ·{' '}
-                        {activePattern.structure.totalMarks} marks — the pattern sets the
-                        question types.
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Difficulty</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {DIFFICULTIES.map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() =>
+                              setSelectedDifficulties((prev) =>
+                                prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d],
+                              )
+                            }
+                            className={cn(
+                              'rounded-full border px-3 py-1 text-xs font-medium',
+                              selectedDifficulties.includes(d)
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'text-muted-foreground',
+                            )}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Step 2: Generate ── */}
+            {step === 2 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Questions per type</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={checking || buckets.length === 0}
+                    onClick={() => void checkBank()}
+                  >
+                    {checking ? (
+                      <Loader2 className="mr-1 size-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="mr-1 size-3.5" />
+                    )}
+                    Check bank
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {activeTypes.map((t) => (
+                    <label key={t} className="flex items-center gap-2 text-xs">
+                      {types.find((x) => x.code === t)?.name ?? t}
+                      <Input
+                        type="number"
+                        min={1}
+                        className="w-20"
+                        value={counts[t] ?? 1}
+                        onChange={(e) =>
+                          setCounts((prev) => ({
+                            ...prev,
+                            [t]: Math.max(1, Number(e.target.value) || 1),
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                {deficit && (
+                  <div className="rounded-md border bg-muted/40 p-3">
+                    <p className="text-sm font-medium">
+                      {deficit.totalExisting} existing · {deficit.totalDeficit} missing
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {deficit.buckets.map((b) => (
+                        <li
+                          key={`${b.questionType}-${b.difficulty}`}
+                          className="flex items-center justify-between"
+                        >
+                          <span>
+                            {b.questionType} · {b.difficulty}
+                          </span>
+                          <span className="text-muted-foreground">
+                            have {b.existing} / want {b.requested}
+                            {b.pending > 0 && (
+                              <span className="text-amber-600"> · {b.pending} pending</span>
+                            )}
+                            {b.deficit > 0 && (
+                              <span className="ml-1 font-medium text-destructive">
+                                · need {b.deficit}
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {batch && (
+                  <div className="rounded-md border p-3 text-xs">
+                    <div className="flex items-center gap-2 font-medium">
+                      {batchDone ? (
+                        <CheckCircle2 className="size-4 text-emerald-600" />
+                      ) : (
+                        <Loader2 className="size-4 animate-spin" />
+                      )}
+                      Generation {batchDone ? 'complete' : 'running'}
+                    </div>
+                    {batchStatus && (
+                      <p className="mt-1 text-muted-foreground">
+                        {batchStatus.completed} done · {batchStatus.failed} failed ·{' '}
+                        {batchStatus.active} running
+                      </p>
+                    )}
+                    {batchDone && (
+                      <p className="mt-1 text-muted-foreground">
+                        New questions are PENDING approval — approve them to include them in the
+                        export.
                       </p>
                     )}
                   </div>
-                ) : (
-                  <EmptyState
-                    icon={<FileText className="size-6" />}
-                    title="No approved patterns"
-                    description="Approve a paper pattern for this subject, or switch to manual selection."
-                  />
-                )
-              ) : (
-                <>
-                  <div className="grid gap-2">
-                    <Label>Question types</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {types.map((t) => (
-                        <button
-                          key={t.code}
-                          type="button"
-                          onClick={() =>
-                            setSelectedTypes((prev) =>
-                              prev.includes(t.code)
-                                ? prev.filter((x) => x !== t.code)
-                                : [...prev, t.code],
-                            )
-                          }
-                          className={cn(
-                            'rounded-full border px-3 py-1 text-xs font-medium',
-                            selectedTypes.includes(t.code)
-                              ? 'border-primary bg-primary/10 text-primary'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          {t.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Difficulty</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {DIFFICULTIES.map((d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() =>
-                            setSelectedDifficulties((prev) =>
-                              prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d],
-                            )
-                          }
-                          className={cn(
-                            'rounded-full border px-3 py-1 text-xs font-medium',
-                            selectedDifficulties.includes(d)
-                              ? 'border-primary bg-primary/10 text-primary'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          {d}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                )}
 
-          {/* ── Step 2: Generate ── */}
-          {step === 2 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Questions per type</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={checking || buckets.length === 0}
-                  onClick={() => void checkBank()}
-                >
-                  {checking ? (
+                <Button onClick={() => void generateMissing()} disabled={generating || !deficit}>
+                  {generating ? (
                     <Loader2 className="mr-1 size-3.5 animate-spin" />
                   ) : (
-                    <FileText className="mr-1 size-3.5" />
+                    <CheckCircle2 className="mr-1 size-3.5" />
                   )}
-                  Check bank
+                  Generate missing
                 </Button>
               </div>
-              <div className="flex flex-wrap gap-3">
-                {activeTypes.map((t) => (
-                  <label key={t} className="flex items-center gap-2 text-xs">
-                    {types.find((x) => x.code === t)?.name ?? t}
-                    <Input
-                      type="number"
-                      min={1}
-                      className="w-20"
-                      value={counts[t] ?? 1}
-                      onChange={(e) =>
-                        setCounts((prev) => ({
-                          ...prev,
-                          [t]: Math.max(1, Number(e.target.value) || 1),
-                        }))
-                      }
-                    />
-                  </label>
-                ))}
-              </div>
+            )}
 
-              {deficit && (
-                <div className="rounded-md border bg-muted/40 p-3">
-                  <p className="text-sm font-medium">
-                    {deficit.totalExisting} existing · {deficit.totalDeficit} missing
-                  </p>
-                  <ul className="mt-1 space-y-0.5 text-xs">
-                    {deficit.buckets.map((b) => (
-                      <li
-                        key={`${b.questionType}-${b.difficulty}`}
-                        className="flex items-center justify-between"
-                      >
-                        <span>
-                          {b.questionType} · {b.difficulty}
-                        </span>
-                        <span className="text-muted-foreground">
-                          have {b.existing} / want {b.requested}
-                          {b.pending > 0 && <span className="text-amber-600"> · {b.pending} pending</span>}
-                          {b.deficit > 0 && (
-                            <span className="ml-1 font-medium text-destructive">
-                              · need {b.deficit}
-                            </span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+            {/* ── Step 3: Preview & Export ── */}
+            {step === 3 && (
+              <div className="space-y-3">
+                <div className="grid gap-2">
+                  <Label>Include</Label>
+                  <Select
+                    value={include}
+                    onValueChange={(v) => setInclude(v as 'paper' | 'answers')}
+                  >
+                    <SelectTrigger className="w-56">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="paper">Student paper</SelectItem>
+                      <SelectItem value="answers">Teacher answer key</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-
-              {batch && (
-                <div className="rounded-md border p-3 text-xs">
-                  <div className="flex items-center gap-2 font-medium">
-                    {batchDone ? (
-                      <CheckCircle2 className="size-4 text-emerald-600" />
-                    ) : (
-                      <Loader2 className="size-4 animate-spin" />
-                    )}
-                    Generation {batchDone ? 'complete' : 'running'}
-                  </div>
-                  {batchStatus && (
-                    <p className="mt-1 text-muted-foreground">
-                      {batchStatus.completed} done · {batchStatus.failed} failed ·{' '}
-                      {batchStatus.active} running
-                    </p>
-                  )}
-                  {batchDone && (
-                    <p className="mt-1 text-muted-foreground">
-                      New questions are PENDING approval — approve them to include them in the export.
-                    </p>
-                  )}
+                <p className="text-xs text-muted-foreground">
+                  The preview is built from the server and shows the exact document the export
+                  produces.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
+                    <Eye className="mr-1 size-3.5" /> Preview
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={exporting}
+                    onClick={() => void onExport('pdf')}
+                  >
+                    <Download className="mr-1 size-3.5" /> PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={exporting}
+                    onClick={() => void onExport('docx')}
+                  >
+                    <Download className="mr-1 size-3.5" /> DOCX
+                  </Button>
                 </div>
-              )}
-
-              <Button onClick={() => void generateMissing()} disabled={generating || !deficit}>
-                {generating ? (
-                  <Loader2 className="mr-1 size-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="mr-1 size-3.5" />
-                )}
-                Generate missing
-              </Button>
-            </div>
-          )}
-
-          {/* ── Step 3: Preview & Export ── */}
-          {step === 3 && (
-            <div className="space-y-3">
-              <div className="grid gap-2">
-                <Label>Include</Label>
-                <Select
-                  value={include}
-                  onValueChange={(v) => setInclude(v as 'paper' | 'answers')}
-                >
-                  <SelectTrigger className="w-56">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="paper">Student paper</SelectItem>
-                    <SelectItem value="answers">Teacher answer key</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
-              <p className="text-xs text-muted-foreground">
-                The preview is built from the server and shows the exact document the export
-                produces.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
-                  <Eye className="mr-1 size-3.5" /> Preview
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={exporting}
-                  onClick={() => void onExport('pdf')}
-                >
-                  <Download className="mr-1 size-3.5" /> PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={exporting}
-                  onClick={() => void onExport('docx')}
-                >
-                  <Download className="mr-1 size-3.5" /> DOCX
-                </Button>
-              </div>
-            </div>
-          )}
+            )}
+          </DialogBody>
 
           <DialogFooter className="justify-between sm:justify-between">
             <Button

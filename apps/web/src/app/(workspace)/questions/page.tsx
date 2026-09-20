@@ -58,6 +58,7 @@ import {
 } from '@/components/ui/select';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -163,10 +164,7 @@ function QuestionPreview({ question }: { question: QuestionListItem }) {
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground">Matches</p>
         {matching.data.left.map((l) => (
-          <div
-            key={l.id}
-            className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-          >
+          <div key={l.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
             <span>{l.text}</span>
             <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="font-medium">{rightOf.get(matching.data.matches[l.id]) ?? '—'}</span>
@@ -497,12 +495,9 @@ export default function QuestionsListPage() {
       .catch(() => {});
   }, [institute]);
 
-  const updateCascade = useCallback(
-    (next: Cascade | ((prev: Cascade) => Cascade)) => {
-      setListCascade(next);
-    },
-    [],
-  );
+  const updateCascade = useCallback((next: Cascade | ((prev: Cascade) => Cascade)) => {
+    setListCascade(next);
+  }, []);
 
   const load = useCallback(() => {
     if (!institute) return;
@@ -929,9 +924,7 @@ export default function QuestionsListPage() {
 
       {isTeacher && (
         <div className="mb-4 flex flex-wrap items-center justify-between rounded-lg border border-dashed bg-muted/20 px-4 py-3 text-sm">
-          <span>
-            Build a Question Paper from a Paper Pattern.
-          </span>
+          <span>Build a Question Paper from a Paper Pattern.</span>
           <Button size="sm" variant="ghost" asChild>
             <Link href="/question-papers">Go to Question Papers</Link>
           </Button>
@@ -1190,115 +1183,120 @@ export default function QuestionsListPage() {
       )}
 
       <Dialog open={createOpen} onOpenChange={(o) => setCreateOpen(o)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>Add Question</DialogTitle>
             <DialogDescription>Create a question manually.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={manualForm.handleSubmit(onCreateManual)} className="space-y-4">
-            <div className="grid gap-2">
-              <Label>Question Type</Label>
-              <Select
-                value={manualForm.watch('questionType')}
-                onValueChange={(v) => {
-                  manualForm.setValue('questionType', v);
-                  resetPayload();
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {questionTypes.map((t) => (
-                    <SelectItem key={t.code} value={t.code}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <ScopeSelects
-              cascade={createCascade}
-              subjects={subjects}
-              chapters={chapters}
-              topics={topics}
-              onChange={setCreateCascade}
-            />
-            <div className="grid gap-2">
-              <Label>Difficulty</Label>
-              <Select
-                value={manualForm.watch('difficulty')}
-                onValueChange={(v) =>
-                  manualForm.setValue('difficulty', v as ManualFormValues['difficulty'])
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">No difficulty</SelectItem>
-                  {DIFFICULTIES.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="manual-stem">Stem *</Label>
-              <Textarea
-                id="manual-stem"
-                placeholder="Enter the question stem"
-                className="min-h-24"
-                {...manualForm.register('stem')}
-              />
-              {manualForm.formState.errors.stem && (
-                <p className="text-sm text-destructive">
-                  {manualForm.formState.errors.stem.message}
-                </p>
-              )}
-            </div>
-            {manualForm.watch('questionType') === 'MCQ' && (
-              <McqEditor
-                choices={mcqChoices}
-                correctId={mcqCorrectId}
-                setChoices={setMcqChoices}
-                setCorrectId={setMcqCorrectId}
-              />
-            )}
-            {manualForm.watch('questionType') === 'TRUE_FALSE' && (
+          <form
+            onSubmit={manualForm.handleSubmit(onCreateManual)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <DialogBody className="space-y-4">
               <div className="grid gap-2">
-                <Label>Correct answer</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={tfAnswer ? 'default' : 'outline'}
-                    onClick={() => setTfAnswer(true)}
-                  >
-                    True
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={!tfAnswer ? 'default' : 'outline'}
-                    onClick={() => setTfAnswer(false)}
-                  >
-                    False
-                  </Button>
-                </div>
+                <Label>Question Type</Label>
+                <Select
+                  value={manualForm.watch('questionType')}
+                  onValueChange={(v) => {
+                    manualForm.setValue('questionType', v);
+                    resetPayload();
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {questionTypes.map((t) => (
+                      <SelectItem key={t.code} value={t.code}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-            {manualForm.watch('questionType') === 'FILL_IN_BLANK' && (
-              <FibEditor answers={fibAnswers} setAnswers={setFibAnswers} />
-            )}
-            <div className="grid gap-2">
-              <Label htmlFor="manual-explanation">Explanation</Label>
-              <Textarea
-                id="manual-explanation"
-                placeholder="Optional explanation"
-                {...manualForm.register('explanation')}
+              <ScopeSelects
+                cascade={createCascade}
+                subjects={subjects}
+                chapters={chapters}
+                topics={topics}
+                onChange={setCreateCascade}
               />
-            </div>
+              <div className="grid gap-2">
+                <Label>Difficulty</Label>
+                <Select
+                  value={manualForm.watch('difficulty')}
+                  onValueChange={(v) =>
+                    manualForm.setValue('difficulty', v as ManualFormValues['difficulty'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Optional" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No difficulty</SelectItem>
+                    {DIFFICULTIES.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="manual-stem">Stem *</Label>
+                <Textarea
+                  id="manual-stem"
+                  placeholder="Enter the question stem"
+                  className="min-h-24"
+                  {...manualForm.register('stem')}
+                />
+                {manualForm.formState.errors.stem && (
+                  <p className="text-sm text-destructive">
+                    {manualForm.formState.errors.stem.message}
+                  </p>
+                )}
+              </div>
+              {manualForm.watch('questionType') === 'MCQ' && (
+                <McqEditor
+                  choices={mcqChoices}
+                  correctId={mcqCorrectId}
+                  setChoices={setMcqChoices}
+                  setCorrectId={setMcqCorrectId}
+                />
+              )}
+              {manualForm.watch('questionType') === 'TRUE_FALSE' && (
+                <div className="grid gap-2">
+                  <Label>Correct answer</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={tfAnswer ? 'default' : 'outline'}
+                      onClick={() => setTfAnswer(true)}
+                    >
+                      True
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={!tfAnswer ? 'default' : 'outline'}
+                      onClick={() => setTfAnswer(false)}
+                    >
+                      False
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {manualForm.watch('questionType') === 'FILL_IN_BLANK' && (
+                <FibEditor answers={fibAnswers} setAnswers={setFibAnswers} />
+              )}
+              <div className="grid gap-2">
+                <Label htmlFor="manual-explanation">Explanation</Label>
+                <Textarea
+                  id="manual-explanation"
+                  placeholder="Optional explanation"
+                  {...manualForm.register('explanation')}
+                />
+              </div>
+            </DialogBody>
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
                 Cancel
@@ -1322,7 +1320,7 @@ export default function QuestionsListPage() {
       />
 
       <Dialog open={editTarget !== null} onOpenChange={(o) => !o && setEditTarget(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>Edit question</DialogTitle>
             <DialogDescription>
@@ -1335,91 +1333,95 @@ export default function QuestionsListPage() {
               e.preventDefault();
               void onSaveEdit();
             }}
-            className="space-y-4"
+            className="flex min-h-0 flex-1 flex-col"
           >
-            <div className="grid gap-2">
-              <Label>Question Type</Label>
-              <Input value={editTarget?.questionType.replace(/_/g, ' ')} disabled />
-            </div>
-            <div className="grid gap-2">
-              <Label>Difficulty</Label>
-              <Select
-                value={editForm.watch('difficulty')}
-                onValueChange={(v) =>
-                  editForm.setValue('difficulty', v as ManualFormValues['difficulty'])
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">No difficulty</SelectItem>
-                  {DIFFICULTIES.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-stem">Stem *</Label>
-              <Textarea
-                id="edit-stem"
-                placeholder="Enter the question stem"
-                className="min-h-24"
-                {...editForm.register('stem')}
-              />
-              {editForm.formState.errors.stem && (
-                <p className="text-sm text-destructive">{editForm.formState.errors.stem.message}</p>
-              )}
-            </div>
-            {editTarget?.questionType === 'MCQ' && (
-              <McqEditor
-                choices={editChoices}
-                correctId={editCorrectId}
-                setChoices={setEditChoices}
-                setCorrectId={setEditCorrectId}
-              />
-            )}
-            {editTarget?.questionType === 'TRUE_FALSE' && (
+            <DialogBody className="space-y-4">
               <div className="grid gap-2">
-                <Label>Correct answer</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={editTfAnswer ? 'default' : 'outline'}
-                    onClick={() => setEditTfAnswer(true)}
-                  >
-                    True
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={!editTfAnswer ? 'default' : 'outline'}
-                    onClick={() => setEditTfAnswer(false)}
-                  >
-                    False
-                  </Button>
-                </div>
+                <Label>Question Type</Label>
+                <Input value={editTarget?.questionType.replace(/_/g, ' ')} disabled />
               </div>
-            )}
-            {editTarget?.questionType === 'FILL_IN_BLANK' && (
-              <FibEditor answers={editFibAnswers} setAnswers={setEditFibAnswers} />
-            )}
-            {editTarget &&
-              !['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'].includes(editTarget.questionType) && (
-                <p className="text-sm text-muted-foreground">
-                  This question type is edited in the question bank panel.
-                </p>
+              <div className="grid gap-2">
+                <Label>Difficulty</Label>
+                <Select
+                  value={editForm.watch('difficulty')}
+                  onValueChange={(v) =>
+                    editForm.setValue('difficulty', v as ManualFormValues['difficulty'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Optional" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No difficulty</SelectItem>
+                    {DIFFICULTIES.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-stem">Stem *</Label>
+                <Textarea
+                  id="edit-stem"
+                  placeholder="Enter the question stem"
+                  className="min-h-24"
+                  {...editForm.register('stem')}
+                />
+                {editForm.formState.errors.stem && (
+                  <p className="text-sm text-destructive">
+                    {editForm.formState.errors.stem.message}
+                  </p>
+                )}
+              </div>
+              {editTarget?.questionType === 'MCQ' && (
+                <McqEditor
+                  choices={editChoices}
+                  correctId={editCorrectId}
+                  setChoices={setEditChoices}
+                  setCorrectId={setEditCorrectId}
+                />
               )}
-            <div className="grid gap-2">
-              <Label htmlFor="edit-explanation">Explanation</Label>
-              <Textarea
-                id="edit-explanation"
-                placeholder="Optional explanation"
-                {...editForm.register('explanation')}
-              />
-            </div>
+              {editTarget?.questionType === 'TRUE_FALSE' && (
+                <div className="grid gap-2">
+                  <Label>Correct answer</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={editTfAnswer ? 'default' : 'outline'}
+                      onClick={() => setEditTfAnswer(true)}
+                    >
+                      True
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={!editTfAnswer ? 'default' : 'outline'}
+                      onClick={() => setEditTfAnswer(false)}
+                    >
+                      False
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {editTarget?.questionType === 'FILL_IN_BLANK' && (
+                <FibEditor answers={editFibAnswers} setAnswers={setEditFibAnswers} />
+              )}
+              {editTarget &&
+                !['MCQ', 'TRUE_FALSE', 'FILL_IN_BLANK'].includes(editTarget.questionType) && (
+                  <p className="text-sm text-muted-foreground">
+                    This question type is edited in the question bank panel.
+                  </p>
+                )}
+              <div className="grid gap-2">
+                <Label htmlFor="edit-explanation">Explanation</Label>
+                <Textarea
+                  id="edit-explanation"
+                  placeholder="Optional explanation"
+                  {...editForm.register('explanation')}
+                />
+              </div>
+            </DialogBody>
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setEditTarget(null)}>
                 Cancel

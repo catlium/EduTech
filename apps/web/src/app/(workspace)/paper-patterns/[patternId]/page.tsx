@@ -52,6 +52,7 @@ import {
 } from '@/components/ui/select';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -684,13 +685,12 @@ export default function PatternBuilderPage() {
           </Button>
         </div>
 
-        {extractionJobId &&
-          (extractStatus === 'queued' || extractStatus === 'processing') && (
-            <div className="mb-4 flex items-center gap-2 rounded-md border bg-muted/30 px-4 py-3 text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Extracting the paper pattern from the source — this page updates automatically.
-            </div>
-          )}
+        {extractionJobId && (extractStatus === 'queued' || extractStatus === 'processing') && (
+          <div className="mb-4 flex items-center gap-2 rounded-md border bg-muted/30 px-4 py-3 text-sm">
+            <Loader2 className="size-4 animate-spin" />
+            Extracting the paper pattern from the source — this page updates automatically.
+          </div>
+        )}
         {extractionJobId && extractStatus === 'completed' && (
           <div className="mb-4 flex items-center gap-2 rounded-md border bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
             Extraction complete — review the pattern below.
@@ -1444,111 +1444,118 @@ export default function PatternBuilderPage() {
 
         {/* ── Review & Save dialog ── */}
         <Dialog open={reviewOpen} onOpenChange={(o) => !saving && setReviewOpen(o)}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogContent size="lg">
             <DialogHeader>
               <DialogTitle>Review blueprint</DialogTitle>
               <DialogDescription>
                 Confirm the composition before it is saved to the paper pattern.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm">
-                  <span className="font-medium">{pattern.title || 'Untitled pattern'}</span>
-                  <span className="text-muted-foreground">
-                    {' '}
-                    · {durationLabel} · {totals.questions} questions · {totals.marks} marks
-                  </span>
-                  {totals.uncertain && (
-                    <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">
-                      (some quantities unset)
+            <DialogBody className="space-y-4">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm">
+                    <span className="font-medium">{pattern.title || 'Untitled pattern'}</span>
+                    <span className="text-muted-foreground">
+                      {' '}
+                      · {durationLabel} · {totals.questions} questions · {totals.marks} marks
                     </span>
-                  )}
-                </div>
-                <StatusBadge status={pattern.status} />
-              </div>
-
-              {/* issues preview */}
-              {(() => {
-                const issues = collectIssues(sections, typeLabels);
-                return issues.length ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                    <p className="mb-1 font-medium">Heads-up before saving:</p>
-                    <ul className="list-disc space-y-0.5 pl-4">
-                      {issues.map((it, i) => (
-                        <li key={i}>{it}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null;
-              })()}
-
-              <Separator />
-
-              {/* full blueprint readout */}
-              {sections.map((sec) => {
-                const configured = sec.rules.filter(
-                  (r) => r.questionType !== '' || r.count != null || r.marksPerQuestion != null,
-                );
-                if (configured.length === 0) return null;
-                const secSubtotal = configured.reduce((acc, r) => acc + (ruleSubtotal(r) ?? 0), 0);
-                return (
-                  <div key={sec.id} className="space-y-1.5">
-                    <div className="flex items-center justify-between border-b pb-1">
-                      <span className="font-medium">{sec.name.trim() || '(untitled section)'}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {configured.length} rule{configured.length !== 1 ? 's' : ''} · {secSubtotal}{' '}
-                        marks
+                    {totals.uncertain && (
+                      <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">
+                        (some quantities unset)
                       </span>
-                    </div>
-                    {configured.map((r, i) => {
-                      const sub = ruleSubtotal(r);
-                      const title = questionTypeLabel(r.questionType, typeLabels);
-                      const diffParts = [
-                        r.difficulty.EASY,
-                        r.difficulty.MEDIUM,
-                        r.difficulty.HARD,
-                      ].filter((v) => v !== '');
-                      const topics = r.topics.filter((t) => t.name.trim());
-                      return (
-                        <div key={r.id} className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="min-w-[90px] text-muted-foreground">{title}</span>
-                          <span className="tabular-nums">
-                            {r.count ?? '?'} × {r.marksPerQuestion ?? '?'} ={' '}
-                            <span className="font-medium tabular-nums">{sub ?? '—'}</span>
-                          </span>
-                          {r.questionType && (
-                            <Badge variant="secondary" className="text-[10px]">
-                              {r.questionType}
-                            </Badge>
-                          )}
-                          {diffParts.length > 0 && (
-                            <Badge variant="outline" className="text-[10px]">
-                              E{diffParts[0]} M{diffParts[1] ?? '—'} H{diffParts[2] ?? '—'}
-                            </Badge>
-                          )}
-                          {topics.length > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              {topics
-                                .map(
-                                  (t) =>
-                                    `${t.name}${t.percentage !== '' ? `${t.percentage}%` : ''}`,
-                                )
-                                .join(', ')}
-                            </span>
-                          )}
-                          {i === 0 && !r.compulsory && r.attemptCount != null && (
-                            <Badge variant="outline" className="text-[10px]">
-                              attempt {r.attemptCount} of {r.count ?? '?'}
-                            </Badge>
-                          )}
-                        </div>
-                      );
-                    })}
+                    )}
                   </div>
-                );
-              })}
-            </div>
+                  <StatusBadge status={pattern.status} />
+                </div>
+
+                {/* issues preview */}
+                {(() => {
+                  const issues = collectIssues(sections, typeLabels);
+                  return issues.length ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      <p className="mb-1 font-medium">Heads-up before saving:</p>
+                      <ul className="list-disc space-y-0.5 pl-4">
+                        {issues.map((it, i) => (
+                          <li key={i}>{it}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null;
+                })()}
+
+                <Separator />
+
+                {/* full blueprint readout */}
+                {sections.map((sec) => {
+                  const configured = sec.rules.filter(
+                    (r) => r.questionType !== '' || r.count != null || r.marksPerQuestion != null,
+                  );
+                  if (configured.length === 0) return null;
+                  const secSubtotal = configured.reduce(
+                    (acc, r) => acc + (ruleSubtotal(r) ?? 0),
+                    0,
+                  );
+                  return (
+                    <div key={sec.id} className="space-y-1.5">
+                      <div className="flex items-center justify-between border-b pb-1">
+                        <span className="font-medium">
+                          {sec.name.trim() || '(untitled section)'}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {configured.length} rule{configured.length !== 1 ? 's' : ''} ·{' '}
+                          {secSubtotal} marks
+                        </span>
+                      </div>
+                      {configured.map((r, i) => {
+                        const sub = ruleSubtotal(r);
+                        const title = questionTypeLabel(r.questionType, typeLabels);
+                        const diffParts = [
+                          r.difficulty.EASY,
+                          r.difficulty.MEDIUM,
+                          r.difficulty.HARD,
+                        ].filter((v) => v !== '');
+                        const topics = r.topics.filter((t) => t.name.trim());
+                        return (
+                          <div key={r.id} className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="min-w-[90px] text-muted-foreground">{title}</span>
+                            <span className="tabular-nums">
+                              {r.count ?? '?'} × {r.marksPerQuestion ?? '?'} ={' '}
+                              <span className="font-medium tabular-nums">{sub ?? '—'}</span>
+                            </span>
+                            {r.questionType && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {r.questionType}
+                              </Badge>
+                            )}
+                            {diffParts.length > 0 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                E{diffParts[0]} M{diffParts[1] ?? '—'} H{diffParts[2] ?? '—'}
+                              </Badge>
+                            )}
+                            {topics.length > 0 && (
+                              <span className="text-xs text-muted-foreground">
+                                {topics
+                                  .map(
+                                    (t) =>
+                                      `${t.name}${t.percentage !== '' ? `${t.percentage}%` : ''}`,
+                                  )
+                                  .join(', ')}
+                              </span>
+                            )}
+                            {i === 0 && !r.compulsory && r.attemptCount != null && (
+                              <Badge variant="outline" className="text-[10px]">
+                                attempt {r.attemptCount} of {r.count ?? '?'}
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </DialogBody>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setReviewOpen(false)} disabled={saving}>
                 Keep editing

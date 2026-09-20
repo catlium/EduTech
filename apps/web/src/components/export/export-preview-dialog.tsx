@@ -6,6 +6,7 @@ import { Eye, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -74,31 +75,33 @@ export function ExportPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] flex flex-col sm:max-w-3xl overflow-y-auto">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
 
-        {loading && (
-          <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Building preview…
-          </div>
-        )}
-
-        {!loading && error && <p className="text-sm text-destructive">{error}</p>}
-
-        {!loading && !error && preview && (
-          <>
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Eye className="size-3.5" />
-              Preview #{preview.hash.slice(0, 8)} — the exported file will match this exactly.
-            </p>
-            <div className="rounded-md border bg-background p-4">
-              <RenderDocHtml html={preview.html} />
+        <DialogBody className="space-y-4">
+          {loading && (
+            <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" /> Building preview…
             </div>
-          </>
-        )}
+          )}
+
+          {!loading && error && <p className="text-sm text-destructive">{error}</p>}
+
+          {!loading && !error && preview && (
+            <>
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Eye className="size-3.5" />
+                Preview #{preview.hash.slice(0, 8)} — the exported file will match this exactly.
+              </p>
+              <div className="rounded-md border bg-background p-4">
+                <RenderDocHtml html={preview.html} />
+              </div>
+            </>
+          )}
+        </DialogBody>
 
         <DialogFooter>
           {!loading && !error && (

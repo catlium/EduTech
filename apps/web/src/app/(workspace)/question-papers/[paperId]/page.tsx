@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeft,
@@ -12,6 +12,7 @@ import {
   Eye,
   Wand2,
   ClipboardList,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -54,6 +55,7 @@ import type {
   SubjectResponse,
   ChapterResponse,
   TopicResponse,
+  QuestionPaperExtractionStatus,
 } from '@catlium/contracts';
 
 interface PaperWithSubjects extends QuestionPaperResponse {
@@ -78,8 +80,6 @@ interface GenerateMissingResult {
   totalExisting: number;
   totalDeficit: number;
 }
-
-
 
 export default function QuestionPaperDetailPage() {
   const router = useRouter();
@@ -131,9 +131,7 @@ export default function QuestionPaperDetailPage() {
     try {
       const [{ paper: p }, { questions: q }, { coverage: c }] = await Promise.all([
         api<{ paper: PaperWithSubjects }>(`/question-papers/${params.paperId}`),
-        api<{ questions: QuestionPaperQuestion[] }>(
-          `/question-papers/${params.paperId}/questions`,
-        ),
+        api<{ questions: QuestionPaperQuestion[] }>(`/question-papers/${params.paperId}/questions`),
         api<{ coverage: PatternCoverageResponse | null }>(
           `/question-papers/${params.paperId}/pattern-coverage`,
         ),
@@ -152,6 +150,45 @@ export default function QuestionPaperDetailPage() {
   useEffect(() => {
     void fetchPaper();
   }, [fetchPaper]);
+
+  /* ── extraction progress banner (?extraction=jobId) ── */
+  const searchParams = useSearchParams();
+  const extractionJobId = searchParams.get('extraction');
+  const [extractStatus, setExtractStatus] = useState<
+    'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'cancelling' | null
+  >(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!extractionJobId) return;
+    let cancelled = false;
+    let stopped = false;
+    const tick = async () => {
+      if (stopped || cancelled) return;
+      try {
+        const { extraction: s } = await api<QuestionPaperExtractionStatus>(
+          `/question-papers/extraction/${extractionJobId}`,
+        );
+        if (cancelled) return;
+        setExtractStatus(s.status);
+        setExtractError(s.error?.message ?? null);
+        if (s.status === 'completed' || s.status === 'failed') {
+          stopped = true;
+          if (s.status === 'completed') await fetchPaper();
+        }
+      } catch {
+        if (!cancelled) {
+          stopped = true;
+          setExtractError('Could not check extraction progress');
+        }
+      }
+    };
+    void tick();
+    const interval = setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [extractionJobId, fetchPaper]);
 
   /* ── actions ── */
   async function onAutoSelect() {
@@ -261,7 +298,9 @@ export default function QuestionPaperDetailPage() {
   }
 
   const dateTimeQuery = () =>
-    exportDate || exportTime ? `&date=${encodeURIComponent(exportDate)}&time=${encodeURIComponent(exportTime)}` : '';
+    exportDate || exportTime
+      ? `&date=${encodeURIComponent(exportDate)}&time=${encodeURIComponent(exportTime)}`
+      : '';
 
   async function onExport(format: 'pdf' | 'docx') {
     setExporting(true);
@@ -346,7 +385,9 @@ export default function QuestionPaperDetailPage() {
         toast.success('New questions added to the paper');
       }
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Generation still running — shuffle manually later');
+      toast.error(
+        err instanceof ApiError ? err.message : 'Generation still running — shuffle manually later',
+      );
     }
   }
 
@@ -360,13 +401,18 @@ export default function QuestionPaperDetailPage() {
             <ArrowLeft className="mr-1 size-3.5" /> Question Papers
           </Link>
         </Button>
-        <ErrorState description={error ?? 'Question paper not found'} onRetry={() => void fetchPaper()} />
+        <ErrorState
+          description={error ?? 'Question paper not found'}
+          onRetry={() => void fetchPaper()}
+        />
       </div>
     );
   }
 
   const bySection = (name: string) =>
-    questions.filter((q) => (q.section || 'General') === name).sort((a, b) => a.sortOrder - b.sortOrder);
+    questions
+      .filter((q) => (q.section || 'General') === name)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   const unsectioned = questions.filter(
     (q) => !patternSections.some((s) => s.name === (q.section || 'General')),
   );
@@ -379,12 +425,27 @@ export default function QuestionPaperDetailPage() {
         </Link>
       </Button>
 
+      {extractionJobId && (extractStatus === 'queued' || extractStatus === 'processing') && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border bg-muted/30 px-4 py-3 text-sm">
+          <Loader2 className="size-4 animate-spin" />
+          Extracting the questions from the source — this page updates automatically.
+        </div>
+      )}
+      {extractionJobId && extractStatus === 'completed' && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
+          Extraction complete — the extracted questions are staged below for review.
+        </div>
+      )}
+      {extractionJobId && extractStatus === 'failed' && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          Extraction failed: {extractError ?? 'unknown error'}
+        </div>
+      )}
+
       <PageHeader
         title={paper.title}
         description={[
-          hasScope
-            ? 'Scope: '
-            : 'No question scope set yet',
+          hasScope ? 'Scope: ' : 'No question scope set yet',
           paper.durationMinutes && `${paper.durationMinutes} min`,
           paper.maxMarks && `${paper.maxMarks} marks`,
           `${questions.length} question${questions.length !== 1 ? 's' : ''}`,
@@ -393,7 +454,11 @@ export default function QuestionPaperDetailPage() {
           .join(' · ')}
         children={
           hasScope ? (
-            <ScopeBreadcrumb subjectId={paper.subjectId} chapterId={paper.chapterId} topicId={paper.topicId} />
+            <ScopeBreadcrumb
+              subjectId={paper.subjectId}
+              chapterId={paper.chapterId}
+              topicId={paper.topicId}
+            />
           ) : null
         }
         actions={
@@ -474,12 +539,16 @@ export default function QuestionPaperDetailPage() {
                 <div key={s.name} className="rounded-lg border p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium">{s.name}</span>
-                    <Badge variant={s.status === 'OK' ? 'secondary' : 'destructive'} className="text-xs">
+                    <Badge
+                      variant={s.status === 'OK' ? 'secondary' : 'destructive'}
+                      className="text-xs"
+                    >
                       {s.status}
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {s.presentCount} / {s.requiredCount} questions · {s.presentMarks} / {s.requiredMarks} marks
+                    {s.presentCount} / {s.requiredCount} questions · {s.presentMarks} /{' '}
+                    {s.requiredMarks} marks
                   </p>
                 </div>
               ))}
@@ -525,7 +594,9 @@ export default function QuestionPaperDetailPage() {
                           <span>{l.question.difficulty}</span>
                         </div>
                       </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">{l.marks} mark{l.marks !== 1 ? 's' : ''}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {l.marks} mark{l.marks !== 1 ? 's' : ''}
+                      </span>
                     </div>
                   ))}
                 </CardContent>
@@ -551,7 +622,9 @@ export default function QuestionPaperDetailPage() {
                         <span>{l.question.difficulty}</span>
                       </div>
                     </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">{l.marks} mark{l.marks !== 1 ? 's' : ''}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {l.marks} mark{l.marks !== 1 ? 's' : ''}
+                    </span>
                   </div>
                 ))}
               </CardContent>
@@ -573,13 +646,18 @@ export default function QuestionPaperDetailPage() {
           <div className="grid gap-4">
             <div className="grid gap-2">
               <Label>Subject</Label>
-              <Select value={scopeCascade.subjectId} onValueChange={(v) => setScopeCascade({ subjectId: v, chapterId: '', topicId: '' })}>
+              <Select
+                value={scopeCascade.subjectId}
+                onValueChange={(v) => setScopeCascade({ subjectId: v, chapterId: '', topicId: '' })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select subject" />
                 </SelectTrigger>
                 <SelectContent>
                   {scopeSubjects.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -588,7 +666,9 @@ export default function QuestionPaperDetailPage() {
               <Label>Chapter</Label>
               <Select
                 value={scopeCascade.chapterId}
-                onValueChange={(v) => setScopeCascade({ ...scopeCascade, chapterId: v, topicId: '' })}
+                onValueChange={(v) =>
+                  setScopeCascade({ ...scopeCascade, chapterId: v, topicId: '' })
+                }
                 disabled={!scopeCascade.subjectId}
               >
                 <SelectTrigger>
@@ -596,7 +676,9 @@ export default function QuestionPaperDetailPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {scopeChapters.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -613,15 +695,22 @@ export default function QuestionPaperDetailPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {scopeTopics.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setScopeOpen(false)}>Cancel</Button>
-            <Button onClick={() => void onSaveScope()} disabled={!scopeCascade.subjectId || scopeSaving}>
+            <Button variant="outline" onClick={() => setScopeOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void onSaveScope()}
+              disabled={!scopeCascade.subjectId || scopeSaving}
+            >
               {scopeSaving ? 'Saving…' : 'Save Scope'}
             </Button>
           </DialogFooter>
@@ -658,42 +747,54 @@ export default function QuestionPaperDetailPage() {
             </label>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => void onExport('pdf')}
-              disabled={exporting}
-            >
+            <Button variant="outline" onClick={() => void onExport('pdf')} disabled={exporting}>
               <Eye className="mr-1 size-3.5" /> PDF
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => void onExport('docx')}
-              disabled={exporting}
-            >
+            <Button variant="outline" onClick={() => void onExport('docx')} disabled={exporting}>
               <Download className="mr-1 size-3.5" /> DOCX
             </Button>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => { setExportOpen(false); setPreviewOpen(true); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setExportOpen(false);
+                setPreviewOpen(true);
+              }}
+            >
               Preview
             </Button>
-            <Button variant="ghost" onClick={() => setExportOpen(false)}>Close</Button>
+            <Button variant="ghost" onClick={() => setExportOpen(false)}>
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* ── Generate Missing dialog ── */}
-      <Dialog open={genOpen} onOpenChange={(open) => { setGenOpen(open); if (!open) setGenPreview(null); }}>
+      <Dialog
+        open={genOpen}
+        onOpenChange={(open) => {
+          setGenOpen(open);
+          if (!open) setGenPreview(null);
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Generate Missing Questions</DialogTitle>
             <DialogDescription>
-              Detects questions the paper pattern requires but that are missing from the bank, and queues AI generation for the shortfall.
+              Detects questions the paper pattern requires but that are missing from the bank, and
+              queues AI generation for the shortfall.
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex items-end justify-end gap-3">
-            <Button variant="outline" size="sm" onClick={() => void previewGenerateMissing()} disabled={generating}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void previewGenerateMissing()}
+              disabled={generating}
+            >
               {generating ? 'Checking…' : 'Preview shortage'}
             </Button>
           </div>
@@ -710,7 +811,8 @@ export default function QuestionPaperDetailPage() {
                 <ul className="mt-2 space-y-1 text-xs">
                   {genPreview.buckets.map((b) => (
                     <li key={`${b.questionType}-${b.difficulty}`}>
-                      {b.questionType} · {b.difficulty}: {b.existing} existing, {b.pending} pending, {b.deficit} short
+                      {b.questionType} · {b.difficulty}: {b.existing} existing, {b.pending} pending,{' '}
+                      {b.deficit} short
                     </li>
                   ))}
                 </ul>
@@ -732,7 +834,9 @@ export default function QuestionPaperDetailPage() {
             <Button onClick={() => void onGenerateMissing()} disabled={generating}>
               {generating ? 'Queuing…' : 'Generate Missing'}
             </Button>
-            <Button variant="ghost" onClick={() => setGenOpen(false)}>Close</Button>
+            <Button variant="ghost" onClick={() => setGenOpen(false)}>
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

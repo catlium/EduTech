@@ -51,6 +51,7 @@ import {
 } from '@/components/ui/select';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -1119,7 +1120,7 @@ export default function AssessmentDetailPage() {
 
       {/* ── Add questions dialog ── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>Add Questions</DialogTitle>
             <DialogDescription>
@@ -1149,7 +1150,7 @@ export default function AssessmentDetailPage() {
             <span className="text-sm text-muted-foreground ml-auto">{selectedCount} selected</span>
           </div>
 
-          <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-1">
+          <DialogBody className="-mx-6 px-6 space-y-1">
             {bankLoading ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Loading questions...</p>
             ) : filteredBank.length === 0 ? (
@@ -1237,7 +1238,7 @@ export default function AssessmentDetailPage() {
                 ))}
               </>
             )}
-          </div>
+          </DialogBody>
 
           <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
             <Button variant="outline" onClick={() => setAddOpen(false)}>

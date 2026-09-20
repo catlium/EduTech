@@ -54,7 +54,11 @@ export function QuestionSourceExtractionDialog({
           toast.error('Paste the paper text first');
           return;
         }
-        response = await api<ExtractQuestionPaperResponse>(`${basePath}/extract-source-text`, {
+        const endpoint =
+          basePath === '/questions'
+            ? `${basePath}/extract-source-text`
+            : `${basePath}/extract-text`;
+        response = await api<ExtractQuestionPaperResponse>(endpoint, {
           method: 'POST',
           body: { text },
         });
@@ -64,11 +68,11 @@ export function QuestionSourceExtractionDialog({
           toast.error('Choose the paper source file first');
           return;
         }
-        response = await uploadFileWithChunks<ExtractQuestionPaperResponse>(
-          `${basePath}/extract-source-file`,
-          file,
-          {},
-        );
+        const endpoint =
+          basePath === '/questions'
+            ? `${basePath}/extract-source-file`
+            : `${basePath}/extract-file`;
+        response = await uploadFileWithChunks<ExtractQuestionPaperResponse>(endpoint, file, {});
       }
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to start extraction');
@@ -98,7 +102,8 @@ export function QuestionSourceExtractionDialog({
           </DialogTitle>
           <DialogDescription>
             Paste the exam paper text or upload a PDF/image of it. The questions are detected and
-            staged for review {basePath === '/questions' ? 'in the Question Bank' : 'into a new Question Paper'}.
+            staged for review{' '}
+            {basePath === '/questions' ? 'in the Question Bank' : 'into a new Question Paper'}.
           </DialogDescription>
         </DialogHeader>
         <Tabs value={mode} onValueChange={(v) => setMode(v === 'file' ? 'file' : 'text')}>
@@ -117,7 +122,9 @@ export function QuestionSourceExtractionDialog({
               rows={10}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={'1. What is the capital of France? (2 marks)\n2. Solve for x: 3x + 2 = 11…'}
+              placeholder={
+                '1. What is the capital of France? (2 marks)\n2. Solve for x: 3x + 2 = 11…'
+              }
             />
           </TabsContent>
           <TabsContent value="file" className="space-y-3">
