@@ -19,7 +19,7 @@ export { authSessions } from './schema/auth.js';
 export { institutes } from './schema/institutes.js';
 export { memberships, membershipRoles } from './schema/memberships.js';
 export { jobs } from './schema/jobs.js';
-export { subjects, chapters, topics, academicYears, classes, classSubjects, divisions } from './schema/academic.js';
+export { subjects, chapters, topics, academicYears, classes, classSubjects, divisions, teacherAssignments } from './schema/academic.js';
 export { contentItems, contentVersions } from './schema/content.js';
 export { materials } from './schema/materials.js';
 export { materialEnhancements, materialEnhancementSegments, materialEnhancementSegmentMappings } from './schema/material-enhancements.js';

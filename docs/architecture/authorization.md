@@ -480,15 +480,18 @@ in-flight or done.
 
 - **Objective:** bind teachers to the academic spaces they work in.
 - **Scope:**
-  - Assignment model: teacher → classes/divisions (+subject) they teach.
+  - Assignment model: teacher → `class_subjects` offerings they teach.
   - Management endpoints (INSTITUTE_ADMIN assigns).
   - Enforcement surface for teacher-scoped permission application.
 - **Dependencies:** Phase E (structure); Phase B/C (permission machinery).
-- **Major decisions:** D5 as recorded (§17) — assignments at offering
-  (division + subject) granularity; co-teaching; multi-assignment; scope
-  resolution. How assignment changes interact with currently-persisted
-  teacher-owned resources is a Phase F implementation detail (ownership rows
-  are never rewritten; revocation only affects their future scope).
+- **Major decisions:** D5 as recorded (§17) — assignments at **class-subject
+  offering granularity** (`class_subjects`, NOT division); co-teaching;
+  multi-assignment; scope resolution. Assignment changes never rewrite
+  currently-persisted teacher-owned resources (ownership rows are always left
+  untouched; revocation only affects future scope). The endpoints are guarded
+  by `@RequiredRoles('INSTITUTE_ADMIN')` (RolesGuard) exactly like Phase E —
+  the `assignments` permission key stays uncatalogued until resource-scope
+  enforcement (Phase H) actually consumes it.
 - **Expected outcome:** teacher permissions can be evaluated within the
     assigned academic scope; a teacher has no scope in classes/subjects they
     are not assigned to.
@@ -777,6 +780,12 @@ Notes:
   `users.update`). The D5 placement/enrollment/assignment surface (§17) adds
   the keys in "Catalogue additions required by D4–D6" below when its Phase E–G
   endpoints exist — keys are never catalogued before their endpoint exists.
+- **Phase E and Phase F endpoints were implemented with
+  `@RequiredRoles('INSTITUTE_ADMIN')` (RolesGuard) directly**, not catalogue
+  keys — consistent with the pre-permission-machinery modules. The
+  `academic-years` / `classes` / `divisions` / `offerings` / `assignments`
+  keys below therefore remain uncatalogued until the permission machine
+  (Phase B/C) lands and Phase I migrates these modules onto it.
 - Permission keys are explicit and listed; **no wildcard keys (`*`,
   `resources.*`) are stored or checked anywhere.**
 
@@ -1212,48 +1221,62 @@ class-year.
 
 ---
 
-## 17. D5 — Teacher and student academic assignments (DECIDED, not implemented)
+## 17. D5 — Teacher and student academic assignments (DECIDED; teacher implemented in Phase F)
 
-Recorded 2026-09-20. Applies to Phases F/G. Not yet implemented.
+Recorded 2026-09-20. **Phase F (2026-09-20) implemented the teacher portion**;
+the student model below remains Phase G. This section supersedes the earlier
+division-level sketch: teacher assignments sit at **class-subject offering
+granularity** (Teacher → `class_subjects`), NOT per division, and no
+`division_subjects` table is created.
 
-### Teacher model
+### Teacher model (implemented Phase F)
 
-- **Teacher is an institute member** (`memberships` bearing the TEACHER role or
-  a teaching custom role, per D2). The role grants *what* (permission type);
-  assignments grant *where*.
+- **Teacher is an institute member** (`memberships` bearing the TEACHER role).
+  The assignment row stores `membership_id` (not a raw `user_id`), so the
+  teacher's institute binding and TEACHER role are enforced structurally
+  through `memberships`/`membership_roles`/`roles` — a user who is not a
+  TEACHER member of that institute cannot be assigned, and a cross-institute
+  membership is rejected by the same query (tenant isolation at data level).
 - **A teacher must be explicitly assigned to every academic scope they operate
   in.** Having the role (and its permissions) is necessary but not sufficient.
-- **Assignment granularity: the offering** — `(division, subject)` — which
-  resolves to Class + Division + Subject via `division → class` (§16). This
-  satisfies "assigned to Class + Division + Subject" without storing a
-  redundant class column.
-- **Assignments reference the Division directly** (class level and year are
-  derived from it), not both Class and Division. `division_id` implies exactly
-  one class level, one academic year, one institute.
-- **No separate year column on the assignment** — the year is the division's
-  year; a duplicate column would drift.
+- **Assignment granularity: the offering** — a `class_subjects` row — which
+  resolves to Class + Subject via `class → class_subjects` (§16). This
+  satisfies "assigned to Class + Subject" without storing redundant
+  class/subject columns on the assignment (no duplication of the offering).
+- **NOT division-specific.** Teacher assignments do not reference divisions;
+  a division groups students only. No `division_subjects` is created.
 - **Multiple teachers may teach the same offering** (co-teaching, graders):
   the assignment table is many-to-many per offering.
-- **A teacher may be assigned to many divisions/classes/subjects** — one
-  assignment row per offering.
+- **A teacher may be assigned to many offerings** — one assignment row per
+  offering.
+- **Assignments are soft-deactivated, never overwritten/deleted:** DELETE sets
+  `status='inactive'` (row retained, historical assignments preserved), and a
+  new assignment row can be created afterwards. Exactly **one ACTIVE**
+  assignment per (offering, teacher) is enforced by a partial unique index.
 
 ```
 teacher_assignments (
-  id, instituteId, offeringId, teacherId, created_at, updated_at,
-  UNIQUE (offeringId, teacherId)
+  id, instituteId, classSubjectId, membershipId,
+  status 'active'|'inactive', created_at, updated_at,
+  UNIQUE (classSubjectId, membershipId) WHERE status = 'active'
 )
 ```
 
-Assignment-time validation (recorded here; enforced in Phase F/L):
+Assignment-time validation (enforced in Phase F):
 
-- `offeringId` belongs to the same institute as the assignment row;
-- `teacherId` has an **active membership** in that institute carrying the
-  TEACHER role (or a custom teaching role);
-- assign/unassign is INSTITUTE_ADMIN-only.
+- `classSubjectId` belongs to the same institute as the assignment row —
+  verified through the offering's `class.institute_id` (classes are the tenant
+  anchor; `class_subjects` has no institute column);
+- `membershipId` is an **active membership** of that institute carrying the
+  TEACHER role (via `membership_roles → roles.key = TEACHER`);
+- assign/unassign is **INSTITUTE_ADMIN-only**, and reads are admin-only too in
+  this phase (staffing configuration is not exposed to students; a
+  teacher-facing "my assignments" read surface is added with Phase G/H when
+  resource scope consumes the data).
 
-**Resolving a teacher's academic scope:** the union of their assigned
-offerings `(division, subject)`. A teacher teaches a subject exactly where an
-assigned offering says so — nowhere else.
+**Resolving a teacher's academic scope (future Phase H):** the union of their
+assigned offerings `(class, subject)`. A teacher teaches a subject exactly
+where an assigned offering says so — nowhere else.
 
 ### Student model
 
@@ -1310,23 +1333,24 @@ accessible(student) =
 
 ### Concrete examples
 
-**Teacher A → Class 10 · Division A · Mathematics (2026-27)**
+**Teacher A → Class 10 · Mathematics (2026-27)**
 
 ```
-teacher_assignments: Teacher A → offering (division 10-A-2026, subject Mathematics)
+teacher_assignments: Teacher A → offering (class 10, subject Mathematics)   # class_subjects row
 ```
 
-- ✅ Teacher A may operate on Mathematics resources **belonging to Class 10-A**
-  (offering = 10-A-2026, subject = Mathematics) — cohort-bound resources
-  (§18.3) plus shared Mathematics bank in scope.
-- ❌ Teacher A does **not** gain Class 10-B Mathematics: 10-B is a different
-  division's offering. A resource *belonging to 10-A* (offeringId set) is
-  visible/editable only within 10-A (offering mismatch → deny); shared
+- ✅ Teacher A may operate on Mathematics resources **belonging to Class 10**
+  (offering = Class 10 · Mathematics, subject = Mathematics) — cohort-bound
+  resources (§18.3, bound via the offering's class) plus shared Mathematics
+  bank in scope.
+- ❌ Teacher A does **not** gain Class 11 Mathematics: a different class's
+  offering. A resource bound to the Class 10 Mathematics offering is
+  visible/editable only within that class (offering mismatch → deny); shared
   subject-bank items are still subject-gated — see the §18 matrix.
-- ❌ Teacher A does **not** gain Class 10-A Physics: Physics is not in their
+- ❌ Teacher A does **not** gain Class 10 Physics: Physics is not in their
   assigned offering set.
 - Teacher A has no scope in Class 11, any other subject, or any other year.
-- Co-teaching: a second Teacher B assigned the same (10-A-2026, Mathematics)
+- Co-teaching: a second Teacher B assigned the same (Class 10, Mathematics)
   offering is allowed — separate assignment row.
 
 **Student A → Class 10 · Division A (2026-27)**
@@ -1369,7 +1393,7 @@ any authorization library (that remains a Phase H implementation decision).
 ### Two notions of scope
 
 - **Actor academic scope** — where the actor may operate:
-  - *Teacher*: union of their assigned offerings `(division, subject)` (§17).
+  - *Teacher*: union of their assigned offerings `(class, subject)` (§17).
   - *Student*: their placement's division offerings ± enrollments (§17).
   - *Institute admin*: the whole institute (explicit bounded exception,
     §18.10 / D6.6). A scope-less actor has no academic reach.

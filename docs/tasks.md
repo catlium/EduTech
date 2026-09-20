@@ -27,9 +27,11 @@
       stay institute-wide; chapters/topics inherit scope via subject; history
       preserved across year rollover (recorded in §16).
 - [x] **D5 — Teacher/student academic assignments:** teacher assignments at
-      offering (division + subject) granularity, co-teaching supported; student
-      placements per (year, student) with division offerings ± elective
-      enrollments; history preserved (recorded in §17).
+      **class-subject offering granularity** (revised during Phase F:
+      `class_subjects`, NOT division — `membership_id` FK, partial unique
+      index on active rows), co-teaching supported; student placements per
+      (year, student) with division offerings ± elective enrollments; history
+      preserved (recorded in §17).
 - [x] **D6 — Resource scope & evaluation:** scope-sensitive vs institute-wide
       resources; subject-chain + single `offeringId` derivation; DB-query read
       scoping, explicit pre-write checks; default-deny on no scope with
@@ -62,8 +64,9 @@
 - [x] **Phase E — Academic Classes & Divisions:** class/division structural
       layer. **COMPLETE 2026-09-20 — see the issued tasks below.**
       Design recorded in §16 (D4).
-- [ ] **Phase F — Teacher Assignments:** bind teachers to the
-      classes/divisions/subjects they teach. Design recorded in §17 (D5).
+- [x] **Phase F — Teacher Assignments:** bind teachers to the
+      classes/subjects they teach. **COMPLETE 2026-09-20 — see the issued
+      tasks below.** Design recorded in §17 (D5).
 - [ ] **Phase G — Student Academic Assignments:** bind students to their
       class/division; student reads academically scoped. Design recorded in
       §17 (D5).
@@ -108,6 +111,43 @@
       INSTITUTE_ADMIN-only; wired into `app.module.ts`.
 - [x] Validation: `pnpm typecheck` 10/10; live constraint inspection
       (FK cascade/unique/SET NULL as designed).
+
+## Phase F — Teacher Assignments (2026-09-20, COMPLETE)
+
+> Issued task. Implements the D5/§17 teacher portion: bind teachers to
+> canonical `class_subjects` offerings (Teacher → Class + Subject), NOT
+> division-specific; no `division_subjects` (revised D5, matches §16 D4).
+> `docs/architecture/authorization.md` §17 is the source of truth.
+> Boundary: NO student assignments/enrollments (Phase G), NO resource scope /
+> policy engine (Phase H), NO teacher-facing read surface yet.
+
+- [x] Schema (`packages/database/src/schema/academic.ts`):
+      `teacher_assignments(id, instituteId, classSubjectId, membershipId,
+      status, created_at, updated_at)` — FKs cascade; partial unique index
+      `teacher_assignments_active_unique (classSubjectId, membershipId)
+      WHERE status = 'active'` (co-teaching + re-assignment after soft
+      deactivate); exported from schema/index + package index.
+- [x] Migration `0042_teacher_assignments.sql` (journal idx 42) applied on the
+      live compose Postgres (`catlium_dev`, max applied id 42); FKs +
+      partial unique index verified.
+- [x] API module (`apps/api/src/academic-structure/`): tenant-scoped
+      list/get/create/deactivate for `teacher-assignments`; create validates
+      the offering belongs to the institute (via `class.institute_id`) and
+      the teacher is an ACTIVE same-institute membership with the TEACHER
+      role; deactivate sets `status='inactive'`; wired into the academic
+      module. All routes INSTITUTE_ADMIN-only (admin-managed; teacher-facing
+      reads deferred to Phase G/H).
+- [x] DB-backed integration test `teacher-assignments.integration.ts`
+      (gated on `TEST_DATABASE_URL`, run via tsx script
+      `test:teacher-assignments`): create, duplicate→Conflict, same-teacher
+      many offerings, co-teaching, non-teacher→BadRequest, cross-tenant
+      membership→BadRequest, cross-tenant offering→NotFound, get scope/404,
+      list, deactivate→inactive + re-assign. Placed outside the `*.test.ts`
+      glob deliberately — the strip-only node runner cannot parse decorated
+      NestJS classes.
+- [x] Validation: `pnpm test` 222 pass; `pnpm test:teacher-assignments` pass
+      (+ skips cleanly without `TEST_DATABASE_URL`); `pnpm typecheck` 10/10;
+      `pnpm --filter @catlium/api lint` clean.
 
 ## Phase C — Built-in + Custom Roles, part 1: membership role conversion (2026-09-20, COMPLETE)
 

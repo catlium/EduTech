@@ -1,5 +1,49 @@
 # Project Status
 
+## Phase F — Teacher Assignments (2026-09-20)
+
+**Status: IMPLEMENTED + VALIDATED — migration applied on live compose Postgres.**
+Implements the D5/§17 teacher portion: bind teachers to canonical
+`class_subjects` offerings (Teacher → Class + Subject), **NOT** division-
+specific — no `division_subjects` (D5 revised to match D4/§16). No student
+assignments (Phase G), no resource scope enforcement (Phase H), no
+teacher-facing reads yet.
+
+- **Schema** (`packages/database/src/schema/academic.ts`, +~30 lines):
+  `teacher_assignments(id, instituteId, classSubjectId, membershipId,
+  status, created_at, updated_at)` — cascade FKs to `institutes`,
+  `class_subjects`, `memberships`; partial unique index
+  `teacher_assignments_active_unique (classSubjectId, membershipId)
+  WHERE status = 'active'` (co-teaching + re-assignment after soft
+  deactivate). Exported from `schema/index.ts` + package index.
+- **Migration** `0042_teacher_assignments.sql` (journal idx 42). Applied live:
+  `drizzle.__drizzle_migrations` max applied id 42; table + FKs + partial
+  unique index verified in `catlium_dev`.
+- **API module** `apps/api/src/academic-structure/` (controller/service/dto)
+  `teacher-assignments`: list, get, create, deactivate. Create validates the
+  offering belongs to the institute (via `class.institute_id` — no institute
+  column on offerings) and the teacher is an ACTIVE same-institute membership
+  carrying the TEACHER role; deactivate sets `status='inactive'` (soft, row
+  retained). All routes INSTITUTE_ADMIN-only (staffing must not leak to
+  students; teacher-facing reads deferred to Phase G/H). Wired into the
+  academic-structure module.
+- **Validation**: `pnpm test` 222 pass; DB-backed integration test
+  `test:teacher-assignments` (tsx, `TEST_DATABASE_URL`-gated,
+  `teacher-assignments.integration.ts` — kept out of the `*.test.ts` glob
+  because the strip-only node runner cannot parse decorated NestJS classes)
+  covers create, duplicate→Conflict, co-teaching, non-teacher→BadRequest,
+  cross-tenant membership/offering rejection, get scope/404, list, deactivate
+  + re-assign; skips cleanly without the DB. `pnpm typecheck` 10/10 (api +
+  database); `pnpm lint` clean.
+
+### Next task
+
+Phase G — Student Academic Assignments (bind students to class/division, §17
+D5). Phases H (resource scope), I (controller migration), J (frontend),
+K (session hardening), L/M (test matrix, final audit) remain not-started.
+Deferred Phase D follow-ups (NOT built): Super Admin management UI/APIs,
+institutes lifecycle endpoints.
+
 ## Phase E — Academic Classes & Divisions (2026-09-20)
 
 **Status: IMPLEMENTED + VALIDATED — migration applied on live compose Postgres.**
@@ -32,11 +76,11 @@ enforcement (Phase H).
 
 ### Next task
 
-Phase F — Teacher Assignments (bind teachers to classes/divisions/subjects,
-§17/D5). Phases G (student assignments), H (resource scope), I (controller
-migration), J (frontend), K (session hardening), L/M (test matrix, final
-audit) remain not-started. Deferred Phase D follow-ups (NOT built): Super
-Admin management UI/APIs, institutes lifecycle endpoints.
+Phase G — Student Academic Assignments (bind students to class/division, §17
+D5). Phases H (resource scope), I (controller migration), J (frontend),
+K (session hardening), L/M (test matrix, final audit) remain not-started.
+Deferred Phase D follow-ups (NOT built): Super Admin management UI/APIs,
+institutes lifecycle endpoints.
 
 ## Phase D — Super Admin / Platform Boundary (2026-09-20)
 
@@ -256,9 +300,8 @@ hardening (Phase K).
 
 ### Next task
 
-Phase C — Academic Scope (classes/divisions, assignments, `offeringId`
-scope column, scope policies) when scheduled. Roadmap phases remain
-not-started.
+Phase G — Student Academic Assignments (academic scope, §17) when scheduled.
+Roadmap phases H–M remain not-started.
 
 ## Authorization Overhaul — architecture & roadmap only (2026-09-20)
 

@@ -1,6 +1,8 @@
-import { pgTable, uuid, varchar, integer, timestamp, unique } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, uuid, varchar, integer, timestamp, unique, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { institutes } from './institutes.js';
+import { memberships } from './memberships.js';
 
 export const subjects = pgTable(
   'subjects',
@@ -110,6 +112,36 @@ export const classSubjects = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [unique('class_subjects_class_subject_unique').on(table.classId, table.subjectId)],
+);
+
+// Phase F — teacher academic assignments: a TEACHER membership (Teacher =
+// institute member) is assigned to ONE canonical `class_subjects` offering
+// (Teacher → Class Subject). NOT division-specific (no `division_subjects`),
+// NOT duplicated from the offering, and it does NOT need class/subject column
+// copies. One assignment per (offering, teacher) while active, so an inactive
+// (historical) row can be replaced by a fresh assignment on re-assignment.
+export const teacherAssignments = pgTable(
+  'teacher_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    instituteId: uuid('institute_id')
+      .notNull()
+      .references(() => institutes.id, { onDelete: 'cascade' }),
+    classSubjectId: uuid('class_subject_id')
+      .notNull()
+      .references(() => classSubjects.id, { onDelete: 'cascade' }),
+    membershipId: uuid('membership_id')
+      .notNull()
+      .references(() => memberships.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('teacher_assignments_active_unique')
+      .on(table.classSubjectId, table.membershipId)
+      .where(sql`${table.status} = 'active'`),
+  ],
 );
 
 export const divisions = pgTable(

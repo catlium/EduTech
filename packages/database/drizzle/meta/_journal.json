@@ -295,6 +295,13 @@
       "when": 1790900000000,
       "tag": "0041_academic_structure",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791000000000,
+      "tag": "0042_teacher_assignments",
+      "breakpoints": true
     }
   ]
 }
