@@ -42,6 +42,9 @@ Companion documents:
   Authentication = identity + session lifetime. Authorization = access control
   per resource. The two are distinct concerns and are hardened on independent
   tracks.
+- The concrete authentication/session decisions (token model, refresh
+  rotation, logout/revocation, CSRF, user-status gating, cookie posture,
+  session retention) are recorded in D7 (§19) and applied in Phase K.
 
 ---
 
@@ -353,6 +356,8 @@ control.
 
 - Phase K addresses the above as an incremental hardening pass.
 - **This task does not implement any of them.**
+- D7 decisions (§19) resolve exactly how each item is closed; Phase K
+  implements them.
 
 ---
 
@@ -573,7 +578,9 @@ in-flight or done.
   stale institute storage, multi-device/session management).
 - **Dependencies:** independent of A–J (may be scheduled in parallel or
   wherever the security priorities dictate).
-- **Major decisions:** the F1–F6 decisions recorded in `security-audit.md`;
+- **Major decisions:** D7 as recorded (§19) — the audit's F1–F6 decisions
+  (token/session model; refresh rotation & replay; logout & revocation;
+  CSRF posture; user-status & access revocation; cookie/session retention);
   priority order within the track.
 - **Expected outcome:** each §9 issue closed or explicitly accepted with a
   documented tradeoff.
@@ -660,8 +667,12 @@ in-flight or done.
 
 ### TARGET ARCHITECTURE (planned, NOT implemented)
 
-- Auth: unchanged architecture; identities via tokens, permissions NEVER in
-  JWT.
+- Auth (D7, §19): unchanged architecture — short-lived access JWT bound to the
+  session (`{sub, sid}`, session + user status checked per request) +
+  server-tracked rotating refresh; strict one-time rotation with lineage
+  revocation; refresh-aware logout + session listing/revoke; global CSRF
+  double-submit; status-gated refresh; cookie + retention posture defined.
+  Permissions NEVER in JWTs.
 - Tenancy + authorization: membership → role → permission chains; centralized
   permission vocabulary; built-in + institute-local custom roles.
 - Storage (D2/D3): `permissions`, `roles` (system/institute ×
@@ -680,17 +691,17 @@ in-flight or done.
 
 ---
 
-## Open decisions requiring user input
+## Decisions status
 
-**D1–D6 are DECIDED** (recorded 2026-09-20): §13 (permission model), §14
+**D1–D7 are DECIDED** (recorded 2026-09-20): §13 (permission model), §14
 (role/permission storage), §15 (SUPER_ADMIN / platform), §16 (academic
 structure), §17 (teacher/student academic assignments), §18 (resource scope +
-authorization evaluation).
+authorization evaluation), §19 (authentication / session hardening).
 
-The remaining decision needed before its phase can be implemented:
-
-- **D7 (Phase K):** the session-hardening decisions in `security-audit.md`
-  F1–F6 and Phase-K priority ordering.
+All pre-implementation architectural decisions in `security-audit.md` §F
+(F1–F6) are now resolved in §19. **No architectural decisions remain open.**
+Implementation phases A–M are unstarted and wait for their individual
+issuance.
 
 ---
 
@@ -1541,3 +1552,210 @@ Mathematics ∈ the student's cohort set.
 | Student A (10-A) | questions.read | shared question subject=Chemistry | Chemistry ∉ cohort → false | ❌ |
 | INSTITUTE_ADMIN | questions.* (manage) | any 10-A or 10-B question | whole-institute → true | ✅ |
 | Custom 'ExamCoord', no assignment | questions.manage | any question | no scope → false | ❌ deny |
+
+---
+
+## 19. D7 — Authentication / session hardening (DECIDED, not implemented)
+
+Recorded 2026-09-20. Applies to Phase K. Not yet implemented.
+
+Resolves the audit's F1–F6 (`docs/architecture/security-audit.md` §F) and the
+§9 issues, grounded in the verified implementation: `identity/auth.service.ts`
+(login/refresh/logout, rotation), `identity/refresh-race.ts` (60 s grace
+window), `identity/auth.controller.ts` (CSRF on refresh/logout; logout behind
+AccessTokenGuard), `common/guards/access-token.guard.ts` (signature+expiry
+only), `common/guards/csrf.guard.ts` (double-submit), `common/utils/cookie.util.ts`
+(cookie attributes), `packages/database/src/schema/auth.ts` (`auth_sessions`).
+
+### Architecture separation (fixed)
+
+- **Authentication** — who is this user/session?
+- **Authorization** — what can the user do? (D1–D3, DB-fresh per request)
+- **Academic scope** — where can the user do it? (D4–D6)
+- **Session/token state is NEVER a substitute for authorization.** JWTs carry
+  only `{sub, sid}`; no roles, permissions, or academic scope ever enter a
+  token. Session revocation removes *access*, never *authorization*; removing
+  a role never revokes a session.
+
+### F1 — Token/session model
+
+**Decision: keep the two-layer model** — a short-lived access JWT + a
+server-tracked rotating refresh session — rather than opaque/server-side
+access tokens or full session-backed requests. No authentication redesign.
+
+- **Access token:** JWT `{sub, sid}`, HS256, 15-minute TTL (env
+  `ACCESS_TOKEN_EXPIRY_MINUTES`), httpOnly cookie. Adding `sid` binds each
+  access token to a live session row.
+- **AccessTokenGuard becomes session-aware:** it verifies signature + expiry,
+  then verifies the session row is live (`revokedAt IS NULL`, not expired)
+  AND `users.status = 'active'`. One indexed lookup per request, piggybacked
+  on the existing tenant lookup. **Effect: session revocation or user
+  deactivation takes effect on the next request — the current ≤15-minute
+  residual window (H5) is closed.**
+- **Refresh session:** unchanged in kind — each device has its own
+  `auth_sessions` row(s) holding the bcrypt hash of its refresh token.
+  Multi-device support is preserved (no single-session mode).
+
+Requirements coverage:
+
+| requirement | mechanism |
+|---|---|
+| membership/role/permission changes take effect without token wait | already DB-fresh per request (D1/D3); access tokens carry no claims about them |
+| user deactivation eventually invalidates access | immediate — session-aware access check + status-gated refresh (F5) |
+| refresh-session revocation | immediate `revokedAt`; bound access tokens fail next request |
+| multi-device sessions | one row per device/jar; no single-session mode |
+| no permissions/roles/scope in JWTs | unchanged — tokens carry `{sub, sid}` only |
+
+### F2 — Refresh rotation and replay policy
+
+**Decision: strict one-time rotation; the 60-second grace window
+(`REFRESH_GRACE_WINDOW_MS`) is removed.** That window is the H1 hole — a spent
+token replayed within it minted a new session.
+
+- **Lifecycle:** a session row is `live`, `revoked`, or `expired`. It holds the
+  hash of its one live refresh token. A successful refresh issues exactly one
+  new session + token (sliding 30-day expiry, env
+  `REFRESH_TOKEN_EXPIRY_DAYS`).
+- **Rotation (one-time, no grace):** a presented refresh token must match the
+  live row's hash on a non-revoked, non-expired row. The claim is atomic — a
+  single `UPDATE auth_sessions SET revoked_at = now() WHERE id = ? AND
+  revoked_at IS NULL AND refresh_token_hash = <hash>` — and **only the request
+  that wins the atomic claim may mint the next session.** Concurrent rotation
+  of the same token can never mint more than one new session.
+- **Race handling (legitimate concurrent tabs):** the web's existing
+  single-flight refresh is kept. Because tabs share one cookie jar, after a
+  winning rotation the jar already holds the new token; a collided request
+  re-reads its cookie and retries once before any session-death UI. A lost
+  atomic claim never mints.
+- **Reuse detection:** presenting a token against a row that was already
+  rotated/claimed (spent token) is *reuse*; it never mints.
+- **Replay → lineage revocation:** reuse revokes the session **lineage**.
+  Rotation records a parent pointer (`rotated_from_sid` on the child row);
+  on reuse the chain is walked and the current head revoked — the token family
+  for that session requires re-login. Independent sessions on other devices
+  are untouched (multi-device preserved).
+- **Session revocation behavior:** revoking a row makes its token reject and
+  marks its lineage; access tokens bound to that `sid` fail the F1 check on
+  the next request.
+- Schema delta (Phase K, not now): add `rotated_from_sid`, `user_agent`,
+  `last_ip`, `last_used_at`. Refresh-token plaintext is never stored.
+
+### F3 — Logout and revocation
+
+**Decision: logout is refresh-session aware, not access-token dependent.**
+The `AccessTokenGuard` requirement on logout (H2) is removed.
+
+Behavior table (single handler, POST `/auth/logout`):
+
+| state | behavior |
+|---|---|
+| access valid + refresh valid | revoke session by refresh `sid`; clear all cookies |
+| access expired + refresh valid | **revoke by refresh `sid`; clear cookies** (no longer 401s first — H2 fixed) |
+| access valid + refresh missing/invalid | revoke by access `sid` claim (F1); clear cookies |
+| refresh token revoked/expired | revoke is idempotent; clear cookies |
+| user deactivated | same as above — logout always succeeds |
+
+Cookies are cleared unconditionally even when nothing can be revoked; logout
+stays behind the CSRF guard (an attacker forcing a logout is a nuisance, and
+the policy in F4 requires it).
+
+Required session-management surface (Phase K, per M1):
+
+- **current-session logout** — the cookie path above;
+- **logout-all** (`POST /auth/sessions/revoke-all`) — revokes every session row
+  for the user; requires an authenticated request (access token + csrf);
+  clears cookies;
+- **per-session revocation** (`POST /auth/sessions/:id/revoke`) — revoke one
+  listed session (self only);
+- **device/session listing** (`GET /auth/sessions`) — `id`, `createdAt`,
+  `lastUsedAt`, `userAgent`, `lastIp`, and the current session flag, for the
+  user's live sessions.
+
+### F4 — CSRF posture
+
+**Decision: ONE consistent policy — the double-submit guard applies to ALL
+authenticated state-changing requests** (POST/PUT/PATCH/DELETE), enforced at a
+global layer so it cannot be forgotten on a controller; GET/HEAD/OPTIONS
+exempt. `SameSite=Lax` + the `x-institute-id` custom header become
+defense-in-depth, not the primary control (H3 closed).
+
+- `csrf_token` cookie stays **non-HttpOnly** (the web must read it to send the
+  header — its accessibility requirement), path `/`, same SameSite/Secure as
+  the session cookies, maxAge tied to the refresh TTL.
+- **Stop regenerating the csrf token on every refresh.** Regeneration is the
+  root cause of H4 (a second tab holds a stale value → 403 → spurious
+  logout). A csrf token is a same-browser marker, not a rotation secret; it is
+  regenerated at login and logout only. The web additionally treats refresh
+  `403` as a retryable csrf sync — never session death.
+- **Login CSRF (H7):** the double-submit guard cannot apply pre-login (no csrf
+  cookie exists). Login instead enforces **Origin / Sec-Fetch-Site
+  validation** — cross-site top-level form POSTs are rejected; SameSite never
+  mitigates login CSRF.
+- Dev posture never weakens the production default (F6).
+
+### F5 — User status and access revocation
+
+- **Every refresh MUST verify `users.status = 'active'`** (the current code
+  re-fetches the user but never checks status — M3). Combined with the F1
+  per-request check, user status is enforced on every request, not only at
+  login.
+- **Deactivation timing: immediate.** Admin deactivation (status mutation in
+  Phase K) revokes all refresh sessions for the user; existing access tokens
+  fail the F1 session-aware check on their next request. No 15-minute window.
+- **Access-token validation** checks current user status AND live session (F1);
+  it never accepts a token for a deactivated user or a revoked session.
+- **Password change / forced reset** (Phase K; not built now): after a
+  successful change/reset, **every session of the user is revoked** — all
+  other devices must re-authenticate; the initiating device re-authenticates
+  with the new password (no auto-issued session). Old refresh tokens reject;
+  old access tokens fail via the session check.
+- **Deactivation revokes all refresh sessions.**
+- No permission/role/scope data is involved anywhere in this lifecycle.
+
+### F6 — Cookie/session configuration
+
+**Production defaults** (never weakened for convenience):
+
+| cookie | HttpOnly | Secure | SameSite | path | max-age |
+|---|---|---|---|---|---|
+| `access_token` | true | true (prod) | Lax | `/` | access TTL (15 m) |
+| `refresh_token` | true | true (prod) | Lax | `/api/v1/auth` | refresh TTL (30 d sliding) |
+| `csrf_token` | **false** (JS must read it) | true (prod) | Lax | `/` | refresh TTL |
+
+- **HTTPS is required in production.** `Secure` derives from `NODE_ENV`
+  (`production ⇒ Secure`), not from a silent env default (audit F6/E7); an
+  explicit env override exists only for documented deployments.
+- **`Domain` is unset (host-only)** unless a documented multi-host split needs
+  it; never a public-suffix domain. `SameSite=None` is only for a documented
+  cross-site deployment, and only with `Secure` + the mandatory double-submit
+  (F4) — never as a convenience.
+- **Refresh cookie path stays `/api/v1/auth`** — narrows the surface where the
+  refresh cookie is sent. The access and csrf cookies stay on `/` so the web
+  middleware and auth middleware see them.
+- **Refresh cookie accessibility:** the refresh token must be reachable only by
+  the API's auth routes — never by JS reachable domains other than the API
+  origin. The csrf cookie must be JS-readable on `/` (F4).
+- **Development** (localhost loopback, `docker-compose.dev.yml`): `Secure=false`,
+  SameSite=Lax, host-only, dev JWT secret — acceptable dev-only defaults, never
+  inherited by production.
+
+**Session table concerns (Phase K):**
+
+- **Retention:** revoked/expired `auth_sessions` rows are purged after a
+  retention period (default 90 days) by a scheduled job, with an opportunistic
+  purge piggybacked on rotation/login. Re-login always creates fresh rows, so
+  purging never blocks a user.
+- **Metadata for device management:** store `user_agent`, `last_ip`,
+  `last_used_at`, and `rotated_from_sid` so listing/per-session revocation
+  (F3) is meaningful.
+- **Multi-device** preserved; refresh TTL stays sliding 30 days (revisit only
+  with a product reason).
+
+### Interaction with authorization (explicit)
+
+- Sessions are **authentication state only.** Listing/revoking sessions never
+  inspects or alters roles, permissions, or academic scope (D1–D6).
+- Revoking a session never implies removing a role; removing a role never
+  revokes a session. The authorization plane (DB-fresh per request) is fully
+  independent of the session plane, so "session state must not become a
+  replacement for authorization" holds by construction.

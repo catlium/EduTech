@@ -2,12 +2,12 @@
 
 ## Authorization Overhaul — Architecture & Roadmap (2026-09-20)
 
-> Only the architecture, roadmap, and the D1–D6 design decisions are
+> Only the architecture, roadmap, and the D1–D7 design decisions are
 > documented (`docs/architecture/authorization.md`).
 > **No implementation has been started** — no auth, RBAC, permissions, academic
-> structure, assignment, or authorization code, schema, or frontend changes
-> exist. The phase below tracks the planned roadmap; all items are not-started
-> until their own phase begins.
+> structure, assignment, session, or authorization code, schema, or frontend
+> changes exist. The phase below tracks the planned roadmap; all items are
+> not-started until their own phase begins.
 
 ### Authorization decisions (2026-09-20)
 
@@ -35,8 +35,13 @@
       scoping, explicit pre-write checks; default-deny on no scope with
       documented exceptions; ownership O1–O3; the single INSTITUTE_ADMIN
       bypass (recorded in §18).
-- [ ] **D7 — Session-hardening decisions** (Phase K, per `security-audit.md`
-      F1–F6).
+- [x] **D7 — Authentication / session hardening:** keeps the two-layer token
+      model; access tokens become session-bound (`{sub, sid}`) with per-request
+      session + user-status checks; strict one-time refresh rotation (60 s
+      grace window removed) with lineage revocation on replay; refresh-aware
+      logout + session listing/revoke; global CSRF double-submit; status-gated
+      refresh; cookie + session-retention posture (recorded in §19; resolves
+      audit F1–F6/H1–H7).
 
 ### Roadmap phases (target architecture, not yet implemented)
 
@@ -68,7 +73,8 @@
 - [ ] **Phase K — Authentication / Session Hardening:** rotation race,
       revocation, logout, session cleanup, password lifecycle, CSRF strategy,
       403 handling, stale institute selection, multi-device sessions (separate
-      related track per `docs/architecture/authorization.md` §9).
+      related track per `docs/architecture/authorization.md` §9; decisions
+      recorded in §19/D7, resolves audit F1–F6/H1–H7).
 - [ ] **Phase L — Security & Authorization Test Matrix:** comprehensive
       regression matrix (tenant isolation, permissions, roles, platform
       boundary, academic scope, ownership, cross-tenant, revocation).
@@ -77,9 +83,10 @@
 
 ### Next task
 
-No implementation task is active. D1–D6 are decided and documented;
-the single remaining open decision is D7 (session hardening, Phase K). Until
-Phase A/B is issued, the authorization overhaul remains a documented plan.
+No implementation task is active. D1–D7 are decided and documented
+(`docs/architecture/authorization.md` §13–§19); no architectural decisions
+remain open. Until Phase A/B is issued, the authorization overhaul remains a
+documented plan.
 
 ## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
 

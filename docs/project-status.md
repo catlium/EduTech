@@ -62,21 +62,33 @@ design document with strict CURRENT vs TARGET separation.
     queries, writes via explicit pre-mutation scope checks; default-deny on no
     scope with documented exceptions; ownership O1–O3; single INSTITUTE_ADMIN
     whole-institute bypass; custom roles always need assignments.
-  - **D7 remains open** (session hardening, Phase K).
+  - **D7 authentication/session hardening (§19) — now DECIDED:** keeps the
+    two-layer token model — access tokens become session-bound
+    (`{sub, sid}`) with per-request session + user-status checks (immediate
+    revocation, closes H5); strict one-time refresh rotation (60 s grace
+    window removed) with lineage revocation on replay; refresh-aware logout
+    (no access-token requirement, closes H2) + session listing/logout-all/
+    per-session revoke; global CSRF double-submit on all authenticated
+    state-changing requests, csrf rotation removed (closes H4), login CSRF via
+    Origin checks; status-gated refresh + deactivation and password-change
+    revoke all sessions; production cookie defaults + 90-day `auth_sessions`
+    retention/GC + session metadata. Resolves audit F1–F6/H1–H7. **Not
+    implemented — Phase K.**
 
 ### Validation
 
 - `git diff` reviewed: only documentation changed (new
-  `docs/architecture/authorization.md` with D1–D6 sections, entries in
+  `docs/architecture/authorization.md` with D1–D7 sections, entries in
   `docs/project-status.md` + `docs/tasks.md`). No source, schema, guard,
   controller, service, or frontend code modified.
 
 ### Next task
 
-No implementation task is active. D1–D6 are decided and documented; the
-remaining open decision is D7 (Phase K session hardening). Phase B may not be
-issued until after the D1-related implementation mechanism is scheduled, and
-Phase E cannot start until Phase A/B/C prerequisites land.
+No implementation task is active. **D1–D7 are all decided and documented; no
+architectural decisions remain open.** Phase B may not be issued until after
+the D1-related implementation mechanism is scheduled, and Phase E cannot start
+until Phase A/B/C prerequisites land. Phase K's decision track (§19) is
+complete and can be issued as its own implementation phase when scheduled.
 
 ## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
 
