@@ -344,3 +344,27 @@ export function roleVisibleToInstitute(role: RoleState, instituteId: string): bo
   if (role.kind === 'system') return true;
   return role.instituteId === instituteId;
 }
+
+// ── Phase D — the platform plane (D3/§15), pure decisions ─────────
+// The platform grant surface is `platform_user_roles`, and the role a platform
+// user may be granted is structurally platform/system/global (schema CHECKs).
+// These two guards are the app-layer second line: a platform authority can
+// only ever be a system platform role, so SUPER_ADMIN can never be a
+// membership role, an institute custom role, or an institute-visible role.
+
+/** True when `role` lives on the platform plane (domain=platform). */
+export function isPlatformRole(role: RoleState): boolean {
+  return role.domain === 'platform';
+}
+
+/**
+ * True when `role` may be granted to a user through `platform_user_roles`
+ * (the sole route to platform authority). Only system/global platform roles
+ * qualify — an institute-owned or institute-domain role can never become a
+ * platform authority.
+ */
+export function isPlatformRoleGrantableToUser(role: RoleState): boolean {
+  if (role.domain !== 'platform') return false;
+  if (role.kind !== 'system') return false;
+  return role.instituteId === null;
+}

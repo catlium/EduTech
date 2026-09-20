@@ -55,9 +55,10 @@
       institute-created custom roles (never platform permissions); role →
       permission assignment. **COMPLETE 2026-09-20 (parts 1+2) — see the
       issued tasks below.**
-- [ ] **Phase D — Super Admin / Platform Boundary:** SUPER_ADMIN authority;
+- [x] **Phase D — Super Admin / Platform Boundary:** SUPER_ADMIN authority;
       platform permissions; global OCR worker registry moves under platform
       authorization; INSTITUTE_ADMIN gains zero platform rights.
+      **COMPLETE 2026-09-20 — see the issued tasks below.**
 - [ ] **Phase E — Academic Classes & Divisions:** class/division structural
       layer (currently none exists). Design recorded in §16 (D4).
 - [ ] **Phase F — Teacher Assignments:** bind teachers to the
@@ -165,6 +166,60 @@
       - [x] Controller migration to the permission-aware layer is still governed
         by roadmap Phase I (module-by-module); `@RequiredRoles` remains in
         place on non-migrated controllers.
+
+## Phase D — Super Admin / Platform Boundary (2026-09-20, COMPLETE)
+
+> Issued task. Executed the D3/§15 platform plane: SUPER_ADMIN authority via
+> `platform_user_roles`, a default-deny platform guard that never consults
+> `x-institute-id`, and the OCR worker registry migrated under platform
+> authorization (it is shared platform infrastructure — an INSTITUTE_ADMIN
+> controls it no longer). `docs/architecture/authorization.md` §15 is the
+> source of truth. Boundary: NO Super Admin management APIs and NO Super Admin
+> frontend (only platform-plane resolution + enforcement, plus demo seed
+> elevation); NO academic scope (roadmap Phase E).
+
+- [x] Permission catalogue: `isPlatformRole` (domain === 'platform') and
+  `isPlatformRoleGrantableToUser` (system + platform + instituteId null) pure
+  guards; platform permission set stays exactly `institutes.*` + `ocr-workers.*`.
+- [x] `PlatformGuard` (new): runs after Authentication only; reads
+  `@RequiredPermission` keys; resolves the user's platform grants via
+  `PermissionCheckService.canOnPlatform` (DB-fresh, default-deny); ORs
+  multiple declared keys; **awaits** every check (the naive
+  `required.some(async ...)` swallowing Promises as truthy was caught in live
+  verification and fixed); throws Forbidden on no grant; never requires or
+  consults `x-institute-id`/membership. Defaults to allow when no permission
+  is declared (opt-in adoption).
+- [x] `OcrWorkersController` migrated: `@UseGuards(AccessTokenGuard, PlatformGuard)`
+  with `ocr-workers.read|create|update` per endpoint; old
+  TenantGuard/RolesGuard/INSTITUTE_ADMIN gating removed. Worker-facing
+  `OcrWorkerController` (bearer `owr_` protocol) untouched.
+- [x] Demo seed: `ensurePlatformRole(db, userId, roleKey)` validates
+  system+platform+global before linking `platform_user_roles`; seeds
+  `superadmin@catlium.dev` (Password123!) on the platform plane with no
+  institute membership.
+- [x] Live provisioning of the demo super admin on the running dev DB (seed is
+  host-executed via tsx; container was provisioned with the identical rows).
+- [x] Tests (Phase D, pure, in `permission-catalogue.test.ts`): platform
+  vocabulary is exactly `institutes.*`/`ocr-workers.*`; SUPER_ADMIN resolves
+  every platform key and nothing institute-side; INSTITUTE_ADMIN/TEACHER/
+  STUDENT resolve zero platform grants; custom institute roles can never
+  receive platform keys; SUPER_ADMIN never membership-eligible or institute
+  visible; platform plane independent of institute grants. Suite 222/222
+  (was 217/217); typecheck 10/10; lint 9/9.
+- [x] Live-verified matrix via `/api/v1/ocr/workers`: SUPER_ADMIN 200 with NO
+  `x-institute-id` (and 200 with a bogus/foreign `x-institute-id` — tenant
+  context cannot alter platform access); INSTITUTE_ADMIN/TEACHER/STUDENT 403
+  with and without institute headers; anonymous 401; SUPER_ADMIN register 201 /
+  PATCH 200 while institute admin register/PATCH 403; worker-facing protocol
+  routes (list/health of real registrations) unaffected.
+- [x] Registry hygiene: debounce-created registry rows from verification
+  removed; demo registry back to its original `test` + `dev-laptop-worker`.
+- [~] Doc status: project-status checkpoint + commit `feat(authz): enforce
+  platform authorization boundary` + push `feature/authorization-overhaul`
+  (this task).
+- [ ] Future (NOT built, deliberately deferred): Super Admin management UI /
+  APIs — registration, platform role assignment, worker fleet management;
+  institutes lifecycle endpoints. See project-status.md.
 
 ## Phase B — Permission System (2026-09-20, COMPLETE)
 

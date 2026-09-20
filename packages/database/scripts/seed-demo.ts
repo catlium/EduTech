@@ -11,6 +11,7 @@ import {
   memberships,
   membershipRoles,
   roles,
+  platformUserRoles,
   subjects,
   chapters,
   topics,
@@ -100,6 +101,20 @@ async function ensureRole(
   const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.key, roleKey)).limit(1);
   if (!role) throw new Error(`seed: role ${roleKey} not found; apply migration 0040 / boot the API first`);
   await db.insert(membershipRoles).values({ membershipId, roleId: role.id }).onConflictDoNothing();
+}
+
+async function ensurePlatformRole(
+  db: ReturnType<typeof createDatabase>,
+  userId: string,
+  roleKey: string,
+) {
+  // Phase D (D3/§15): the sole route to platform authority is
+  // platform_user_roles, and only system/global platform roles may be linked.
+  const [role] = await db.select().from(roles).where(eq(roles.key, roleKey)).limit(1);
+  if (!role || role.domain !== 'platform' || role.kind !== 'system' || role.instituteId !== null) {
+    throw new Error(`seed: platform role ${roleKey} is not a system platform role; boot the API first`);
+  }
+  await db.insert(platformUserRoles).values({ userId, roleId: role.id }).onConflictDoNothing();
 }
 
 async function upsertSubject(
@@ -1244,11 +1259,18 @@ async function main() {
   await seedDemoCurriculum(db);
   await seedValidationFixtures(db);
 
+  // Phase D: a demo platform SUPER_ADMIN (D3/§15) — platform_user_roles, NOT a
+  // membership role. Carries no institute membership and holds all platform
+  // permissions (ocr-workers.*, institutes.*) from the boot sync.
+  const superAdmin = await upsertUser(db, 'superadmin@catlium.dev', 'Platform Super Admin');
+  await ensurePlatformRole(db, superAdmin.id, 'SUPER_ADMIN');
+
   console.log(
     `Seeded institute=${JSON.stringify({ id: institute.id, name: institute.name })}\n` +
       `  admin@catlium.dev / ${PASSWORD}   (INSTITUTE_ADMIN)\n` +
       `  teacher@catlium.dev / ${PASSWORD}  (INSTITUTE_ADMIN, TEACHER)\n` +
       `  student@catlium.dev / ${PASSWORD}  (STUDENT)\n` +
+      `  superadmin@catlium.dev / ${PASSWORD}  (SUPER_ADMIN — platform plane, no institute)\n` +
       `  curriculum: NEP-2020 B.Sc. CS — AI, Cyber & Information Security,\n` +
       `    IKS in Computational System, Software Testing & QA (chapters/topics,\n` +
       `    syllabus + reading materials, approved questions, approved paper\n` +

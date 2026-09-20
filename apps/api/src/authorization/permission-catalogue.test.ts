@@ -16,6 +16,8 @@ import {
   hasPermission,
   invalidInstitutePermissionKeys,
   isMembershipRoleEligible,
+  isPlatformRole,
+  isPlatformRoleGrantableToUser,
   missingPermissionKeys,
   membershipRoleUsableIn,
   permissionDomain,
@@ -362,4 +364,105 @@ test('Phase C: role visibility — SUPER_ADMIN never an institute role; system i
   // Platform roles are never usable as membership roles anywhere.
   assert.equal(membershipRoleUsableIn(superAdmin, INST_A), false);
   assert.equal(membershipRoleUsableIn(superAdmin, null), false);
+});
+
+// ── Phase D — the platform plane (D3/§15): SUPER_ADMIN → platform
+//    permissions → shared platform operations ────────────────────
+
+function platformRole(key: string): RoleState {
+  const def = BUILT_IN_ROLE_DEFINITIONS.find((r) => r.key === key);
+  assert.ok(def, `built-in ${key} defined`);
+  return { key: def!.key, kind: def!.kind, domain: def!.domain, instituteId: null };
+}
+
+function allPlatformKeys(): string[] {
+  const out: string[] = [];
+  for (const [resource, def] of Object.entries(PLATFORM_RESOURCES)) {
+    for (const action of def.actions) out.push(`${resource}.${action}`);
+  }
+  return out;
+}
+
+test('Phase D: platform vocabulary — institutes.* and ocr-workers.* are platform-domain', () => {
+  assert.deepEqual(
+    Object.keys(PLATFORM_RESOURCES).sort(),
+    ['institutes', 'ocr-workers'].sort(),
+  );
+  for (const key of allPlatformKeys()) {
+    assert.equal(isSupportedPermission(key), true, key);
+    assert.equal(permissionDomain(key), 'platform', key);
+  }
+  // A platform permission can never be satisfied by an institute grant set.
+  assert.equal(
+    hasPermission([...resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN], 'platform')], 'ocr-workers.read'),
+    false,
+  );
+});
+
+test('Phase D: SUPER_ADMIN is a system platform role granted every platform key, and nothing institute-side', () => {
+  const role = platformRole(SUPER_ADMIN);
+  assert.equal(role.kind, 'system');
+  assert.equal(role.domain, 'platform');
+  assert.equal(role.instituteId, null);
+  assert.equal(isPlatformRoleGrantableToUser(role), true);
+
+  const platformGrants = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[SUPER_ADMIN], 'platform');
+  for (const key of allPlatformKeys()) {
+    assert.equal(hasPermission(platformGrants, key as PermissionKey), true, key);
+  }
+  // SUPER_ADMIN's platform grants never satisfy an institute permission.
+  assert.equal(
+    hasPermission([...resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[SUPER_ADMIN], 'institute')], 'users.manage'),
+    false,
+  );
+});
+
+test('Phase D: institute roles — built-in or custom — can never hold platform permissions', () => {
+  // Built-in institute roles resolve to zero platform grants.
+  for (const key of [INSTITUTE_ADMIN, TEACHER, STUDENT] as const) {
+    const platformGrants = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[key], 'platform');
+    assert.equal(platformGrants.size, 0, key);
+    assert.equal(hasPermission([...platformGrants], 'ocr-workers.read'), false, key);
+    assert.equal(hasPermission([...platformGrants], 'institutes.read'), false, key);
+  }
+  // Custom institute roles are refused platform/unknown keys at the assignment
+  // surface (a custom role may only ever hold institute-domain catalogue keys).
+  const customWithPlatform: RoleState = { key: 'fleet-manager', kind: 'institute', domain: 'institute', instituteId: INST_A };
+  assert.equal(isMembershipRoleEligible(customWithPlatform), true);
+  assert.equal(isPlatformRoleGrantableToUser(customWithPlatform), false);
+  assert.deepEqual(invalidInstitutePermissionKeys(['ocr-workers.manage', 'institutes.read']), [
+    'ocr-workers.manage',
+    'institutes.read',
+  ]);
+  // Granting a platform key into an institute custom role can never surface on
+  // the institute plane: the assignment surface rejects them and institute
+  // resolution strips any that slip through.
+  assert.deepEqual(resolveGrantedKeys(['ocr-workers.read', 'institutes.manage'], 'institute'), new Set());
+});
+
+test('Phase D: SUPER_ADMIN cannot be assigned as a membership role or become an institute role', () => {
+  const superAdmin = platformRole(SUPER_ADMIN);
+  assert.equal(isMembershipRoleEligible(superAdmin), false); // never a membership_roles row
+  assert.equal(membershipRoleUsableIn(superAdmin, INST_A), false);
+  assert.equal(roleVisibleToInstitute(superAdmin, INST_A), false); // invisible to institute role APIs
+  assert.equal(isBuiltinRoleKey('SUPER_ADMIN'), true); // custom roles cannot use the name
+  assert.equal(isBuiltinRoleKey('super_admin'), true);
+  assert.equal(isPlatformRoleGrantableToUser(systemRole(INSTITUTE_ADMIN)), false); // institute role is not grantable on the platform plane
+  assert.equal(isPlatformRole(superAdmin), true);
+});
+
+test('Phase D: platform plane is independent of institute memberships', () => {
+  // A user holding every institute key still has zero platform authority.
+  const instituteAdmin = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN], 'institute');
+  for (const key of ['ocr-workers.read', 'ocr-workers.create', 'ocr-workers.update', 'ocr-workers.manage'] as const) {
+    assert.equal(hasPermission(instituteAdmin, key), false, key);
+  }
+  // And the platform plane never consults institute grants: an institute admin
+  // who is ALSO a platform super admin resolves exactly the platform keys.
+  const both = resolveGrantedKeys(
+    [...BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN], ...BUILT_IN_ROLE_PERMISSIONS[SUPER_ADMIN]],
+    'platform',
+  );
+  assert.equal(hasPermission(both, 'ocr-workers.read'), true);
+  assert.equal(hasPermission(both, 'institutes.manage'), true);
 });
