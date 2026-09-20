@@ -37,18 +37,29 @@ design document with strict CURRENT vs TARGET separation.
 - **Session hardening** listed as the separate related track (rotation race,
   revocation, logout, session cleanup, password lifecycle, CSRF, 403 handling,
   stale institute selection, multi-device sessions) — deferred to Phase K.
+- **Decisions D1–D3 recorded (2026-09-20):** D1 permission model (explicit
+  `resource.action` keys, default-deny, no DENY rows, `*.manage` implication,
+  centralized catalogue, no permissions in JWTs — §13); D2 role/permission
+  storage (`permissions`, `roles` with kind/domain/institute_id rules,
+  `role_permissions`, `membership_roles` → role FK, built-ins as immutable
+  seeded system rows — §14); D3 SUPER_ADMIN / platform authorization (system
+  platform role + `platform_user_roles`, platform keys `institutes.*` +
+  `ocr-workers.*`, separate platform auth plane, INSTITUTE_ADMIN holds zero
+  platform grants — §15). D4–D7 remain open.
 
 ### Validation
 
 - `git diff` reviewed: only documentation changed (new
-  `docs/architecture/authorization.md`, entries in `docs/project-status.md` +
-  `docs/tasks.md`). No source, schema, guard, controller, service, or frontend
-  code modified.
+  `docs/architecture/authorization.md` with D1–D3 sections, entries in
+  `docs/project-status.md` + `docs/tasks.md`). No source, schema, guard,
+  controller, service, or frontend code modified.
 
 ### Next task
 
-No implementation task is active. Optionally resolve the open decisions
-recorded in `authorization.md` §12 (D1–D7) before Phase A/B is issued.
+No implementation task is active. D1–D3 are decided and documented; the
+remaining open decisions are D4–D7 (recorded in `authorization.md` §12).
+Phase B may not be issued until after the D1-related implementation mechanism
+is scheduled.
 
 ## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
 

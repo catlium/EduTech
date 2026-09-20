@@ -2,11 +2,31 @@
 
 ## Authorization Overhaul — Architecture & Roadmap (2026-09-20)
 
-> Only the architecture and roadmap are documented (`docs/architecture/authorization.md`).
+> Only the architecture, roadmap, and the D1–D3 design decisions are
+> documented (`docs/architecture/authorization.md`).
 > **No implementation has been started** — no auth, RBAC, permissions, academic
 > assignment, or authorization code, schema, or frontend changes exist. The
 > phase below tracks the planned roadmap; all items are not-started until their
 > own phase begins.
+
+### Authorization decisions (2026-09-20)
+
+- [x] **D1 — Permission model:** explicit `resource.action` keys, no wildcards,
+      no DENY rows, default-deny, `*.manage` implication rule, centralized
+      catalogue; permissions never in JWTs (recorded in §13).
+- [x] **D2 — Role & permission storage:** `permissions`, `roles`
+      (kind `system|institute` × domain `institute|platform` + institute_id
+      rules), `role_permissions`, `membership_roles` → role FK; built-in roles
+      as immutable seeded system rows (recorded in §14).
+- [x] **D3 — SUPER_ADMIN / platform authorization:** system platform role +
+      `platform_user_roles` join; platform keys `institutes.*`, `ocr-workers.*`;
+      separate platform auth plane; INSTITUTE_ADMIN holds zero platform grants
+      (recorded in §15).
+- [ ] **D4 — Academic classes & divisions** (Phase E).
+- [ ] **D5 — Teacher/student assignment granularity** (Phase F/G).
+- [ ] **D6 — Resource scope evaluation** (Phase H).
+- [ ] **D7 — Session-hardening decisions** (Phase K, per `security-audit.md`
+      F1–F6).
 
 ### Roadmap phases (target architecture, not yet implemented)
 

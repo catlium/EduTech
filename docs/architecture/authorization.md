@@ -71,13 +71,12 @@ Companion documents:
   permissions.** Platform access is a separate authority with its own
   accounting. Being an institute admin grants exactly zero platform capability.
 
-### Open decisions (need resolution before Phase D)
+### Decision: D3 (recorded 2026-09-20)
 
-- Storage shape of SUPER_ADMIN (flag on `users` vs a platform roles table vs a
-  reserved platform membership). Not decided here.
-- Whether platform capabilities are also expressed as permissions under the
-  platform boundary (recommended given §4 primitives) or as a simpler
-  `isSuperAdmin` flag check. See §10 Phase D.
+- Resolved. SUPER_ADMIN is a **system platform role** (not an institute
+  membership role, and not a bare `users` flag), granted via a dedicated
+  platform-grant join table, resolving to **platform-domain permissions**.
+  Full model in §15.
 
 ---
 
@@ -116,6 +115,9 @@ Companion documents:
   permissions.** The platform permission vocabulary (§4) is disjoint from the
   institute permission vocabulary and is not selectable by any institute role,
   custom or built-in.
+
+Storage and role-definition decisions are recorded in §13 (permission model)
+and §14 (role/permission storage); SUPER_ADMIN storage is §15.
 
 ---
 
@@ -156,16 +158,18 @@ Companion documents:
 - Naming convention to be settled in Phase B (e.g. `questions.update`,
   `materials.create`, `institutes.manage`). Not decided here.
 
-### Open decisions (need resolution before Phase B)
+### Decision: D1 (recorded 2026-09-20)
 
-- Permission vocabulary granularity (coarse per-controller vs fine
-  per-action-per-resource) and exact naming convention.
-- Whether `Permission` grant check happens at the guard layer against a
-  resolved permission set attached to `request.tenant`, or as a policy decision.
-- How built-in roles' permission sets are maintained (code-constant vs DB rows
-  seeded per institute).
-- Deny semantics: whether a role can *explicitly deny* a permission it would
-  otherwise inherit, or only grant.
+- Resolved. Permissions use explicit `resource.action` keys with default-deny,
+  no wildcard keys, and no DENY rows; `manage` is an explicit key with a
+  defined implication rule; the catalogue is centralized. Full model (keys,
+  granularity, mapping, examples) in §13.
+- Resolved. Grant evaluation happens at the authorization layer against the
+  per-request resolved permission set (DB-fresh, same rule as roles today);
+  the exact guard/policy mechanism is a Phase B implementation decision (§7).
+- Resolved. Built-in role → permission sets are maintained centrally in the
+  catalogue (code) and materialized as seeded rows (§13/§14).
+- Resolved. No DENY semantics in v1: absence of a grant means denied.
 
 ---
 
@@ -271,6 +275,12 @@ AccessTokenGuard            → identity (who)
   `TenantGuard`/`TenancyService`). The permission and academic-scope layers are
   added **after** membership resolution and **before/during** controller entry,
   with the service layer remaining the last line of defense via scoped queries.
+- **Platform plane (D3, §15):** platform endpoints (institute lifecycle, OCR
+  worker registry) run a separate chain — `AccessTokenGuard → PlatformGuard
+  (platform roles → platform permissions) → platform resource authorization →
+  Controller → Service`. Platform requests carry no `x-institute-id`, do not
+  pass `TenantGuard`, and platform grants never originate from
+  `membership_roles`.
 - The exact mechanism (guard-injected permissions vs an authorization module
   consulted by guards/policies; whether academic scope is resolved in a policy
   object vs in query filters) is an implementation decision for Phases B and H.
@@ -299,6 +309,9 @@ AccessTokenGuard            → identity (who)
   logic while worker *administration* (register/disable/rotate) moves entirely
   behind the platform boundary. Tenant admin may retain read-only visibility of
   infra health if product needs it, but no mutation.
+- **D3 direction (§15):** registry administration is gated by the
+  platform-domain permissions `ocr-workers.read/create/update/manage`;
+  `INSTITUTE_ADMIN` grants none of these.
 
 ### Not in scope for this task
 
@@ -391,8 +404,9 @@ in-flight or done.
     "does this resolved role set grant permission X?".
   - Unit tests for vocabulary + grant resolution.
 - **Dependencies:** Phase A (vocabulary, baseline).
-- **Major decisions:** isolation mechanism design described in §4 (grant check
-  visibility, deny semantics, naming convention).
+- **Major decisions:** D1 as recorded (§13) — explicit `resource.action` keys,
+  default-deny, no DENY rows, `manage` implication rule, centralized catalogue;
+  grant-check mechanism; `permissions` table seeding/sync policy.
 - **Expected outcome:** controllers/guard can express "requires permission P"
     with V1 semantics; grant checks evaluated from DB-fresh role state.
 - **NOT included:** new role definitions; academic scope; platform boundary;
@@ -413,10 +427,11 @@ in-flight or done.
     assignment by `INSTITUTE_ADMIN`.
   - Enforce (and test): custom roles can never include platform permissions.
 - **Dependencies:** Phase B (permission primitive + vocabulary).
-- **Major decisions:** role/permission storage shape (e.g. role-definition
-  rows per institute with permission columns/rows vs code constants for
-  built-ins and DB rows for custom); whether built-ins are seeded DB rows or
-  code-constant resolver.
+- **Major decisions:** D2 as recorded (§14) — `roles`/`permissions`/
+  `role_permissions`/`membership_roles` schema; built-in roles as immutable
+  seeded **system** rows; institute-owned custom roles; `membership_roles`
+  key→FK backfill; platform-domain roles structurally barred from institute
+  membership.
 - **Expected outcome:** memberships resolve to permission sets via their roles;
     admin can create custom institute roles; platform permissions are
     non-selectable.
@@ -433,8 +448,11 @@ in-flight or done.
   - Explicitly verify: an `INSTITUTE_ADMIN` (even of an institute) has zero
     platform permission.
 - **Dependencies:** Phase B (permission primitive); §2/§8 decisions.
-- **Major decisions:** SUPER_ADMIN storage shape; platform permission grant
-    model (flag vs platform role table).
+- **Major decisions:** D3 as recorded (§15) — SUPER_ADMIN as a seeded system
+    platform role, granted via a dedicated `platform_user_roles` join;
+    platform-permission keys (`institutes.*`, `ocr-workers.*`); OCR worker
+    registry moved to the platform plane; INSTITUTE_ADMIN holds zero platform
+    grants.
 - **Expected outcome:** platform concerns are gated by platform authority;
     no institute role can reach platform state.
 - **NOT included:** institute role changes; academic scope.
@@ -643,6 +661,9 @@ in-flight or done.
   JWT.
 - Tenancy + authorization: membership → role → permission chains; centralized
   permission vocabulary; built-in + institute-local custom roles.
+- Storage (D2/D3): `permissions`, `roles` (system/institute ×
+  institute/platform + institute_id rules), `role_permissions`,
+  `membership_roles` (role FK), `platform_user_roles`. See §14/§15.
 - Platform: SUPER_ADMIN authority, disjoint from institute membership; OCR
   registry and platform lifecycle under platform authorization.
 - Academic scope: classes/divisions → teacher/student assignments → resource
@@ -655,14 +676,12 @@ in-flight or done.
 
 ## Open decisions requiring user input
 
-Recorded inline in the relevant sections. Summary of the decisions needed
-before Phase B implementation:
+**D1, D2, D3 are DECIDED** (recorded 2026-09-20) — see §13 (permission model),
+§14 (role/permission storage), §15 (SUPER_ADMIN / platform authorization).
 
-- **D1 (Phase B):** permission naming convention and granularity; grant-check
-  mechanism; deny semantics.
-- **D2 (Phase C):** role/permission storage shape; built-in roles as seeds vs
-  code.
-- **D3 (Phase D):** SUPER_ADMIN storage shape; platform permission model.
+The remaining decisions needed before their respective phases can be
+implemented:
+
 - **D4 (Phase E):** class definition and class/division model; subject linkage.
 - **D5 (Phase F/G):** teacher/student assignment granularity; student subject
   resolution.
@@ -670,3 +689,347 @@ before Phase B implementation:
   deny semantics.
 - **D7 (Phase K):** the session-hardening decisions in `security-audit.md`
   F1–F6 and Phase-K priority ordering.
+
+---
+
+## 13. D1 — Permission model (DECIDED, not implemented)
+
+Recorded 2026-09-20. Applies to Phase B. Not yet implemented.
+
+### Naming convention
+
+- Stable machine-readable keys of the form **`resource.action`**, all
+  lowercase, resource nouns plural or singular per existing module naming.
+- Examples: `questions.update`, `materials.create`, `subjects.read`,
+  `ocr-workers.update`, `institutes.manage`.
+- The catalogue is declared **once** in code as a typed
+  readonly map (compile-time union), which is the authoritative vocabulary for
+  endpoint decorators and guard checks. A `permissions` DB table mirrors it
+  (§14) for FK integrity and role-assignment surfaces. A Phase B consistency
+  check (test/CI) verifies catalogue == seeded rows.
+
+### Action granularity
+
+A fixed action vocabulary, chosen from the actual operations each resource
+performs in this codebase:
+
+- `read` — list + detail reads.
+- `create` — create new resource instances.
+- `update` — mutate or transition state of existing resources (edits,
+  publish, material process/retry/cancel/enhance, question-paper
+  generate/shuffle, extraction-review accept, user status/role changes).
+- `delete` — delete/archive/discard.
+- `manage` — administrative superset for a resource (see implication rule).
+
+Non-CRUD verbs are **mapped onto** this vocabulary per resource (documented in
+the catalogue below) instead of creating verb-key sprawl. A genuinely new verb
+is added as an explicit key only when the endpoint requiring it exists —
+there is no wildcard.
+
+### Permission catalogue (V1)
+
+**Institute domain** (selectable by institute roles only):
+
+| resource | actions | notes / operation→action mapping |
+|---|---|---|
+| `subjects` | read, create, update, delete, manage | academic structure CRUD |
+| `chapters` | read, create, update, delete, manage | academic structure CRUD |
+| `topics` | read, create, update, delete, manage | academic structure CRUD |
+| `content` | read, create, update, delete, manage | content items + versions; generation → create/update |
+| `materials` | read, create, update, delete, manage | upload→create; process/retry/cancel/enhance → update |
+| `syllabus` | read, create, update, delete, manage | syllabus CRUD + upload |
+| `questions` | read, create, update, delete, manage | bank CRUD; extraction enqueue→create; candidate review/accept→update; discard→delete |
+| `question-types` | read, manage | static config; admin manage |
+| `paper-patterns` | read, create, update, delete, manage | CRUD + source extraction→create |
+| `question-papers` | read, create, update, delete, manage | CRUD; generate/shuffle/publish/scope → update |
+| `assessments` | read, create, update, delete, manage | examinations module CRUD |
+| `attempts` | read, create, update, manage | no delete endpoint exists; self actions + admin oversight |
+| `practice` | read, create, update, manage | no delete endpoint exists; self actions + admin oversight |
+| `exports` | read, manage | export doc preview/generation |
+| `jobs` | read, update, manage | cancel/retry → update |
+| `users` | read, create, update, manage | institute user + membership provisioning (create); status/role changes (update) |
+
+**Platform domain** (never selectable by institute roles):
+
+| resource | actions | notes / operation→action mapping |
+|---|---|---|
+| `institutes` | read, create, update, delete, manage | institute lifecycle; admin provisioning → manage |
+| `ocr-workers` | read, create, update, manage | global registry; register→create; disable/rotate→update |
+
+Notes:
+
+- There is **no `students` resource** today. The `resource.action` convention
+  is form-only; student administration currently maps to `users.*`
+  (provisioning a user with the STUDENT role = `users.create`; membership
+  status = `users.update`). If a future module (Phase E/F/G) introduces an
+  explicit enrollments/assignment surface, new explicit keys are added then —
+  nothing is added speculatively now.
+- Permission keys are explicit and listed; **no wildcard keys (`*`,
+  `resources.*`) are stored or checked anywhere.**
+
+### Manage implication rule
+
+- For a resource R, holding `R.manage` satisfies authorization checks for
+  every action defined on R (`R.manage` itself, `R.read`, `R.create`,
+  `R.update`, and `R.delete` where defined). Evaluated as an OR at the
+  authorization layer:
+  `granted.has('R.<needed action>') || granted.has('R.manage')`.
+- `R.manage` on `question-types`/`attempts`/`practice`/`exports`/`jobs`/`users`
+  implies exactly the actions defined for that resource (no delete for
+  attempts/practice, etc.).
+- `manage` is an **explicit named permission**, not a pattern. INSTITUTE_ADMIN
+  holds `R.manage` for every institute resource instead of a wildcard.
+
+### Default-deny
+
+- A request is authorized on a resource only if the actor's resolved permission
+  set (union of grants across their roles, DB-fresh per request) contains the
+  required permission key or the resource's `manage`.
+- **Absence of a grant means denied.** There are **no DENY permissions** in v1;
+  revocation is removal of the grant, and denial is the default state.
+
+### Evaluation
+
+- Permissions are **never** placed in JWTs. Access tokens carry identity (and,
+  at most, a session id). Every request resolves permissions from current role
+  → permission state in the DB (principles 3, 9).
+
+### Examples of permission checks (intended semantics)
+
+- `GET /api/v1/questions` requires `questions.read`.
+- `POST /api/v1/questions` requires `questions.create`.
+- `PATCH /api/v1/questions/:id` requires `questions.update`.
+- `POST /api/v1/materials/upload` requires `materials.create`.
+- `PATCH /api/v1/jobs/:id/cancel` requires `jobs.update`.
+- `GET /api/v1/subjects` requires `subjects.read` (student holds reads only).
+- `POST /api/v1/institutes` requires `institutes.create` (platform plane).
+- `POST /api/v1/ocr/workers` requires `ocr-workers.create` (platform plane);
+  `PATCH /api/v1/ocr/workers/:id` requires `ocr-workers.update`.
+- A role granted only `questions.manage` passes `questions.read/create/
+  update/delete` via the implication rule; a role granted only
+  `questions.update` fails `questions.delete` (default-deny).
+
+### Built-in role → permission mapping (reference, finalized in Phase C)
+
+- `INSTITUTE_ADMIN` (institute domain): `R.manage` for every institute-domain
+  resource.
+- `TEACHER` (institute domain): full action sets (read/create/update/delete)
+  for `subjects`, `chapters`, `topics`, `content`, `materials`, `syllabus`,
+  `questions`, `paper-patterns`, `question-papers`, `assessments`; plus
+  `question-types.read`, `attempts.read`, `practice.read`, `exports.read`,
+  `jobs.read`+`jobs.update`, `users.read`.
+- `STUDENT` (institute domain): reads for `subjects`, `chapters`, `topics`,
+  `content`, `materials`, `syllabus`, `assessments`, `question-types`; plus
+  `attempts.read/create/update` and `practice.read/create/update` (self-scoped
+  by owner, §5).
+- `SUPER_ADMIN` (platform domain): all platform-domain keys
+  (`institutes.*`, `ocr-workers.*`).
+
+---
+
+## 14. D2 — Role and permission storage (DECIDED, not implemented)
+
+Recorded 2026-09-20. Applies to Phase C. Not yet implemented.
+
+### Tables
+
+```
+permissions (
+  id           uuid PK,
+  key          varchar(100) NOT NULL UNIQUE,   -- 'questions.update'
+  domain       varchar(20)  NOT NULL,          -- 'institute' | 'platform'
+  resource     varchar(50)  NOT NULL,          -- 'questions'
+  action       varchar(20)  NOT NULL,          -- read|create|update|delete|manage
+  description  text,
+  created_at / updated_at,
+  UNIQUE (resource, action)
+)
+```
+
+- Seeded from the code catalogue (§13); a Phase B consistency check keeps
+  catalogue and rows aligned. Assignment surfaces and role FK checks read from
+  rows; guard decorators use the code catalogue.
+
+```
+roles (
+  id            uuid PK,
+  key           varchar(64)  NOT NULL,         -- INSTITUTE_ADMIN | TEACHER | STUDENT | SUPER_ADMIN | custom 'exam-coordinator'
+  name          varchar(255) NOT NULL,         -- display name
+  description   text,
+  kind          varchar(20)  NOT NULL,         -- 'system' | 'institute'
+  domain        varchar(20)  NOT NULL,         -- 'institute' | 'platform'
+  institute_id  uuid NULL REFERENCES institutes(id) ON DELETE CASCADE,
+  created_at / updated_at,
+
+  -- partial uniqueness:
+  --   UNIQUE (key)                WHERE kind = 'system'
+  --   UNIQUE (institute_id, key)  WHERE kind = 'institute'
+)
+```
+
+Constraints codifying the boundaries:
+
+- `kind = 'institute'` ⇒ `institute_id IS NOT NULL` (custom roles are always
+  owned by an institute).
+- `kind = 'system'` ⇒ `institute_id IS NULL` (built-in roles are global
+  singletons; one row each, shared by every institute).
+- `domain = 'platform'` ⇒ `kind = 'system'` (platform roles are always
+  system/global). Equivalently: **no institute-owned (custom) role can ever be
+  platform domain** — this is a structural constraint, not an application
+  rule.
+- `kind = 'institute'` ⇒ `domain = 'institute'`.
+- For completion: `kind = 'system'` allows `domain` = institute (built-in
+  INSTITUTE_ADMIN/TEACHER/STUDENT) or platform (SUPER_ADMIN).
+
+```
+role_permissions (
+  role_id       uuid NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  permission_id uuid NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+  PK (role_id, permission_id)
+)
+```
+
+- App-layer guard at assignment time: a role may only receive permissions whose
+  `domain` matches the role's `domain`. Institute roles therefore cannot
+  receive platform permissions (also structurally impossible per the `roles`
+  constraints since custom roles are institute-domain). This guard is covered
+  by the Phase L test matrix.
+
+```
+membership_roles (
+  membership_id uuid NOT NULL REFERENCES memberships(id) ON DELETE CASCADE,
+  role_id       uuid NOT NULL REFERENCES roles(id)    ON DELETE CASCADE,
+  PK (membership_id, role_id)
+)
+```
+
+- **Evolution:** the current `membership_roles(role varchar)` column becomes a
+  `role_id` FK to `roles`. The `memberships` table itself is unchanged; the
+  membership model stays `users ↔ institutes` via `memberships`, with role
+  bindings per membership. Backfill (Phase C migration): map existing
+  `INSTITUTE_ADMIN` / `TEACHER` / `STUDENT` strings to the seeded system role
+  rows.
+- `membership_roles` only ever links **institute-domain** roles (a membership
+  is institute-scoped by definition). Platform roles never appear here.
+
+### Built-in roles: seeded system rows (decision + rationale)
+
+Built-in roles are represented as **seeded system rows** in `roles`
+(`kind='system'`, one global row per built-in, `institute_id NULL`), with
+`role_permissions` rows seeded from the catalogue mapping (§13). Rationale:
+
+1. **Uniform resolution path.** Built-ins and custom roles share the same
+   tables, so resolution is one join shape
+   (`membership → membership_roles → roles → role_permissions → permissions`)
+   with no "virtual built-in" special case at query time.
+2. **FK integrity.** `membership_roles.role_id` references a real row; the
+   free-form `role varchar` (which allowed typos and unconstrained values,
+   security-audit H12) is eliminated.
+3. **No per-institute duplication.** Built-ins are global singletons rather
+   than per-institute rows — no N-institutes × 3 drift, and built-in role ids
+   are stable identity for seeds/tests.
+4. **Immutability by construction.** System rows are never editable via
+   institute APIs (no create/update/delete surface for `kind='system'`); the
+   platform changes them via migration/seed only.
+5. **One storage shape.** Custom roles require rows anyway; a single shape
+   avoids a code/DB split where built-ins live in code and customs in DB.
+
+The code catalogue (§13) remains the authoritative definition of what each
+built-in grants; the seeded `role_permissions` rows are the materialized
+result. Adding a permission updates catalogue + seed together (Phase B
+mechanism).
+
+### Institute custom roles
+
+- Created per institute (`kind='institute'`, `institute_id` required), keys
+  unique within the institute (partial unique index).
+- `INSTITUTE_ADMIN` assigns permissions to a custom role by picking from the
+  institute-domain permission catalogue only; platform-domain permissions are
+  invisible to the assignment surface (and structurally impossible per the
+  `roles` constraints).
+- Custom roles must not collide with reserved built-in keys (application
+  validation).
+
+### Platform roles (same table)
+
+- SUPER_ADMIN lives here as `kind='system'`, `domain='platform'` (see §15),
+  keeping one roles table for the whole system.
+
+### Resolution (target, per request)
+
+- Institute plane (existing per-request DB-fresh behavior preserved):
+  `memberships` (via `x-institute-id`) → `membership_roles` → `roles` →
+  `role_permissions` → `permissions.key` set → attached to
+  `request.tenant.permissions` alongside the existing `roles` list.
+- Platform plane: §15.
+
+---
+
+## 15. D3 — SUPER_ADMIN and platform authorization (DECIDED, not implemented)
+
+Recorded 2026-09-20. Applies to Phase D. Not yet implemented.
+
+### Model
+
+- SUPER_ADMIN is a **platform-level authority**, NOT an institute membership
+  role. It is never a `membership_roles` row.
+- It is represented as a seeded role row in `roles`:
+  `key='SUPER_ADMIN'`, `kind='system'`, `domain='platform'`,
+  `institute_id NULL`.
+- A user is elevated via a dedicated platform-grant join, separate from
+  `memberships`:
+
+  ```
+  platform_user_roles (
+    user_id  uuid NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
+    role_id  uuid NOT NULL REFERENCES roles(id)  ON DELETE CASCADE,
+    PK (user_id, role_id)
+  )
+  ```
+
+  Only `domain='platform'` roles may be linked here (app-layer guard; platform
+  roles are always system/global). This is the sole route to platform
+  authority.
+
+### Resolution (platform plane)
+
+- Platform endpoints (institute lifecycle, OCR worker registry) skip
+  `TenantGuard` and the `x-institute-id` requirement entirely.
+- Flow: `AccessTokenGuard` (identity) → `PlatformGuard` resolves the user's
+  `platform_user_roles` → `roles` → `role_permissions` → platform permission
+  set (DB-fresh per request) → platform resource authorization (`RequiredPermission`).
+- A user who also has institute memberships carries both planes independently;
+  neither implies the other.
+
+### Platform permission keys
+
+- Platform-domain catalogue (§13): `institutes.read/create/update/delete/
+  manage` and `ocr-workers.read/create/update/manage`.
+- SUPER_ADMIN's role grants all platform keys.
+- New platform surfaces (e.g. SaaS/billing, platform settings) introduce their
+  own explicit keys when they are built — not speculatively.
+
+### Capabilities covered
+
+- **Institute lifecycle**: create, deactivate/suspend, configure (`institutes.*`).
+- **Institute administration / SaaS membership**: provisioning and removing
+  `INSTITUTE_ADMIN` memberships, membership administration across institutes
+  (`institutes.manage`, `memberships`/`users` administration at platform
+  level).
+- **Shared platform infrastructure** — the **global OCR worker registry**:
+  list/register/disable/rotate workers requires `ocr-workers.read/create/
+  update` (platform plane). An ordinary `INSTITUTE_ADMIN` holds none of these
+  keys and cannot touch the registry (§8). Worker-facing claim/result routes
+  keep their existing bearer-auth boundary and are unaffected.
+
+### Boundary rules (enforced + tested in Phase L)
+
+- Institute roles — built-in (`INSTITUTE_ADMIN`) or custom — can never grant
+  platform permissions: structurally impossible in the schema (§14) and absent
+  from the assignment surface.
+- Platform grants only come from `platform_user_roles`; nothing in the
+  institute plane can mint one.
+- A user may hold both SUPER_ADMIN (platform) and INSTITUTE_ADMIN (institute)
+  simultaneously — these are independent authorities.
+- No platform permissions are placed in JWTs; the platform plane is also
+  DB-fresh per request.
