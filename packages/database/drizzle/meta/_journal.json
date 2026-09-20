@@ -281,6 +281,13 @@
       "when": 1790700000001,
       "tag": "0039_authz_permission_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790800000000,
+      "tag": "0040_membership_roles_role_id",
+      "breakpoints": true
     }
   ]
 }

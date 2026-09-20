@@ -16,8 +16,8 @@ import { users } from './users.js';
 //                         custom role can structurally NEVER hold platform
 //                         permissions.
 //   role_permissions    — role → permission grants (domain-matched).
-//   membership_roles    — unchanged (role string ↔ `roles.key`); the
-//                         role_id backfill is Phase C.
+//   membership_roles    — membership → role_id FK (Phase C migration 0040);
+//                         role keys resolve through the join for guards.
 //   platform_user_roles — the sole route to platform authority (§15);
 //                         only `domain='platform'` role rows may be linked
 //                         (app-layer guard + `roles` constraints).

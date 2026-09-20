@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { eq, and, inArray } from 'drizzle-orm';
-import { memberships, membershipRoles, institutes } from '@catlium/database';
+import { memberships, membershipRoles, roles, institutes } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 
@@ -34,9 +34,12 @@ export class TenancyService {
 
     if (membership.length === 0) return null;
 
-    const roles = await this.db
-      .select()
+    // Phase C: roles resolve through the membership_roles → roles FK (D2 §14);
+    // `key` is what the existing RolesGuard / @RequiredRoles still consume.
+    const roleRows = await this.db
+      .select({ roleKey: roles.key })
       .from(membershipRoles)
+      .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
       .where(eq(membershipRoles.membershipId, membership[0]!.id));
 
     return {
@@ -44,7 +47,7 @@ export class TenancyService {
       userId: membership[0]!.userId,
       instituteId: membership[0]!.instituteId,
       status: membership[0]!.status,
-      roles: roles.map((r) => r.role),
+      roles: roleRows.map((r) => r.roleKey),
     };
   }
 
@@ -61,10 +64,6 @@ export class TenancyService {
       status: membership!.status,
       roles: [],
     };
-  }
-
-  async addRole(membershipId: string, role: string): Promise<void> {
-    await this.db.insert(membershipRoles).values({ membershipId, role });
   }
 
   /** List every membership a user holds, with institute info + roles (institute picker). */
@@ -85,8 +84,9 @@ export class TenancyService {
 
     const membershipIds = rows.map((r) => r.membershipId);
     const roleRows = await this.db
-      .select()
+      .select({ membershipId: membershipRoles.membershipId, roleKey: roles.key })
       .from(membershipRoles)
+      .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
       .where(inArray(membershipRoles.membershipId, membershipIds));
 
     return rows.map((r) => ({
@@ -94,7 +94,7 @@ export class TenancyService {
       instituteName: r.instituteName,
       slug: r.slug,
       status: r.membershipStatus,
-      roles: roleRows.filter((rr) => rr.membershipId === r.membershipId).map((rr) => rr.role),
+      roles: roleRows.filter((rr) => rr.membershipId === r.membershipId).map((rr) => rr.roleKey),
     }));
   }
 }

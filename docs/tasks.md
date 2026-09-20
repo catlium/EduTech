@@ -51,9 +51,10 @@
 - [ ] **Phase B — Permission System:** centralized permission vocabulary
       (replaces per-controller `WRITE_ROLES`); permission grant resolution
       from DB-fresh role state; permission-aware authorization layer.
-- [ ] **Phase C — Built-in + Custom Roles:** roles as permission bundles;
+- [~] **Phase C — Built-in + Custom Roles:** roles as permission bundles;
       institute-created custom roles (never platform permissions); role →
-      permission assignment.
+      permission assignment. **Part 1 (membership role conversion) COMPLETE
+      2026-09-20 — see the issued task below.**
 - [ ] **Phase D — Super Admin / Platform Boundary:** SUPER_ADMIN authority;
       platform permissions; global OCR worker registry moves under platform
       authorization; INSTITUTE_ADMIN gains zero platform rights.
@@ -80,6 +81,51 @@
       boundary, academic scope, ownership, cross-tenant, revocation).
 - [ ] **Phase M — Final Security Audit + Documentation:** re-audit against the
       new architecture; docs to final-state truth.
+
+## Phase C — Built-in + Custom Roles, part 1: membership role conversion (2026-09-20, COMPLETE)
+
+> Issued task (recovery session). Implements the D2/§14 membership-role
+> conversion + role-assignment enforcement on top of Phase B.
+> `docs/architecture/authorization.md` §14 is the source of truth.
+> Boundary: NO custom-role CRUD API, NO role→permission management API, NO
+> controller migration, NO Super Admin management APIs (only platform-plane
+> resolution groundwork, D3/§15), NO academic scope (roadmap Phase E).
+
+- [x] Schema: `membership_roles.role` (varchar) → `role_id uuid NOT NULL
+      REFERENCES roles(id) ON DELETE CASCADE`; unique `(membership_id, role_id)`
+      preserved (`packages/database/src/schema/memberships.ts`).
+- [x] Migration `0040_membership_roles_role_id.sql` (journal idx 40, hand-written)
+      — idempotent insert of the 3 built-in institute system roles; `role_id`
+      column; DO-block validation refusing unmapped legacy values (no silent
+      loss); backfill of all rows via system-role join; SET NOT NULL + FK +
+      unique; legacy `role` column dropped. Verified on compose Postgres: 19/19
+      rows backfilled with identical role distribution (ADMIN×3, TEACHER×8,
+      STUDENT×8).
+- [x] Role model (pure, `permission-catalogue.ts`): `RoleKind`/`RoleState`,
+      `isMembershipRoleEligible` (platform role can never be a membership role),
+      `membershipRoleUsableIn` (built-in institute roles usable in any
+      institute; custom roles only in their owner institute).
+- [x] `RoleAssignmentService` (new): `resolveRoleId(instituteId, key)`
+      (built-in-first via `ORDER BY (kind='system') DESC`; rejects
+      unknown/platform/cross-institute roles), `assign`/`remove` primitives
+      (idempotent insert); provided + exported by the global AuthorizationModule.
+- [x] Grant check: `PermissionCheckService` join moved to
+      `roles.id = membershipRoles.roleId`; new `platformGrantKeysForUser` +
+      `canOnPlatform` (SUPER_ADMIN / §15 platform-plane groundwork).
+- [x] Callers: tenancy `getMembership`/`listMemberships` + users
+      `listInstituteUsers`/`setMembershipStatus` join `roles` for key strings;
+      users `createInstituteUser` resolves the legacy key via
+      `RoleAssignmentService.resolveRoleId`; dead `TenancyService.addRole`
+      removed; `seed-demo.ts` `ensureRole` resolves `role_id`; `RolesGuard` /
+      `@RequiredRoles` behavior unchanged (key strings preserved).
+- [x] Tests: 7 new pure role-model tests (built-ins exist, SUPER_ADMIN
+      platform-only, custom institute-local, cross-institute denied, platform
+      keys stripped from institute plane, union-of-roles = grant set, per-key
+      default-deny). Full suite 211/211.
+- [ ] **Remaining Phase C (when scheduled):** custom-role CRUD API
+      (institute-created roles), role→permission assignment APIs, controller
+      migration to the permission-aware layer (roadmap Phase I still governs
+      module-by-module conversion).
 
 ## Phase B — Permission System (2026-09-20, COMPLETE)
 

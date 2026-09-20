@@ -10,6 +10,7 @@ import {
   users,
   memberships,
   membershipRoles,
+  roles,
   subjects,
   chapters,
   topics,
@@ -92,9 +93,13 @@ async function upsertMembership(
 async function ensureRole(
   db: ReturnType<typeof createDatabase>,
   membershipId: string,
-  role: string,
+  roleKey: string,
 ) {
-  await db.insert(membershipRoles).values({ membershipId, role }).onConflictDoNothing();
+  // Phase C: membership roles bind by role_id (D2 §14). The built-in system
+  // roles are seeded by migration 0040 and the API boot sync.
+  const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.key, roleKey)).limit(1);
+  if (!role) throw new Error(`seed: role ${roleKey} not found; apply migration 0040 / boot the API first`);
+  await db.insert(membershipRoles).values({ membershipId, roleId: role.id }).onConflictDoNothing();
 }
 
 async function upsertSubject(

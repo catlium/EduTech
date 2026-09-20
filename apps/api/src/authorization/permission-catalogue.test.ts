@@ -13,10 +13,13 @@ import {
   PERMISSION_CATALOGUE,
   isSupportedPermission,
   hasPermission,
+  isMembershipRoleEligible,
   missingPermissionKeys,
+  membershipRoleUsableIn,
   permissionDomain,
   resolveGrantedKeys,
   type PermissionKey,
+  type RoleState,
 } from './permission-catalogue.ts';
 
 // ── Catalogue invariants (deterministic, no duplication) ─────────
@@ -197,4 +200,86 @@ test('missingPermissionKeys drives an idempotent sync', () => {
   const first = [...missingPermissionKeys(new Set())];
   const afterFirst = new Set([...half, ...first]);
   assert.deepEqual(missingPermissionKeys(afterFirst), []);
+});
+
+// ── Phase C — the role model (D2/§14): built-ins, SUPER_ADMIN boundary,
+//    custom-role institute-locality, assignment rules ─────────────
+
+const INST_A = '00000000-0000-0000-0000-00000000000a';
+const INST_B = '00000000-0000-0000-0000-00000000000b';
+
+function systemRole(key: string): RoleState {
+  const def = BUILT_IN_ROLE_DEFINITIONS.find((r) => r.key === key);
+  assert.ok(def, `built-in ${key} defined`);
+  return { key: def!.key, kind: def!.kind, domain: def!.domain, instituteId: null };
+}
+
+test('Phase C: built-in institute roles exist and are system + institute domain', () => {
+  for (const key of [INSTITUTE_ADMIN, TEACHER, STUDENT]) {
+    const role = systemRole(key);
+    assert.equal(role.kind, 'system', key);
+    assert.equal(role.domain, 'institute', key);
+    assert.equal(isMembershipRoleEligible(role), true, key);
+  }
+  // No invented built-ins beyond the sanctioned four.
+  assert.deepEqual(
+    BUILT_IN_ROLE_DEFINITIONS.map((r) => r.key).sort(),
+    [INSTITUTE_ADMIN, STUDENT, SUPER_ADMIN, TEACHER].sort(),
+  );
+});
+
+test('Phase C: SUPER_ADMIN is platform-only and can never be a membership role', () => {
+  const superAdmin = systemRole(SUPER_ADMIN);
+  assert.equal(superAdmin.kind, 'system');
+  assert.equal(superAdmin.domain, 'platform');
+  assert.equal(isMembershipRoleEligible(superAdmin), false);
+  assert.equal(membershipRoleUsableIn(superAdmin, INST_A), false);
+  assert.equal(membershipRoleUsableIn(superAdmin, null), false);
+});
+
+test('Phase C: built-in institute roles are usable in every institute', () => {
+  for (const key of [INSTITUTE_ADMIN, TEACHER, STUDENT]) {
+    const role = systemRole(key);
+    assert.equal(membershipRoleUsableIn(role, INST_A), true, key);
+    assert.equal(membershipRoleUsableIn(role, INST_B), true, key);
+  }
+});
+
+test('Phase C: custom roles are institute-local — cross-institute assignment is denied', () => {
+  const customA: RoleState = { key: 'exam-coordinator', kind: 'institute', domain: 'institute', instituteId: INST_A };
+  assert.equal(isMembershipRoleEligible(customA), true);
+  assert.equal(membershipRoleUsableIn(customA, INST_A), true);
+  assert.equal(membershipRoleUsableIn(customA, INST_B), false); // cross-institute denied
+  assert.equal(membershipRoleUsableIn(customA, null), false); // never a platform-plane role
+});
+
+test('Phase C: custom institute roles can never resolve platform permissions', () => {
+  // A custom role is structurally institute-domain, so even a (buggy) grant
+  // row pointing at a platform key is stripped on the institute plane.
+  const customA: RoleState = { key: 'syllabus-clerk', kind: 'institute', domain: 'institute', instituteId: INST_A };
+  assert.equal(membershipRoleUsableIn(customA, INST_A), true);
+  const granted = resolveGrantedKeys(['questions.manage', 'ocr-workers.update'], 'institute');
+  assert.deepEqual([...granted], ['questions.manage']);
+  assert.equal(hasPermission(granted, 'ocr-workers.create'), false);
+});
+
+test('Phase C: custom role permission keys resolve through the same grant path', () => {
+  const custom = ['questions.read', 'questions.update'];
+  const granted = resolveGrantedKeys(custom, 'institute');
+  assert.equal(hasPermission(granted, 'questions.update'), true);
+  assert.equal(hasPermission(granted, 'questions.read'), true);
+  // Default-deny for the exact keys the role never received.
+  assert.equal(hasPermission(granted, 'questions.delete'), false);
+  assert.equal(hasPermission(granted, 'questions.manage'), false);
+});
+
+test('Phase C: removing a role removes its permissions (union of remaining roles)', () => {
+  const admin = BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN];
+  const teacher = BUILT_IN_ROLE_PERMISSIONS[TEACHER];
+  const before = resolveGrantedKeys([...teacher, ...admin], 'institute');
+  // users.create comes only from INSTITUTE_ADMIN.
+  assert.equal(hasPermission(before, 'users.create'), true);
+  const afterRemove = resolveGrantedKeys(teacher, 'institute');
+  assert.equal(hasPermission(afterRemove, 'users.create'), false);
+  assert.equal(hasPermission(afterRemove, 'questions.update'), true);
 });

@@ -8,10 +8,11 @@ import { Inject } from '@nestjs/common';
 import { eq, and, inArray } from 'drizzle-orm';
 import * as bcryptjs from 'bcryptjs';
 
-import { users, memberships, membershipRoles } from '@catlium/database';
+import { users, memberships, membershipRoles, roles } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { normalizeEmail } from '@catlium/shared';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { RoleAssignmentService } from '../authorization/role-assignment.service.js';
 import type { CreateUserDto, UpdateUserStatusDto } from './users.dto.js';
 
 export interface InstituteUser {
@@ -25,7 +26,10 @@ export interface InstituteUser {
 
 @Injectable()
 export class UsersService {
-  constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE_TOKEN) private readonly db: Database,
+    private readonly roleAssignment: RoleAssignmentService,
+  ) {}
 
   async listInstituteUsers(instituteId: string): Promise<InstituteUser[]> {
     const rows = await this.db
@@ -43,16 +47,17 @@ export class UsersService {
 
     if (rows.length === 0) return [];
 
-    const roleIds = [...new Set(rows.map((r) => r.membershipId))];
+    const membershipIds = [...new Set(rows.map((r) => r.membershipId))];
     const roleRows = await this.db
-      .select()
+      .select({ membershipId: membershipRoles.membershipId, roleKey: roles.key })
       .from(membershipRoles)
-      .where(inArray(membershipRoles.membershipId, roleIds));
+      .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
+      .where(inArray(membershipRoles.membershipId, membershipIds));
 
     const perMembership = new Map<string, string[]>();
     for (const r of roleRows) {
       const list = perMembership.get(r.membershipId) ?? [];
-      list.push(r.role);
+      list.push(r.roleKey);
       perMembership.set(r.membershipId, list);
     }
 
@@ -98,7 +103,10 @@ export class UsersService {
       const [membership] = await tx.insert(memberships).values({ userId, instituteId }).returning();
       if (!membership) throw new Error('failed to create membership');
 
-      await tx.insert(membershipRoles).values({ membershipId: membership.id, role: dto.role });
+      // Phase C: the legacy key-string role resolves to a role_id via the
+      // assignment service (built-in-first, same-institute enforced).
+      const roleId = await this.roleAssignment.resolveRoleId(instituteId, dto.role);
+      await tx.insert(membershipRoles).values({ membershipId: membership.id, roleId });
 
       return {
         id: userId,
@@ -136,16 +144,17 @@ export class UsersService {
       .where(eq(memberships.id, membership[0]!.id));
 
     const [user] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
-    const roles = await this.db
-      .select()
+    const roleRows = await this.db
+      .select({ roleKey: roles.key })
       .from(membershipRoles)
+      .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
       .where(eq(membershipRoles.membershipId, membership[0]!.id));
 
     return {
       id: userId,
       email: user!.email,
       name: user!.name,
-      roles: roles.map((r) => r.role),
+      roles: roleRows.map((r) => r.roleKey),
       status: dto.status,
       createdAt: user!.createdAt,
     };

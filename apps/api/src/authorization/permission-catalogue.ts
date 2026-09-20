@@ -268,3 +268,40 @@ export const BUILT_IN_ROLE_PERMISSIONS: Readonly<Record<BuiltinRoleKey, readonly
   Object.fromEntries(BUILT_IN_ROLE_DEFINITIONS.map((r) => [r.key, r.permissionKeys])) as Readonly<
     Record<BuiltinRoleKey, readonly string[]>
   >;
+
+// ── Phase C — the role model (D2/§14), pure decisions ────────────
+// Every membership-role assignment rule that must not be re-implemented
+// ad-hoc: SUPER_ADMIN (platform) is never a membership role; custom
+// (institute-kind) roles are institute-local; built-in (system) institute
+// roles are global singletons usable in every institute. The schema's CHECK
+// constraints already make platform roles structurally system/global and
+// custom roles structurally institute-domain; the app-layer assignment guard
+// below is the second line (and tests exercise it directly).
+
+export type RoleKind = 'system' | 'institute';
+
+export interface RoleState {
+  readonly key: string;
+  readonly kind: RoleKind;
+  readonly domain: PermissionDomain;
+  readonly instituteId: string | null;
+}
+
+/** A role that may ever be granted through an institute membership. */
+export function isMembershipRoleEligible(role: RoleState): boolean {
+  if (role.domain === 'platform') return false; // SUPER_ADMIN never a membership role
+  if (role.kind === 'system') return true; // built-in institute roles are global
+  return role.instituteId !== null; // custom roles must be owned by an institute
+}
+
+/**
+ * True when `role` may be assigned to a membership of `instituteId`
+ * (null instituteId only ever represents the platform plane, where no
+ * membership roles apply). Same-institute for custom roles; built-in
+ * institute roles are usable everywhere.
+ */
+export function membershipRoleUsableIn(role: RoleState, instituteId: string | null): boolean {
+  if (!isMembershipRoleEligible(role)) return false;
+  if (role.kind === 'institute') return role.instituteId === instituteId;
+  return true;
+}
