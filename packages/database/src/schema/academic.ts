@@ -170,3 +170,39 @@ export const divisions = pgTable(
     ),
   ],
 );
+
+// Phase G — student academic placements: a STUDENT membership is placed into
+// ONE division per academic year (Student → Division → Class + Academic Year).
+// The division carries its year + class, so `class_id` is never mirrored here;
+// `academic_year_id` is written server-side from the division (never
+// client-supplied) purely so the partial unique index can enforce "one ACTIVE
+// placement per (student, year)". Deactivation is soft (`status='inactive'`,
+// row retained as history; re-placement and promotions add fresh rows). A
+// division groups students ONLY — no `division_subjects`: curriculum stays
+// class-scoped via `class_subjects`, shared by every division of the class.
+export const studentPlacements = pgTable(
+  'student_placements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    instituteId: uuid('institute_id')
+      .notNull()
+      .references(() => institutes.id, { onDelete: 'cascade' }),
+    membershipId: uuid('membership_id')
+      .notNull()
+      .references(() => memberships.id, { onDelete: 'cascade' }),
+    academicYearId: uuid('academic_year_id')
+      .notNull()
+      .references(() => academicYears.id, { onDelete: 'cascade' }),
+    divisionId: uuid('division_id')
+      .notNull()
+      .references(() => divisions.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('student_placements_active_unique')
+      .on(table.academicYearId, table.membershipId)
+      .where(sql`${table.status} = 'active'`),
+  ],
+);

@@ -67,9 +67,10 @@
 - [x] **Phase F — Teacher Assignments:** bind teachers to the
       classes/subjects they teach. **COMPLETE 2026-09-20 — see the issued
       tasks below.** Design recorded in §17 (D5).
-- [ ] **Phase G — Student Academic Assignments:** bind students to their
-      class/division; student reads academically scoped. Design recorded in
-      §17 (D5).
+- [x] **Phase G — Student Academic Assignments:** bind students to their
+      class/division. Student-side academic scoping (resource reads) remains
+      Phase H. **COMPLETE 2026-09-20 — see the issued tasks below.**
+      Design recorded in §17 (D5).
 - [ ] **Phase H — Resource Scope / Policy Engine:** academic scope + ownership
       policy evaluation. Design recorded in §18 (D6).
 - [ ] **Phase I — Module-by-Module Authorization Migration:** convert existing
@@ -111,6 +112,51 @@
       INSTITUTE_ADMIN-only; wired into `app.module.ts`.
 - [x] Validation: `pnpm typecheck` 10/10; live constraint inspection
       (FK cascade/unique/SET NULL as designed).
+
+## Phase G — Student Academic Assignments (2026-09-20, COMPLETE)
+
+> Issued task. Implements the D5/§17 student portion: bind STUDENT memberships
+> to divisions (Student → Academic Year + Class + Division/Batch).
+> `docs/architecture/authorization.md` §17 is the source of truth (student
+> model updated to the implemented shape). Boundary: NO
+> `student_subject_enrollments` (Phase H+), NO resource scope / policy engine
+> (Phase H), NO student-facing reads.
+
+- [x] Schema (`packages/database/src/schema/academic.ts`):
+      `student_placements(id, instituteId, membershipId, academicYearId,
+      divisionId, status, created_at, updated_at)` — cascade FKs to
+      `institutes`, `memberships`, `academic_years`, `divisions`; partial
+      unique index `student_placements_active_unique (academicYearId,
+      membershipId) WHERE status = 'active'` (one ACTIVE placement per
+      student±year; inactive history retained). `academicYearId` mirrored +
+      derived server-side; `classId` NOT stored; exported from schema/index +
+      package index.
+- [x] Migration `0043_student_placements.sql` (journal idx 43) applied on the
+      live compose Postgres (`catlium_dev`, max applied id 43; migrate image
+      rebuilt first per the stale-image rule); table, 4 cascade FKs + partial
+      unique index verified.
+- [x] API module (`apps/api/src/academic-structure/`): tenant-scoped
+      list/get/create/deactivate/transfer for `student-placements`; create
+      validates the division belongs to the institute (→404 cross-tenant) and
+      the membership is an ACTIVE same-institute STUDENT (→400 otherwise);
+      duplicate ACTIVE in the same year →409 via the partial unique index;
+      deactivate is soft; transfer is one transaction (deactivate + fresh row;
+      same-year keeps year, cross-year = promotion; conflict →409 + rollback).
+      All routes INSTITUTE_ADMIN-only. Wired into the academic module.
+- [x] DB-backed integration test `student-placements.integration.ts`
+      (gated on `TEST_DATABASE_URL`, run via tsx script
+      `test:student-placements`): create + server-derived year, multi-year
+      active coexistence, duplicate→Conflict, teacher→BadRequest,
+      inactive→BadRequest, cross-tenant membership→BadRequest, cross-tenant
+      division→NotFound (both directions), get scope/404 + enriched names,
+      list filters, deactivate + re-place, transfer→Conflict + rollback,
+      cross-year + same-year transfers, final history (6 rows / 1 active).
+      Placed outside the `*.test.ts` glob (strip-only node runner cannot parse
+      decorated NestJS classes). Scratch data cleaned up.
+- [x] Validation: `pnpm test` 222 pass; `pnpm typecheck` clean; `pnpm lint`
+      clean; live-PG verification; container rebuilt + verified healthy with
+      the Phase G code.
+- [x] Docs: §17 student model documented; project-status + tasks updated.
 
 ## Phase F — Teacher Assignments (2026-09-20, COMPLETE)
 

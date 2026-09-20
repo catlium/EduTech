@@ -1221,13 +1221,13 @@ class-year.
 
 ---
 
-## 17. D5 — Teacher and student academic assignments (DECIDED; teacher implemented in Phase F)
+## 17. D5 — Teacher and student academic assignments (DECIDED; teacher in Phase F, student in Phase G)
 
-Recorded 2026-09-20. **Phase F (2026-09-20) implemented the teacher portion**;
-the student model below remains Phase G. This section supersedes the earlier
-division-level sketch: teacher assignments sit at **class-subject offering
-granularity** (Teacher → `class_subjects`), NOT per division, and no
-`division_subjects` table is created.
+Recorded 2026-09-20. **Phase F (2026-09-20) implemented the teacher portion;
+Phase G (2026-09-20) implemented the student portion.** This section
+supersedes the earlier division-level sketch: teacher assignments sit at
+**class-subject offering granularity** (Teacher → `class_subjects`), NOT per
+division, and no `division_subjects` table is created.
 
 ### Teacher model (implemented Phase F)
 
@@ -1278,9 +1278,9 @@ Assignment-time validation (enforced in Phase F):
 assigned offerings `(class, subject)`. A teacher teaches a subject exactly
 where an assigned offering says so — nowhere else.
 
-### Student model
+### Student model (implemented Phase G)
 
-- **Student = institute member** placed into exactly **one division per
+- **Student = institute member** placed into exactly **one ACTIVE division per
   academic year.**
 - Placement explicitly needs the **Academic Year/Session**: a student is
   "Class 10-A, 2026-27".
@@ -1295,26 +1295,52 @@ where an assigned offering says so — nowhere else.
 
 ```
 student_placements (
-  id, instituteId, academicYearId, studentId, divisionId, created_at, updated_at,
-  UNIQUE (academicYearId, studentId)          -- one placement per (year, student)
-)
+  id, instituteId, academicYearId, membershipId, divisionId,
+  status 'active'|'inactive', created_at, updated_at,
+  UNIQUE (academicYearId, membershipId) WHERE status = 'active'
+)                       -- one ACTIVE placement per (student±year); inactive rows kept as history
 
 student_subject_enrollments (
   id, instituteId, placementId, subjectId, kind 'ENROLLED'|'EXCLUDED',
   created_at, updated_at,
   UNIQUE (placementId, subjectId)
-)
+)                       -- NOT implemented yet (Phase H+); empty-by-design
 ```
 
-Placement-time validation:
+Implementation notes (Phase G, deviations from the earlier sketch):
 
-- one placement per (student, year) — enforced by the unique key;
-- the division belongs to `placement.instituteId` and
-  `placement.academicYearId`;
-- `ENROLLED` subjects are offered by the institute (any offering, or explicitly
-  allowed by admin); `EXCLUDED` subjects must be in the student's division
-  offering set;
-- placement/enrollment management is INSTITUTE_ADMIN-only (Phase G).
+- **`membershipId`, not `studentId`** — matches the teacher model: the row
+  stores the institute-role-bearing membership, so tenant binding and the
+  STUDENT role are enforced structurally through `memberships` /
+  `membership_roles` / `roles`.
+- **`academicYearId` is a stored, denormalized mirror** of the division's year
+  (derived server-side from the division; never client-supplied) so the
+  partial unique index can enforce one ACTIVE placement per (student, year).
+  `classId` is deliberately NOT stored — fully derivable via the division.
+- **Soft deactivation, never DELETE** (matches the teacher contract): a
+  placement can be deactivated (`status='inactive'`, row retained as history)
+  and the student re-placed in the same year afterwards.
+- **Transfer = one transaction**: current ACTIVE placement → `inactive`, a
+  fresh ACTIVE row is inserted at the target division. Same-year moves keep
+  the year; cross-year is promotion. Transfer into a year where the student
+  already holds an ACTIVE placement violates the partial unique index and is
+  rejected (whole transaction rolls back).
+- **No `division_subjects`** is created.
+
+Placement-time validation (enforced in Phase G):
+
+- one ACTIVE placement per (student, year) — enforced by the partial unique
+  key (unique-violation mapped to a 409 Conflict);
+- the division belongs to `placement.instituteId` (cross-tenant division is
+  rejected — checked via `divisions.institute_id`);
+- the membership is an **active membership** of that institute carrying the
+  STUDENT role (via `membership_roles → roles.key = STUDENT`);
+- placement/deactivate/transfer management is **INSTITUTE_ADMIN-only** (Phase
+  G), and reads are admin-only too — placement data is not exposed to
+  students; students cannot assign themselves and teachers cannot modify
+  placements.
+- `ENROLLED`/`EXCLUDED` validation applies when enrollments are implemented
+  (unused today).
 
 **Historical academic assignments are preserved, never overwritten.** A
 promotion adds a new `student_placements` row for the new year/division; prior

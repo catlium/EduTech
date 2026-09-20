@@ -1,5 +1,71 @@
 # Project Status
 
+## Phase G — Student Academic Assignments (2026-09-20)
+
+**Status: IMPLEMENTED + VALIDATED — migration applied on live compose Postgres.**
+Implements the D5/§17 student portion: bind STUDENT memberships to divisions
+(Student → Academic Year + Class + Division/Batch), with class→curriculum and
+class+subject→offering untouched. No `division_subjects`; no student-facing
+reads; enrollment (`student_subject_enrollments`) deferred to Phase H+.
+
+- **Schema** (`packages/database/src/schema/academic.ts`):
+  `student_placements(id, instituteId, membershipId, academicYearId,
+  divisionId, status, created_at, updated_at)` — cascade FKs to `institutes`,
+  `memberships`, `academic_years`, `divisions`; partial unique index
+  `student_placements_active_unique (academicYearId, membershipId) WHERE
+  status = 'active'` (one ACTIVE placement per student±year; inactive rows
+  retained as history). `membershipId` (not a raw `studentId`) matches the
+  teacher model: tenant binding + STUDENT role enforced structurally through
+  `memberships`/`membership_roles`/`roles`. `academicYearId` is a mirrored,
+  server-derived column (never client-supplied) so the per-(year, student)
+  unique index can hold; `classId` is deliberately NOT stored.
+- **Migration** `0043_student_placements.sql` (journal idx 43). Applied live
+  via `docker compose run --rm migrate` (image rebuilt first per the stale-
+  image rule): `drizzle.__drizzle_migrations` max applied id 43; table (8
+  columns), 4 cascade FKs, and the partial unique index verified in
+  `catlium_dev`.
+- **API module** `apps/api/src/academic-structure/` (controller/service/dto)
+  `student-placements`: list (filters academicYearId/divisionId/membershipId),
+  get (tenant-scoped, enriched with student/year/class/division names),
+  create (derives year from the division; rejects cross-tenant division →
+  404, non-STUDENT/inactive/cross-tenant membership → 400, duplicate ACTIVE in
+  the same year → 409 via the partial unique index), deactivate (soft,
+  `status='inactive'`, row retained; re-placement in the same year allowed
+  afterwards), transfer (one transaction — current row soft-deactivated, fresh
+  ACTIVE row at the target division; same-year movement keeps the year,
+  cross-year is promotion; transfer into a year with an existing ACTIVE
+  placement → 409 and full rollback). All routes INSTITUTE_ADMIN-only.
+  Wired into the academic-structure module.
+- **Validation**: `pnpm test` 222 pass; `pnpm typecheck` clean (api +
+  database); `pnpm lint` clean; DB-backed integration test
+  `test:student-placements` (`student-placements.integration.ts`,
+  `TEST_DATABASE_URL`-gated, skips cleanly without the DB) covers create +
+  server-derived year, multi-year active coexistence, duplicate→Conflict,
+  teacher→BadRequest, inactive→BadRequest, cross-tenant membership→BadRequest,
+  cross-tenant division→NotFound (both directions), get scope/404 + enriched
+  names, list filters, deactivate + re-place, transfer→Conflict with rollback,
+  cross-year and same-year transfers, and final history (6 rows / 1 active).
+  Scratch data cleaned up (0 leftover rows); controller-level guard tests not
+  feasible under the strip-only node runner (service-level only, same as Phase
+  F).
+- **Containers**: migrate image rebuilt (stale) then migration applied; after
+  `docker compose run --rm migrate` recreated postgres without the dev
+  override, `docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+  -d postgres` restored 127.0.0.1:5432. API image rebuilt and verified: the
+  running container is healthy, serves `GET /api/v1/health`, and contains
+  `dist/academic-structure/student-placements.controller.js`.
+- **Docs**: §17 student model updated to the implemented shape (membershipId +
+  mirrored year + partial-unique ACTIVE + soft deactivate + transfer), no
+  `division_subjects`.
+
+### Next task
+
+Phase H — Resource scope authorization (teacher/student academic scope
+consumed by reads; `student_subject_enrollments`; teacher-facing reads). Phases
+I (controller migration), J (frontend), K (session hardening), L/M (test
+matrix, final audit) remain not-started. Deferred Phase D follow-ups (NOT
+built): Super Admin management UI/APIs, institutes lifecycle endpoints.
+
 ## Phase F — Teacher Assignments (2026-09-20)
 
 **Status: IMPLEMENTED + VALIDATED — migration applied on live compose Postgres.**
@@ -38,11 +104,11 @@ teacher-facing reads yet.
 
 ### Next task
 
-Phase G — Student Academic Assignments (bind students to class/division, §17
-D5). Phases H (resource scope), I (controller migration), J (frontend),
-K (session hardening), L/M (test matrix, final audit) remain not-started.
-Deferred Phase D follow-ups (NOT built): Super Admin management UI/APIs,
-institutes lifecycle endpoints.
+Phase H — Resource scope authorization (academic scope consumed by reads;
+student subject enrollments; teacher-facing reads). Phases I (controller
+migration), J (frontend), K (session hardening), L/M (test matrix, final
+audit) remain not-started. Deferred Phase D follow-ups (NOT built): Super
+Admin management UI/APIs, institutes lifecycle endpoints.
 
 ## Phase E — Academic Classes & Divisions (2026-09-20)
 
@@ -76,11 +142,11 @@ enforcement (Phase H).
 
 ### Next task
 
-Phase G — Student Academic Assignments (bind students to class/division, §17
-D5). Phases H (resource scope), I (controller migration), J (frontend),
-K (session hardening), L/M (test matrix, final audit) remain not-started.
-Deferred Phase D follow-ups (NOT built): Super Admin management UI/APIs,
-institutes lifecycle endpoints.
+Phase H — Resource scope authorization (academic scope consumed by reads;
+student subject enrollments; teacher-facing reads). Phases I (controller
+migration), J (frontend), K (session hardening), L/M (test matrix, final
+audit) remain not-started. Deferred Phase D follow-ups (NOT built): Super
+Admin management UI/APIs, institutes lifecycle endpoints.
 
 ## Phase D — Super Admin / Platform Boundary (2026-09-20)
 
@@ -300,8 +366,8 @@ hardening (Phase K).
 
 ### Next task
 
-Phase G — Student Academic Assignments (academic scope, §17) when scheduled.
-Roadmap phases H–M remain not-started.
+Phase G — Student Academic Assignments (academic scope, §17) **DONE** — see
+the Phase G section at the top. Roadmap phases H–M remain not-started.
 
 ## Authorization Overhaul — architecture & roadmap only (2026-09-20)
 
