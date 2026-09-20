@@ -11,13 +11,16 @@ import {
   INSTITUTE_RESOURCES,
   PLATFORM_RESOURCES,
   PERMISSION_CATALOGUE,
+  isBuiltinRoleKey,
   isSupportedPermission,
   hasPermission,
+  invalidInstitutePermissionKeys,
   isMembershipRoleEligible,
   missingPermissionKeys,
   membershipRoleUsableIn,
   permissionDomain,
   resolveGrantedKeys,
+  roleVisibleToInstitute,
   type PermissionKey,
   type RoleState,
 } from './permission-catalogue.ts';
@@ -49,7 +52,7 @@ test('every resource.action in the resource maps is catalogued', () => {
   }
 });
 
-test('catalogue resources are exactly the §13 V1 vocabulary', () => {
+test('catalogue resources are exactly the §13 V1 vocabulary (+ Phase C roles)', () => {
   assert.deepEqual(Object.keys(INSTITUTE_RESOURCES).sort(), [
     'assessments',
     'attempts',
@@ -63,6 +66,7 @@ test('catalogue resources are exactly the §13 V1 vocabulary', () => {
     'question-papers',
     'question-types',
     'questions',
+    'roles',
     'subjects',
     'syllabus',
     'topics',
@@ -282,4 +286,80 @@ test('Phase C: removing a role removes its permissions (union of remaining roles
   const afterRemove = resolveGrantedKeys(teacher, 'institute');
   assert.equal(hasPermission(afterRemove, 'users.create'), false);
   assert.equal(hasPermission(afterRemove, 'questions.update'), true);
+});
+
+// ── Phase C — custom role + role-permission management guards (D2/§14) ────
+
+test('Phase C: roles.* role-management keys are catalogued institute-domain', () => {
+  for (const action of ['read', 'create', 'update', 'delete', 'manage'] as const) {
+    const key = `roles.${action}`;
+    assert.equal(isSupportedPermission(key), true, key);
+    assert.equal(permissionDomain(key), 'institute', key);
+    // manage implies every action of the roles resource.
+    assert.equal(hasPermission([`roles.${action}`], key as PermissionKey), true, key);
+  }
+});
+
+test('Phase C: INSTITUTE_ADMIN holds roles.manage; TEACHER/STUDENT never role-management keys', () => {
+  const admin = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN], 'institute');
+  assert.equal(hasPermission(admin, 'roles.manage'), true);
+  assert.equal(hasPermission(admin, 'roles.read'), true);
+  for (const roleKey of [TEACHER, STUDENT] as const) {
+    const granted = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[roleKey], 'institute');
+    assert.equal(hasPermission(granted, 'roles.read'), false, roleKey);
+    assert.equal(hasPermission(granted, 'roles.create'), false, roleKey);
+    assert.equal(hasPermission(granted, 'roles.update'), false, roleKey);
+    assert.equal(hasPermission(granted, 'roles.delete'), false, roleKey);
+  }
+});
+
+test('Phase C: custom role without role-management permission is denied; with it, allowed', () => {
+  // A custom role holding only questions.* can never manage roles.
+  assert.equal(hasPermission(['questions.read'], 'roles.create'), false);
+  assert.equal(hasPermission(['questions.read'], 'roles.read'), false);
+  assert.equal(hasPermission(['roles.read'], 'roles.manage'), false);
+  // A custom role the institute grants roles.update can manage others' roles
+  // (subject to the self-edit guard enforced at the service layer).
+  assert.equal(hasPermission(['roles.update'], 'roles.update'), true);
+  assert.equal(hasPermission(['roles.manage'], 'roles.delete'), true);
+});
+
+test('Phase C: custom role keys never collide with built-in role names (case-insensitive)', () => {
+  for (const builtin of [INSTITUTE_ADMIN, TEACHER, STUDENT, SUPER_ADMIN]) {
+    assert.equal(isBuiltinRoleKey(builtin), true, builtin);
+    assert.equal(isBuiltinRoleKey(builtin.toLowerCase()), true, builtin.toLowerCase());
+  }
+  assert.equal(isBuiltinRoleKey('super_admin'), true);
+  assert.equal(isBuiltinRoleKey('exam-coordinator'), false);
+  assert.equal(isBuiltinRoleKey('housemaster'), false);
+});
+
+test('Phase C: role permission management — only catalogue institute keys may be granted', () => {
+  // Valid institute-domain grant keys pass clean.
+  assert.deepEqual(invalidInstitutePermissionKeys(['questions.read', 'users.update']), []);
+  // Platform keys, unknown keys, and duplicate-free leftovers are flagged.
+  assert.deepEqual(
+    invalidInstitutePermissionKeys(['questions.read', 'ocr-workers.update', 'hax.magic', 'institutes.create']),
+    ['ocr-workers.update', 'hax.magic', 'institutes.create'],
+  );
+  // An uncatalogued DB row (stale key) is every bit as invalid as an unknown one.
+  assert.deepEqual(invalidInstitutePermissionKeys(['questions.read', 'questions.typo']), ['questions.typo']);
+  // Duplicates are not an error at this layer (they are deduped by the service).
+  assert.deepEqual(invalidInstitutePermissionKeys(['questions.read', 'questions.read']), []);
+});
+
+test('Phase C: role visibility — SUPER_ADMIN never an institute role; system institute roles global; custom institute-local', () => {
+  const superAdmin = systemRole(SUPER_ADMIN);
+  assert.equal(roleVisibleToInstitute(superAdmin, INST_A), false);
+  assert.equal(roleVisibleToInstitute(superAdmin, INST_B), false);
+  for (const key of [INSTITUTE_ADMIN, TEACHER, STUDENT]) {
+    assert.equal(roleVisibleToInstitute(systemRole(key), INST_A), true, key);
+    assert.equal(roleVisibleToInstitute(systemRole(key), INST_B), true, key);
+  }
+  const customA: RoleState = { key: 'syllabus-clerk', kind: 'institute', domain: 'institute', instituteId: INST_A };
+  assert.equal(roleVisibleToInstitute(customA, INST_A), true);
+  assert.equal(roleVisibleToInstitute(customA, INST_B), false); // cross-institute invisible
+  // Platform roles are never usable as membership roles anywhere.
+  assert.equal(membershipRoleUsableIn(superAdmin, INST_A), false);
+  assert.equal(membershipRoleUsableIn(superAdmin, null), false);
 });

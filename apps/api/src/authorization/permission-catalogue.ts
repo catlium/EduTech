@@ -42,6 +42,7 @@ export const INSTITUTE_RESOURCES = {
   exports: { actions: ['read', 'manage'] },
   jobs: { actions: ['read', 'update', 'manage'] },
   users: { actions: ['read', 'create', 'update', 'manage'] },
+  roles: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
 } as const satisfies ResourceMap;
 
 // Platform-domain resources (§13). Only reachable via the platform plane
@@ -304,4 +305,42 @@ export function membershipRoleUsableIn(role: RoleState, instituteId: string | nu
   if (!isMembershipRoleEligible(role)) return false;
   if (role.kind === 'institute') return role.instituteId === instituteId;
   return true;
+}
+
+// ── Phase C — custom role management guards (D2/§14), pure decisions ──
+// Rules that must not be re-implemented ad-hoc in controllers/services:
+// custom role keys never collide with built-in role names (case-insensitively);
+// an institute role may only ever receive catalogue institute-domain keys; and
+// the roles a membership may be given are exactly the roles an institute can
+// see. Tests exercise these directly.
+
+/** True when `key` collides with a built-in role name (case-insensitive). */
+export function isBuiltinRoleKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return (BUILT_IN_ROLE_KEYS as readonly string[]).some((b) => b.toLowerCase() === lower);
+}
+
+/**
+ * Permission keys a custom role must never receive, in given order: unknown
+ * (uncatalogued) keys and platform-domain keys. Empty result = every key is a
+ * valid institute grant.
+ */
+export function invalidInstitutePermissionKeys(keys: Iterable<string>): string[] {
+  const invalid: string[] = [];
+  for (const key of keys) {
+    if (permissionDomain(key) !== 'institute') invalid.push(key);
+  }
+  return invalid;
+}
+
+/**
+ * True when a role is visible to an institute (and therefore listable and
+ * assignable through it): built-in institute system roles are global; custom
+ * roles are institute-local; platform roles (SUPER_ADMIN) never surface as
+ * institute roles.
+ */
+export function roleVisibleToInstitute(role: RoleState, instituteId: string): boolean {
+  if (role.domain === 'platform') return false;
+  if (role.kind === 'system') return true;
+  return role.instituteId === instituteId;
 }

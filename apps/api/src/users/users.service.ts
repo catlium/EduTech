@@ -159,4 +159,47 @@ export class UsersService {
       createdAt: user!.createdAt,
     };
   }
+
+  /**
+   * Replace a user's membership role set (Phase C). Same-institute enforced,
+   * platform/cross-institute roles rejected by RoleAssignmentService; the
+   * actor may never rewrite their own roles (self-escalation).
+   */
+  async setMembershipRoles(
+    instituteId: string,
+    actorMembershipId: string,
+    userId: string,
+    roleIds: string[],
+  ): Promise<InstituteUser> {
+    const membership = await this.db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.instituteId, instituteId)))
+      .limit(1);
+
+    if (membership.length === 0) {
+      throw new NotFoundException('User is not a member of this institute');
+    }
+    if (membership[0]!.id === actorMembershipId) {
+      throw new BadRequestException('You cannot change your own membership roles');
+    }
+
+    await this.roleAssignment.replaceMembershipRoles(instituteId, membership[0]!.id, roleIds);
+
+    const [user] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const roleRows = await this.db
+      .select({ roleKey: roles.key })
+      .from(membershipRoles)
+      .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
+      .where(eq(membershipRoles.membershipId, membership[0]!.id));
+
+    return {
+      id: userId,
+      email: user!.email,
+      name: user!.name,
+      roles: roleRows.map((r) => r.roleKey),
+      status: membership[0]!.status,
+      createdAt: user!.createdAt,
+    };
+  }
 }

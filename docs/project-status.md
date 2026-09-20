@@ -1,74 +1,86 @@
 # Project Status
 
-## Phase C — Built-in + Custom Roles, part 1: membership role conversion (2026-09-20)
+## Phase C — Built-in + Custom Roles, parts 1+2: membership role conversion + custom role management (2026-09-20)
 
 **Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**
-Checkpoint commit: `feat(authz): migrate memberships to permission roles`.
+Checkpoint commits: `feat(authz): migrate memberships to permission roles`,
+`feat(authz): add custom role management`.
 
-Implements the D2/§14 membership-role conversion + role-assignment enforcement
-per `docs/architecture/authorization.md`. Boundary honored: no custom-role CRUD
-API, no role→permission management, no controller migration, no Super Admin
-management APIs (platform-plane resolution groundwork only), no academic scope.
+Implements D2/§14 membership-role conversion + part 2 (custom institute role
+CRUD + role→permission management APIs). Boundary honored: no controller
+migration beyond the assignment endpoint (Phase I governs the rest), no Super
+Admin management APIs, no academic scope.
 
 - **Schema** (`packages/database/src/schema/memberships.ts`):
   `membership_roles.role` (varchar) → `role_id uuid NOT NULL REFERENCES
-  roles(id) ON DELETE CASCADE`; unique `(membership_id, role_id)` preserved —
-  the membership → role binding is now Phase B's FK, matching the §14 target.
+  roles(id) ON DELETE CASCADE`; unique `(membership_id, role_id)` preserved.
 - **Migration** `0040_membership_roles_role_id.sql` (hand-written, journal idx
-  40): idempotently inserts the 3 built-in institute system roles
-  (INSTITUTE_ADMIN/TEACHER/STUDENT) via `ON CONFLICT DO NOTHING`; validates
-  every legacy value maps to an institute-domain system role (DO block raises
-  on unmapped rows — no silent data loss); backfills `role_id`; SET NOT NULL +
-  FK + unique; drops the legacy `role` column.
+  40): idempotently inserts the 3 built-in institute system roles; validates
+  every legacy value maps to an institute-domain system role (no silent loss);
+  backfills `role_id`; SET NOT NULL + FK + unique; drops the legacy `role`
+  column. Part 2 needs no migration — the `roles`/`role_permissions` tables
+  exist since Phase B; the boot-time permission sync adds the 5 `roles.*`
+  keys + the INSTITUTE_ADMIN `roles.manage` grant (admin 16→17 manage grants).
 - **Role model** (pure, `permission-catalogue.ts`): `RoleKind`/`RoleState`,
-  `isMembershipRoleEligible` (platform roles can NEVER be membership roles),
-  `membershipRoleUsableIn` (built-in institute roles usable in any institute;
-  custom roles only in their owner institute → cross-institute denied).
-- **`RoleAssignmentService`** (new): `resolveRoleId(instituteId, key)`
-  (built-in-first via `ORDER BY (kind='system') DESC` so a same-key custom row
-  never shadows system identity; rejects unknown/platform-out-of-institute),
-  `assign`/`remove` primitives (idempotent). Provided + exported by the global
-  `AuthorizationModule`; this is the surface custom-role management will build
-  on.
-- **Grant check** (`permission-check.service.ts`): `grantKeysForMembership`
-  join is now `roles.id = membershipRoles.roleId`; added
-  `platformGrantKeysForUser` + `canOnPlatform` (SUPER_ADMIN platform-plane
-  resolution, D3/§15 minimum).
-- **Callers**: tenancy (`getMembership`/`listMemberships`) and users
-  (`listInstituteUsers`/`setMembershipStatus`) resolve role keys through the
-  FK join — `RolesGuard`/`@RequiredRoles` behavior unchanged. users
-  `createInstituteUser` resolves the legacy `dto.role` key via
-  `RoleAssignmentService.resolveRoleId`; dead `TenancyService.addRole`
-  removed. `packages/database/scripts/seed-demo.ts` `ensureRole` resolves the
-  `role_id`.
-- **Tests**: 7 new pure role-model tests in `permission-catalogue.test.ts`
-  (built-ins exist + valid eligibility, SUPER_ADMIN platform-only, custom
-  institute-locality, cross-institute denied, platform keys stripped from the
-  institute plane, union-of-roles = grant set, per-key default-deny).
+  `isMembershipRoleEligible`, `membershipRoleUsableIn`, plus Part 2 guards:
+  `isBuiltinRoleKey` (case-insensitive collision with built-in names),
+  `invalidInstitutePermissionKeys` (unknown/platform keys a custom role must
+  never receive), `roleVisibleToInstitute` (platform never, system institute
+  roles global, custom institute-local).
+- **`RoleAssignmentService`**: `resolveRoleId` (built-in-first), `assign`/
+  `remove`, and Part 2 `replaceMembershipRoles(instituteId, membershipId,
+  roleIds)` — atomic set-replace; every role must be usable in the institute
+  (unknown → 400); duplicates collapse; other assignments untouched on failure.
+- **`RolesService`** (new): `listRoles`/`getRole` (system institute roles +
+  institute-owned custom roles; SUPER_ADMIN never exposed); `createRole`
+  (kind `institute` × domain `institute`, key/name/desc + initial permission
+  set in one tx; duplicate key → 409); `updateRole` (name/description only,
+  system roles → 400); `deleteRole` (cascades grants + membership bindings,
+  system → 400); `setRolePermissions` (deterministic set/replace, dup keys
+  deduped, platform/unknown → 400, default-deny, system roles rejected,
+  self-escalation guard — actor may not alter a role they currently hold).
+- **`RolesController`** (`/api/v1/roles`, `@UseGuards(AccessTokenGuard,
+  TenantGuard, RolesGuard, PermissionGuard)`): GET `/` + `/:roleId`
+  (`roles.read`), POST `/` (`roles.create`, 201), PATCH `/:roleId`
+  (`roles.update`), DELETE `/:roleId` (`roles.delete`, 204), PUT
+  `/:roleId/permissions` (`roles.update`). Tenant-scoped via `x-institute-id`;
+  cross-institute/platform roles hidden → 404.
+- **Membership assignment integration**: `UsersService.setMembershipRoles`
+  (self-change → 400) exposed as `PUT /api/v1/users/:userId/roles`
+  (`@RequiredRoles('INSTITUTE_ADMIN')` + `@RequiredPermission('users.update')`
+  — UsersController now also applies `PermissionGuard`).
+- **Module wiring**: AuthorizationModule provides+exports RolesService and
+  hosts RolesController.
+- **Tests**: 6 new pure Phase C role-management tests (roles.* catalogued
+  institute-domain + manage implication, INSTITUTE_ADMIN has roles.manage while
+  TEACHER/STUDENT never hold role-management keys, custom role denied without /
+  allowed with, case-insensitive built-in key collision, permission-set
+  cleanup, visibility/assignability across institutes). Suite **217/217**.
 
 ### Validation
 
 - `pnpm typecheck` clean (turbo 10/10); `pnpm lint` clean; API test suite
-  **211/211** (7 new Phase C tests).
-- Migration verified on compose Postgres: hand-apply + full reconciliation —
-  19/19 `membership_roles` rows backfilled via `role_id` join with identical
-  role distribution (INSTITUTE_ADMIN 3, TEACHER 8, STUDENT 8); FK + unique
-  live; `drizzle.__drizzle_migrations` records 0040 (hashes verified as
-  sha256 of the SQL files); canonical `docker compose run --rm migrate`
-  rebuilds and exits 0 with nothing pending. Scratch test DB removed.
-- API rebuilt (`docker compose up -d --build api`), healthy; permission sync
-  idempotent (`+0/+0/+0`) across restarts; `docker compose ps` all healthy.
+  **217/217** (6 new Part 2 tests on top of 211).
+- Migration verified on compose Postgres (Part 1): 19/19 `membership_roles`
+  rows backfilled via `role_id` join with identical distribution
+  (INSTITUTE_ADMIN 3, TEACHER 8, STUDENT 8); canonical `docker compose run
+  --rm migrate` green; `drizzle.__drizzle_migrations` records 0040.
+- Part 2 live-verified after `docker compose up -d --build api` (healthy):
+  sync inserted `roles.create/delete/manage/read/update` into `permissions`
+  and exactly 1 INSTITUTE_ADMIN `roles.manage` grant; sync idempotent;
+  `/api/v1/health` 200; `docker compose ps` all healthy.
 - Only intended files changed; pre-existing unrelated working-tree changes
   preserved (pathspec commit). Note: host-side pnpm `drizzle-kit` exits 1 for
   pending migrations in this session (env/version quirk); the Docker migrate
-  service is the canonical green path and held the DB clean.
+  service is the canonical green path.
 
 ### Next task
 
-Remaining Phase C (custom-role CRUD + role→permission management APIs) when
-scheduled; roadmap Phase I governs module-by-module controller migration;
-Phases D/Boundary (Super Admin APIs, OCR-worker registry) and E (Academic
-Scope) remain not-started.
+Phase D — Super Admin / Platform Boundary (SUPER_ADMIN authority, platform
+permissions, OCR-worker registry under platform authorization) per roadmap;
+Phases E (Academic Classes/Divisions), F/G (assignments), H (resource scope)
+and K (session hardening) remain not-started. Controller migration to the
+permission-aware layer stays under roadmap Phase I.
 
 ## Phase B — Permission System foundation (2026-09-20)
 

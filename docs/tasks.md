@@ -51,10 +51,10 @@
 - [ ] **Phase B — Permission System:** centralized permission vocabulary
       (replaces per-controller `WRITE_ROLES`); permission grant resolution
       from DB-fresh role state; permission-aware authorization layer.
-- [~] **Phase C — Built-in + Custom Roles:** roles as permission bundles;
+- [x] **Phase C — Built-in + Custom Roles:** roles as permission bundles;
       institute-created custom roles (never platform permissions); role →
-      permission assignment. **Part 1 (membership role conversion) COMPLETE
-      2026-09-20 — see the issued task below.**
+      permission assignment. **COMPLETE 2026-09-20 (parts 1+2) — see the
+      issued tasks below.**
 - [ ] **Phase D — Super Admin / Platform Boundary:** SUPER_ADMIN authority;
       platform permissions; global OCR worker registry moves under platform
       authorization; INSTITUTE_ADMIN gains zero platform rights.
@@ -122,10 +122,49 @@
       platform-only, custom institute-local, cross-institute denied, platform
       keys stripped from institute plane, union-of-roles = grant set, per-key
       default-deny). Full suite 211/211.
-- [ ] **Remaining Phase C (when scheduled):** custom-role CRUD API
-      (institute-created roles), role→permission assignment APIs, controller
-      migration to the permission-aware layer (roadmap Phase I still governs
-      module-by-module conversion).
+- [x] **Remaining Phase C (custom-role CRUD + role→permission management) —
+      COMPLETE 2026-09-20.** No schema/migration change (tables existed since
+      Phase B); the permission sync at API boot adds the 5 `roles.*` keys and
+      the INSTITUTE_ADMIN `roles.manage` grant (admin 16→17 manage grants).
+      - [x] Catalogue (`permission-catalogue.ts`): `roles` resource with
+        read/create/update/delete/manage; pure guards `isBuiltinRoleKey`
+        (case-insensitive vs built-in names), `invalidInstitutePermissionKeys`
+        (unknown + platform keys), `roleVisibleToInstitute` (platform never,
+        system institute roles global, custom institute-local).
+      - [x] `RolesService` (new): `listRoles`/`getRole` (system institute roles
+        + institute-owned custom roles; SUPER_ADMIN never exposed);
+        `createRole` (kind `institute`, domain `institute`, key/name/desc +
+        initial permission set in one tx; duplicate key → 409 Conflict);
+        `updateRole` (name/description only; system roles → 400);
+        `deleteRole` (grants + membership bindings cascade; system → 400);
+        `setRolePermissions` (deterministic set/replace, dup-keys deduped,
+        platform/unknown keys → 400, default-deny, system roles rejected,
+        self-escalation guard: actor may not change a role they hold).
+      - [x] `RolesController` (`/api/v1/roles`, `@UseGuards(AccessTokenGuard,
+        TenantGuard, RolesGuard, PermissionGuard)`): GET list/read
+        (`roles.read`), POST create (`roles.create`), PATCH update
+        (`roles.update`), DELETE (`roles.delete`, 204), PUT
+        `:roleId/permissions` (`roles.update`). Tenant-scoped via
+        `x-institute-id`; cross-institute hidden → 404.
+      - [x] Membership assignment: `RoleAssignmentService.replaceMembershipRoles`
+        (atomic set-replace, all roles must be usable in the institute,
+        duplicates collapse, unknown → 400); `UsersService.setMembershipRoles`
+        + `PUT /api/v1/users/:userId/roles`
+        (`@RequiredRoles('INSTITUTE_ADMIN')` + `@RequiredPermission('users.update')`,
+        self-change → 400).
+      - [x] Module wiring: AuthorizationModule now exposes/controllers
+        RolesController, provides+exports RolesService.
+      - [x] Tests: 6 new pure Phase C role-management tests (roles.* catalogued
+        institute-domain + manage implication, INSTITUTE_ADMIN has
+        roles.manage while TEACHER/STUDENT never have role-management keys,
+        custom role denied without / allowed with, built-in key collision
+        case-insensitive, admin permission-keys cleanup, visibility/assignability
+        across institutes). Full suite 217/217; typecheck 10/10; lint 9/9.
+      - [x] Live-verified: API rebuilt, sync added the 5 `roles.*` permissions
+        + exactly 1 INSTITUTE_ADMIN `roles.manage` grant; `/api/v1/health` 200.
+      - [x] Controller migration to the permission-aware layer is still governed
+        by roadmap Phase I (module-by-module); `@RequiredRoles` remains in
+        place on non-migrated controllers.
 
 ## Phase B — Permission System (2026-09-20, COMPLETE)
 

@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsString, MinLength, MaxLength } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsEmail, IsIn, IsString, IsUUID, MinLength, MaxLength } from 'class-validator';
 
 const ALLOWED_ROLES = ['TEACHER', 'STUDENT'] as const;
 
@@ -25,4 +25,12 @@ export class CreateUserDto {
 export class UpdateUserStatusDto {
   @IsIn(['active', 'deactivated'])
   status!: string;
+}
+
+export class SetMembershipRolesDto {
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  @ArrayMaxSize(64)
+  roleIds!: string[];
 }

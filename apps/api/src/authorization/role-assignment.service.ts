@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { memberships, membershipRoles, roles } from '@catlium/database';
 import type { Database } from '@catlium/database';
@@ -88,6 +88,47 @@ export class RoleAssignmentService {
     await this.db
       .delete(membershipRoles)
       .where(and(eq(membershipRoles.membershipId, membershipId), eq(membershipRoles.roleId, roleId)));
+  }
+
+  /**
+   * Replace a membership's entire role set (atomic). Every role must be usable
+   * in `instituteId` — unknown roles, platform roles and cross-institute
+   * custom roles are rejected before anything is deleted; other assignments
+   * are untouched when one role fails. Duplicate ids collapse to one.
+   */
+  async replaceMembershipRoles(instituteId: string, membershipId: string, roleIds: string[]): Promise<void> {
+    const [membership] = await this.db
+      .select({ instituteId: memberships.instituteId })
+      .from(memberships)
+      .where(eq(memberships.id, membershipId))
+      .limit(1);
+    if (!membership || membership.instituteId !== instituteId) {
+      throw new NotFoundException('Membership not found');
+    }
+
+    const ids = [...new Set(roleIds)];
+    if (ids.length > 0) {
+      const rows = await this.db
+        .select({ id: roles.id, key: roles.key, kind: roles.kind, domain: roles.domain, instituteId: roles.instituteId })
+        .from(roles)
+        .where(inArray(roles.id, ids));
+      if (rows.length !== ids.length) throw new BadRequestException('Unknown role');
+      for (const row of rows) {
+        if (!membershipRoleUsableIn(toRoleState(row), instituteId)) {
+          throw new BadRequestException(`Role '${row.key}' is not valid for this institute`);
+        }
+      }
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx.delete(membershipRoles).where(eq(membershipRoles.membershipId, membershipId));
+      if (ids.length > 0) {
+        await tx
+          .insert(membershipRoles)
+          .values(ids.map((roleId) => ({ membershipId, roleId })))
+          .onConflictDoNothing();
+      }
+    });
   }
 }
 
