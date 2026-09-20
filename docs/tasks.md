@@ -81,12 +81,46 @@
 - [ ] **Phase M — Final Security Audit + Documentation:** re-audit against the
       new architecture; docs to final-state truth.
 
+## Phase B — Permission System (2026-09-20, COMPLETE)
+
+> Issued task. Implements the §13/§14/§15 foundation on top of the D1–D7
+> decisions. `docs/architecture/authorization.md` is the source of truth.
+> Boundary: NO classes/divisions, NO teacher/student assignments, NO academic
+> scope, NO controller migration, NO custom-role API, NO Super Admin API,
+> NO session hardening (Phase K), NO D7 re-implementation.
+
+- [x] Centralized permission catalogue — typed `resource.action` keys +
+      metadata (name/description/resource/action/domain), derived from the
+      §13 V1 vocabulary (institute: subjects/chapters/topics/content/materials/
+      syllabus/questions/question-types/paper-patterns/question-papers/
+      assessments/attempts/practice/exports/jobs/users; platform:
+      institutes/ocr-workers). No speculative `students.*`/`teachers.*`/
+      `classes.*` keys (§13 notes).
+- [x] Persistence (D2/§14 + §15 minimum): `permissions`, `roles`
+      (system|institute × institute|platform + partial unique keys + CHECK
+      constraints), `role_permissions`, `platform_user_roles`; `membership_roles`
+      left unchanged (string keys joined to `roles.key`; role_id backfill is
+      Phase C/§14 evolution).
+- [x] Deterministic permission/sync mechanism — idempotent, inserts missing,
+      preserves unknown rows (never silent-deletes), dup-key safe.
+- [x] Grant-check primitive — DB-fresh membership → role → permission
+      resolution, default-deny, unsupported/platform-domain keys filtered,
+      `manage` implication, no permissions in JWTs.
+- [x] Error behavior — unauthenticated → 401 UnauthorizedException;
+      authenticated-missing-permission → 403 ForbiddenException
+      (existing filter conventions).
+- [x] `RequiredPermission` decorator + `PermissionGuard` (opt-in, runs after
+      tenant): foundation only, no controller migration.
+- [x] Tests — focus: known/unknown permission, role→permission grant,
+      membership→role→permission, no-roles, DB-but-uncatalogued permission,
+      platform-not-via-membership, default-deny, manage implication, sync
+      idempotency.
+- [x] D1–D7 decisions finalized (prior work, §13–§19).
+
 ### Next task
 
-No implementation task is active. D1–D7 are decided and documented
-(`docs/architecture/authorization.md` §13–§19); no architectural decisions
-remain open. Until Phase A/B is issued, the authorization overhaul remains a
-documented plan.
+Permission foundation is deployed. Phase C (Academic Scope) is the next
+implementation step when scheduled. Roadmap phases below remain not-started.
 
 ## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
 

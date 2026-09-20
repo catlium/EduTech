@@ -16,3 +16,4 @@ export { syllabi } from './syllabus.js';
 export { attempts, attemptQuestions, attemptResponses } from './attempts.js';
 export { practiceSessions, practiceSessionItems, practiceSessionResponses } from './practice.js';
 export { ocrWorkers, ocrChunks, ocrPageCorrections } from './ocr.js';
+export { permissions, roles, rolePermissions, platformUserRoles } from './authorization.js';

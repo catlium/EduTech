@@ -30,6 +30,7 @@ export { questionPapers, questionPaperQuestions } from './schema/question-papers
 export { paperPatterns, paperPatternSubjects } from './schema/paper-patterns.js';
 export { syllabi } from './schema/syllabus.js';
 export { ocrWorkers, ocrChunks, ocrPageCorrections } from './schema/ocr.js';
+export { permissions, roles, rolePermissions, platformUserRoles } from './schema/authorization.js';
 export { attempts, attemptQuestions, attemptResponses } from './schema/attempts.js';
 export {
   practiceSessions,

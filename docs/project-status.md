@@ -1,5 +1,74 @@
 # Project Status
 
+## Phase B — Permission System foundation (2026-09-20)
+
+**Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**
+Checkpoint commit: `feat(authz): implement permission foundation`.
+
+Implements the D1(D2/D3)/§13/§14/§15 foundation per
+`docs/architecture/authorization.md`. Scope boundary honored: no classes/
+divisions, no teacher/student assignments, no academic scope (Phase C), no
+controller migration, no custom-role API, no Super Admin API, no session
+hardening (Phase K).
+
+- **Catalogue** (`apps/api/src/authorization/permission-catalogue.ts`):
+  typed `PermissionKey` union + `PERMISSION_CATALOGUE` (name/description/
+  resource/action/domain) for 18 resources — 16 institute
+  (subjects/chapters/topics/content/materials/syllabus/questions/
+  question-types/paper-patterns/question-papers/assessments/attempts/
+  practice/exports/jobs/users) + 2 platform (institutes/ocr-workers),
+  explicit actions only, no speculative `students.*`/`teachers.*`/
+  `classes.*` keys. Pure decision helpers: `resolveGrantedKeys` (default-deny,
+  strips uncatalogued + cross-domain keys), `hasPermission` (`manage`
+  implication), `missingPermissionKeys`, `permissionDomain`. Built-in role
+  mappings: INSTITUTE_ADMIN (16 manage), TEACHER, STUDENT (institute domain)
+  and SUPER_ADMIN (platform domain, institutes.* + ocr-workers.*).
+- **Persistence** (migration `0039_authz_permission_foundation`, tables in
+  `packages/database/src/schema/authorization.ts`): `permissions`, `roles`
+  (kind system|institute × domain institute|platform + CHECK constraints +
+  partial unique `key`/`(institute_id,key)`), `role_permissions` (PK
+  role_id+permission_id), `platform_user_roles` (PK user_id+role_id).
+  `membership_roles` untouched (string keys joined to `roles.key`; `role_id`
+  backfill deferred to Phase C). Migration follows the repo's hand-written
+  snapshot-free convention (0024–0038 gap makes `drizzle-kit generate`
+  unusable).
+- **Sync** (`permission-sync.service.ts`, runs on API boot): idempotent —
+  inserts missing catalogue permissions / built-in roles / role→permission
+  grants (ON CONFLICT DO NOTHING), preserves unknown DB rows (never deletes,
+  only counts them), dup-key safe. Verified `+78/+4/+86` on first boot and
+  `+0/+0/+0` on restart.
+- **Grant check** (`permission-check.service.ts`): DB-fresh membership →
+  membership_roles → roles → role_permissions → permissions; `can()` uses
+  `resolveGrantedKeys` (institute plane) + `hasPermission`. Permissions never
+  read from JWTs/frontend.
+- **Guard/decorator** (`permissions.decorator.ts` + `permissions.guard.ts`):
+  `@RequiredPermission('k1','k2')` (OR semantics, `manage` implication);
+  PermissionGuard runs after Authentication + Tenant (opt-in, defaults allow
+  when undeclared); 403 `ForbiddenException` matching existing guards.
+  Wired as global `AuthorizationModule`; no controllers migrated.
+
+### Validation
+
+- `pnpm typecheck` clean (api + database); `pnpm lint` clean; test suite
+  204/204 pass including 16 new permission-foundation tests
+  (`permission-catalogue.test.ts`: catalogue invariants, known/unknown
+  permission, role→permission, membership→role→permission, no-roles
+  default-deny, DB-but-uncatalogued key, platform-not-via-membership,
+  manage implication, sync idempotency).
+- Migration applied in compose Postgres (`edutech-migrate-1` exit 0); tables
+  + constraints live; boot sync seeded 78 permissions / 4 system roles / 86
+  grants (INSTITUTE_ADMIN 16, TEACHER 47, STUDENT 14, SUPER_ADMIN 9); `docker
+  compose ps` healthy; `GET /api/v1/health` 200 via nginx; sync idempotent
+  across restarts.
+- Only intended files changed; pre-existing unrelated working-tree changes
+  preserved (pathspec commit).
+
+### Next task
+
+Phase C — Academic Scope (classes/divisions, assignments, `offeringId`
+scope column, scope policies) when scheduled. Roadmap phases remain
+not-started.
+
 ## Authorization Overhaul — architecture & roadmap only (2026-09-20)
 
 **Status: PLANNED — documentation only. No implementation performed.**
@@ -84,11 +153,11 @@ design document with strict CURRENT vs TARGET separation.
 
 ### Next task
 
-No implementation task is active. **D1–D7 are all decided and documented; no
-architectural decisions remain open.** Phase B may not be issued until after
-the D1-related implementation mechanism is scheduled, and Phase E cannot start
-until Phase A/B/C prerequisites land. Phase K's decision track (§19) is
-complete and can be issued as its own implementation phase when scheduled.
+Resolved by **Phase B (Permission System)** — implemented and committed
+(2026-09-20). Phase C (Academic Scope) is the next implementation step when
+scheduled; Phase E cannot start until Phase C prerequisites land. Phase K's
+decision track (§19) is complete and can be issued as its own implementation
+phase when scheduled.
 
 ## Phase 50 — UI polish: shared Dialog/Select, login toggle, large-dialog conversions (2026-09-20)
 
