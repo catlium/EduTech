@@ -1,0 +1,110 @@
+\chapter{TESTING AND VALIDATION}
+\thispagestyle{empty}
+
+This chapter describes the continuous testing strategy, the unit,
+integration, end-to-end, and security validations performed, and the
+recorded validation status of the project.
+
+\clearpage
+
+\section{Testing Strategy}
+
+Validation was continuous rather than deferred. Each phase ran unit tests at
+each layer, type checking and linting across the workspaces, and end-to-end
+harnesses that exercise the live stack through the public gateway. After any
+code change the affected containers were rebuilt and the running images were
+verified to be executing the new code, so ``up and healthy'' was not assumed
+to mean current.
+
+\section{Unit and Integration Tests}
+
+\subsection{TypeScript (API and web)}
+
+The API runs 188 test cases across 23 test files using the Node.js built-in
+test runner. They cover the deterministic engines (pattern validation,
+pattern extraction, question extraction, enhancement, answer-batch building),
+the refresh-token race handler, analytics computation, the OCR coordinator
+and chunk logic, and the export renderers. The web application adds 15 test
+cases covering the paper-pattern builder and session guarding.
+
+\subsection{Python (OCR and workers)}
+
+The OCR service and the workers provide 118 tests using \texttt{pytest}: 25
+in the OCR service (engine and extraction), 83 in the workers (aggregation,
+AI reliability and retry behaviour, chunking, note quality, question-bank
+batching, starter material, syllabus flow, and processing failures), and 10
+in the standalone OCR worker.
+
+\section{End-to-End Testing}
+
+End-to-end harnesses are shell scripts (plus one browser journey script) that
+drive the running stack through its public API with exact PASS/FAIL counting.
+The harnesses cover authentication, SaaS/tenancy, API contracts, materials
+and OCR, paper patterns, question papers, attempts (including the guarantee
+that no answer key or explanation leaves the API), practice, syllabus,
+resource ownership, security (Section~14), Docker readiness, demo flows, and
+web smoke/workflow journeys. Recorded results in the validation document are
+all green, with individual suites reporting pass counts up to 86 with
+\texttt{FAIL=0}.
+
+\section{Security Validation}
+
+Security behaviour is validated explicitly: session cookies are verified as
+httpOnly, CSRF protection rejects requests without the token, tenant
+isolation is exercised across institutes, role enforcement rejects
+unauthorized role use, and the attempts harness confirms that answer keys and
+explanations are never present in any student-facing payload.
+
+\section{Validation Status}
+
+Recorded on 19~September 2026, type checking passes across the turbo pipeline
+(10 tasks, covering the TypeScript workspaces and their pre-build steps) and
+linting across the linted packages; the API, web, and worker containers are
+rebuilt and healthy. No continuous-integration pipeline is configured in the
+repository; validation is run locally and recorded in the project-status and
+user-validation documents.
+
+\section{Testing Limitations}
+
+\begin{enumerate}
+  \item There are no automated browser regression suites beyond the small web
+        unit and smoke/workflow harnesses.
+  \item No code-coverage or performance benchmark figures are tracked; results
+        in this report are actual recorded outcomes, not measured speedups.
+  \item OCR quality is validated behaviourally (retry, correction, per-page
+        inspection) rather than by an accuracy benchmark on a labelled corpus.
+\end{enumerate}
+\section{End-to-end Harness Inventory}
+
+The following harnesses exercise the live stack through its public gateway.
+Each reports exact PASS/FAIL counts; recorded results in the validation
+document are all green (\texttt{FAIL=0}), with individual suites reporting
+pass counts up to 86.
+
+\begin{table}[H]
+\centering
+\caption{End-to-end harness inventory.}
+\label{tab:e2e}
+\small
+\begin{tabular}{@{}p{6.2cm}p{\dimexpr\textwidth-6.2cm-12pt\relax}@{}}
+\toprule
+\textbf{Harness} & \textbf{Coverage} \\
+\midrule
+auth\_e2e & Login, refresh rotation, logout, CSRF \\
+saas\_e2e & Multi-tenant registration and membership flow \\
+api\_contract\_e2e & Public contract conformance \\
+materials\_e2e & Material create/upload/processing round-trips \\
+paper\_pattern\_e2e & Pattern create/validate/approve/extract flows \\
+attempts\_e2e & Start, save, submit, deadline, evaluation; no answer-key leaks \\
+practice\_e2e & Flashcard and question practice sessions \\
+syllabus\_e2e & AI proposal $\rightarrow$ review $\rightarrow$ confirm \\
+p8\_e2e & Combined academic/content/assessment workflow \\
+resource\_ownership\_e2e & Cross-institute isolation of resources \\
+sec14\_e2e & Security section: guards, roles, tenant header enforcement \\
+docker\_readiness\_e2e & Container health across the stack \\
+demo\_e2e & Teacher and student vertical slices with seed data \\
+web\_smoke\_e2e / web\_workflow\_e2e & Web application smoke and journey \\
+browser\_journeys (mjs) & Browser-level journey checks \\
+\bottomrule
+\end{tabular}
+\end{table}

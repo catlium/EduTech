@@ -1,0 +1,60 @@
+---
+title: CatLium EduTech — System Architecture & Deployment Topology
+---
+%%{init: {'theme':'neutral','htmlLabels':false,'themeVariables':{"primaryColor": "#ffffff", "primaryTextColor": "#000000", "primaryBorderColor": "#000000", "lineColor": "#000000", "secondaryColor": "#ffffff", "tertiaryColor": "#ffffff", "clusterBkg": "#ffffff", "clusterBorder": "#000000", "clusterTitleColor": "#000000", "edgeLabelBackground": "#ffffff", "actorBkg": "#ffffff", "actorBorder": "#000000", "actorTextColor": "#000000", "signalColor": "#000000", "signalTextColor": "#000000", "labelBoxBkgColor": "#ffffff", "labelBoxBorderColor": "#000000", "labelTextColor": "#000000", "noteBkgColor": "#ffffff", "noteBorderColor": "#000000", "noteTextColor": "#000000"},'flowchart':{'useMaxWidth':false}}}%%
+flowchart LR
+    Browser[" Browser<br/>Next.js client"]
+    Edge[" Cloudflare Edge<br/>TLS · public DNS"]
+
+    subgraph Private[" Private Docker network (no host ports)"]
+        Tunnel[" cloudflared<br/>only public ingress"]
+        Nginx[" nginx :80<br/>/ → web · /api/ → api"]
+        Web[" web :3001<br/>Next.js"]
+        API[" api :3000<br/>NestJS · /api/v1"]
+        PG[(" PostgreSQL 17")]
+        RMQ[" RabbitMQ 3<br/>jobs · ai_generation"]
+        Storage[(" storage volume")]
+        WMat[" worker-material<br/>role: material"]
+        WAi[" worker-ai<br/>role: ai · concurrency 5"]
+        Omni[" OmniRoute<br/>internal AI gateway"]
+        OCR[" ocr :8000<br/>FastAPI · PaddleOCR"]
+    end
+
+    OW[" ocr-worker<br/>standalone compute"]
+
+    Browser -->|HTTPS| Edge
+    Edge -->|tunnel| Tunnel
+    Tunnel -->|http| Nginx
+    Nginx -->|"/"| Web
+    Nginx -->|"/api/"| API
+    Web -.->|"relative /api/v1"| Nginx
+    API --> PG
+    API --> Storage
+    API -->|publish| RMQ
+    RMQ -->|jobs| WMat
+    RMQ -->|ai_generation| WAi
+    WMat -->|"POST /extract"| OCR
+    WMat --> PG
+    WMat --> Storage
+    WAi -->|"OpenAI /v1"| Omni
+    WAi --> PG
+    OW -->|"HTTPS /api/v1/ocr/workers/*"| API
+
+    classDef public fill:#fef3c7,stroke:#f59e0b,color:#78350f,stroke-width:1.5px
+    classDef edge fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e,stroke-width:1.5px
+    classDef app fill:#eef2ff,stroke:#6366f1,color:#312e81,stroke-width:1.5px
+    classDef data fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:1.5px
+    classDef queue fill:#ffedd5,stroke:#ea580c,color:#7c2d12,stroke-width:1.5px
+    classDef worker fill:#f3e8ff,stroke:#9333ea,color:#4c1d95,stroke-width:1.5px
+    classDef ai fill:#fce7f3,stroke:#db2777,color:#831843,stroke-width:1.5px
+    classDef ocr fill:#ccfbf1,stroke:#0d9488,color:#134e4a,stroke-width:1.5px
+
+    class Browser public
+    class Edge,Tunnel edge
+    class Web,API app
+    class PG,Storage data
+    class RMQ queue
+    class WMat,WAi worker
+    class Omni ai
+    class OCR ocr
+    class OW worker

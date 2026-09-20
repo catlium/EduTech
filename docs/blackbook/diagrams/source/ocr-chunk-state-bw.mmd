@@ -1,0 +1,47 @@
+---
+title: CatLium EduTech — Job & OCR Chunk State Lifecycles
+---
+%%{init: {'theme':'neutral','htmlLabels':false,'themeVariables':{"primaryColor": "#ffffff", "primaryTextColor": "#000000", "primaryBorderColor": "#000000", "lineColor": "#000000", "secondaryColor": "#ffffff", "tertiaryColor": "#ffffff", "clusterBkg": "#ffffff", "clusterBorder": "#000000", "clusterTitleColor": "#000000", "edgeLabelBackground": "#ffffff", "actorBkg": "#ffffff", "actorBorder": "#000000", "actorTextColor": "#000000", "signalColor": "#000000", "signalTextColor": "#000000", "labelBoxBkgColor": "#ffffff", "labelBoxBorderColor": "#000000", "labelTextColor": "#000000", "noteBkgColor": "#ffffff", "noteBorderColor": "#000000", "noteTextColor": "#000000"},'state':{'useMaxWidth':false}}}%%
+stateDiagram-v2
+    direction LR
+
+    state "Async job (jobs row)" as Job {
+        state "queued" as jQueued
+        state "processing" as jProcessing
+        state "completed" as jCompleted
+        state "failed" as jFailed
+        state "cancelled" as jCancelled
+
+        [*] --> jQueued
+        jQueued --> jProcessing : consumer acks<br/>(or coordinator adopts)
+        jProcessing --> jCompleted : worker persists + settles
+        jProcessing --> jFailed : terminal provider/parse error
+        jProcessing --> jCancelled : API cancel or sweep settle
+        jQueued --> jFailed : publish failed (never silent orphan)
+        jQueued --> jCancelled : API cancel
+        jFailed --> jQueued : POST /jobs/:id/retry
+        jCompleted --> [*]
+        jCancelled --> [*]
+    }
+
+    state "OCR chunk (ocr_chunks row)" as Chunk {
+        state "pending" as cPending
+        state "claimed" as cClaimed
+        state "submitted" as cSubmitted
+        state "failed" as cFailed
+        state "cancelled" as cCancelled
+
+        [*] --> cPending : coordinator materializes page range
+        cPending --> cClaimed : ocr-worker claim (lease 300 s,<br/>FOR UPDATE SKIP LOCKED, attempts+1)
+        cClaimed --> cSubmitted : result valid, pages match range
+        cClaimed --> cPending : lease expired or worker disabled, sweep reclaims
+        cPending --> cFailed : permanent error
+        cSubmitted --> [*]
+        cFailed --> cPending : retryable, attempts below MAX=3, sweep re-queues
+        cFailed --> [*] : attempts reach MAX=3, terminal
+        cPending --> cCancelled : job cancelled
+        cClaimed --> cCancelled : job cancelled
+        cCancelled --> [*]
+    }
+
+    Job --> Chunk : one material job owns its chunk set (coordinator materializes page ranges)

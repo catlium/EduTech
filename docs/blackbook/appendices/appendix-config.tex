@@ -1,0 +1,55 @@
+\chapter{DEPLOYMENT AND CONFIGURATION NOTES}
+\thispagestyle{empty}
+
+This appendix records the production deployment posture of the stack and the
+key environment-driven configuration variables.
+
+\clearpage
+
+\section{Services}
+
+The production Compose stack declares the following services, none of which
+publishes a host port in production: \texttt{postgres}, \texttt{redis},
+\texttt{rabbitmq}, \texttt{migrate}, \texttt{api}, \texttt{web},
+\texttt{nginx}, \texttt{tunnel}, \texttt{omniroute}, \texttt{ocr},
+\texttt{worker-material}, and \texttt{worker-ai}. A development-only override
+exposes loopback ports for local tooling. nginx is the only
+application-facing reverse proxy and binds only inside the private Docker
+network; the Cloudflare Tunnel (\texttt{cloudflared}) is the sole public
+ingress.
+
+\section{Configuration variables}
+
+Configuration is environment-driven. The variable names below are shown with
+generic placeholders; secret values are never committed.
+
+\begin{table}[H]
+\centering
+\caption{Key configuration variables (names only).}
+\label{tab:env}
+\small
+\begin{tabular}{@{}p{7.4cm}p{\dimexpr\textwidth-7.4cm-12pt\relax}@{}}
+\toprule
+\textbf{Variable} & \textbf{Purpose} \\
+\midrule
+DATABASE\_URL / WORKER\_DATABASE\_URL & Database connection (PostgreSQL) \\
+RABBITMQ\_URL / WORKER\_RABBITMQ\_URL & Message-broker connection \\
+TUNNEL\_TOKEN & Cloudflare tunnel credential (secret) \\
+INTERNAL\_API\_KEY & Internal header key between services (secret) \\
+WORKER\_AI\_PROVIDER\_URL & Internal OpenAI-compatible gateway base URL \\
+WORKER\_AI\_API\_KEY & Gateway endpoint key (secret) \\
+WORKER\_OCR\_SERVER\_URL / WORKER\_OCR\_WORKER\_ID & Standalone OCR worker registration \\
+WORKER\_OCR\_API\_KEY & OCR worker API key (secret) \\
+JWT\_SECRET & Access/refresh token signing secret (secret) \\
+CORS\_ORIGIN & Allowed web origin \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A single \texttt{docker-\hspace{0pt}compose.\hspace{0pt}yml} file describes
+the production posture; \texttt{docker-\hspace{0pt}compose.\hspace{0pt}dev.\hspace{0pt}yml}
+and \texttt{docker-\hspace{0pt}compose.\hspace{0pt}demo.\hspace{0pt}yml}
+provide the development override (loopback ports, seed data) and a mock AI
+provider for offline demonstrations. Docker images are built dependency-first
+so that unwanted layers are restored from cache; Python dependencies are
+pinned in \texttt{requirements.\hspace{0pt}lock}.

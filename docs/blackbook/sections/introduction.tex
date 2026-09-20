@@ -1,0 +1,136 @@
+\chapter{INTRODUCTION}
+\thispagestyle{empty}
+
+This chapter introduces the fragmented content-to-examination workflow
+faced by educational institutions, presents the CatLium EduTech platform
+proposed to address it, and states the project's problem statement,
+motivation, objectives, scope, and significance.
+
+\clearpage
+
+\section{Background}
+
+Educational institutions increasingly rely on digital tools to manage
+teaching material, assessments, and examinations. However, the workflow from
+raw content to a delivered examination remains fragmented. Syllabi must be
+structured manually into teaching hierarchies, printed study material must
+be scanned and converted into machine-readable text, question sets are
+authored by hand, and examination papers are assembled, scheduled, attempted,
+and evaluated across separate systems. For institutions that serve large
+numbers of students this manual cycle is slow, error-prone, and difficult to
+scale.
+
+CatLium EduTech is a multi-tenant Software-as-a-Service (SaaS) platform that
+automates this complete lifecycle. A teacher creates a subject, uploads a
+syllabus, and an AI assistant proposes a chapter--topic hierarchy for review
+and confirmation. Study materials---PDFs, documents, images, or plain
+text---are processed through an OCR pipeline so that scanned and printed
+documents become searchable text. A deterministic Material Intelligence
+engine cleans, structures, and segments the extracted text and maps each
+logical region to the relevant syllabus entities. From such structured
+content the platform extracts examination paper patterns and question sets,
+populates an AI-assisted question bank, assembles question papers that
+conform to a pattern, schedules assessments, and lets students attempt them
+with server-side deadline enforcement and deterministic evaluation.
+
+This black book documents the completed implementation: its analysis,
+requirements, design, implementation, testing, and results, based on the
+approved project proposal and the actual state of the repository.
+
+\section{Problem Statement}
+
+Institutions must convert unstructured academic input (syllabus documents,
+printed study material, past question papers) into structured academic
+assets (a confirmed teaching hierarchy, searchable materials, a curated
+question bank, conforming examination papers) and then run the examination
+lifecycle (scheduling, attempts, evaluation, results). Doing this manually
+is slow and inconsistent; off-the-shelf learning management systems provide
+parts of the lifecycle but rarely connect raw-document processing, AI-assisted
+generation, and deterministic examination management into a single tenant-safe
+workflow.
+
+\section{Motivation}
+
+The motivation for the project is to eliminate the manual, disconnected steps
+in the content-to-examination pipeline while keeping the teacher as the final
+authority. AI is used only to propose and assist, never to write authoritative
+structure without review. Deterministic, rule-based engines (OCR
+normalization, pattern and question extraction, grading of objective
+questions) are preferred wherever correctness matters, and every component is
+multi-tenant so that independent institutes can be served from one
+deployment without data leakage.
+
+\section{Project Overview}
+
+The platform is a modular monolith. A single NestJS (TypeScript) API hosts the
+business domains---identity, tenancy, academic structure, content, materials,
+OCR coordination, Material Intelligence, questions, paper patterns, question
+papers, examinations, attempts, practice, and export. Independent Python
+processes provide a separately deployable FastAPI OCR service and asynchronous
+workers (material processing and AI generation) that consume RabbitMQ queues.
+A Next.js web application provides the teacher and student interfaces. All
+components run in a single Docker Compose stack behind a Cloudflare Tunnel,
+which is the only public ingress, with PostgreSQL as the primary database.
+
+\section{Objectives}
+
+The project objectives, as approved in the proposal, are to:
+
+\begin{enumerate}
+  \item design a multi-tenant SaaS architecture with strict tenant isolation
+        and role based access control for administrators, teachers, and
+        students;
+  \item automate syllabus structuring through an AI assistant that proposes a
+        chapter--topic hierarchy, made authoritative only after explicit
+        teacher confirmation;
+  \item build an OCR processing pipeline that converts PDF and image study
+        material into searchable text with page-level fidelity, distributed
+        workers, chunked uploads, and incremental page reveal;
+  \item implement Material Intelligence, which cleans, structures, and
+        segments raw extraction and maps each region to syllabus entities;
+  \item enable deterministic pattern and question extraction from source
+        documents into reviewable forms with explicit ambiguity reports;
+  \item provide an AI-assisted question bank that satisfies paper-pattern
+        structure and coverage rules;
+  \item deliver the examination and practice lifecycle, including scheduled
+        assessments, attempts with immutable question snapshots and deadline
+        enforcement, deterministic evaluation of objective question types,
+        results, and ungraded practice;
+  \item build a complete web application with validated design states for
+        every asynchronous operation;
+  \item validate continuously with unit test suites, linting, type checking,
+        end-to-end harnesses, and live container rebuild-and-verify
+        discipline.
+\end{enumerate}
+
+\section{Scope}
+
+\subsection{Implemented scope}
+
+The implemented platform includes identity and tenancy (cookie-based session
+authentication with CSRF protection, institutes, memberships, role based
+authorization), academic structure with AI-proposed and teacher-confirmed
+syllabus, materials and distributed OCR with retries and cancellation,
+Material Intelligence with versioning and syllabus mapping, AI-generated study
+content (notes, summaries, flashcards, concepts), the question domain with
+deterministic extraction, paper patterns with validation and locking, question
+papers and assessments with export to PDF, DOCX, and Excel, examinations and
+attempts with deterministic evaluation, and ungraded practice.
+
+\subsection{Excluded and deferred scope}
+
+The following are explicitly out of scope and not implemented: online
+answer-sheet capture, optical mark recognition, and on-screen marking;
+automatic grading of text or essay questions (answers are stored but never
+graded); practice scoring and attempt-based (N-of-M) mechanics with
+replenishment; question versioning and question-set delete/merge; and the
+redesigned per-topic, per-resource academic export.
+
+\section{Significance}
+
+The significant contribution of the project is an integrated, evidence-backed
+pipeline that connects syllabus to examination in one tenant-safe platform, in
+which every AI contribution is validated against canonical schemas and
+reviewed by a human, every grading and extraction decision is deterministic,
+and the entire system is documented and validated continuously so that
+development can be resumed from any checkpoint.

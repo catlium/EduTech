@@ -1,0 +1,87 @@
+\chapter{LITERATURE REVIEW AND EXISTING SYSTEMS}
+\thispagestyle{empty}
+
+This chapter reviews existing approaches in learning management, OCR
+document conversion, AI-assisted content generation, deterministic
+extraction, and multi-tenant architectures, and identifies the gap addressed
+by this project.
+
+\clearpage
+
+\section{Existing Approaches in the Domain}
+
+\subsection{Learning management and assessment platforms}
+
+Commercial and open-source learning management platforms provide course
+organization, content delivery, and basic assessment features. They are
+generally oriented toward enrolled students and instructor-authored quizzes;
+connecting arbitrary printed study material, OCR conversion, AI-assisted
+content generation, and examination-paper assembly into a single pipeline is
+not their primary purpose. As a result, institutions that need the full
+content-to-examination workflow typically combine several tools and
+manually move data between them.
+
+\subsection{OCR for document conversion}
+
+Optical character recognition converts scanned documents and images into
+machine-readable text. General-purpose OCR engines trade recognition accuracy
+against resource cost and must be tuned for low-resource deployments.
+PaddleOCR (PP-OCR) addresses this with an ultra-lightweight pipeline designed
+to run on limited hardware \cite{ppocr,ppocrv3}; it supports per-page and
+whole-document recognition with a detection--recognition model pair. A
+practical engineering strategy is to extract embedded text directly from
+PDF files first---using a library such as PyMuPDF \cite{pymupdf}---and to
+fall back to full OCR only for pages that lack extractable text, which
+avoids the cost of re-OCR of born-digital documents.
+
+\subsection{Large-language-model-assisted content generation}
+
+Large language models can draft prose, questions, summaries, and
+outlines, but their open-ended output is unreliable for structured academic
+assets unless constrained. The reliable pattern used in practice is to
+require strictly schema-validated output, validate it at every trust boundary
+(the worker and the API), request a re-generation on validation failure, and
+keep a human reviewer in the loop for anything that becomes authoritative.
+Structured-data validation libraries in both the JavaScript ecosystem (Zod)
+and the Python ecosystem (Pydantic) \cite{pydantic} provide the canonical
+schemas for this enforcement.
+
+\subsection{Deterministic extraction versus machine learning}
+
+For tasks such as recovering the structure of an examination paper or
+extracting question candidates from text, opaque machine-learning predictions
+complicate review: an institution needs an explicit report of what was
+recognized and where the extractor is uncertain. Deterministic, rule-based
+extractors that resolve ambiguity explicitly are easier to audit and correct,
+and they pair well with AI where AI supplies suggestions that the teacher
+confirms.
+
+\subsection{Multi-tenant SaaS architectures}
+
+Multi-tenant systems serve many customers from a single deployment while
+isolating their data. A modular monolith---one deployable containing clearly
+bounded modules---avoids premature microservice fragmentation while still
+permitting independently deployable components where scaling genuinely
+requires it. In this project the API is the modular monolith and the OCR
+service is the single separately deployable component.
+
+\section{Limitations of Existing Approaches}
+
+Existing systems address fragments of the pipeline but not its integration.
+Common limitations include: manual movement of data between disconnected
+tools; OCR pipelines that are centralized, expensive to scale, and hard to
+retry per page; AI output that is not schema-validated and therefore cannot
+be safely imported into structured domains; grading and extraction that is
+opaque or non-deterministic; and little or no support for strict tenant
+isolation when several institutes share a deployment.
+
+\section{Gap Addressed by the Project}
+
+The gap addressed by CatLium EduTech is an integrated, deterministic,
+tenant-isolated pipeline that runs from syllabus and raw material to a
+delivered and evaluated examination. The design choices address the
+limitations above directly: OCR is a separately deployable service with
+per-page fallback and a distributed worker model; AI output is validated on
+both worker and API boundaries and always requires human review; extraction
+and grading are deterministic and produce explicit reports; and every data
+access is tenant-scoped.

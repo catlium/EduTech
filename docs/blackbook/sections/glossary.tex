@@ -1,0 +1,48 @@
+\chapter*{Glossary}
+\addcontentsline{toc}{chapter}{Glossary}
+
+\begin{longtable}{@{}p{4.2cm}p{\dimexpr\textwidth-4.2cm-12pt\relax}@{}}
+\toprule
+\textbf{Term} & \textbf{Definition} \\
+\midrule
+\endhead
+Assessment & A scheduled examination built from a question paper or question
+set, with a start/end period and attempt rules. \\
+Attempt & A student's snapshot of an assessment's question set, taken at
+start time and later submitted and evaluated. \\
+Chapter & A unit of academic structure within a subject, holding topics. \\
+Institute & The tenant anchor in the multi-tenant model; all data is scoped
+to an institute. \\
+Job & An asynchronous unit of work executed by a worker and tracked in the
+API with a lifecycle of queued, processing, completed, failed, or cancelled.
+\\
+Material & An uploaded or text study document processed through the OCR
+pipeline. \\
+Material Intelligence & The deterministic engine that cleans, structures,
+and segments extracted text and maps it to syllabus entities. \\
+Membership & The user--institute relationship that carries roles and
+determines tenancy. \\
+Modular monolith & A single deployable application with clearly bounded
+modules, avoiding premature microservices. \\
+Multi-tenant & Serving many institutes from one deployment while isolating
+their data. \\
+OCR & Optical character recognition; conversion of scanned documents and
+images into machine-readable text. \\
+Paper pattern & A nested structure of sections and question types with
+attempt rules that an examination paper must follow. \\
+Practice & Ungraded, per-item study sessions of flashcards and questions
+with instant feedback. \\
+Question bank & The data-driven repository of questions with types,
+difficulties, and review status. \\
+Question paper & A set of questions assembled against a paper pattern,
+exportable to document formats. \\
+Role & A permission level granted through a membership: institute
+administrator, teacher, or student. \\
+Syllabus & The academic subject structure proposed by AI and confirmed by a
+teacher. \\
+Tenant & An institute whose data is isolated from other institutes in the
+same deployment. \\
+Vertical slice & A thin end-to-end path through the full system, developed
+as the unit of a milestone. \\
+\bottomrule
+\end{longtable}
