@@ -43,6 +43,7 @@ export class ExaminationsController {
   ) {
     const assessment = await this.examinationsService.createAssessment(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
     );
@@ -51,8 +52,12 @@ export class ExaminationsController {
 
   @Get()
   @RequiredRoles(...WRITE_ROLES)
-  async list(@Tenant() tenant: TenantContext) {
-    const assessments = await this.examinationsService.listAssessments(tenant.instituteId);
+  async list(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser) {
+    const assessments = await this.examinationsService.listAssessments(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+    );
     return { assessments };
   }
 
@@ -60,10 +65,13 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async get(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     const assessment = await this.examinationsService.getAssessment(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { assessment };
@@ -79,6 +87,7 @@ export class ExaminationsController {
   ) {
     const assessment = await this.examinationsService.updateAssessment(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       assessmentId,
       dto,
@@ -91,20 +100,29 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async delete(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
-    await this.examinationsService.deleteAssessment(tenant.instituteId, assessmentId);
+    await this.examinationsService.deleteAssessment(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      assessmentId,
+    );
   }
 
   @Patch(':assessmentId/scope')
   @RequiredRoles(...WRITE_ROLES)
   async setScope(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Body() dto: SetAssessmentScopeDto,
   ) {
     const assessment = await this.examinationsService.setScope(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
       dto,
     );
@@ -115,10 +133,13 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async publish(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     const assessment = await this.examinationsService.publishAssessment(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { assessment };
@@ -128,10 +149,13 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async activate(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     const assessment = await this.examinationsService.activateAssessment(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { assessment };
@@ -141,10 +165,13 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async complete(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     const assessment = await this.examinationsService.completeAssessment(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { assessment };
@@ -154,10 +181,13 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async unpublish(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     const assessment = await this.examinationsService.unpublishAssessment(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { assessment };
@@ -167,10 +197,13 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async listQuestions(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     const questions = await this.examinationsService.listQuestions(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { questions };
@@ -180,11 +213,14 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async addQuestions(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Body() dto: AddQuestionsDto,
   ) {
     const added = await this.examinationsService.addQuestions(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
       dto.questionIds,
       dto.marks,
@@ -200,10 +236,13 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async patternCoverage(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     const coverage = await this.examinationsService.getPatternCoverage(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { coverage };
@@ -216,10 +255,13 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async selectFromPattern(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
     const result = await this.examinationsService.autoSelectFromPattern(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { result };
@@ -230,9 +272,16 @@ export class ExaminationsController {
   @RequiredRoles(...WRITE_ROLES)
   async removeQuestion(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
-    await this.examinationsService.removeQuestion(tenant.instituteId, assessmentId, questionId);
+    await this.examinationsService.removeQuestion(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      assessmentId,
+      questionId,
+    );
   }
 }

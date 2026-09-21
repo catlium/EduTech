@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { eq, and, desc, ilike, isNull } from 'drizzle-orm';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject } from '@nestjs/common';
+import { eq, and, desc, ilike, isNull, not, or } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { contentItems, contentVersions } from '@catlium/database';
 import type { Database } from '@catlium/database';
@@ -54,13 +54,21 @@ export class ContentService {
 
   // ── Create ────────────────────────────────
 
-  async createContent(instituteId: string, createdBy: string, input: CreateContentInput) {
+  async createContent(
+    instituteId: string,
+    membershipId: string,
+    createdBy: string,
+    input: CreateContentInput,
+  ) {
     this.validatePayload(input.type, input.payload);
 
     const chain = await resolveScopeChain(
       { db: this.db, instituteId, requireSubject: false },
       input,
     );
+
+    // Create inside the actor's writable scope (§18.5).
+    await this.scope.requireWritableSubject(instituteId, membershipId, chain.subjectId ?? null);
 
     return this.db.transaction(async (tx) => {
       const [item] = await tx
@@ -100,16 +108,29 @@ export class ContentService {
 
   // ── Read ──────────────────────────────────
 
-  async listContent(instituteId: string, membershipId: string, filters: ListContentFilters) {
+  async listContent(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    filters: ListContentFilters,
+  ) {
     const conditions: SQL[] = [
       eq(contentItems.instituteId, instituteId),
       isNull(contentItems.deletedAt),
     ];
 
+    // DRAFT is staging → owner+admin (O1); ACTIVE/ARCHIVED → pure scope (O2).
     const scopeFilter = await this.scope.subjectScopePredicate(
       instituteId, membershipId, contentItems.subjectId,
     );
-    if (scopeFilter) conditions.push(scopeFilter);
+    if (scopeFilter) {
+      conditions.push(
+        or(
+          and(eq(contentItems.createdBy, userId), eq(contentItems.status, 'DRAFT')),
+          and(not(eq(contentItems.status, 'DRAFT')), scopeFilter),
+        )!,
+      );
+    }
 
     if (filters.type) conditions.push(eq(contentItems.type, filters.type));
     if (filters.status) conditions.push(eq(contentItems.status, filters.status));
@@ -125,9 +146,14 @@ export class ContentService {
       .orderBy(desc(contentItems.updatedAt));
   }
 
-  async getContent(instituteId: string, membershipId: string, contentId: string) {
+  async getContent(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    contentId: string,
+  ) {
     const item = await this.assertContentExists(instituteId, contentId);
-    await this.scope.requireReadableSubject(instituteId, membershipId, item.subjectId);
+    await this.gateContent(instituteId, membershipId, userId, item, false);
 
     const [current] = await this.db
       .select()
@@ -147,6 +173,7 @@ export class ContentService {
 
   async updateContent(
     instituteId: string,
+    membershipId: string,
     userId: string,
     contentId: string,
     input: UpdateContentInput,
@@ -168,6 +195,8 @@ export class ContentService {
       if (!locked) {
         throw new NotFoundException('Content not found');
       }
+
+      await this.gateContent(instituteId, membershipId, userId, locked, true);
 
       this.validatePayload(locked.type as ContentType, input.payload);
 
@@ -200,9 +229,14 @@ export class ContentService {
 
   // ── Version history ───────────────────────
 
-  async listVersions(instituteId: string, membershipId: string, contentId: string) {
+  async listVersions(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    contentId: string,
+  ) {
     const item = await this.assertContentExists(instituteId, contentId);
-    await this.scope.requireReadableSubject(instituteId, membershipId, item.subjectId);
+    await this.gateContent(instituteId, membershipId, userId, item, false);
 
     return this.db
       .select()
@@ -211,9 +245,15 @@ export class ContentService {
       .orderBy(desc(contentVersions.version));
   }
 
-  async getVersion(instituteId: string, membershipId: string, contentId: string, version: number) {
+  async getVersion(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    contentId: string,
+    version: number,
+  ) {
     const item = await this.assertContentExists(instituteId, contentId);
-    await this.scope.requireReadableSubject(instituteId, membershipId, item.subjectId);
+    await this.gateContent(instituteId, membershipId, userId, item, false);
 
     const [row] = await this.db
       .select()
@@ -230,21 +270,68 @@ export class ContentService {
 
   // ── Status ────────────────────────────────
 
-  async setStatus(instituteId: string, contentId: string, status: ContentStatus) {
+  async setStatus(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    contentId: string,
+    status: ContentStatus,
+  ) {
+    const [existing] = await this.db
+      .select()
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.id, contentId),
+          eq(contentItems.instituteId, instituteId),
+          isNull(contentItems.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!existing) {
+      throw new NotFoundException('Content not found');
+    }
+    await this.gateContent(instituteId, membershipId, userId, existing, true);
+
     const [updated] = await this.db
       .update(contentItems)
-      .set({ status, updatedAt: new Date() })
+      .set({ status, updatedAt: new Date(), updatedBy: userId })
       .where(and(eq(contentItems.id, contentId), eq(contentItems.instituteId, instituteId)))
       .returning();
 
-    if (!updated) {
-      throw new NotFoundException('Content not found');
-    }
-
-    return updated;
+    return updated!;
   }
 
   // ── Helpers ───────────────────────────────
+
+  /** Gate content access (§18): DRAFT is owner+admin staging (O1); ACTIVE and
+   *  ARCHIVED are finalized, pure academic scope on the stored subject (O2).
+   *  Null-subject content is admin-only (read 404 / write 403). */
+  private async gateContent(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    item: { status: string; subjectId: string | null; createdBy: string },
+    mutating: boolean,
+  ): Promise<void> {
+    const scope = await this.scope.resolveScope(instituteId, membershipId);
+    if (scope.kind === 'whole-institute') return;
+
+    if (item.status === 'DRAFT') {
+      if (item.createdBy === userId) return;
+      if (mutating) {
+        throw new ForbiddenException('Only the creator may modify this DRAFT content');
+      }
+      throw new NotFoundException('Content not found');
+    }
+
+    const inScope = item.subjectId !== null && scope.subjectIds.includes(item.subjectId);
+    if (inScope) return;
+    if (mutating) {
+      throw new ForbiddenException('Resource is outside your academic scope');
+    }
+    throw new NotFoundException('Content not found');
+  }
 
   private validatePayload(type: ContentType, payload: Record<string, unknown>): void {
     const schema = ContentPayloadSchemas[type];

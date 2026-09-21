@@ -539,6 +539,15 @@ in-flight or done.
 
 ### Phase I — Module-by-Module Authorization Migration
 
+- **Status: IMPLEMENTED (2026-09-21).** Applied the Phase H scope engine +
+  ownership (O1–O3) to questions + question generation, paper patterns +
+  pattern extraction, question papers + extraction, examinations, content
+  writes, syllabus write paths, and question-extraction candidates.
+  `gateAssessment` O1 DRAFT = owner + admin (owner's DRAFT readable regardless
+  of scope), O2 pure scope; `gatePaper` unscoped = private to creator until
+  `setScope`; extraction status polls owner-or-admin via
+  `resolveScope().kind !== 'whole-institute'`. Integration coverage:
+  `resource-scope.integration.ts`.
 - **Objective:** convert existing controllers/services from role-name checks to
   permission + scope + ownership enforcement, module by module, with the
   baseline suite proving behavior.
@@ -1644,17 +1653,22 @@ denials surface as **404** (no existence leak), write denials as **403**
 checked *before* mutation (create paths gate the input subject; update paths
 gate the current subject and any subject repoint).
 
-Enforced surfaces (Phase H):
+Enforced surfaces:
 
 | surface | enforcement |
 |---|---|
 | `materials` (create/list/get/update/setStatus/process/retry) | full read+write **implemented** |
 | materials OCR sub-surface (page list, corrections) | read/write **implemented** |
-| `content_items` reads (list/get/versions) | **implemented** (writes stay role-gated until Phase I) |
-| `syllabi` reads (list/get/versions) | **implemented** (writes stay role-gated until Phase I) |
-| `paper_patterns` analyze → `createTextMaterial` | membershipId threaded; gated by materials write path |
-| `questions`, `assessments`, `question_papers`, `paper_patterns` (other), `attempts`, `practice_sessions` | role-gated only — **Phase I** |
-| ownership checks (O1–O3, §18.6) | **deferred to Phase I** |
+| `content_items` (reads Phase H; writes Phase I: `gateContent`, create, status, versions, generation paths) | **implemented** |
+| `syllabi` (reads Phase H; writes Phase I: create text/file, update, process/retry, analyze, confirm, archive, delete, setLocked) | **implemented** |
+| `questions` + question generation (approval statuses, pattern-restricted generation, coverage) | **implemented** (Phase I) |
+| `assessments` (`gateAssessment`: O1 DRAFT owner+admin, O2 pure scope) | **implemented** (Phase I) |
+| `question_papers` (`gatePaper`: scoped pure scope; unscoped private to creator until `setScope`; list owner carve-out) | **implemented** (Phase I) |
+| `paper_patterns` (`gatePatternAccess`: O2 scope readonly, O1 writable scope + ownership, O3 approve admin-only) | **implemented** (Phase I) |
+| question-extraction candidates list/update/accept/import/discard/status (`gateCandidateJob` owner-or-admin) | **implemented** (Phase I) |
+| paper/qu-paper extraction status polls | owner-or-admin **implemented** (Phase I) |
+| `attempts`, `practice_sessions` | role-gated only — **not yet migrated** |
+| ownership checks (O1–O3, §18.6) on the migrated surfaces | **implemented** (Phase I) |
 
 Null-subject (institute-wide academic content) is **admin-only**: non-admin
 actors get 404 on read / 403 on write for resources whose chain resolves no

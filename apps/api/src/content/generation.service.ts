@@ -18,6 +18,7 @@ import {
   jobs,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import type {
   GenerateContentResponse,
   GenerateContentPackageResponse,
@@ -75,19 +76,21 @@ export class GenerationService {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly jobs: JobsService,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   async requestGeneration(
     operation: GenerationOperation,
     instituteId: string,
+    membershipId: string,
     userId: string,
     sourceType: 'MATERIAL' | 'TOPIC',
     sourceId: string,
   ): Promise<GenerateContentResponse> {
     if (sourceType === 'MATERIAL') {
-      await this.assertGeneratableMaterial(instituteId, sourceId);
+      await this.assertGeneratableMaterial(instituteId, membershipId, sourceId);
     } else {
-      await this.assertTopicInInstitute(instituteId, sourceId);
+      await this.assertWritableTopic(instituteId, membershipId, sourceId);
     }
 
     const payload = {
@@ -129,10 +132,11 @@ export class GenerationService {
 
   async requestStarterMaterialGeneration(
     instituteId: string,
+    membershipId: string,
     userId: string,
     topicId: string,
   ): Promise<GenerateContentResponse> {
-    await this.assertTopicInInstitute(instituteId, topicId);
+    await this.assertWritableTopic(instituteId, membershipId, topicId);
 
     const payload = {
       operation: STARTER_MATERIAL_OPERATION,
@@ -170,15 +174,16 @@ export class GenerationService {
 
   async requestPackageGeneration(
     instituteId: string,
+    membershipId: string,
     userId: string,
     sourceType: 'MATERIAL' | 'TOPIC',
     sourceId: string,
     includeTypes?: string[],
   ): Promise<GenerateContentPackageResponse> {
     if (sourceType === 'MATERIAL') {
-      await this.assertGeneratableMaterial(instituteId, sourceId);
+      await this.assertGeneratableMaterial(instituteId, membershipId, sourceId);
     } else {
-      await this.assertTopicInInstitute(instituteId, sourceId);
+      await this.assertWritableTopic(instituteId, membershipId, sourceId);
     }
 
     const payload: Record<string, unknown> = {
@@ -222,6 +227,7 @@ export class GenerationService {
 
   async getContentGenerationStatus(
     instituteId: string,
+    membershipId: string,
     materialId: string,
   ): Promise<ContentGenerationStatusResponse> {
     const [material] = await this.db
@@ -229,12 +235,14 @@ export class GenerationService {
         id: materials.id,
         revision: materials.revision,
         updatedAt: materials.updatedAt,
+        subjectId: materials.subjectId,
       })
       .from(materials)
       .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
       .limit(1);
 
     if (!material) throw new NotFoundException('Material not found');
+    await this.scope.requireReadableSubject(instituteId, membershipId, material.subjectId);
 
     // Every derived-resource revision generated from this material (not just
     // the latest): the Material Detail hub shows the full provenance trail.
@@ -365,6 +373,7 @@ export class GenerationService {
 
   async requestBatchGeneration(
     instituteId: string,
+    membershipId: string,
     userId: string,
     sourceType: (typeof GenerationSourceTypeEnum.options)[number],
     sourceId: string,
@@ -374,6 +383,10 @@ export class GenerationService {
     const resourceTypes = types as ContentPackageType[];
     const batchId = randomUUID();
     const batchSource: BatchSource = { type: sourceType, id: sourceId };
+
+    // The batch source must be inside the actor's writable scope — all jobs
+    // deriving resources from it create content in that scope (§18.5).
+    await this.gateWritableBatchSource(instituteId, membershipId, sourceType, sourceId);
 
     const port: PlanPort = {
       hasUsableMaterial: (topicId) => this.hasUsableTopicMaterial(instituteId, topicId),
@@ -392,7 +405,7 @@ export class GenerationService {
     };
 
     const result = await planBatchJobs(port, {
-      sources: await this.resolveBatchSources(instituteId, sourceType, sourceId),
+      sources: await this.resolveBatchSources(instituteId, membershipId, sourceType, sourceId),
       productTypes: resourceTypes,
       mode,
       batchId,
@@ -407,15 +420,16 @@ export class GenerationService {
    * CHAPTER/SUBJECT batch expands to every active topic under the scope. */
   private async resolveBatchSources(
     instituteId: string,
+    membershipId: string,
     sourceType: (typeof GenerationSourceTypeEnum.options)[number],
     sourceId: string,
   ): Promise<Array<{ type: 'MATERIAL' | 'TOPIC'; id: string }>> {
     if (sourceType === 'MATERIAL') {
-      await this.assertGeneratableMaterial(instituteId, sourceId);
+      await this.assertGeneratableMaterial(instituteId, membershipId, sourceId);
       return [{ type: 'MATERIAL', id: sourceId }];
     }
     if (sourceType === 'TOPIC') {
-      await this.assertTopicInInstitute(instituteId, sourceId);
+      await this.assertWritableTopic(instituteId, membershipId, sourceId);
       return [{ type: 'TOPIC', id: sourceId }];
     }
 
@@ -424,6 +438,31 @@ export class GenerationService {
       throw new ConflictException('No active topics in this source scope');
     }
     return topicIds.map((id) => ({ type: 'TOPIC', id }));
+  }
+
+  /** A batch source must sit inside the actor's writable scope — CHAPTER/SUBJECT
+   *  expansion gates every expanded topic (§18.5). */
+  private async gateWritableBatchSource(
+    instituteId: string,
+    membershipId: string,
+    sourceType: (typeof GenerationSourceTypeEnum.options)[number],
+    sourceId: string,
+  ): Promise<void> {
+    if (sourceType === 'MATERIAL') {
+      await this.assertGeneratableMaterial(instituteId, membershipId, sourceId);
+      return;
+    }
+    if (sourceType === 'TOPIC') {
+      await this.assertWritableTopic(instituteId, membershipId, sourceId);
+      return;
+    }
+    const topicIds = await this.listActiveTopicIds(instituteId, sourceType, sourceId);
+    if (topicIds.length === 0) {
+      throw new ConflictException('No active topics in this source scope');
+    }
+    for (const topicId of topicIds) {
+      await this.assertWritableTopic(instituteId, membershipId, topicId);
+    }
   }
 
   private async listActiveTopicIds(
@@ -549,6 +588,7 @@ export class GenerationService {
    * stays live until the worker bumps its version on success. */
   async requestResourceRegeneration(
     instituteId: string,
+    membershipId: string,
     userId: string,
     contentId: string,
   ): Promise<{ jobId: string; contentId: string; type: string; status: 'QUEUED' }> {
@@ -557,6 +597,7 @@ export class GenerationService {
         id: contentItems.id,
         type: contentItems.type,
         topicId: contentItems.topicId,
+        subjectId: contentItems.subjectId,
         source: contentItems.source,
       })
       .from(contentItems)
@@ -567,6 +608,8 @@ export class GenerationService {
     if (item.source !== 'AI_GENERATED' || !item.topicId) {
       throw new ConflictException('Only AI-generated Topic-owned resources can be regenerated');
     }
+    // Regeneration rewrites the resource inside its scope → writable.
+    await this.scope.requireWritableSubject(instituteId, membershipId, item.subjectId);
 
     const operation = BATCH_TYPE_TO_OPERATION[item.type];
     if (!operation) {
@@ -594,7 +637,11 @@ export class GenerationService {
     return { jobId: job.id, contentId, type: item.type, status: 'QUEUED' };
   }
 
-  private async assertGeneratableMaterial(instituteId: string, materialId: string): Promise<void> {
+  private async assertGeneratableMaterial(
+    instituteId: string,
+    membershipId: string,
+    materialId: string,
+  ): Promise<void> {
     const [material] = await this.db
       .select({
         id: materials.id,
@@ -602,12 +649,15 @@ export class GenerationService {
         processingStatus: materials.processingStatus,
         textContent: materials.textContent,
         topicId: materials.topicId,
+        subjectId: materials.subjectId,
       })
       .from(materials)
       .where(and(eq(materials.id, materialId), eq(materials.instituteId, instituteId)))
       .limit(1);
 
     if (!material) throw new NotFoundException('Material not found');
+    // Generation derives new content → the source must be in writable scope.
+    await this.scope.requireWritableSubject(instituteId, membershipId, material.subjectId);
     if (material.status !== 'ACTIVE') throw new ConflictException('Material is not active');
     if (material.processingStatus !== 'READY') {
       throw new ConflictException('Material is not ready for generation');
@@ -625,9 +675,15 @@ export class GenerationService {
     }
   }
 
-  private async assertTopicInInstitute(instituteId: string, topicId: string): Promise<void> {
+  /** Topic exists in the institute AND is writable — generation derives new
+   *  content inside the topic's scope (§18.5). */
+  private async assertWritableTopic(
+    instituteId: string,
+    membershipId: string,
+    topicId: string,
+  ): Promise<void> {
     const [topic] = await this.db
-      .select({ id: topics.id })
+      .select({ subjectId: subjects.id })
       .from(topics)
       .innerJoin(chapters, eq(topics.chapterId, chapters.id))
       .innerJoin(subjects, eq(chapters.subjectId, subjects.id))
@@ -635,6 +691,7 @@ export class GenerationService {
       .limit(1);
 
     if (!topic) throw new NotFoundException('Topic not found');
+    await this.scope.requireWritableSubject(instituteId, membershipId, topic.subjectId);
   }
 
   /** True when the topic already has extracted material usable as a generation

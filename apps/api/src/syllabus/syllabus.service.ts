@@ -56,8 +56,15 @@ export class SyllabusService {
 
   // ── Create ────────────────────────────────
 
-  async createTextSyllabus(instituteId: string, userId: string, input: CreateTextSyllabusInput) {
+  async createTextSyllabus(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    input: CreateTextSyllabusInput,
+  ) {
     await this.assertSubject(instituteId, input.subjectId);
+    // Creation (and everything below) happens inside the writable scope (§18.5).
+    await this.scope.requireWritableSubject(instituteId, membershipId, input.subjectId);
     const version = await this.nextVersion(input.subjectId);
 
     const [row] = await this.db
@@ -83,11 +90,13 @@ export class SyllabusService {
 
   async createFileSyllabus(
     instituteId: string,
+    membershipId: string,
     userId: string,
     input: CreateFileSyllabusInput,
     file: Express.Multer.File,
   ) {
     await this.assertSubject(instituteId, input.subjectId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, input.subjectId);
     const version = await this.nextVersion(input.subjectId);
 
     const syllabusId = randomUUID();
@@ -201,11 +210,13 @@ export class SyllabusService {
 
   async updateSyllabus(
     instituteId: string,
+    membershipId: string,
     userId: string,
     syllabusId: string,
     input: UpdateSyllabusInput,
   ) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, row.subjectId);
     // The lock guards structure/data edits, not naming: title stays editable
     // while locked so typo fixes don't need an unlock.
     const touchesData =
@@ -244,16 +255,17 @@ export class SyllabusService {
   // ── Processing (OCR text extraction) ──────
 
   /** Enqueue the OCR extraction of an uploaded syllabus document. */
-  async processSyllabus(instituteId: string, syllabusId: string) {
-    return this.enqueueProcessing(instituteId, syllabusId, 'process');
+  async processSyllabus(instituteId: string, membershipId: string, syllabusId: string) {
+    return this.enqueueProcessing(instituteId, membershipId, syllabusId, 'process');
   }
 
-  async retryProcessing(instituteId: string, syllabusId: string) {
-    return this.enqueueProcessing(instituteId, syllabusId, 'retry');
+  async retryProcessing(instituteId: string, membershipId: string, syllabusId: string) {
+    return this.enqueueProcessing(instituteId, membershipId, syllabusId, 'retry');
   }
 
   private async enqueueProcessing(
     instituteId: string,
+    membershipId: string,
     syllabusId: string,
     action: 'process' | 'retry',
   ) {
@@ -266,6 +278,7 @@ export class SyllabusService {
         .for('update')
         .limit(1);
       if (!locked) throw new NotFoundException('Syllabus not found');
+      await this.scope.requireWritableSubject(instituteId, membershipId, locked.subjectId);
 
       was = locked.processingStatus;
       const verb = action === 'retry' ? 'retried' : 'processed';
@@ -328,8 +341,9 @@ export class SyllabusService {
 
   // ── Deep analysis ─────────────────────────
 
-  async analyzeSyllabus(instituteId: string, userId: string, syllabusId: string) {
+  async analyzeSyllabus(instituteId: string, membershipId: string, userId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, row.subjectId);
     this.assertUnlocked(row, 'Syllabus');
 
     if (row.status === 'ARCHIVED') {
@@ -388,8 +402,9 @@ export class SyllabusService {
 
   // ── Confirm (reconciliation-aware) ────────
 
-  async confirmSyllabus(instituteId: string, userId: string, syllabusId: string) {
+  async confirmSyllabus(instituteId: string, membershipId: string, userId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, row.subjectId);
     // Confirming applies the analyzed structure to the hierarchy and auto-locks.
     // A CONFIRMED syllabus re-confirms after an unlock (structure was edited and
     // needs re-application); a locked row is immutable regardless of status.
@@ -612,8 +627,9 @@ export class SyllabusService {
 
   // ── Archive / Delete ──────────────────────
 
-  async archiveSyllabus(instituteId: string, userId: string, syllabusId: string) {
+  async archiveSyllabus(instituteId: string, membershipId: string, userId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, row.subjectId);
     this.assertUnlocked(row, 'Syllabus');
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Syllabus is already archived');
@@ -628,8 +644,9 @@ export class SyllabusService {
     return this.toSyllabus(updated!);
   }
 
-  async deleteSyllabus(instituteId: string, syllabusId: string) {
+  async deleteSyllabus(instituteId: string, membershipId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, row.subjectId);
     this.assertUnlocked(row, 'Syllabus');
     if (row.status === 'ARCHIVED') {
       throw new ConflictException('Archived syllabi must be restored before deletion');
@@ -652,8 +669,15 @@ export class SyllabusService {
 
   /** Lock or unlock a syllabus. Confirming auto-locks; locking is an explicit
    *  accidental-mutation guard, not a status change. */
-  async setLocked(instituteId: string, userId: string, syllabusId: string, isLocked: boolean) {
-    await this.getSyllabusRow(instituteId, syllabusId);
+  async setLocked(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    syllabusId: string,
+    isLocked: boolean,
+  ) {
+    const row = await this.getSyllabusRow(instituteId, syllabusId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, row.subjectId);
     const [updated] = await this.db
       .update(syllabi)
       .set({ isLocked, updatedBy: userId, updatedAt: new Date() })

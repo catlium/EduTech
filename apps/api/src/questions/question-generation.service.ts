@@ -26,6 +26,7 @@ import {
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { resolveScopeChain } from '../common/utils/scope-resolver.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { QuestionTypesService } from './question-types.service.js';
 import {
@@ -73,12 +74,20 @@ export class QuestionGenerationService {
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly jobs: JobsService,
     private readonly typesService: QuestionTypesService,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   // ── Legacy single-type generation (backward compatible) ────────────
 
-  async requestGeneration(instituteId: string, userId: string, input: GenerateQuestionsInput) {
-    await this.assertTopicInInstitute(instituteId, input.topicId);
+  async requestGeneration(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    input: GenerateQuestionsInput,
+  ) {
+    const topic = await this.assertTopicInInstitute(instituteId, input.topicId);
+    // Generation is a create within the actor's scope (§18.5).
+    await this.scope.requireWritableSubject(instituteId, membershipId, topic.subjectId);
 
     const typeFormats = await this.resolveTypeFormats(instituteId, [input.questionType]);
 
@@ -100,6 +109,7 @@ export class QuestionGenerationService {
     // is always the authoritative scope.
     if (input.blueprintId) {
       const pattern = await this.loadApprovedPattern(instituteId, input.blueprintId);
+      await this.assertPatternReadable(instituteId, membershipId, pattern.id);
       payload['params'] = {
         ...(payload['params'] as Record<string, unknown>),
         blueprint: { patternId: pattern.id, structure: normalizePaperPatternStructure(pattern.structure) },
@@ -148,6 +158,7 @@ export class QuestionGenerationService {
 
   async requestBankGeneration(
     instituteId: string,
+    membershipId: string,
     userId: string,
     input: {
       subjectId?: string;
@@ -161,6 +172,12 @@ export class QuestionGenerationService {
     buckets: BankBucket[],
   ) {
     const scope = await this.resolveScopeOrThrow(instituteId, input);
+    // Generation queues a create within the actor's scope (§18.5).
+    await this.scope.requireWritableSubject(
+      instituteId,
+      membershipId,
+      await this.scopeSubjectId(instituteId, scope),
+    );
 
     const typeFormats = await this.resolveTypeFormats(
       instituteId,
@@ -183,6 +200,7 @@ export class QuestionGenerationService {
         )
         .limit(1);
       if (pattern?.status === 'APPROVED' && pattern.structure) {
+        await this.assertPatternReadable(instituteId, membershipId, pattern.id);
         blueprint = {
           patternId: pattern.id,
           structure: normalizePaperPatternStructure(pattern.structure),
@@ -319,7 +337,7 @@ export class QuestionGenerationService {
   /** Seed the subject's bank with a starter set: the default question types
    * each at their per-type min, spread across all difficulties. Small on
    * purpose — the teacher inspects and grows it from there. */
-  async generateStarter(instituteId: string, userId: string, subjectId: string) {
+  async generateStarter(instituteId: string, membershipId: string, userId: string, subjectId: string) {
     const buckets = QUESTION_TYPES.flatMap((questionType) =>
       buildBankBuckets({
         questionTypes: [questionType],
@@ -328,6 +346,7 @@ export class QuestionGenerationService {
     );
     return this.requestBankGeneration(
       instituteId,
+      membershipId,
       userId,
       { subjectId, count: buckets.reduce((sum, b) => sum + b.count, 0) },
       buckets,
@@ -489,12 +508,37 @@ export class QuestionGenerationService {
     return pattern;
   }
 
+  /** Approved patterns used as blueprints are shared resources (§18.6 O2):
+   *  readable when at least one associated subject is inside the actor's scope;
+   *  a General pattern (no associations) is institute-wide → admin-only. */
+  async assertPatternReadable(
+    instituteId: string,
+    membershipId: string,
+    patternId: string,
+  ): Promise<void> {
+    const serviceScope = await this.scope.resolveScope(instituteId, membershipId);
+    if (serviceScope.kind === 'whole-institute') return;
+    const links = await this.db
+      .select({ subjectId: paperPatternSubjects.subjectId })
+      .from(paperPatternSubjects)
+      .where(eq(paperPatternSubjects.patternId, patternId));
+    const patternSubjects = links.map((l) => l.subjectId);
+    if (
+      patternSubjects.length === 0 ||
+      !patternSubjects.some((s) => serviceScope.subjectIds.includes(s))
+    ) {
+      throw new NotFoundException('Paper pattern not found');
+    }
+  }
+
   async generateFromBlueprint(
     instituteId: string,
+    membershipId: string,
     userId: string,
     input: { blueprintId: string; subjectId?: string; chapterId?: string; topicId?: string },
   ) {
     const pattern = await this.loadApprovedPattern(instituteId, input.blueprintId);
+    await this.assertPatternReadable(instituteId, membershipId, pattern.id);
     await this.resolveScopeOrThrow(instituteId, input);
 
     const buckets = buildBucketsFromBlueprint(
@@ -508,6 +552,7 @@ export class QuestionGenerationService {
 
     return this.requestBankGeneration(
       instituteId,
+      membershipId,
       userId,
       {
         subjectId: input.subjectId,
@@ -524,6 +569,7 @@ export class QuestionGenerationService {
 
   async getBankStats(
     instituteId: string,
+    membershipId: string,
     scope: { subjectId?: string; chapterId?: string; topicId?: string },
   ) {
     const conditions: SQL[] = [
@@ -531,9 +577,26 @@ export class QuestionGenerationService {
       eq(questions.status, 'ACTIVE'),
       isNull(questions.deletedAt),
     ];
-    if (scope.subjectId) conditions.push(eq(questions.subjectId, scope.subjectId));
-    if (scope.chapterId) conditions.push(eq(questions.chapterId, scope.chapterId));
-    if (scope.topicId) conditions.push(eq(questions.topicId, scope.topicId));
+    if (scope.subjectId || scope.chapterId || scope.topicId) {
+      const resolved = await this.resolveScopeOrThrow(instituteId, scope);
+      // Reading stats is a scope read: out-of-scope filters 404 (no leak).
+      await this.scope.requireReadableSubject(
+        instituteId,
+        membershipId,
+        await this.scopeSubjectId(instituteId, resolved),
+      );
+      if (scope.subjectId) conditions.push(eq(questions.subjectId, scope.subjectId));
+      if (scope.chapterId) conditions.push(eq(questions.chapterId, scope.chapterId));
+      if (scope.topicId) conditions.push(eq(questions.topicId, scope.topicId));
+    } else {
+      // Unscoped view → actor's subjects only.
+      const scopeFilter = await this.scope.subjectScopePredicate(
+        instituteId,
+        membershipId,
+        questions.subjectId,
+      );
+      if (scopeFilter) conditions.push(scopeFilter);
+    }
 
     const where = and(...conditions);
 
@@ -575,11 +638,13 @@ export class QuestionGenerationService {
    * teacher before generation so they can tweak it. */
   async deriveDistribution(
     instituteId: string,
+    membershipId: string,
     scope: { subjectId?: string; chapterId?: string; topicId?: string },
     count: number,
   ) {
     const resolved = await this.resolveScopeOrThrow(instituteId, scope);
     const subjectId = await this.scopeSubjectId(instituteId, resolved);
+    await this.scope.requireReadableSubject(instituteId, membershipId, subjectId);
 
     const signals = new Map<string, number>(); // `${type}|${difficulty}`
     const sources: string[] = [];
@@ -719,6 +784,7 @@ export class QuestionGenerationService {
 
   async computeDeficitsAndGenerateMore(
     instituteId: string,
+    membershipId: string,
     userId: string,
     input: {
       subjectId?: string;
@@ -729,6 +795,12 @@ export class QuestionGenerationService {
     },
   ) {
     const scope = await this.resolveScopeOrThrow(instituteId, input);
+    // May queue generation → create within the actor's scope (§18.5).
+    await this.scope.requireWritableSubject(
+      instituteId,
+      membershipId,
+      await this.scopeSubjectId(instituteId, scope),
+    );
 
     // Count existing approved+active questions per bucket
     const existingCounts = await this.countApprovedQuestions(instituteId, scope, input.buckets);
@@ -773,6 +845,7 @@ export class QuestionGenerationService {
 
     const generation = await this.requestBankGeneration(
       instituteId,
+      membershipId,
       userId,
       {
         ...input,
@@ -806,12 +879,14 @@ export class QuestionGenerationService {
    * structure only and never supplies/infers scope. */
   async ensurePatternCoverage(
     instituteId: string,
+    membershipId: string,
     userId: string,
     blueprintId: string,
     scope: { subjectId: string; chapterId?: string; topicId?: string },
     options: { dryRun?: boolean } = {},
   ) {
     const pattern = await this.loadApprovedPattern(instituteId, blueprintId);
+    await this.assertPatternReadable(instituteId, membershipId, pattern.id);
     const requested = buildBucketsFromBlueprint(
       flattenPatternRules(normalizePaperPatternStructure(pattern.structure)),
     );
@@ -839,6 +914,8 @@ export class QuestionGenerationService {
       scope,
     );
     if (!chain.subjectId) throw new BadRequestException('A question scope requires a subject');
+    // The generation scope is authoritative (§18.5): it must be inside the actor's scope.
+    await this.scope.requireWritableSubject(instituteId, membershipId, chain.subjectId);
     const scopeRef: { kind: 'subject' | 'chapter' | 'topic'; id: string } = chain.topicId
       ? { kind: 'topic', id: chain.topicId }
       : chain.chapterId
@@ -907,6 +984,7 @@ export class QuestionGenerationService {
       .filter((b) => b.count > 0);
     const generation = await this.requestBankGeneration(
       instituteId,
+      membershipId,
       userId,
       {
         subjectId: chain.subjectId,

@@ -43,6 +43,7 @@ export class GenerationController {
     const generation = await this.generationService.requestGeneration(
       dto.operation,
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto.sourceType,
       dto.sourceId,
@@ -60,6 +61,7 @@ export class GenerationController {
   ) {
     const generation = await this.generationService.requestStarterMaterialGeneration(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto.topicId,
     );
@@ -76,6 +78,7 @@ export class GenerationController {
   ) {
     const generation = await this.generationService.requestPackageGeneration(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto.sourceType,
       dto.sourceId,
@@ -92,6 +95,7 @@ export class GenerationController {
   ) {
     const status = await this.generationService.getContentGenerationStatus(
       tenant.instituteId,
+      tenant.membershipId,
       materialId,
     );
     return { generationStatus: status };
@@ -107,6 +111,7 @@ export class GenerationController {
   ) {
     const batch = await this.generationService.requestBatchGeneration(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto.sourceType,
       dto.sourceId,
@@ -126,6 +131,7 @@ export class GenerationController {
   ) {
     const regeneration = await this.generationService.requestResourceRegeneration(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       contentId,
     );

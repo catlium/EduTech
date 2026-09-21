@@ -70,9 +70,15 @@ export class QuestionExtractionController {
   @RequiredRoles(...WRITE_ROLES)
   async extract(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ExtractQuestionsDto,
   ) {
-    const extraction = await this.extractionService.requestExtraction(tenant.instituteId, dto);
+    const extraction = await this.extractionService.requestExtraction(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      dto,
+    );
     return { extraction };
   }
 
@@ -137,19 +143,30 @@ export class QuestionExtractionController {
   @RequiredRoles(...WRITE_ROLES)
   async status(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('jobId', ParseUUIDPipe) jobId: string,
   ) {
-    return toStatus(await this.extractionService.getExtraction(tenant.instituteId, jobId));
+    return toStatus(
+      await this.extractionService.getExtraction(
+        tenant.instituteId,
+        tenant.membershipId,
+        user.userId,
+        jobId,
+      ),
+    );
   }
 
   @Get('extraction/:jobId/candidates')
   @RequiredRoles(...WRITE_ROLES)
   async candidates(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('jobId', ParseUUIDPipe) jobId: string,
   ) {
     const { meta, candidates } = await this.extractionService.listCandidates(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       jobId,
     );
     return {
@@ -172,6 +189,7 @@ export class QuestionExtractionController {
     }
     const question = await this.extractionService.updateCandidate(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       jobId,
       questionId,
@@ -190,6 +208,7 @@ export class QuestionExtractionController {
   ) {
     const question = await this.extractionService.acceptCandidate(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       jobId,
       questionId,
@@ -202,10 +221,17 @@ export class QuestionExtractionController {
   @RequiredRoles(...WRITE_ROLES)
   async discardCandidate(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('jobId', ParseUUIDPipe) jobId: string,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
-    await this.extractionService.discardCandidate(tenant.instituteId, jobId, questionId);
+    await this.extractionService.discardCandidate(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      jobId,
+      questionId,
+    );
   }
 
   @Post('extraction/:jobId/import')
@@ -215,15 +241,26 @@ export class QuestionExtractionController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('jobId', ParseUUIDPipe) jobId: string,
   ) {
-    return this.extractionService.importAll(tenant.instituteId, user.userId, jobId);
+    return this.extractionService.importAll(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      jobId,
+    );
   }
 
   @Post('extraction/:jobId/discard')
   @RequiredRoles(...WRITE_ROLES)
   async discardAll(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('jobId', ParseUUIDPipe) jobId: string,
   ) {
-    return this.extractionService.discardAll(tenant.instituteId, jobId);
+    return this.extractionService.discardAll(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      jobId,
+    );
   }
 }

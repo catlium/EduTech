@@ -42,6 +42,7 @@ export class ContentController {
   ) {
     const { item, current } = await this.contentService.createContent(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
     );
@@ -51,6 +52,7 @@ export class ContentController {
   @Get()
   async list(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Query(
       'type',
       new ParseEnumPipe(
@@ -66,22 +68,32 @@ export class ContentController {
     @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
     @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
   ) {
-    const contents = await this.contentService.listContent(tenant.instituteId, tenant.membershipId, {
-      type,
-      status,
-      q,
-      subjectId,
-      chapterId,
-      topicId,
-    });
+    const contents = await this.contentService.listContent(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      {
+        type,
+        status,
+        q,
+        subjectId,
+        chapterId,
+        topicId,
+      },
+    );
     return { contents };
   }
 
   @Get(':contentId')
-  async get(@Tenant() tenant: TenantContext, @Param('contentId', ParseUUIDPipe) contentId: string) {
+  async get(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('contentId', ParseUUIDPipe) contentId: string,
+  ) {
     const { item, current } = await this.contentService.getContent(
       tenant.instituteId,
       tenant.membershipId,
+      user.userId,
       contentId,
     );
     return { content: { ...item, current } };
@@ -97,6 +109,7 @@ export class ContentController {
   ) {
     const { item, current } = await this.contentService.updateContent(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       contentId,
       dto,
@@ -107,11 +120,13 @@ export class ContentController {
   @Get(':contentId/versions')
   async listVersions(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('contentId', ParseUUIDPipe) contentId: string,
   ) {
     const versions = await this.contentService.listVersions(
       tenant.instituteId,
       tenant.membershipId,
+      user.userId,
       contentId,
     );
     return { versions };
@@ -120,12 +135,14 @@ export class ContentController {
   @Get(':contentId/versions/:version')
   async getVersion(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('contentId', ParseUUIDPipe) contentId: string,
     @Param('version', ParseIntPipe) version: number,
   ) {
     const v = await this.contentService.getVersion(
       tenant.instituteId,
       tenant.membershipId,
+      user.userId,
       contentId,
       version,
     );
@@ -136,9 +153,16 @@ export class ContentController {
   @RequiredRoles(...WRITE_ROLES)
   async archive(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('contentId', ParseUUIDPipe) contentId: string,
   ) {
-    const content = await this.contentService.setStatus(tenant.instituteId, contentId, 'ARCHIVED');
+    const content = await this.contentService.setStatus(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      contentId,
+      'ARCHIVED',
+    );
     return { content };
   }
 
@@ -146,9 +170,16 @@ export class ContentController {
   @RequiredRoles(...WRITE_ROLES)
   async activate(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('contentId', ParseUUIDPipe) contentId: string,
   ) {
-    const content = await this.contentService.setStatus(tenant.instituteId, contentId, 'ACTIVE');
+    const content = await this.contentService.setStatus(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      contentId,
+      'ACTIVE',
+    );
     return { content };
   }
 }

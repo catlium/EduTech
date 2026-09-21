@@ -46,6 +46,7 @@ export class SyllabusController {
   ) {
     const syllabus = await this.syllabusService.createTextSyllabus(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
     );
@@ -79,6 +80,7 @@ export class SyllabusController {
 
     const syllabus = await this.syllabusService.createFileSyllabus(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
       file,
@@ -129,6 +131,7 @@ export class SyllabusController {
   ) {
     const syllabus = await this.syllabusService.updateSyllabus(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       id,
       dto,
@@ -140,14 +143,14 @@ export class SyllabusController {
   @HttpCode(HttpStatus.ACCEPTED)
   @RequiredRoles(...WRITE_ROLES)
   async process(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.syllabusService.processSyllabus(tenant.instituteId, id);
+    return this.syllabusService.processSyllabus(tenant.instituteId, tenant.membershipId, id);
   }
 
   @Post(':id/retry')
   @HttpCode(HttpStatus.ACCEPTED)
   @RequiredRoles(...WRITE_ROLES)
   async retry(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.syllabusService.retryProcessing(tenant.instituteId, id);
+    return this.syllabusService.retryProcessing(tenant.instituteId, tenant.membershipId, id);
   }
 
   @Post(':id/analyze')
@@ -158,7 +161,12 @@ export class SyllabusController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.syllabusService.analyzeSyllabus(tenant.instituteId, user.userId, id);
+    return this.syllabusService.analyzeSyllabus(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      id,
+    );
   }
 
   @Post(':id/confirm')
@@ -169,7 +177,12 @@ export class SyllabusController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.syllabusService.confirmSyllabus(tenant.instituteId, user.userId, id);
+    return this.syllabusService.confirmSyllabus(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      id,
+    );
   }
 
   @Post(':id/unlock')
@@ -182,6 +195,7 @@ export class SyllabusController {
   ) {
     const syllabus = await this.syllabusService.setLocked(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       id,
       false,
@@ -199,6 +213,7 @@ export class SyllabusController {
   ) {
     const syllabus = await this.syllabusService.setLocked(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       id,
       true,
@@ -215,6 +230,7 @@ export class SyllabusController {
   ) {
     const syllabus = await this.syllabusService.archiveSyllabus(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       id,
     );
@@ -224,6 +240,6 @@ export class SyllabusController {
   @Delete(':id')
   @RequiredRoles(...WRITE_ROLES)
   async remove(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.syllabusService.deleteSyllabus(tenant.instituteId, id);
+    return this.syllabusService.deleteSyllabus(tenant.instituteId, tenant.membershipId, id);
   }
 }

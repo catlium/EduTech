@@ -17,6 +17,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  NotFoundException,
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
@@ -27,6 +28,7 @@ import { jobs, questionPapers, questionPaperQuestions, questions } from '@catliu
 import type { QuestionExtractionIssue, QuestionExtractionProvenance } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { extractPaperPattern } from '../paper-patterns/pattern-extractor.js';
 import {
   extractQuestions,
@@ -65,6 +67,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
     private readonly jobsService: JobsService,
     private readonly types: QuestionTypesService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -147,9 +150,21 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
     }
   }
 
-  /** Status read for the polling flow. */
-  async getExtraction(instituteId: string, jobId: string): Promise<Job> {
-    return this.jobsService.getJob(jobId, instituteId);
+  /** Status read for the polling flow. QP runs own their source submission —
+   *  only the requesting user or an institute admin may poll it (§18.7). */
+  async getExtraction(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    jobId: string,
+  ): Promise<Job> {
+    const job = await this.jobsService.getJob(jobId, instituteId);
+    const scope = await this.scope.resolveScope(instituteId, membershipId);
+    const owner = typeof job.payload?.['userId'] === 'string' ? job.payload['userId'] : undefined;
+    if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
+      throw new NotFoundException('Question paper extraction run not found');
+    }
+    return job;
   }
 
   // ── Sweep (adopt queued QP_EXTRACT jobs) ─────────────────────────

@@ -74,8 +74,9 @@
 - [x] **Phase H — Resource Scope / Policy Engine:** academic scope + ownership
       policy evaluation. **COMPLETE 2026-09-21 — see the issued tasks below.**
       Design recorded in §18 (D6).
-- [ ] **Phase I — Module-by-Module Authorization Migration:** convert existing
+- [x] **Phase I — Module-by-Module Authorization Migration:** convert existing
       controllers/services to permission + scope + ownership, module by module.
+      **COMPLETE 2026-09-21 — see the issued tasks below.**
 - [ ] **Phase J — Frontend Permission & Academic Scope:** align UI gating with
       permissions + academic scope; fix authorization-403 frontend handling.
 - [ ] **Phase K — Authentication / Session Hardening:** rotation race,
@@ -212,6 +213,59 @@
       student-placements all pass; migration DBoid, deleted prior scratch
       residue; containers rebuilt + verified healthy with Phase H code.
 - [x] Docs: §18 updated; project-status + tasks updated.
+
+## Phase I — Module-by-Module Authorization Migration (2026-09-21, COMPLETE)
+
+> Issued task. Applies the Phase H scope engine + ownership checks (O1–O3,
+> §18.6) to the remaining academic resource surfaces module by module:
+> questions + question generation, paper patterns + pattern extraction,
+> question papers + extraction, examinations, content (reads already scoped in
+> Phase H; writes now gated), syllabus write paths, and question-extraction
+> candidates. Read deny = 404, write deny = 403 (pre-mutation);
+> INSTITUTE_ADMIN (`whole-institute`) is the sole bypass; null-subject
+> institute-wide content stays admin-only (§18.7). `docs/architecture/
+> authorization.md` §18 is the source of truth. Boundary: attempts/practice/
+> exports/users/jobs role gating untouched (Phase J/L).
+
+- [x] Questions + question generation: per-row `batchSetApprovalStatus`,
+      `assertPatternReadable` public-blueprint gate on generation/coverage,
+      writable gates on generation; controller threads membershipId.
+- [x] Paper patterns `gatePatternAccess` (O2 readonly scope from pattern's
+      subject, O1 CREATE/RENAME/archive writable scope + ownership,
+      O3 approve = admin-only); pattern-extraction status poll gated
+      owner-or-admin via `resolveScope.kind !== 'whole-institute'`
+      (`AcademicScopeService` injected); payload threads membershipId.
+- [x] Question papers `gatePaper`: scoped = pure subject scope; unscoped
+      (null-subject extraction-created scaffold/legacy) = private to creator
+      until `setScope`; `listPaper` owner carve-out when non-admin; extraction
+      status poll gated owner-or-admin (payload userId).
+- [x] Examinations `gateAssessment`/`requireAssessment`: O1 DRAFT staging =
+      owner + admin (regardless of scope), O2 finalized = pure scope; list
+      drafts scoped to owner + admin; all mutations gated.
+- [x] Content writes gated (`gateContent`, `createContent` writable on
+      `subjectId ?? null`, O1 draft list carry-out) + generation paths
+      (`assertGeneratableMaterial`/`assertWritableTopic`/
+      `gateWritableBatchSource`, `getContentGenerationStatus` read-gated on
+      material subject).
+- [x] Syllabus write paths gated (`createTextSyllabus`/`createFileSyllabus`
+      gate `input.subjectId`; update/process/retry/analyze/confirm/archive/
+      delete/setLocked gate `row.subjectId` inside the tx after `FOR UPDATE`);
+      controller threads `tenant.membershipId`.
+- [x] Question-extraction candidates: `requestExtraction` gates writable scope
+      + stores requester `userId` in the job payload (owner attribution);
+      `gateCandidateJob` (writable scope on payload subject + owner-or-admin)
+      applied to list/update/accept/importAll/discard/get status.
+- [x] DB-backed integration test `resource-scope.integration.ts`
+      (`test:resource-scope`, `TEST_DATABASE_URL`-gated): content O1/O2/
+      null-subject, questions O1 + list hiding, question papers gatePaper,
+      assessments gateAssessment DRAFT semantics — owner in-scope + owner
+      out-of-scope DRAFT readable, other's DRAFT 404, admin bypass.
+- [x] Validation: `pnpm test` 222 pass; `pnpm typecheck` clean (10/10);
+      `pnpm lint` clean (9/9); resource-scope + academic-scope integration
+      suites pass inside the rebuilt api container (compose network,
+      postgres:5432); vertical-exerciser/exam suite unaffected.
+- [x] Docs: §18 Phase H table updated to final state; project-status + tasks
+      updated.
 
 ## Phase F — Teacher Assignments (2026-09-20, COMPLETE)
 

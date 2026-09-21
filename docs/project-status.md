@@ -1,5 +1,80 @@
 # Project Status
 
+## Phase I — Module-by-Module Authorization Migration (2026-09-21)
+
+**Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**
+Applies the Phase H `AcademicScopeService` + ownership checks (O1–O3, §18.6)
+module by module: questions + question generation, paper patterns + pattern
+extraction, question papers + extraction, examinations, content writes (reads
+were already scoped in Phase H), syllabus write paths, and question-extraction
+candidates. Read deny = 404 (no existence leak), write deny = 403 (pre-
+mutation); INSTITUTE_ADMIN (`whole-institute`) is the sole bypass; null-
+subject institute-wide content stays admin-only (§18.7).
+
+- **Questions + generation** (`questions/`, `question-generation.service.ts`):
+  `batchSetApprovalStatus` gates per-row; `assertPatternReadable`
+  (public-blueprint) gates generation + coverage reads; generation write paths
+  gated. Controllers thread membershipId.
+- **Paper patterns** (`paper-patterns.service.ts`): `gatePatternAccess` — O2
+  subject-scope readonly, O1 CREATE/RENAME/archive needs writable scope +
+  ownership, O3 approve (`setApprovalStatus` to PUBLISHED/etc.) admin-only.
+  Pattern-extraction status poll (`getExtraction`) gated owner-or-admin via
+  `resolveScope(...).kind !== 'whole-institute'` with `AcademicScopeService`
+  injected in the service constructor; payload threads membershipId.
+- **Question papers** (`question-papers.service.ts`): `gatePaper` — scoped
+  paper = pure subject scope; unscoped (null-subject, extraction-created
+  scaffold/legacy) = private to creator until `setScope`; `listPaper` owner
+  carve-out (`or(scopeFilter, and(createdBy, isNull(subjectId)))`) only for
+  non-admin. Extraction status poll gated owner-or-admin (payload userId).
+- **Examinations** (`examinations.service.ts`): `gateAssessment`/`
+  requireAssessment` — O1 DRAFT staging = owner + admin (owner's DRAFT passes
+  regardless of scope, verified in integration test), O2 finalized = pure
+  subject scope; list shows own drafts + in-scope; all mutations gated.
+- **Content writes** (`content.service.ts` `gateContent`, generation):
+  `gateContent` (404 read / 403 write), `createContent` gates writable scope
+  on `subjectId ?? null`; O1 draft list carry-out; generation gated via
+  `assertGeneratableMaterial`/`assertWritableTopic`/`gateWritableBatchSource`
+  (select subjectId then `requireWritableSubject`), and
+  `getContentGenerationStatus` is now read-gated on the material's subject.
+  Fixed duplicate `DATABASE_TOKEN` import + removed unused
+  `assertTopicInInstitute`.
+- **Syllabus write paths** (`syllabus.service.ts`): `createTextSyllabus`/
+  `createFileSyllabus` gate `input.subjectId`; `updateSyllabus`,
+  `processSyllabus`/`retryProcessing` (inside the tx, after `FOR UPDATE`),
+  `analyzeSyllabus`, `confirmSyllabus`, `archiveSyllabus`, `deleteSyllabus`,
+  `setLocked` all gate `row.subjectId` via `requireWritableSubject`; controller
+  threads `tenant.membershipId`.
+- **Question-extraction candidates** (`question-extraction.service.ts`):
+  `requestExtraction` gates writable scope (material.subjectId + subjectId) and
+  now stores the requester `userId` in the job payload (owner attribution);
+  `gateCandidateJob` (writable scope on payload subjectId + owner-or-admin)
+  gates `getExtraction`/`listCandidates`/`updateCandidate`/`acceptCandidate`/
+  `importAll`/`discardCandidate`/`discardAll`; controller threads
+  membershipId/userId.
+- **Validation**: `pnpm test` 222 pass; `pnpm typecheck` clean (10/10);
+  `pnpm lint` clean (9/9). New DB-backed integration test
+  `resource-scope.integration.ts` (`test:resource-scope`, `TEST_DATABASE_URL`-
+  gated, skips cleanly without the DB) covers content O1 (DRAFT owner+admin)/
+  O2 (ACTIVE pure scope)/null-subject admin-only/list draft carry-out,
+  questions O1 + list hiding, question papers gatePaper (unscoped owner-only
+  scaffold, scoped pure scope, rename 403, list carve-out), and assessments
+  gateAssessment (owner's DRAFT read even out-of-scope, other's DRAFT 404,
+  admin bypass). Both `resource-scope` + `academic-scope` suites pass inside
+  the rebuilt api container (compose network, `postgres:5432`).
+- **Containers**: api image rebuilt (`docker compose build api` + `up -d
+  --no-deps api`), healthy, running the gated code; integration tests executed
+  inside the container (post-production posture: no host ports, source not
+  live-mounted — `docker cp` the test file in per the doc note).
+- **Docs**: §18 status table updated to final state; project-status + tasks
+  updated.
+
+### Next task
+
+Phase J — Frontend permission & academic scope alignment (UI gating, 403
+handling). Phases K (session hardening), L (test matrix), M (final audit)
+remain not-started. Deferred Phase D follow-ups (NOT built): Super Admin
+management UI/APIs, institutes lifecycle endpoints.
+
 ## Phase H — Resource Scope Authorization (2026-09-21)
 
 **Status: IMPLEMENTED + VALIDATED — migration applied on live compose Postgres.**
@@ -75,8 +150,9 @@ paper-patterns to scope (kept role-gated for now) is Phase I.
 Phase I — Module-by-module authorization migration: convert
 questions/assessments/question-papers/paper-patterns to scope-aware read/write
 enforcement (currently role-gated only), plus ownership checks (O1–O3) and
-content/syllabus writes. Phases J (frontend), K (session hardening), L/M (test
-matrix, final audit) remain not-started. Deferred Phase D follow-ups (NOT
+content/syllabus writes. **DONE — see the Phase I section at the top.**
+Phases J (frontend), K (session hardening), L/M (test matrix, final audit)
+remain not-started. Deferred Phase D follow-ups (NOT
 built): Super Admin management UI/APIs, institutes lifecycle endpoints.
 
 ## Phase G — Student Academic Assignments (2026-09-20)

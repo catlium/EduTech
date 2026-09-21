@@ -16,6 +16,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  NotFoundException,
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
@@ -26,6 +27,7 @@ import { jobs, paperPatterns } from '@catlium/database';
 import type { PatternExtractionMeta } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { extractPaperPattern, type ExtractionBlock } from './pattern-extractor.js';
 import { PaperPatternsService } from './paper-patterns.service.js';
 import {
@@ -59,6 +61,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     private readonly jobsService: JobsService,
     private readonly patterns: PaperPatternsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -79,6 +82,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     instituteId: string,
     text: string,
     userId?: string,
+    membershipId?: string,
   ): Promise<ExtractionEnqueueResult> {
     const trimmed = text.trim();
     if (!trimmed) {
@@ -90,6 +94,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       text: trimmed,
       sourceHash,
       ...(userId ? { userId } : {}),
+      ...(membershipId ? { membershipId } : {}),
     });
   }
 
@@ -104,6 +109,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       mimetype: string;
     },
     userId?: string,
+    membershipId?: string,
   ): Promise<ExtractionEnqueueResult> {
     if (file.buffer.length === 0) {
       throw new BadRequestException('Uploaded file is empty');
@@ -130,6 +136,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
         fileName: file.originalname.slice(0, 255) || 'source',
         sourceHash,
         ...(userId ? { userId } : {}),
+        ...(membershipId ? { membershipId } : {}),
       });
     } catch (error) {
       await this.storage.delete(storageKey).catch(() => undefined);
@@ -137,9 +144,21 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     }
   }
 
-  /** Status read for the polling flow. */
-  async getExtraction(instituteId: string, jobId: string): Promise<Job> {
-    return this.jobsService.getJob(jobId, instituteId);
+  /** Status read for the polling flow. Pattern runs own their source submission
+   *  — only the requesting user or an institute admin may poll it (§18.7). */
+  async getExtraction(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    jobId: string,
+  ): Promise<Job> {
+    const job = await this.jobsService.getJob(jobId, instituteId);
+    const scope = await this.scope.resolveScope(instituteId, membershipId);
+    const owner = typeof job.payload?.['userId'] === 'string' ? job.payload['userId'] : undefined;
+    if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
+      throw new NotFoundException('Paper pattern extraction run not found');
+    }
+    return job;
   }
 
   // ── Sweep (adopt queued PATTERN_EXTRACT jobs) ────────────────────
@@ -175,11 +194,13 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     const sourceHash =
       typeof jobPayload?.['sourceHash'] === 'string' ? jobPayload['sourceHash'] : undefined;
     const userId = typeof jobPayload?.['userId'] === 'string' ? jobPayload['userId'] : undefined;
+    const membershipId =
+      typeof jobPayload?.['membershipId'] === 'string' ? jobPayload['membershipId'] : undefined;
     if (!sourceHash) {
       await this.fail(jobId, 'PATTERN_EXTRACT job is missing the sourceHash payload');
       return;
     }
-    if (!userId) {
+    if (!userId || !membershipId) {
       await this.fail(jobId, 'PATTERN_EXTRACT job is missing the requesting user');
       return;
     }
@@ -282,7 +303,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     const patternId =
       typeof jobPayload['patternId'] === 'string' ? jobPayload['patternId'] : undefined;
     const placeholder = patternId
-      ? await this.patterns.getPattern(instituteId, patternId).catch(() => null)
+      ? await this.patterns.getPattern(instituteId, membershipId, userId!, patternId).catch(() => null)
       : null;
 
     let resolvedPatternId: string;
@@ -294,7 +315,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       resolvedPatternId = placeholder.id;
     } else {
       resolvedPatternId = (
-        await this.patterns.createPattern(instituteId, userId!, {
+        await this.patterns.createPattern(instituteId, membershipId, userId!, {
           title: titleFrom(fileName),
           description:
             source === 'OCR'
@@ -381,6 +402,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     const source: 'TEXT' | 'OCR' = payload['kind'] === 'file' ? 'OCR' : 'TEXT';
     const fileName = typeof payload['fileName'] === 'string' ? payload['fileName'] : undefined;
     const userId = typeof payload['userId'] === 'string' ? payload['userId'] : undefined;
+    const membershipId = typeof payload['membershipId'] === 'string' ? payload['membershipId'] : undefined;
     const extraction: PatternExtractionMeta = {
       extractor: 'v1',
       source,
@@ -391,16 +413,21 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       issues: [],
       provenance: [],
     };
-    const pattern = await this.patterns.createPattern(instituteId, userId ?? '', {
-      title: titleFrom(fileName),
-      description:
-        source === 'OCR'
-          ? `Extracting from "${fileName ?? 'uploaded source'}"…`
-          : 'Extracted from pasted text',
-      sourceType: 'PREVIOUS_YEAR_PAPER',
-      status: 'REVIEW',
-      extraction,
-    });
+    const pattern = await this.patterns.createPattern(
+      instituteId,
+      membershipId ?? '',
+      userId ?? '',
+      {
+        title: titleFrom(fileName),
+        description:
+          source === 'OCR'
+            ? `Extracting from "${fileName ?? 'uploaded source'}"…`
+            : 'Extracted from pasted text',
+        sourceType: 'PREVIOUS_YEAR_PAPER',
+        status: 'REVIEW',
+        extraction,
+      },
+    );
 
     const job = await this.jobsService.insertJob(instituteId, TYPE, {
       ...payload,

@@ -56,6 +56,7 @@ export class PaperPatternsController {
   ) {
     const pattern = await this.paperPatternsService.createPattern(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
     );
@@ -76,6 +77,7 @@ export class PaperPatternsController {
         tenant.instituteId,
         dto.text,
         user.userId,
+        tenant.membershipId,
       ),
     };
   }
@@ -115,6 +117,7 @@ export class PaperPatternsController {
         tenant.instituteId,
         { buffer, originalname: file.originalname, mimetype: file.mimetype },
         user.userId,
+        tenant.membershipId,
       ),
     };
   }
@@ -123,9 +126,15 @@ export class PaperPatternsController {
   @RequiredRoles(...WRITE_ROLES)
   async extractionStatus(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('jobId', ParseUUIDPipe) jobId: string,
   ) {
-    const job = await this.extraction.getExtraction(tenant.instituteId, jobId);
+    const job = await this.extraction.getExtraction(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      jobId,
+    );
     return {
       extraction: {
         jobId: job.id,
@@ -141,15 +150,15 @@ export class PaperPatternsController {
 
   @Get()
   @RequiredRoles(...WRITE_ROLES)
-  async list(@Tenant() tenant: TenantContext) {
-    const patterns = await this.paperPatternsService.listPatterns(tenant.instituteId);
+  async list(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser) {
+    const patterns = await this.paperPatternsService.listPatterns(tenant.instituteId, tenant.membershipId, user.userId);
     return { patterns };
   }
 
   @Get(':patternId')
   @RequiredRoles(...WRITE_ROLES)
-  async get(@Tenant() tenant: TenantContext, @Param('patternId', ParseUUIDPipe) patternId: string) {
-    const pattern = await this.paperPatternsService.getPattern(tenant.instituteId, patternId);
+  async get(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser, @Param('patternId', ParseUUIDPipe) patternId: string) {
+    const pattern = await this.paperPatternsService.getPattern(tenant.instituteId, tenant.membershipId, user.userId, patternId);
     return { pattern };
   }
 
@@ -163,6 +172,7 @@ export class PaperPatternsController {
   ) {
     const pattern = await this.paperPatternsService.updatePattern(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       patternId,
       dto,
@@ -175,9 +185,10 @@ export class PaperPatternsController {
   @RequiredRoles(...WRITE_ROLES)
   async remove(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('patternId', ParseUUIDPipe) patternId: string,
   ) {
-    return this.paperPatternsService.deletePattern(tenant.instituteId, patternId);
+    return this.paperPatternsService.deletePattern(tenant.instituteId, tenant.membershipId, user.userId, patternId);
   }
 
   @Post(':patternId/analyze')
@@ -229,9 +240,10 @@ export class PaperPatternsController {
   @RequiredRoles(...WRITE_ROLES)
   async validate(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('patternId', ParseUUIDPipe) patternId: string,
   ) {
-    return this.paperPatternsService.validate(tenant.instituteId, patternId);
+    return this.paperPatternsService.validate(tenant.instituteId, tenant.membershipId, user.userId, patternId);
   }
 
   @Post(':patternId/approve')
@@ -244,6 +256,7 @@ export class PaperPatternsController {
   ) {
     const pattern = await this.paperPatternsService.approve(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       patternId,
     );
@@ -260,6 +273,7 @@ export class PaperPatternsController {
   ) {
     const pattern = await this.paperPatternsService.setLocked(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       patternId,
       false,
@@ -277,6 +291,7 @@ export class PaperPatternsController {
   ) {
     const pattern = await this.paperPatternsService.setLocked(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       patternId,
       true,
@@ -295,6 +310,7 @@ export class PaperPatternsController {
   ) {
     return this.paperPatternsService.createAssessmentFromBlueprint(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       patternId,
       dto,

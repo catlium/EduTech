@@ -54,14 +54,19 @@ export class QuestionPapersController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateQuestionPaperDto,
   ) {
-    return this.questionPapersService.createQuestionPaper(tenant.instituteId, user.userId, {
-      patternId: dto.patternId,
-      title: dto.title,
-      description: dto.description,
-      subjectId: dto.subjectId,
-      chapterId: dto.chapterId,
-      topicId: dto.topicId,
-    });
+    return this.questionPapersService.createQuestionPaper(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      {
+        patternId: dto.patternId,
+        title: dto.title,
+        description: dto.description,
+        subjectId: dto.subjectId,
+        chapterId: dto.chapterId,
+        topicId: dto.topicId,
+      },
+    );
   }
 
   /** Extract questions into a question paper from pasted paper text. The paper
@@ -126,9 +131,15 @@ export class QuestionPapersController {
   @RequiredRoles(...WRITE_ROLES)
   async extractionStatus(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('jobId', ParseUUIDPipe) jobId: string,
   ) {
-    const job = await this.extraction.getExtraction(tenant.instituteId, jobId);
+    const job = await this.extraction.getExtraction(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      jobId,
+    );
     return {
       extraction: {
         jobId: job.id,
@@ -144,15 +155,28 @@ export class QuestionPapersController {
 
   @Get()
   @RequiredRoles(...WRITE_ROLES)
-  async list(@Tenant() tenant: TenantContext) {
-    const papers = await this.questionPapersService.listPapers(tenant.instituteId);
+  async list(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser) {
+    const papers = await this.questionPapersService.listPapers(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+    );
     return { papers };
   }
 
   @Get(':paperId')
   @RequiredRoles(...WRITE_ROLES)
-  async get(@Tenant() tenant: TenantContext, @Param('paperId', ParseUUIDPipe) paperId: string) {
-    const paper = await this.questionPapersService.getPaper(tenant.instituteId, paperId);
+  async get(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('paperId', ParseUUIDPipe) paperId: string,
+  ) {
+    const paper = await this.questionPapersService.getPaper(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      paperId,
+    );
     return { paper };
   }
 
@@ -160,11 +184,14 @@ export class QuestionPapersController {
   @RequiredRoles(...WRITE_ROLES)
   async rename(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('paperId', ParseUUIDPipe) paperId: string,
     @Body() dto: RenameQuestionPaperDto,
   ) {
     const paper = await this.questionPapersService.renamePaper(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       paperId,
       dto.title,
     );
@@ -174,17 +201,32 @@ export class QuestionPapersController {
   @Delete(':paperId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequiredRoles(...WRITE_ROLES)
-  async delete(@Tenant() tenant: TenantContext, @Param('paperId', ParseUUIDPipe) paperId: string) {
-    await this.questionPapersService.deletePaper(tenant.instituteId, paperId);
+  async delete(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('paperId', ParseUUIDPipe) paperId: string,
+  ) {
+    await this.questionPapersService.deletePaper(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      paperId,
+    );
   }
 
   @Get(':paperId/questions')
   @RequiredRoles(...WRITE_ROLES)
   async listQuestions(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('paperId', ParseUUIDPipe) paperId: string,
   ) {
-    const questions = await this.questionPapersService.listQuestions(tenant.instituteId, paperId);
+    const questions = await this.questionPapersService.listQuestions(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      paperId,
+    );
     return { questions };
   }
 
@@ -192,10 +234,13 @@ export class QuestionPapersController {
   @RequiredRoles(...WRITE_ROLES)
   async selectFromPattern(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('paperId', ParseUUIDPipe) paperId: string,
   ) {
     const result = await this.questionPapersService.autoSelectFromPattern(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       paperId,
     );
     return { result };
@@ -205,10 +250,13 @@ export class QuestionPapersController {
   @RequiredRoles(...WRITE_ROLES)
   async patternCoverage(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('paperId', ParseUUIDPipe) paperId: string,
   ) {
     const coverage = await this.questionPapersService.getPatternCoverage(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       paperId,
     );
     return { coverage };
@@ -218,10 +266,17 @@ export class QuestionPapersController {
   @RequiredRoles(...WRITE_ROLES)
   async setScope(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('paperId', ParseUUIDPipe) paperId: string,
     @Body() dto: SetQuestionPaperScopeDto,
   ) {
-    const paper = await this.questionPapersService.setScope(tenant.instituteId, paperId, dto);
+    const paper = await this.questionPapersService.setScope(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      paperId,
+      dto,
+    );
     return { paper };
   }
 
@@ -235,6 +290,7 @@ export class QuestionPapersController {
   ) {
     const result = await this.questionPapersService.generateMissing(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       paperId,
       dto.dryRun ?? false,
@@ -252,6 +308,7 @@ export class QuestionPapersController {
   ) {
     const assessment = await this.questionPapersService.createAssessmentFromPaper(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       paperId,
     );

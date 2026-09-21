@@ -1,12 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, not, or, type SQL } from 'drizzle-orm';
 import type { Database } from '@catlium/database';
 import { materials, paperPatterns, paperPatternSubjects, subjects } from '@catlium/database';
 import {
@@ -16,6 +17,7 @@ import {
 } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { resolveScopeChain } from '../common/utils/scope-resolver.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
 import { MaterialsService } from '../materials/materials.service.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
@@ -40,12 +42,14 @@ export class PaperPatternsService {
     private readonly materials: MaterialsService,
     private readonly examinations: ExaminationsService,
     private readonly generation: QuestionGenerationService,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   // ── CRUD ──────────────────────────────────
 
   async createPattern(
     instituteId: string,
+    membershipId: string,
     userId: string,
     input: {
       title: string;
@@ -61,6 +65,16 @@ export class PaperPatternsService {
     },
   ) {
     const subjectIds = await this.resolveSubjectIds(instituteId, input);
+    // Create within the actor's scope (§18.5): every associated subject must be
+    // writable; a General pattern (empty set) is institute-wide → admin-only.
+    await this.gatePatternAccess(
+      instituteId,
+      membershipId,
+      userId,
+      { createdBy: userId, status: input.status ?? 'DRAFT' },
+      subjectIds,
+      'write',
+    );
 
     const [created] = await this.db
       .insert(paperPatterns)
@@ -89,22 +103,47 @@ export class PaperPatternsService {
     return (await this.attachSubjectIds([created]))[0]!;
   }
 
-  async listPatterns(instituteId: string) {
+  async listPatterns(instituteId: string, membershipId: string, userId: string) {
+    const conditions: SQL[] = [eq(paperPatterns.instituteId, instituteId)];
+    const scope = await this.scope.resolveScope(instituteId, membershipId);
+    if (scope.kind !== 'whole-institute') {
+      // Shared (APPROVED) patterns: readable when at least one associated
+      // subject is inside the scope; General patterns (no associations) stay
+      // admin-only. Staging (DRAFT/REVIEW) rows: the owner's own work only.
+      conditions.push(
+        or(
+          eq(paperPatterns.createdBy, userId),
+          and(
+            not(inArray(paperPatterns.status, ['DRAFT', 'REVIEW'])),
+            inArray(
+              paperPatterns.id,
+              this.db
+                .select({ id: paperPatternSubjects.patternId })
+                .from(paperPatternSubjects)
+                .where(inArray(paperPatternSubjects.subjectId, scope.subjectIds)),
+            ),
+          ),
+        )!,
+      );
+    }
     const rows = await this.db
       .select()
       .from(paperPatterns)
-      .where(eq(paperPatterns.instituteId, instituteId))
+      .where(and(...conditions))
       .orderBy(desc(paperPatterns.createdAt));
     return this.attachSubjectIds(rows.map(this.normalizeRowStructure.bind(this)));
   }
 
-  async getPattern(instituteId: string, patternId: string) {
+  async getPattern(instituteId: string, membershipId: string, userId: string, patternId: string) {
     const row = await this.requirePattern(instituteId, patternId);
+    const subjectIds = (await this.attachSubjectIds([row]))[0]!.subjectIds;
+    await this.gatePatternAccess(instituteId, membershipId, userId, row, subjectIds, 'read');
     return (await this.attachSubjectIds([this.normalizeRowStructure(row)]))[0]!;
   }
 
   async updatePattern(
     instituteId: string,
+    membershipId: string,
     userId: string,
     patternId: string,
     input: {
@@ -116,6 +155,20 @@ export class PaperPatternsService {
     },
   ) {
     const row = await this.requirePattern(instituteId, patternId);
+    const subjectIdsToSet =
+      input.subjectIds !== undefined
+        ? await this.assertSubjectsInInstitute(instituteId, input.subjectIds)
+        : undefined;
+    // Write gate: every subject association must be writable; a General
+    // pattern (or one repointed to General) is institute-wide → admin-only.
+    await this.gatePatternAccess(
+      instituteId,
+      membershipId,
+      userId,
+      row,
+      subjectIdsToSet ?? (await this.attachSubjectIds([row]))[0]!.subjectIds,
+      'write',
+    );
     // The lock guards structure/data edits, not naming: renaming a pattern
     // (title/description) stays allowed while locked so typo fixes don't need
     // an unlock.
@@ -146,11 +199,6 @@ export class PaperPatternsService {
       }
     }
 
-    const subjectIdsToSet =
-      input.subjectIds !== undefined
-        ? await this.assertSubjectsInInstitute(instituteId, input.subjectIds)
-        : undefined;
-
     const updated = await this.db.transaction(async (tx) => {
       const [patched] = await tx
         .update(paperPatterns)
@@ -171,10 +219,18 @@ export class PaperPatternsService {
     return (await this.attachSubjectIds([updated!]))[0]!;
   }
 
-  async deletePattern(instituteId: string, patternId: string) {
+  async deletePattern(instituteId: string, membershipId: string, userId: string, patternId: string) {
     // requirePattern gives 404 + tenant scope and the lock guard; junction +
     // assessment-blueprint FKs self-clean on delete.
     const row = await this.requirePattern(instituteId, patternId);
+    await this.gatePatternAccess(
+      instituteId,
+      membershipId,
+      userId,
+      row,
+      (await this.attachSubjectIds([row]))[0]!.subjectIds,
+      'write',
+    );
     if (row.isLocked) {
       throw new ConflictException('Paper pattern is locked — unlock it before deleting');
     }
@@ -198,6 +254,15 @@ export class PaperPatternsService {
 
   async analyze(instituteId: string, membershipId: string, userId: string, patternId: string, source: AnalyzeSource) {
     const row = await this.requirePattern(instituteId, patternId);
+    // Analysis mutates the pattern: writable subject set + staging-owner gate.
+    await this.gatePatternAccess(
+      instituteId,
+      membershipId,
+      userId,
+      row,
+      (await this.attachSubjectIds([row]))[0]!.subjectIds,
+      'write',
+    );
     if (row.status === 'APPROVED') {
       throw new ConflictException('Approved paper patterns cannot be re-analyzed');
     }
@@ -264,8 +329,16 @@ export class PaperPatternsService {
 
   // ── Validation / approval ─────────────────
 
-  async validate(instituteId: string, patternId: string) {
+  async validate(instituteId: string, membershipId: string, userId: string, patternId: string) {
     const row = await this.requirePattern(instituteId, patternId);
+    await this.gatePatternAccess(
+      instituteId,
+      membershipId,
+      userId,
+      row,
+      (await this.attachSubjectIds([row]))[0]!.subjectIds,
+      'read',
+    );
     if (!row.structure) {
       return { valid: false as const, errors: ['Paper pattern has no structure yet'] };
     }
@@ -273,8 +346,28 @@ export class PaperPatternsService {
     return { valid: errors.length === 0, errors } as const;
   }
 
-  async approve(instituteId: string, userId: string, patternId: string) {
+  async approve(instituteId: string, membershipId: string, userId: string, patternId: string) {
     const row = await this.requirePattern(instituteId, patternId);
+    // O3 (§18.6): promoting another actor's staging work is admin-only; the
+    // staging owner (or any admin) approves. Must also be writable.
+    await this.gatePatternAccess(
+      instituteId,
+      membershipId,
+      userId,
+      row,
+      (await this.attachSubjectIds([row]))[0]!.subjectIds,
+      'write',
+    );
+    // §18.7: finalizing subject-less institute-wide content is admin-only.
+    if (row.status !== 'APPROVED') {
+      const subjectIds = (await this.attachSubjectIds([row]))[0]!.subjectIds;
+      const scope = await this.scope.resolveScope(instituteId, membershipId);
+      if (subjectIds.length === 0 && scope.kind !== 'whole-institute') {
+        throw new ForbiddenException(
+          'A subject-less paper pattern can only be approved by an institute admin',
+        );
+      }
+    }
     // DRAFT / REVIEW approve as before; an APPROVED pattern re-approves after
     // an unlock (the structure was edited and needs re-validation). A locked
     // APPROVED pattern stays immutable.
@@ -307,8 +400,16 @@ export class PaperPatternsService {
 
   /** Lock or unlock a pattern. Approving auto-locks; locking is an explicit
    *  accidental-mutation guard, not a status change. */
-  async setLocked(instituteId: string, userId: string, patternId: string, isLocked: boolean) {
-    await this.requirePattern(instituteId, patternId);
+  async setLocked(instituteId: string, membershipId: string, userId: string, patternId: string, isLocked: boolean) {
+    const row = await this.requirePattern(instituteId, patternId);
+    await this.gatePatternAccess(
+      instituteId,
+      membershipId,
+      userId,
+      row,
+      (await this.attachSubjectIds([row]))[0]!.subjectIds,
+      'write',
+    );
     const [updated] = await this.db
       .update(paperPatterns)
       .set({ isLocked, updatedBy: userId, updatedAt: new Date() })
@@ -321,6 +422,7 @@ export class PaperPatternsService {
 
   async createAssessmentFromBlueprint(
     instituteId: string,
+    membershipId: string,
     userId: string,
     patternId: string,
     input: {
@@ -335,6 +437,16 @@ export class PaperPatternsService {
     if (row.status !== 'APPROVED' || !row.structure) {
       throw new BadRequestException('Only an approved paper pattern can create an assessment');
     }
+    // An APPROVED pattern is shared content (§18.6 O2): readable only through
+    // the subject scope (General patterns are admin-only).
+    await this.gatePatternAccess(
+      instituteId,
+      membershipId,
+      userId,
+      row,
+      (await this.attachSubjectIds([row]))[0]!.subjectIds,
+      'read',
+    );
     const errors = validatePaperPatternStructure(this.asStructure(row.structure));
     if (errors.length > 0) {
       throw new BadRequestException(`Paper pattern is not currently valid: ${errors.join('; ')}`);
@@ -356,11 +468,17 @@ export class PaperPatternsService {
     if (!scope.subjectId) throw new BadRequestException('A question scope requires a subject');
 
     // Never create an assessment the bank cannot fully supply within the scope.
-    const coverage = await this.generation.ensurePatternCoverage(instituteId, userId, row.id, {
-      subjectId: scope.subjectId,
-      chapterId: scope.chapterId ?? undefined,
-      topicId: scope.topicId ?? undefined,
-    });
+    const coverage = await this.generation.ensurePatternCoverage(
+      instituteId,
+      membershipId,
+      userId,
+      row.id,
+      {
+        subjectId: scope.subjectId,
+        chapterId: scope.chapterId ?? undefined,
+        topicId: scope.topicId ?? undefined,
+      },
+    );
     if (!coverage.covered) {
       if (coverage.status === 'GENERATING') {
         return {
@@ -380,7 +498,7 @@ export class PaperPatternsService {
       );
     }
 
-    const assessment = await this.examinations.createAssessment(instituteId, userId, {
+    const assessment = await this.examinations.createAssessment(instituteId, membershipId, userId, {
       title: input.title ?? `${row.title} — Blueprint`,
       description: input.description ?? row.description ?? undefined,
       durationMinutes: structure.durationMinutes,
@@ -395,6 +513,46 @@ export class PaperPatternsService {
   }
 
   // ── Internals ─────────────────────────────
+
+  /** Owner + scope gate for a pattern (§18.5/§18.6/§18.7). Reads deny with 404
+   *  (no existence leak), mutations with 403.
+   *  - Staging (DRAFT/REVIEW) = the owner's private work: owner+admin always
+   *    pass, and a staging owner may only reference subjects inside their
+   *    writable scope (§18.5). Before the pattern is shared no scope exists and
+   *    no scope check applies (a General scaffolding draft is not institute-wide
+   *    content yet — §18.7 governs shared/null-scope rows only).
+   *  - Shared (APPROVED) = pure scope: readable when any subject intersects the
+   *    actor's scope, writable when EVERY subject is writable; a General pattern
+   *    (empty set) is institute-wide → admin-only. */
+  private async gatePatternAccess(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    row: { createdBy: string; status: string },
+    subjectIds: string[],
+    mode: 'read' | 'write',
+  ): Promise<void> {
+    const deny = mode === 'read'
+      ? () => new NotFoundException('Paper pattern not found')
+      : () => new ForbiddenException('Paper pattern is outside your academic scope');
+    const scope = await this.scope.resolveScope(instituteId, membershipId);
+    if (scope.kind === 'whole-institute') return;
+
+    const inScope =
+      subjectIds.length > 0 &&
+      (mode === 'read'
+        ? subjectIds.some((s) => scope.subjectIds.includes(s))
+        : subjectIds.every((s) => scope.subjectIds.includes(s)));
+
+    const staging = row.status === 'DRAFT' || row.status === 'REVIEW';
+    if (staging) {
+      if (row.createdBy !== userId) throw deny();
+      // A staging owner may attach only subjects inside their writable scope.
+      if (mode === 'write' && subjectIds.length > 0 && !inScope) throw deny();
+      return;
+    }
+    if (!inScope) throw deny();
+  }
 
   private async requirePattern(instituteId: string, patternId: string) {
     const [row] = await this.db

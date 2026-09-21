@@ -23,6 +23,7 @@
     "test:teacher-assignments": "tsx --test src/academic-structure/teacher-assignments.integration.ts",
     "test:student-placements": "tsx --test src/academic-structure/student-placements.integration.ts",
     "test:academic-scope": "tsx --test src/authorization/academic-scope.integration.ts",
+    "test:resource-scope": "tsx --test src/authorization/resource-scope.integration.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

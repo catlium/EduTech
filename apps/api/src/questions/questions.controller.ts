@@ -58,6 +58,7 @@ export class QuestionsController {
   ) {
     const question = await this.questionsService.createQuestion(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
     );
@@ -68,6 +69,7 @@ export class QuestionsController {
   @RequiredRoles(...WRITE_ROLES)
   async list(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('questionType') questionType?: string,
     @Query('difficulty', new ParseEnumPipe(['EASY', 'MEDIUM', 'HARD'], { optional: true }))
     difficulty?: 'EASY' | 'MEDIUM' | 'HARD',
@@ -81,15 +83,20 @@ export class QuestionsController {
     @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
     @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
   ) {
-    const questions = await this.questionsService.listQuestions(tenant.instituteId, {
-      questionType,
-      difficulty,
-      approvalStatus,
-      q,
-      subjectId,
-      chapterId,
-      topicId,
-    });
+    const questions = await this.questionsService.listQuestions(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      {
+        questionType,
+        difficulty,
+        approvalStatus,
+        q,
+        subjectId,
+        chapterId,
+        topicId,
+      },
+    );
     return { questions };
   }
 
@@ -97,9 +104,15 @@ export class QuestionsController {
   @RequiredRoles(...WRITE_ROLES)
   async get(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
-    const question = await this.questionsService.getQuestion(tenant.instituteId, questionId);
+    const question = await this.questionsService.getQuestion(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      questionId,
+    );
     return { question };
   }
 
@@ -113,6 +126,7 @@ export class QuestionsController {
   ) {
     const question = await this.questionsService.updateQuestion(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       questionId,
       dto,
@@ -125,9 +139,15 @@ export class QuestionsController {
   @RequiredRoles(...WRITE_ROLES)
   async delete(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
-    await this.questionsService.deleteQuestion(tenant.instituteId, questionId);
+    await this.questionsService.deleteQuestion(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      questionId,
+    );
   }
 
   // ── Legacy generation (backward compatible) ────────────────────────
@@ -142,6 +162,7 @@ export class QuestionsController {
   ) {
     const generation = await this.generationService.requestGeneration(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
     );
@@ -193,6 +214,7 @@ export class QuestionsController {
 
     const generation = await this.generationService.requestBankGeneration(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       {
         subjectId: dto.subjectId,
@@ -253,7 +275,7 @@ export class QuestionsController {
     @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
     @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
   ) {
-    const stats = await this.generationService.getBankStats(tenant.instituteId, {
+    const stats = await this.generationService.getBankStats(tenant.instituteId, tenant.membershipId, {
       subjectId,
       chapterId,
       topicId,
@@ -271,6 +293,7 @@ export class QuestionsController {
   ) {
     const result = await this.generationService.computeDeficitsAndGenerateMore(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       {
         subjectId: dto.subjectId,
@@ -296,6 +319,7 @@ export class QuestionsController {
     }
     const generation = await this.generationService.generateStarter(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto.subjectId,
     );
@@ -308,6 +332,7 @@ export class QuestionsController {
   async deriveDistribution(@Tenant() tenant: TenantContext, @Body() dto: DeriveDistributionDto) {
     return this.generationService.deriveDistribution(
       tenant.instituteId,
+      tenant.membershipId,
       { subjectId: dto.subjectId, chapterId: dto.chapterId, topicId: dto.topicId },
       dto.count,
     );
@@ -323,6 +348,7 @@ export class QuestionsController {
   ) {
     const generation = await this.generationService.generateFromBlueprint(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       {
         blueprintId: dto.blueprintId,
@@ -338,9 +364,11 @@ export class QuestionsController {
 
   @Post('batch-approve')
   @RequiredRoles(...WRITE_ROLES)
-  async batchApprove(@Tenant() tenant: TenantContext, @Body() dto: BatchQuestionActionDto) {
+  async batchApprove(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser, @Body() dto: BatchQuestionActionDto) {
     const updated = await this.questionsService.batchSetApprovalStatus(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       dto.questionIds,
       'APPROVED',
     );
@@ -349,9 +377,11 @@ export class QuestionsController {
 
   @Post('batch-reject')
   @RequiredRoles(...WRITE_ROLES)
-  async batchReject(@Tenant() tenant: TenantContext, @Body() dto: BatchQuestionActionDto) {
+  async batchReject(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser, @Body() dto: BatchQuestionActionDto) {
     const updated = await this.questionsService.batchSetApprovalStatus(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       dto.questionIds,
       'REJECTED',
     );
@@ -362,10 +392,13 @@ export class QuestionsController {
   @RequiredRoles(...WRITE_ROLES)
   async approve(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
     const question = await this.questionsService.setApprovalStatus(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       questionId,
       'APPROVED',
     );
@@ -376,10 +409,13 @@ export class QuestionsController {
   @RequiredRoles(...WRITE_ROLES)
   async reject(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
     const question = await this.questionsService.setApprovalStatus(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       questionId,
       'REJECTED',
     );
@@ -390,10 +426,13 @@ export class QuestionsController {
   @RequiredRoles(...WRITE_ROLES)
   async archive(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
     const question = await this.questionsService.setStatus(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       questionId,
       'ARCHIVED',
     );
@@ -404,10 +443,13 @@ export class QuestionsController {
   @RequiredRoles(...WRITE_ROLES)
   async activate(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('questionId', ParseUUIDPipe) questionId: string,
   ) {
     const question = await this.questionsService.setStatus(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       questionId,
       'ACTIVE',
     );

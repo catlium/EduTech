@@ -40,6 +40,7 @@ import type {
 } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService, type Job } from '../jobs/jobs.service.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { resolveScopeChain } from '../common/utils/scope-resolver.js';
 import { segmentMatches, type SyllabusTarget } from '../material-enhancement/enhancer.js';
 import { MaterialEnhancementService } from '../material-enhancement/enhancement.service.js';
@@ -81,6 +82,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     private readonly enhancement: MaterialEnhancementService,
     private readonly types: QuestionTypesService,
     private readonly questionsService: QuestionsService,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -99,9 +101,15 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
    *  subject) returns the existing review directly (COMPLETED). */
   async requestExtraction(
     instituteId: string,
+    membershipId: string,
+    userId: string,
     input: { materialId: string; subjectId: string; chapterId?: string; topicId?: string },
   ): Promise<{ jobId: string; status: 'QUEUED' | 'COMPLETED'; reused: boolean }> {
     const material = await this.assertMaterial(instituteId, input.materialId);
+    // Extraction only runs inside the actor's writable scope: the material and
+    // the target subject both must be writable (§18.5).
+    await this.scope.requireWritableSubject(instituteId, membershipId, material.subjectId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, input.subjectId);
     await resolveScopeChain(
       { db: this.db, instituteId, requireSubject: true },
       { subjectId: input.subjectId, chapterId: input.chapterId, topicId: input.topicId },
@@ -157,12 +165,19 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       subjectId: input.subjectId,
       chapterId: input.chapterId ?? null,
       topicId: input.topicId ?? null,
+      userId,
     });
     return { jobId: job.id, status: 'QUEUED', reused: false };
   }
 
   /** Status read for the polling flow. */
-  async getExtraction(instituteId: string, jobId: string): Promise<Job> {
+  async getExtraction(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    jobId: string,
+  ): Promise<Job> {
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
     return this.jobsService.getJob(jobId, instituteId);
   }
 
@@ -330,9 +345,28 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
 
   // ── Review reads ─────────────────────────────────────────────────
 
-  /** The extraction metadata plus every REVIEW candidate of a run. */
+  /** REVIEW candidates are staged work owned by the requesting teacher — O1:
+   *  owner or institute admin, always inside the subject scope (§18.7). */
+  private async gateCandidateJob(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    jobId: string,
+  ): Promise<void> {
+    const job = await this.jobsService.getJob(jobId, instituteId);
+    const subjectId = String(job.payload?.['subjectId'] ?? '');
+    await this.scope.requireWritableSubject(instituteId, membershipId, subjectId);
+    const scope = await this.scope.resolveScope(instituteId, membershipId);
+    const owner = userIdOf(job.payload);
+    if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
+      throw new NotFoundException('Question extraction run not found');
+    }
+  }
+
   async listCandidates(
     instituteId: string,
+    membershipId: string,
+    userId: string,
     jobId: string,
   ): Promise<{
     meta: {
@@ -350,6 +384,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     };
     candidates: CandidateRow[];
   }> {
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
     const job = await this.jobsService.getJob(jobId, instituteId);
     const payload = job.payload ?? {};
     const materialId = String(payload['materialId'] ?? '');
@@ -414,11 +449,13 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
 
   async updateCandidate(
     instituteId: string,
+    membershipId: string,
     userId: string,
     jobId: string,
     questionId: string,
     patch: ReviewQuestionCandidate,
   ): Promise<CandidateRow> {
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
     const candidate = await this.getCandidate(instituteId, jobId, questionId);
 
     let chapterId = candidate.chapterId;
@@ -465,10 +502,12 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
 
   async acceptCandidate(
     instituteId: string,
+    membershipId: string,
     userId: string,
     jobId: string,
     questionId: string,
   ): Promise<CandidateRow> {
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
     const candidate = await this.getCandidate(instituteId, jobId, questionId);
 
     const type = await this.types.findByCode(instituteId, candidate.questionType);
@@ -503,15 +542,16 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
    *  with the reason reported so the teacher fixes them. */
   async importAll(
     instituteId: string,
+    membershipId: string,
     userId: string,
     jobId: string,
   ): Promise<{ imported: number; skipped: Array<{ questionId: string; reason: string }> }> {
-    const { candidates } = await this.listCandidates(instituteId, jobId);
+    const { candidates } = await this.listCandidates(instituteId, membershipId, userId, jobId);
     let imported = 0;
     const skipped: Array<{ questionId: string; reason: string }> = [];
     for (const c of candidates) {
       try {
-        await this.acceptCandidate(instituteId, userId, jobId, c.id);
+        await this.acceptCandidate(instituteId, membershipId, userId, jobId, c.id);
         imported += 1;
       } catch (error) {
         const reason = error instanceof Error ? normalizeMessage(error.message) : 'Invalid question';
@@ -521,15 +561,27 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     return { imported, skipped };
   }
 
-  async discardCandidate(instituteId: string, jobId: string, questionId: string): Promise<void> {
+  async discardCandidate(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    jobId: string,
+    questionId: string,
+  ): Promise<void> {
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
     await this.getCandidate(instituteId, jobId, questionId);
     await this.db
       .delete(questions)
       .where(and(eq(questions.id, questionId), eq(questions.instituteId, instituteId)));
   }
 
-  async discardAll(instituteId: string, jobId: string): Promise<{ discarded: number }> {
-    const { candidates } = await this.listCandidates(instituteId, jobId);
+  async discardAll(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    jobId: string,
+  ): Promise<{ discarded: number }> {
+    const { candidates } = await this.listCandidates(instituteId, membershipId, userId, jobId);
     const ids = candidates.map((c) => c.id);
     if (ids.length > 0) {
       await this.db

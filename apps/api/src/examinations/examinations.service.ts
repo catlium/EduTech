@@ -3,14 +3,16 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
 } from '@nestjs/common';
-import { eq, and, desc, asc, inArray, count, max, isNull } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, count, isNull, max, not, or } from 'drizzle-orm';
 import { assessments, assessmentQuestions, paperPatterns, questions } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import type { AssessmentStatus } from '@catlium/contracts';
 import { flattenPatternRules, normalizePaperPatternStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { resolveScopeChain, scopeCoversRow, scopeFilter } from '../common/utils/scope-resolver.js';
 import { planAutoSelection, computePatternCoverage, type Difficulty } from './paper-selection.js';
@@ -58,7 +60,10 @@ export interface UpdateAssessmentInput {
 
 @Injectable()
 export class ExaminationsService {
-  constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE_TOKEN) private readonly db: Database,
+    private readonly scope: AcademicScopeService,
+  ) {}
 
   /**
    * Shared schedule validation — called from both createAssessment and
@@ -86,7 +91,12 @@ export class ExaminationsService {
 
   // ── Create ────────────────────────────────
 
-  async createAssessment(instituteId: string, createdBy: string, input: CreateAssessmentInput) {
+  async createAssessment(
+    instituteId: string,
+    membershipId: string,
+    createdBy: string,
+    input: CreateAssessmentInput,
+  ) {
     this.validateSchedule(
       input.startsAt ? new Date(input.startsAt) : null,
       input.endsAt ? new Date(input.endsAt) : null,
@@ -118,6 +128,9 @@ export class ExaminationsService {
     if (!scope.subjectId)
       throw new BadRequestException('An assessment requires a question scope with a subject');
 
+    // Create inside the actor's writable scope (§18.5).
+    await this.scope.requireWritableSubject(instituteId, membershipId, scope.subjectId);
+
     const [assessment] = await this.db
       .insert(assessments)
       .values({
@@ -146,11 +159,13 @@ export class ExaminationsService {
 
   async updateAssessment(
     instituteId: string,
+    membershipId: string,
     userId: string,
     assessmentId: string,
     patch: UpdateAssessmentInput,
   ) {
-    const existing = await this.getAssessment(instituteId, assessmentId);
+    const existing = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, existing, true);
 
     // Pitfall 2 — state-guarded edit: only DRAFT is editable. PUBLISHED is
     // locked until unpublished via the 08-03 state machine.
@@ -234,15 +249,21 @@ export class ExaminationsService {
 
   // Pattern 3 (08-RESEARCH) — the publish validation gate: every precondition
   // re-checked at publish time, any failure keeps the assessment in DRAFT.
-  async publishAssessment(instituteId: string, assessmentId: string) {
-    const assessment = await this.getAssessment(instituteId, assessmentId);
+  async publishAssessment(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    const assessment = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, assessment, true);
     this.assertValidTransition(assessment.status, 'PUBLISHED');
 
     // Pitfall 1 — re-check the CURRENT approval status AND status (ACTIVE) of
     // every linked question (a question approved at link time may have been
     // rejected or archived since). ARCHIVED questions (WR-03/EXAM-08) are
     // unlinkable and unpublishable; status is independent of approvalStatus.
-    const linked = await this.listQuestions(instituteId, assessmentId);
+    const linked = await this.listQuestions(instituteId, membershipId, userId, assessmentId);
     if (linked.length === 0) {
       throw new BadRequestException('Assessment must have at least one question');
     }
@@ -275,37 +296,61 @@ export class ExaminationsService {
   }
 
   // Manual activation for the MVP (research A1) — no cron/auto-activation.
-  async activateAssessment(instituteId: string, assessmentId: string) {
-    const assessment = await this.getAssessment(instituteId, assessmentId);
+  async activateAssessment(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    const assessment = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, assessment, true);
     this.assertValidTransition(assessment.status, 'ACTIVE');
     return this.setStatus(instituteId, assessmentId, 'ACTIVE');
   }
 
   // Terminal transition — COMPLETED has no outgoing transitions.
-  async completeAssessment(instituteId: string, assessmentId: string) {
-    const assessment = await this.getAssessment(instituteId, assessmentId);
+  async completeAssessment(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    const assessment = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, assessment, true);
     this.assertValidTransition(assessment.status, 'COMPLETED');
     return this.setStatus(instituteId, assessmentId, 'COMPLETED');
   }
 
   // PUBLISHED→DRAFT (research A4) so teachers can fix mistakes. ACTIVE→DRAFT
   // is blocked by VALID_TRANSITIONS — students may be attempting.
-  async unpublishAssessment(instituteId: string, assessmentId: string) {
-    const assessment = await this.getAssessment(instituteId, assessmentId);
+  async unpublishAssessment(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    const assessment = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, assessment, true);
     this.assertValidTransition(assessment.status, 'DRAFT');
     return this.setStatus(instituteId, assessmentId, 'DRAFT');
   }
 
   // ── Delete ────────────────────────────────
 
-  async deleteAssessment(instituteId: string, assessmentId: string) {
+  async deleteAssessment(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
     // WR-05 (08-07): DRAFT-only delete guard. load the row once (404 + tenant
     // scope come from getAssessment); only DRAFT assessments are killable —
     // PUBLISHED/ACTIVE/COMPLETED are refused with 400. Unpublish first (or
     // complete) to make an assessment deletable. T-08-28: status read + delete
     // run in the same request flow; transitions are service-owned and
     // sequential per request, full serialization deferred (ponytail ceiling).
-    const existing = await this.getAssessment(instituteId, assessmentId);
+    const existing = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, existing, true);
     if (existing.status !== 'DRAFT') {
       throw new BadRequestException(
         'Only DRAFT assessments can be deleted; unpublish or complete first',
@@ -324,8 +369,14 @@ export class ExaminationsService {
 
   // ── Question linking ─────────────────────
 
-  async listQuestions(instituteId: string, assessmentId: string) {
-    await this.getAssessment(instituteId, assessmentId);
+  async listQuestions(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    const assessment = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, assessment, false);
 
     const rows = await this.db
       .select()
@@ -353,12 +404,15 @@ export class ExaminationsService {
 
   async addQuestions(
     instituteId: string,
+    membershipId: string,
+    userId: string,
     assessmentId: string,
     questionIds: string[],
     marksOverride?: Record<string, number>,
     sectionsOverride?: Record<string, string>,
   ) {
-    const existing = await this.getAssessment(instituteId, assessmentId);
+    const existing = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, existing, true);
 
     // Research "question set is locked after PUBLISHED" + T-08-17 — only a
     // DRAFT assessment can change its question set; unpublish first otherwise.
@@ -462,8 +516,15 @@ export class ExaminationsService {
     }
   }
 
-  async removeQuestion(instituteId: string, assessmentId: string, questionId: string) {
-    const existing = await this.getAssessment(instituteId, assessmentId);
+  async removeQuestion(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+    questionId: string,
+  ) {
+    const existing = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, existing, true);
 
     // Same non-DRAFT lock as addQuestions — the question set is immutable
     // once published.
@@ -510,8 +571,14 @@ export class ExaminationsService {
    * assessments linked to an APPROVED pattern are eligible. Selection honors
    * each section's type/count/difficulty and records honest shortages when the
    * bank cannot satisfy a section (never a fabricated/short-changed paper). */
-  async autoSelectFromPattern(instituteId: string, assessmentId: string) {
-    const assessment = await this.getAssessment(instituteId, assessmentId);
+  async autoSelectFromPattern(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    const assessment = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, assessment, true);
     if (assessment.status !== 'DRAFT') {
       throw new BadRequestException('Questions can only be added in DRAFT status');
     }
@@ -592,13 +659,19 @@ export class ExaminationsService {
 
   /** Live per-section status against the paper pattern for BOTH selection
    * modes (auto or manual). Returns null for assessments with no blueprint. */
-  async getPatternCoverage(instituteId: string, assessmentId: string) {
-    const assessment = await this.getAssessment(instituteId, assessmentId);
+  async getPatternCoverage(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    const assessment = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, assessment, false);
     if (!assessment.blueprintId) return null;
 
     const pattern = await this.loadBlueprintPattern(instituteId, assessment.blueprintId);
     const structure = normalizePaperPatternStructure(pattern.structure);
-    const links = await this.listQuestions(instituteId, assessmentId);
+    const links = await this.listQuestions(instituteId, membershipId, userId, assessmentId);
 
     return {
       patternId: pattern.id,
@@ -619,8 +692,15 @@ export class ExaminationsService {
   /** Replace the assessment's question scope (DRAFT only). Legacy assessments
    * created before scopes existed must set one before adding questions or
    * publishing. */
-  async setScope(instituteId: string, assessmentId: string, scope: QuestionScope) {
-    const existing = await this.getAssessment(instituteId, assessmentId);
+  async setScope(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+    scope: QuestionScope,
+  ) {
+    const existing = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, existing, true);
     if (existing.status !== 'DRAFT') {
       throw new BadRequestException('Question scope can only be changed in DRAFT status');
     }
@@ -629,6 +709,7 @@ export class ExaminationsService {
       scope,
     );
     if (!resolved.subjectId) throw new BadRequestException('A question scope requires a subject');
+    await this.scope.requireWritableSubject(instituteId, membershipId, resolved.subjectId);
     const [updated] = await this.db
       .update(assessments)
       .set({
@@ -645,7 +726,48 @@ export class ExaminationsService {
 
   // ── Read ──────────────────────────────────
 
-  async getAssessment(instituteId: string, assessmentId: string) {
+  /** Gate assessment access (§18): DRAFT is owner+admin staging (O1); every
+   *  later status is finalized, pure academic scope on the stored subject
+   *  (O2). Exam questions are always in scope of the assessment. */
+  private async gateAssessment(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessment: {
+      status: string;
+      subjectId: string | null;
+      createdBy: string;
+    },
+    mutating: boolean,
+  ): Promise<void> {
+    const scope = await this.scope.resolveScope(instituteId, membershipId);
+    if (scope.kind === 'whole-institute') return;
+
+    // Staging (DRAFT) — the creator's work in progress, private until published.
+    if (assessment.status === 'DRAFT') {
+      if (assessment.createdBy === userId) return;
+      if (mutating) {
+        throw new ForbiddenException('Only the creator may modify this DRAFT assessment');
+      }
+      throw new NotFoundException('Assessment not found');
+    }
+
+    // Finalized — shared, pure subject scope.
+    const inScope = assessment.subjectId !== null && scope.subjectIds.includes(assessment.subjectId);
+    if (inScope) return;
+    if (mutating) {
+      throw new ForbiddenException('Resource is outside your academic scope');
+    }
+    throw new NotFoundException('Assessment not found');
+  }
+
+  async getAssessment(instituteId: string, membershipId: string, userId: string, assessmentId: string) {
+    const assessment = await this.requireAssessment(instituteId, assessmentId);
+    await this.gateAssessment(instituteId, membershipId, userId, assessment, false);
+    return assessment;
+  }
+
+  private async requireAssessment(instituteId: string, assessmentId: string) {
     const [assessment] = await this.db
       .select()
       .from(assessments)
@@ -659,11 +781,27 @@ export class ExaminationsService {
     return assessment;
   }
 
-  async listAssessments(instituteId: string) {
+  async listAssessments(instituteId: string, membershipId: string, userId: string) {
+    const conditions = [eq(assessments.instituteId, instituteId)];
+    const scopeFilter = await this.scope.subjectScopePredicate(
+      instituteId,
+      membershipId,
+      assessments.subjectId,
+    );
+    if (scopeFilter) {
+      // DRAFT is staging: any matching subject is still only visible to its
+      // creator (O1); finalized assessments are pure scope (O2).
+      conditions.push(
+        or(
+          and(eq(assessments.createdBy, userId), eq(assessments.status, 'DRAFT')),
+          and(not(eq(assessments.status, 'DRAFT')), scopeFilter),
+        )!,
+      );
+    }
     const rows = await this.db
       .select()
       .from(assessments)
-      .where(eq(assessments.instituteId, instituteId))
+      .where(and(...conditions))
       .orderBy(desc(assessments.updatedAt));
 
     if (rows.length === 0) {

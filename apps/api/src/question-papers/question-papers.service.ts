@@ -1,5 +1,11 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, count, desc, eq, inArray, isNull } from 'drizzle-orm';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { and, asc, count, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import {
   questionPapers,
   questionPaperQuestions,
@@ -14,6 +20,7 @@ import {
   type PaperPatternStructure,
 } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
 import { QuestionGenerationService } from '../questions/question-generation.service.js';
 import { resolveScopeChain, scopeFilter } from '../common/utils/scope-resolver.js';
@@ -50,16 +57,19 @@ export class QuestionPapersService {
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly examinations: ExaminationsService,
     private readonly generation: QuestionGenerationService,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   // ── Create ────────────────────────────────
 
   async createQuestionPaper(
     instituteId: string,
+    membershipId: string,
     createdBy: string,
     input: CreateQuestionPaperInput,
   ) {
     const pattern = await this.requireApprovedPattern(instituteId, input.patternId);
+    await this.generation.assertPatternReadable(instituteId, membershipId, pattern.id);
     const structure = normalizePaperPatternStructure(pattern.structure);
     // Approved patterns are validated with real totals; guard anyway so a
     // degraded row surfaces as a clear 400 instead of a constraint 500.
@@ -77,11 +87,14 @@ export class QuestionPapersService {
       input,
     );
     if (!scope.subjectId) throw new BadRequestException('A question scope requires a subject');
+    // Create within the actor's scope (§18.5).
+    await this.scope.requireWritableSubject(instituteId, membershipId, scope.subjectId);
 
     // Never create a paper the bank cannot fully supply. If questions are
     // missing we queue generation and report back; the caller polls and retries.
     const coverage = await this.generation.ensurePatternCoverage(
       instituteId,
+      membershipId,
       createdBy,
       pattern.id,
       {
@@ -132,11 +145,28 @@ export class QuestionPapersService {
 
   // ── Read ──────────────────────────────────
 
-  async listPapers(instituteId: string) {
+  async listPapers(instituteId: string, membershipId: string, userId: string) {
+    const conditions = [eq(questionPapers.instituteId, instituteId)];
+    // Question papers have no lifecycle → pure scope (§18.6 O2) — but an
+    // unscoped paper is a private scaffold until scoped (§18.7): include the
+    // actor's own null-subject papers on top of the subject scope.
+    const scopeFilter = await this.scope.subjectScopePredicate(
+      instituteId,
+      membershipId,
+      questionPapers.subjectId,
+    );
+    if (scopeFilter) {
+      conditions.push(
+        or(
+          scopeFilter,
+          and(eq(questionPapers.createdBy, userId), isNull(questionPapers.subjectId)),
+        )!,
+      );
+    }
     const rows = await this.db
       .select()
       .from(questionPapers)
-      .where(eq(questionPapers.instituteId, instituteId))
+      .where(and(...conditions))
       .orderBy(desc(questionPapers.updatedAt));
 
     if (rows.length === 0) return [];
@@ -156,26 +186,36 @@ export class QuestionPapersService {
     return rows.map((r) => ({ ...r, questionCount: countMap.get(r.id) ?? 0 }));
   }
 
-  async getPaper(instituteId: string, paperId: string) {
+  async getPaper(instituteId: string, membershipId: string, userId: string, paperId: string) {
     const paper = await this.requirePaper(instituteId, paperId);
+    await this.gatePaper(instituteId, membershipId, userId, paper, false);
     const subjects = await this.paperSubjects(instituteId, paper);
     return { ...paper, subjects };
   }
 
-  async renamePaper(instituteId: string, paperId: string, title: string) {
+  async renamePaper(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    paperId: string,
+    title: string,
+  ) {
     const existing = await this.requirePaper(instituteId, paperId);
+    await this.gatePaper(instituteId, membershipId, userId, existing, true);
     if (!title.trim()) {
       throw new BadRequestException('Title cannot be blank');
     }
     const [updated] = await this.db
       .update(questionPapers)
-      .set({ title: title.trim(), updatedAt: new Date() })
+      .set({ title: title.trim(), updatedBy: userId, updatedAt: new Date() })
       .where(and(eq(questionPapers.id, paperId), eq(questionPapers.instituteId, instituteId)))
       .returning();
     return updated ?? existing;
   }
 
-  async deletePaper(instituteId: string, paperId: string) {
+  async deletePaper(instituteId: string, membershipId: string, userId: string, paperId: string) {
+    const existing = await this.requirePaper(instituteId, paperId);
+    await this.gatePaper(instituteId, membershipId, userId, existing, true);
     const [deleted] = await this.db
       .delete(questionPapers)
       .where(and(eq(questionPapers.id, paperId), eq(questionPapers.instituteId, instituteId)))
@@ -185,8 +225,9 @@ export class QuestionPapersService {
     }
   }
 
-  async listQuestions(instituteId: string, paperId: string) {
-    await this.requirePaper(instituteId, paperId);
+  async listQuestions(instituteId: string, membershipId: string, userId: string, paperId: string) {
+    const paper = await this.requirePaper(instituteId, paperId);
+    await this.gatePaper(instituteId, membershipId, userId, paper, false);
 
     const rows = await this.db
       .select()
@@ -214,13 +255,21 @@ export class QuestionPapersService {
 
   // ── Selection (Mode A) ────────────────────
 
-  async autoSelectFromPattern(instituteId: string, paperId: string) {
+  async autoSelectFromPattern(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    paperId: string,
+  ) {
     const paper = await this.requirePaper(instituteId, paperId);
+    // Selection mutates the paper's links → writable.
+    await this.gatePaper(instituteId, membershipId, userId, paper, true);
     if (!paper.blueprintId) {
       throw new BadRequestException('Question paper has no paper-pattern blueprint');
     }
 
     const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
+    await this.generation.assertPatternReadable(instituteId, membershipId, pattern.id);
     const structure = normalizePaperPatternStructure(pattern.structure);
     const sections = flattenPatternRules(structure);
 
@@ -286,13 +335,20 @@ export class QuestionPapersService {
     };
   }
 
-  async getPatternCoverage(instituteId: string, paperId: string) {
+  async getPatternCoverage(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    paperId: string,
+  ) {
     const paper = await this.requirePaper(instituteId, paperId);
+    await this.gatePaper(instituteId, membershipId, userId, paper, false);
     if (!paper.blueprintId) return null;
 
     const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
+    await this.generation.assertPatternReadable(instituteId, membershipId, pattern.id);
     const structure = normalizePaperPatternStructure(pattern.structure);
-    const links = await this.listQuestions(instituteId, paperId);
+    const links = await this.listQuestions(instituteId, membershipId, userId, paperId);
 
     return {
       patternId: pattern.id,
@@ -320,16 +376,20 @@ export class QuestionPapersService {
    * bank — so buckets merge per (type, difficulty). */
   private async patternShortageBuckets(
     instituteId: string,
+    membershipId: string,
+    userId: string,
     paperId: string,
   ): Promise<{
     scope: QuestionScope;
     buckets: { questionType: string; difficulty: Difficulty; count: number }[];
   }> {
     const paper = await this.requirePaper(instituteId, paperId);
+    await this.gatePaper(instituteId, membershipId, userId, paper, false);
     if (!paper.blueprintId) {
       throw new BadRequestException('Question paper has no paper-pattern blueprint');
     }
     const pattern = await this.requireApprovedPattern(instituteId, paper.blueprintId);
+    await this.generation.assertPatternReadable(instituteId, membershipId, pattern.id);
     const structure = normalizePaperPatternStructure(pattern.structure);
     const scope = await this.paperScope(paper);
 
@@ -339,8 +399,19 @@ export class QuestionPapersService {
     };
   }
 
-  async generateMissing(instituteId: string, userId: string, paperId: string, dryRun = false) {
-    const { scope, buckets } = await this.patternShortageBuckets(instituteId, paperId);
+  async generateMissing(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    paperId: string,
+    dryRun = false,
+  ) {
+    const { scope, buckets } = await this.patternShortageBuckets(
+      instituteId,
+      membershipId,
+      userId,
+      paperId,
+    );
     const filtered = buckets.filter((b) => b.count > 0);
     if (filtered.length === 0) {
       return {
@@ -354,7 +425,7 @@ export class QuestionPapersService {
         totalDeficit: 0,
       };
     }
-    return this.generation.computeDeficitsAndGenerateMore(instituteId, userId, {
+    return this.generation.computeDeficitsAndGenerateMore(instituteId, membershipId, userId, {
       subjectId: scope.subjectId,
       chapterId: scope.chapterId,
       topicId: scope.topicId,
@@ -365,13 +436,23 @@ export class QuestionPapersService {
 
   // ── Scope ─────────────────────────────────
 
-  async setScope(instituteId: string, paperId: string, scope: QuestionScope) {
+  async setScope(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    paperId: string,
+    scope: QuestionScope,
+  ) {
     const existing = await this.requirePaper(instituteId, paperId);
+    // Repointing the paper is a mutation → every reference must be writable
+    // (current and new scope) (§18.5).
+    await this.gatePaper(instituteId, membershipId, userId, existing, true);
     const resolved = await resolveScopeChain(
       { db: this.db, instituteId, requireSubject: true },
       scope,
     );
     if (!resolved.subjectId) throw new BadRequestException('A question scope requires a subject');
+    await this.scope.requireWritableSubject(instituteId, membershipId, resolved.subjectId);
     const [updated] = await this.db
       .update(questionPapers)
       .set({
@@ -387,16 +468,24 @@ export class QuestionPapersService {
 
   // ── Convert to assessment ─────────────────
 
-  async createAssessmentFromPaper(instituteId: string, userId: string, paperId: string) {
+  async createAssessmentFromPaper(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    paperId: string,
+  ) {
     const paper = await this.requirePaper(instituteId, paperId);
     const scope = await this.paperScope(paper);
-    const links = await this.listQuestions(instituteId, paperId);
+    // Conversion reads the paper and creates an assessment inside its scope.
+    await this.gatePaper(instituteId, membershipId, userId, paper, false);
+    await this.scope.requireWritableSubject(instituteId, membershipId, scope.subjectId);
+    const links = await this.listQuestions(instituteId, membershipId, userId, paperId);
 
     if (links.length === 0) {
       throw new BadRequestException('Question paper has no questions to convert');
     }
 
-    const assessment = await this.examinations.createAssessment(instituteId, userId, {
+    const assessment = await this.examinations.createAssessment(instituteId, membershipId, userId, {
       title: `${paper.title} — Assessment`,
       description: paper.description ?? undefined,
       durationMinutes: paper.durationMinutes ?? undefined,
@@ -410,6 +499,8 @@ export class QuestionPapersService {
 
     await this.examinations.addQuestions(
       instituteId,
+      membershipId,
+      userId,
       assessment.id,
       links.map((l) => l.questionId),
       Object.fromEntries(links.map((l) => [l.questionId, l.marks])),
@@ -453,6 +544,34 @@ export class QuestionPapersService {
       chapterId: paper.chapterId ?? undefined,
       topicId: paper.topicId ?? undefined,
     };
+  }
+
+  /** Gate question-paper access. Papers have no lifecycle → pure academic
+   *  scope (§18.6 O2); admins bypass everything. An unscoped paper is a
+   *  private scaffold until a scope is set (§18.7 — extraction-created
+   *  papers and legacy rows): only its creator may access it. */
+  private async gatePaper(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    paper: { subjectId: string | null; createdBy: string },
+    mutating: boolean,
+  ): Promise<void> {
+    const scope = await this.scope.resolveScope(instituteId, membershipId);
+    if (scope.kind === 'whole-institute') return;
+    if (paper.subjectId) {
+      if (scope.subjectIds.includes(paper.subjectId)) return;
+      if (mutating) {
+        throw new ForbiddenException('Resource is outside your academic scope');
+      }
+      throw new NotFoundException('Resource not found');
+    }
+    if (paper.createdBy !== userId) {
+      if (mutating) {
+        throw new ForbiddenException('Only the creator may modify this unscoped question paper');
+      }
+      throw new NotFoundException('Question paper not found');
+    }
   }
 
   private async requirePaper(instituteId: string, paperId: string) {
