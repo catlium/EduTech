@@ -1,16 +1,21 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { eq, and, ne, isNull, desc } from 'drizzle-orm';
+import { eq, and, ne, isNull, inArray, desc, lt, or } from 'drizzle-orm';
 import * as bcryptjs from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 import { users, authSessions, passwordResets } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { normalizeEmail } from '@catlium/shared';
 import { DATABASE_TOKEN } from '../database/database.module.js';
-import { decideRefreshRace } from './refresh-race.js';
+
+export interface SessionMetadata {
+  userAgent?: string | null;
+  lastIp?: string | null;
+}
 
 export interface TokenPair {
   accessToken: string;
@@ -33,7 +38,11 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async login(email: string, password: string): Promise<{ user: SafeUser; tokens: TokenPair }> {
+  async login(
+    email: string,
+    password: string,
+    metadata: SessionMetadata = {},
+  ): Promise<{ user: SafeUser; tokens: TokenPair }> {
     const normalizedEmail = normalizeEmail(email);
 
     const [user] = await this.db
@@ -56,7 +65,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const tokens = await this.createSession(user.id);
+    await this.purgeExpiredSessions();
+
+    const tokens = await this.createSession(user.id, metadata);
 
     return {
       user: this.toSafeUser(user),
@@ -64,7 +75,18 @@ export class AuthService {
     };
   }
 
-  async refresh(refreshToken: string): Promise<{ user: SafeUser; tokens: TokenPair }> {
+  /**
+   * Strict one-time refresh rotation (D7 §19 F2). The access+refresh boundary
+   * is an atomic claim: a single `UPDATE ... WHERE revoked_at IS NULL AND
+   * refresh_token_hash = <stored>` wins the right to mint the one next session
+   * (no 60-second grace window — re-rotation of a spent token is replay).
+   * Presenting a spent or wrong token revokes the session's lineage
+   * (`rotated_from_sid` descendants) so the whole family requires re-login.
+   */
+  async refresh(
+    refreshToken: string,
+    metadata: SessionMetadata = {},
+  ): Promise<{ user: SafeUser; tokens: TokenPair }> {
     const payload = await this.verifyRefreshToken(refreshToken);
 
     const [session] = await this.db
@@ -77,33 +99,65 @@ export class AuthService {
       throw new UnauthorizedException('Session not found');
     }
 
-    const decision = decideRefreshRace(session, await bcryptjs.compare(refreshToken, session.refreshTokenHash));
-
-    if (decision === 'revoked') {
-      throw new UnauthorizedException('Session revoked');
-    }
-
-    if (decision === 'expired') {
-      throw new UnauthorizedException('Session expired');
-    }
-
-    if (decision === 'token-mismatch') {
-      await this.revokeSession(session.id);
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-
-    // 'rotate' covers both the normal rotation and a just-revoked session being
-    // re-rotated by a concurrent refresh that shared the same token. revoke is
-    // idempotent on an already-revoked row, so both paths converge.
-    await this.revokeSession(session.id);
-
-    const tokens = await this.createSession(payload.sub);
-
     const [user] = await this.db.select().from(users).where(eq(users.id, payload.sub)).limit(1);
 
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
+
+    // F5 — a deactivated/disabled user must never obtain a refresh; same
+    // uniform error as a dead session (no account-state enumeration).
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('Session revoked');
+    }
+
+    const tokenMatches = session.refreshTokenHash === this.hashToken(refreshToken);
+
+    if (session.revokedAt) {
+      // A spent token on an already-claimed row is confirmed reuse — revoke
+      // the whole lineage and never mint.
+      if (tokenMatches) {
+        await this.revokeLineage(session.id);
+      }
+      throw new UnauthorizedException('Session revoked');
+    }
+
+    if (new Date(session.expiresAt).getTime() <= Date.now()) {
+      await this.revokeSession(session.id);
+      throw new UnauthorizedException('Session expired');
+    }
+
+    if (!tokenMatches) {
+      // Wrong token against a live row — suspected theft. Revoke the session.
+      await this.revokeSession(session.id);
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // Atomic claim: exactly one concurrent presenter may rotate. A lost claim
+    // means the token is now spent — treat as reuse and revoke the lineage.
+    const [claimed] = await this.db
+      .update(authSessions)
+      .set({ revokedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(authSessions.id, session.id),
+          isNull(authSessions.revokedAt),
+          eq(authSessions.refreshTokenHash, session.refreshTokenHash),
+        ),
+      )
+      .returning({ id: authSessions.id });
+
+    if (!claimed) {
+      await this.revokeLineage(session.id);
+      throw new UnauthorizedException('Session revoked');
+    }
+
+    await this.purgeExpiredSessions();
+
+    const tokens = await this.createSession(user.id, {
+      ...metadata,
+      rotatedFromSid: session.id,
+    });
 
     return {
       user: this.toSafeUser(user),
@@ -133,14 +187,29 @@ export class AuthService {
     return this.toSafeUser(user);
   }
 
-  private async createSession(userId: string): Promise<TokenPair> {
+  // D7 §19 F2 — a refresh-token fingerprint is stored, never the token. The
+  // token is a high-entropy random secret, so SHA-256 (hex) is the standard
+  // choice; bcrypt was a poor fit because it truncates input at 72 bytes and
+  // a JWT's signature sits past that — two *different* tokens sharing the
+  // header+payload prefix would bcrypt-compare equal, silently treating a
+  // wrong-token rotation as valid.
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token, 'utf8').digest('hex');
+  }
+
+  private async createSession(
+    userId: string,
+    opts: SessionMetadata & { rotatedFromSid?: string } = {},
+  ): Promise<TokenPair> {
     const sid = uuidv4();
     const refreshDays = parseInt(process.env['REFRESH_TOKEN_EXPIRY_DAYS'] ?? '30', 10);
     const refreshExpiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000);
 
     const accessMinutes = parseInt(process.env['ACCESS_TOKEN_EXPIRY_MINUTES'] ?? '15', 10);
+    // F1 — access tokens are session-bound: {sub, sid}. The AccessTokenGuard
+    // verifies the live session + active user on every request.
     const accessToken = await this.jwtService.signAsync(
-      { sub: userId },
+      { sub: userId, sid },
       { expiresIn: `${accessMinutes}m` },
     );
 
@@ -149,16 +218,63 @@ export class AuthService {
       { expiresIn: `${refreshDays}d` },
     );
 
-    const refreshTokenHash = await bcryptjs.hash(refreshToken, 10);
+    const refreshTokenHash = this.hashToken(refreshToken);
 
     await this.db.insert(authSessions).values({
       id: sid,
       userId,
       refreshTokenHash,
       expiresAt: refreshExpiresAt,
+      rotatedFromSid: opts.rotatedFromSid ?? null,
+      userAgent: opts.userAgent ?? null,
+      lastIp: opts.lastIp ?? null,
+      lastUsedAt: new Date(),
     });
 
     return { accessToken, refreshToken, refreshExpiresAt };
+  }
+
+  // F2 — walk the refresh lineage (children via `rotated_from_sid`, recursively)
+  // and revoke every member. Reuse of a spent token revokes the token family.
+  private async revokeLineage(rootSid: string): Promise<void> {
+    const toRevoke = new Set<string>([rootSid]);
+    let frontier = [rootSid];
+
+    while (frontier.length > 0) {
+      const children = await this.db
+        .select({ id: authSessions.id })
+        .from(authSessions)
+        .where(inArray(authSessions.rotatedFromSid, frontier));
+      frontier = children.map((c) => c.id).filter((id) => !toRevoke.has(id));
+      for (const id of frontier) toRevoke.add(id);
+    }
+
+    if (toRevoke.size > 0) {
+      await this.db
+        .update(authSessions)
+        .set({ revokedAt: new Date(), updatedAt: new Date() })
+        .where(inArray(authSessions.id, [...toRevoke]));
+    }
+  }
+
+  // F6 — opportunistic GC piggybacked on login/rotation: drop revoked/expired
+  // rows past the retention window (default 90 days). Re-login always creates
+  // fresh rows, so purging never blocks a live session.
+  async purgeExpiredSessions(now: Date = new Date()): Promise<number> {
+    const retentionDays = parseInt(process.env['AUTH_SESSION_RETENTION_DAYS'] ?? '90', 10);
+    const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+
+    const purged = await this.db
+      .delete(authSessions)
+      .where(
+        and(
+          lt(authSessions.expiresAt, cutoff),
+          or(isNull(authSessions.revokedAt), lt(authSessions.revokedAt, cutoff)),
+        ),
+      )
+      .returning({ id: authSessions.id });
+
+    return purged.length;
   }
 
   // Phase K F3 — session listing. `currentSid` comes from the authenticated

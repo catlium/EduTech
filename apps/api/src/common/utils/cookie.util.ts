@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import type { Response } from 'express';
 
 export interface CookieOptions {
   accessExpiresMs: number;
@@ -10,7 +10,12 @@ export interface CookieOptions {
 
 export function getCookieOptions(): CookieOptions {
   const sameSite = (process.env['COOKIE_SAMESITE'] ?? 'lax') as 'strict' | 'lax' | 'none';
-  const secure = process.env['COOKIE_SECURE'] === 'true';
+  // Secure derives from NODE_ENV (production ⇒ Secure) so the default can
+  // never be weakened by leaving an env var unset; an explicit COOKIE_SECURE
+  // override exists only for documented deployments (local HTTP dev, a
+  // deliberately non-Secure tunnel). dev is false; prod is true.
+  const configured = process.env['COOKIE_SECURE'];
+  const secure = configured !== undefined ? configured === 'true' : process.env['NODE_ENV'] === 'production';
   const accessMinutes = parseInt(process.env['ACCESS_TOKEN_EXPIRY_MINUTES'] ?? '15', 10);
   const refreshDays = parseInt(process.env['REFRESH_TOKEN_EXPIRY_DAYS'] ?? '30', 10);
 

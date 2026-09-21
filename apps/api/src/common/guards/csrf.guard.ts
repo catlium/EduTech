@@ -1,27 +1,28 @@
 import { CanActivate, ExecutionContext, Injectable, ForbiddenException } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request } from 'express';
+import { decideCsrf } from './csrf-policy.js';
 
+// F4 — double-submit CSRF token on every cookie-authenticated state-changing
+// request (POST/PUT/PATCH/DELETE); GET/HEAD/OPTIONS exempt. Registered as a
+// global APP_GUARD so it cannot be forgotten on a controller.
 @Injectable()
 export class CsrfGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
-    const method = request.method;
 
-    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
-      return true;
-    }
+    const verdict = decideCsrf(
+      request.method,
+      Boolean(request.cookies?.['access_token']),
+      request.cookies?.['csrf_token'] as string | undefined,
+      request.headers['x-csrf-token'] as string | undefined,
+    );
 
-    const cookieToken = request.cookies?.['csrf_token'] as string | undefined;
-    const headerToken = request.headers['x-csrf-token'] as string | undefined;
-
-    if (!cookieToken || !headerToken) {
+    if (verdict === 'missing') {
       throw new ForbiddenException('CSRF token missing');
     }
-
-    if (cookieToken !== headerToken) {
+    if (verdict === 'mismatch') {
       throw new ForbiddenException('CSRF token mismatch');
     }
-
     return true;
   }
 }

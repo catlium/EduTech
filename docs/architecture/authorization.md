@@ -1696,21 +1696,26 @@ subject (the §18.7 default-deny documented exception, INSTITUTE_ADMIN exempt).
 
 ---
 
-## 19. D7 — Authentication / session hardening (DECIDED, partially implemented)
+## 19. D7 — Authentication / session hardening (DECIDED, implemented)
 
-Recorded 2026-09-20. Applies to Phase K. **Partially implemented** — Phase K
-Parts 1–2 (DB auth/session + password-reset foundation), the F3/F5 identity
-seams, and the Part 3 OCR-worker end-to-end validation are landed; the
-remaining decisions below are still outstanding. See the `docs/project-status.md`
+Recorded 2026-09-20. Applies to Phase K. **Implemented** — Phase K Parts 1–2
+(DB auth/session + password-reset foundation), the F3/F5 identity seams, the
+Part 3 OCR-worker end-to-end validation, and the remaining F1–F6 hardening
+below are landed; only the admin deactivation *mutation* (no UI/endpoint to
+flip status — the gates themselves are live) and a dedicated session-purge
+scheduler (opportunistic purge only) are deferred. See `docs/project-status.md`
 Phase K checkpoints for landed byte-level state.
 
 Resolves the audit's F1–F6 (`docs/architecture/security-audit.md` §F) and the
 §9 issues, grounded in the verified implementation: `identity/auth.service.ts`
-(login/refresh/logout, rotation), `identity/refresh-race.ts` (60 s grace
-window), `identity/auth.controller.ts` (CSRF on refresh/logout; logout behind
-AccessTokenGuard), `common/guards/access-token.guard.ts` (signature+expiry
-only), `common/guards/csrf.guard.ts` (double-submit), `common/utils/cookie.util.ts`
-(cookie attributes), `packages/database/src/schema/auth.ts` (`auth_sessions`).
+(login/refresh/logout, strict rotation, lineage revocation, SHA-256 token
+fingerprints, opportunistic purge), `identity/origin.ts` (login Origin check),
+`identity/auth.controller.ts` (origin-checked login, csrf-repair-only refresh,
+refresh-session-aware logout), `common/guards/access-token.guard.ts`
+(session+status-aware), `common/guards/csrf-policy.ts` + `csrf.guard.ts`
+(global double-submit policy + decorator), `common/utils/cookie.util.ts`
+(Secure from NODE_ENV), `packages/database/src/schema/auth.ts` (`auth_sessions`,
+migration `0045_auth_session_hardening`).
 
 ### Architecture separation (fixed)
 
@@ -1738,8 +1743,12 @@ access tokens or full session-backed requests. No authentication redesign.
   deactivation takes effect on the next request — the current ≤15-minute
   residual window (H5) is closed.**
 - **Refresh session:** unchanged in kind — each device has its own
-  `auth_sessions` row(s) holding the bcrypt hash of its refresh token.
-  Multi-device support is preserved (no single-session mode).
+  `auth_sessions` row(s) holding a **SHA-256 fingerprint of its one live
+  refresh token** (hex, never the token). bcrypt was rejected: it truncates
+  input at 72 bytes and a JWT's signature sits past that, so two *different*
+  tokens sharing the header+payload prefix compare equal — the token
+  fingerprint must be a full-strength hash. Multi-device support is preserved
+  (no single-session mode).
 
 Requirements coverage:
 
@@ -1782,8 +1791,9 @@ token replayed within it minted a new session.
 - **Session revocation behavior:** revoking a row makes its token reject and
   marks its lineage; access tokens bound to that `sid` fail the F1 check on
   the next request.
-- Schema delta (Phase K, not now): add `rotated_from_sid`, `user_agent`,
-  `last_ip`, `last_used_at`. Refresh-token plaintext is never stored.
+- Schema delta (Phase K, landed in migration `0045_auth_session_hardening`):
+  `rotated_from_sid`, `user_agent`, `last_ip`, `last_used_at`.
+  Refresh-token plaintext is never stored — only the SHA-256 fingerprint.
 
 ### F3 — Logout and revocation
 
@@ -1844,9 +1854,11 @@ defense-in-depth, not the primary control (H3 closed).
   re-fetches the user but never checks status — M3). Combined with the F1
   per-request check, user status is enforced on every request, not only at
   login.
-- **Deactivation timing: immediate.** Admin deactivation (status mutation in
-  Phase K) revokes all refresh sessions for the user; existing access tokens
-  fail the F1 session-aware check on their next request. No 15-minute window.
+- **Deactivation timing: immediate for the gates; the mutation is deferred.**
+  Login/refresh/access all check `users.status = 'active'` on every request
+  (F1/F5). The admin *status mutation* (an endpoint/UI to flip the column —
+  Phase K deferred) is not built; once any path flips status, all three gates
+  take effect immediately. No 15-minute window.
 - **Access-token validation** checks current user status AND live session (F1);
   it never accepts a token for a deactivated user or a revoked session.
 - **Password change / forced reset** (Phase K; not built now): after a
@@ -1887,8 +1899,11 @@ defense-in-depth, not the primary control (H3 closed).
 **Session table concerns (Phase K):**
 
 - **Retention:** revoked/expired `auth_sessions` rows are purged after a
-  retention period (default 90 days) by a scheduled job, with an opportunistic
-  purge piggybacked on rotation/login. Re-login always creates fresh rows, so
+  retention period (default 90 days, env `AUTH_SESSION_RETENTION_DAYS`) by an
+  **opportunistic purge piggybacked on login and rotation**
+  (`purgeExpiredSessions` — ponytail: no scheduler dependency yet). A
+  dedicated scheduled job is deferred; the opportunistic path keeps the table
+  bounded under normal traffic. Re-login always creates fresh rows, so
   purging never blocks a user.
 - **Metadata for device management:** store `user_agent`, `last_ip`,
   `last_used_at`, and `rotated_from_sid` so listing/per-session revocation

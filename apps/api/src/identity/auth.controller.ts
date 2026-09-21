@@ -10,11 +10,13 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 
 import { AuthService } from './auth.service.js';
+import type { SessionMetadata } from './auth.service.js';
 import {
   LoginDto,
   RequestPasswordResetDto,
@@ -32,6 +34,7 @@ import {
   clearAuthCookies,
 } from '../common/utils/cookie.util.js';
 import { generateCsrfToken } from '../common/utils/crypto.util.js';
+import { isSameOrigin } from './origin.js';
 
 const AUTH_THROTTLE = {
   default: {
@@ -40,6 +43,16 @@ const AUTH_THROTTLE = {
   },
 } as const;
 
+// Cap the recorded device strings (schema is varchar(255)/varchar(64)); the
+// raw values are never trusted for anything other than display.
+function deviceMetadata(request: Request): SessionMetadata {
+  const ip = (request.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim();
+  return {
+    userAgent: request.headers['user-agent']?.slice(0, 255) ?? null,
+    lastIp: (ip ?? request.ip ?? '').slice(0, 64) || null,
+  };
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -47,8 +60,14 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @Throttle(AUTH_THROTTLE)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) response: Response) {
-    const result = await this.authService.login(dto.email, dto.password);
+  async login(@Body() dto: LoginDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    // H7 — login CSRF is covered by Origin validation (no csrf cookie exists
+    // pre-login for the double-submit guard to check).
+    if (!isSameOrigin(request)) {
+      throw new ForbiddenException('Cross-origin login rejected');
+    }
+
+    const result = await this.authService.login(dto.email, dto.password, deviceMetadata(request));
     const options = getCookieOptions();
 
     setAccessCookie(response, result.tokens.accessToken, options);
@@ -75,34 +94,45 @@ export class AuthController {
       });
     }
 
-    const result = await this.authService.refresh(refreshToken);
+    const result = await this.authService.refresh(refreshToken, deviceMetadata(request));
     const options = getCookieOptions();
 
     setAccessCookie(response, result.tokens.accessToken, options);
     setRefreshCookie(response, result.tokens.refreshToken, options);
 
-    const csrfToken = generateCsrfToken();
-    setCsrfCookie(response, csrfToken, options);
+    // H4 — the csrf token is a same-browser marker, NOT a rotation secret: it
+    // is regenerated at login/logout only. Rotating it per-refresh left a
+    // second tab holding a stale value → spurious 403 → logout. Only repair a
+    // missing cookie (e.g. after a partial cookie clear) so the session can
+    // still refresh.
+    if (!request.cookies?.['csrf_token']) {
+      const csrfToken = generateCsrfToken();
+      setCsrfCookie(response, csrfToken, options);
+    }
 
     return { user: result.user };
   }
 
+  // F3 — logout is refresh-session aware, NOT access-token dependent: revoke
+  // by the refresh sid when present, else by the access sid claim. An expired
+  // access cookie must not 401 logout before server-side revocation. Cookies
+  // are cleared unconditionally (revocation is idempotent). CSRF-guarded only.
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(AccessTokenGuard, CsrfGuard)
+  @UseGuards(CsrfGuard)
   async logout(
-    @CurrentUser() _user: AuthenticatedUser,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
     const refreshToken = request.cookies?.['refresh_token'] as string | undefined;
+    const accessToken = request.cookies?.['access_token'] as string | undefined;
 
-    if (refreshToken) {
+    const sid = await this.sessionIdFromRequest(refreshToken, accessToken);
+    if (sid) {
       try {
-        const payload = await this.authService.verifyRefreshToken(refreshToken);
-        await this.authService.logout(payload.sid);
+        await this.authService.logout(sid);
       } catch {
-        // Session may already be invalid
+        // Session may already be invalid — logout still succeeds.
       }
     }
 
@@ -180,6 +210,23 @@ export class AuthController {
   @Throttle(AUTH_THROTTLE)
   async confirmPasswordReset(@Body() dto: ConfirmPasswordResetDto) {
     return this.authService.confirmPasswordReset(dto.rawToken, dto.newPassword);
+  }
+
+  // Resolve the current session id for logout: refresh-cookie sid first, then
+  // the access-cookie sid claim (both tokens are signed {sub, sid}).
+  private async sessionIdFromRequest(
+    refreshToken?: string,
+    accessToken?: string,
+  ): Promise<string | undefined> {
+    for (const token of [refreshToken, accessToken]) {
+      if (!token) continue;
+      try {
+        return (await this.authService.verifyRefreshToken(token)).sid;
+      } catch {
+        // try the next token
+      }
+    }
+    return undefined;
   }
 
   // Derive the current session id from the signed refresh-cookie `sid` claim

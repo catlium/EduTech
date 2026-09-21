@@ -26,6 +26,7 @@ import { UsersModule } from '../users/users.module.js';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { RabbitMQService } from '../common/services/rabbitmq.service.js';
+import { CsrfGuard } from '../common/guards/csrf.guard.js';
 
 @Global()
 @Module({
@@ -74,6 +75,13 @@ import { RabbitMQService } from '../common/services/rabbitmq.service.js';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // F4 — double-submit CSRF on every cookie-authenticated state-changing
+    // request; GET/HEAD/OPTIONS exempt and non-cookie requests bypass (login
+    // is Origin-checked, the worker bearer protocol carries no cookies).
+    {
+      provide: APP_GUARD,
+      useClass: CsrfGuard,
     },
     RabbitMQService,
   ],

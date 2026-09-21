@@ -327,11 +327,10 @@
       pg_dump).
 - [x] Docs: this section + project-status updated.
 
-## Phase K — Authentication / Session Hardening (2026-09-21, IN PROGRESS)
+## Phase K — Authentication / Session Hardening (2026-09-21, COMPLETE for planned items)
 
 > Issued track per `docs/architecture/authorization.md` §9/§19 (D7). Resolves
-> audit F1–F6 / H1–H7. Only the parts below are landed; the remaining §19
-> decisions are still tracked there (do not mark Phase K complete).
+> audit F1–F6 / H1–H7.
 
 - [x] **Part 1 — DB auth/session hardening** (commit 7625f65): session + auth
       schema foundation and `password_resets` table.
@@ -360,7 +359,57 @@
             `edutech-ocr-worker` processed the 861-page `bigtext.pdf`
             (87 chunks) → job `completed` (`{pages:861, textLength:3168833}`),
             material `READY`. Worker + temp registry row cleaned up afterwards.
-- [ ] Remaining Phase K hardening (rest of §19/D7) — not built yet.
+- [x] **Remaining Phase K hardening (rest of §19/D7)** — implementation:
+      - [x] **F2 strict rotation** — removed `refresh-race.ts` (60 s grace
+            window, the H1 hole). Refresh is an atomic claim
+            (`UPDATE auth_sessions SET revoked_at=now() WHERE id=? AND
+            revoked_at IS NULL AND refresh_token_hash=<stored>`); only the
+            claim winner mints the one next session; spent/wrong-token
+            presentation revokes the whole lineage (`rotated_from_sid` walk).
+            Session token fingerprint switched from **bcrypt to SHA-256 hex**
+            (bcrypt truncates at 72 bytes — two different JWTs sharing the
+            header+payload prefix compared equal; full-strength hash required).
+      - [x] **F1 session-aware access** — `AccessTokenGuard` verifies
+            `{sub, sid}`, live session row (`revokedAt IS NULL`, not expired,
+            `userId` matches), and `users.status='active'`; revocation /
+            deactivation take effect on the next request.
+      - [x] **F3 logout** — removed the AccessTokenGuard requirement (H2):
+            logout revokes by refresh-cookie sid, falls back to access sid,
+            clears cookies unconditionally, idempotent; session listing +
+            per-session / all-other revocation owner-scoped.
+      - [x] **F4 CSRF global** — `decideCsrf` policy (`csrf-policy.ts`, pure)
+            enforced by a global `APP_GUARD` on every cookie-authenticated
+            state-change; skip-only-when-no-access-cookie keeps the worker
+            bearer plane and pre-login safe; login CSRF via Origin check
+            (`origin.ts` `isSameOrigin`); csrf cookie repaired-when-missing
+            only (H4 fixed — no per-refresh regeneration).
+      - [x] **F5 status gates** — login (already), refresh, and the access
+            guard all require `users.status='active'`; non-enumerating login.
+      - [x] **F6 cookie/session posture** — `Secure` derives from
+            `NODE_ENV` (`production ⇒ Secure`) with explicit override;
+            `purgeExpiredSessions` opportunistic GC on login/rotation
+            (`AUTH_SESSION_RETENTION_DAYS` default 90); no scheduler (ponytail:
+            add a scheduled job only if the table grows under load).
+      - [x] **nginx Host fix** — `location /api/` now forwards
+            `proxy_set_header Host $http_host` (was `$host`, which drops the
+            port): the login Origin check compares the full origin host[:port]
+            and any non-default-port front (e.g. dev :8080) was 403ing login.
+      - [x] **Tests** — pure: `identity/origin.test.ts`, `common/utils/cookie.test.ts`,
+            `common/guards/csrf-guard.test.ts`; DB integration:
+            `identity/auth-session.integration.ts` (`test:auth-session`,
+            `TEST_DATABASE_URL`-gated, 14 cases: rotation+lineage+metadata,
+            reuse/lineage-revoke, wrong-token theft, concurrent ≤1 mint,
+            logout/idempotent, expired, revoke-all-keeps-current, deactivated
+            login+refresh+guard, non-enumeration, retention GC, password-reset
+            swap+revoke-all+one-shot+expired, sid-bound + guard behaviors).
+            All suites green (pure 226, integration 14+1+1+1+1+1), typecheck +
+            lint clean. Live-verified through nginx: login → rotation (cookie
+            changed) → spent-token replay 401 `Session revoked` → csrf-missing
+            logout 403 → logout 200 + cookies cleared.
+- [ ] Deferred from Phase K (documented in §19): **admin deactivation
+      mutation** (endpoint/UI to flip `users.status` — the login/refresh/
+      access gates are live, only the mutation is absent) and a **scheduled
+      session-purge job** (opportunistic purge only today).
 
 ## Phase F — Teacher Assignments (2026-09-20, COMPLETE)
 

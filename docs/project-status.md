@@ -47,12 +47,14 @@ semantics. Excluded: attempts/practice_sessions redesign, Super Admin UI,
 
 ### Next task
 
-Phase K — Authentication / Session Hardening (`docs/architecture/
-authorization.md` §9/D7: rotation race, revocation, logout, session cleanup,
-password lifecycle, CSRF strategy, stale institute selection, multi-device
-sessions). Phases L (test matrix), M (final audit) remain not-started.
-Deferred Phase D follow-ups (NOT built): Super Admin management UI/APIs,
-institutes lifecycle endpoints.
+Phase L — security/authorization regression matrix (`test:auth-session` +
+`test:ocr-worker` + `test:academic-scope` act as the templates for the
+remaining tenant-isolation/permission/scope cases). Phase K's planned §19/D7
+hardening is complete (see the tail checkpoint); deferred Phase K items —
+admin deactivation mutation (the status gates are live, only the endpoint/UI
+is absent) and a scheduled session-purge job (opportunistic purge only) —
+plus deferred Phase D follow-ups (Super Admin management UI/APIs, institutes
+lifecycle endpoints) remain not-built. Phase M (final audit) not-started.
 
 ## Phase I — Module-by-Module Authorization Migration (2026-09-21)
 
@@ -1494,12 +1496,71 @@ integration test, its `test:ocr-worker` script, and docs.
 - **Side effect to note**: `bigtext.pdf` (material
   `0cf7fff2-d801-48bd-930e-06b14f320867`) changed from `QUEUED` to `READY`
   with real extracted text as a result of the live worker run.
-- **Boundary**: Phase K is NOT complete — Parts 1–3 are landed; the remaining
-  §19/D7 hardening items are still outstanding (status line added to §19).
+- **Boundary**: Parts 1–3 were landed at this checkpoint; the remaining
+  §19/D7 hardening items closed afterward (see the tail checkpoint).
+
+## Checkpoint — Phase K remaining §19/D7 hardening complete (2026-09-21)
+
+**Status: IMPLEMENTED + VALIDATED.** Closes the outstanding auth/session
+hardening from `docs/architecture/authorization.md` §19/D7 (audit F1–F6,
+issues H1/H2/H4/H7). Phase K's planned items are now complete; the only §19
+deferred items are the admin deactivation *mutation* and a dedicated
+session-purge scheduler (documented in §19 + tasks.md).
+
+- **F2 strict rotation** — deleted `identity/refresh-race.ts` + its test (the
+  60 s grace window was the H1 hole). `refresh` is now an atomic claim
+  (`UPDATE auth_sessions SET revoked_at=now() WHERE id=? AND revoked_at IS
+  NULL AND refresh_token_hash=<stored>`): only the claim winner mints the one
+  next session; a spent token (reuse) or a wrong token against a live row
+  revokes the whole lineage via `revokeLineage` (`rotated_from_sid` recursive
+  walk). Session token fingerprint changed from **bcrypt to SHA-256 hex** —
+  bcrypt truncates at 72 bytes and two different JWTs sharing the
+  header+payload prefix compared equal, so a forged token would have been
+  accepted as valid (found + fixed via the theft test).
+- **F1 session-aware access** — `AccessTokenGuard` verifies `{sub, sid}` then
+  the live session row (`revokedAt IS NULL`, not expired, correct `userId`)
+  and `users.status='active'`; revocation/deactivation hit the next request.
+- **F3 logout** — no longer behind `AccessTokenGuard` (H2 fixed); revokes by
+  the refresh-cookie sid, falls back to the access sid, clears cookies
+  unconditionally, idempotent. Session listing + owner-scoped per-session /
+  all-other session revocation already present via the F3 seams.
+- **F4 CSRF** — pure `decideCsrf` policy (`csrf-policy.ts`) enforced by a
+  global `APP_GUARD` (`CsrfGuard`) on every cookie-authenticated
+  state-changing request (skips only when no access cookie → worker bearer
+  plane and pre-login unaffected); login CSRF via `origin.ts` `isSameOrigin`
+  (H7); the csrf cookie is repaired-when-missing only, never regenerated
+  per-refresh (H4 fixed).
+- **F5 status gates** — refresh (new) + access guard (new) + login (existing)
+  all require `users.status='active'`; login stays non-enumerating.
+- **F6 posture** — `Secure` derives from `NODE_ENV` (`production ⇒ Secure`)
+  unless `COOKIE_SECURE` is set explicitly; `purgeExpiredSessions`
+  opportunistic GC (`AUTH_SESSION_RETENTION_DAYS`, default 90) on
+  login/rotation.
+- **nginx Host fix** — `location /api/` now forwards `Host $http_host` (was
+  `$host`, which drops the port): login Origin check compares the full origin
+  host[:port], and any non-default-port front (dev :8080) 403'd login through
+  the proxy. Live web login flow restored.
+- **Tests** — pure (`origin.test.ts`, `cookie.test.ts`, `csrf-guard.test.ts`)
+  + DB integration `auth-session.integration.ts` (script `test:auth-session`):
+  14 cases (rotation+lineage+metadata, spent-token reuse + lineage revoke,
+  wrong-token theft, concurrent refresh ≤1 mint, logout + idempotency, expired
+  session, revoke-all keeps current, deactivated login/refresh/guard,
+  non-enumeration, retention GC, password-reset swap + revoke-all + one-shot +
+  expired token, sid-bound access guard, CSRF plane). **Validation**: api pure
+  suite 226/226, auth-session integration 14/14, ocr-worker 3/3,
+  teacher-assignments 1/1, student-placements 1/1, academic-scope 1/1,
+  resource-scope 1/1; `pnpm typecheck` (all workspaces) and api `pnpm lint`
+  clean. Live through nginx (dev stack, api+nginx rebuilt): login 200 + 3
+  cookies → refresh 200 + rotation (cookie changed) → spent-token replay 401
+  `Session revoked` → logout without CSRF 403 / with CSRF 200 + cookies
+  cleared; health 200. Scratch live-e2e user removed.
+- **Migrated to live**: migration `0045_auth_session_hardening` (drizzle id
+  45) already applied in a prior step — no new schema or migration this
+  checkpoint (authenticated-session metadata columns in use).
 
 ### Exact recommended next task
 
-Continue Phase K from the remaining §19/D7 items, or start Phase L (the
-security/authorization regression matrix) using the new
-`test:ocr-worker` integration test as the template for the remaining
-tenant-isolation/permission/scope cases. Do not mark Phase K complete.
+Start Phase L (security/authorization regression matrix) using
+`test:auth-session`, `test:ocr-worker`, and `test:academic-scope` as the
+templates for the remaining tenant-isolation/permission/scope cases. Phase M
+(final audit) remains not-started.
