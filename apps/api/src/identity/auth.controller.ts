@@ -2,6 +2,8 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
+  Param,
   Body,
   Res,
   Req,
@@ -13,7 +15,11 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 
 import { AuthService } from './auth.service.js';
-import { LoginDto } from './dto/auth.dto.js';
+import {
+  LoginDto,
+  RequestPasswordResetDto,
+  ConfirmPasswordResetDto,
+} from './dto/auth.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { CsrfGuard } from '../common/guards/csrf.guard.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
@@ -111,5 +117,84 @@ export class AuthController {
   async me(@CurrentUser() user: AuthenticatedUser) {
     const fullUser = await this.authService.getUser(user.userId);
     return { user: fullUser };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase K / D7 §19 — Session management (F3)
+  // The current session id comes from the authenticated refresh-cookie `sid`
+  // claim — never inferred from user-agent/IP heuristics.
+  // ---------------------------------------------------------------------------
+
+  @Get('sessions')
+  @UseGuards(AccessTokenGuard)
+  async listSessions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    const currentSid = await this.currentSidFromRequest(request);
+    return this.authService.listSessions(user.userId, currentSid);
+  }
+
+  // Revoke ONE session the caller owns (owner-scoped: id + userId both match).
+  @Delete('sessions/:sid')
+  @UseGuards(AccessTokenGuard, CsrfGuard)
+  @HttpCode(HttpStatus.OK)
+  async revokeSession(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('sid') sid: string,
+  ) {
+    await this.authService.revokeSessionByOwner(sid, user.userId);
+    return { message: 'Session revoked' };
+  }
+
+  // Revoke every non-current session the caller owns. The current session is
+  // preserved so the caller stays signed in on this device.
+  @Delete('sessions')
+  @UseGuards(AccessTokenGuard, CsrfGuard)
+  @HttpCode(HttpStatus.OK)
+  async revokeAllOtherSessions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    const currentSid = await this.currentSidFromRequest(request);
+    await this.authService.revokeAllOtherSessions(user.userId, currentSid);
+    return { message: 'All other sessions revoked' };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase K / D7 §19 — Password reset (F5)
+  // Uniform responses — the reset request never reveals whether the address
+  // exists (no user enumeration). Reset confirm swaps the password and revokes
+  // every session for that user.
+  // ---------------------------------------------------------------------------
+
+  @Post('password-reset/request')
+  @HttpCode(HttpStatus.OK)
+  @Throttle(AUTH_THROTTLE)
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Post('password-reset/confirm')
+  @HttpCode(HttpStatus.OK)
+  @Throttle(AUTH_THROTTLE)
+  async confirmPasswordReset(@Body() dto: ConfirmPasswordResetDto) {
+    return this.authService.confirmPasswordReset(dto.rawToken, dto.newPassword);
+  }
+
+  // Derive the current session id from the signed refresh-cookie `sid` claim
+  // (if present and still verifiable). Returns undefined when there is no
+  // refresh cookie — the caller is then listing without a "current" marker.
+  private async currentSidFromRequest(request: Request): Promise<string | undefined> {
+    const refreshToken = request.cookies?.['refresh_token'] as string | undefined;
+    if (!refreshToken) {
+      return undefined;
+    }
+    try {
+      const { sid } = await this.authService.verifyRefreshToken(refreshToken);
+      return sid;
+    } catch {
+      return undefined;
+    }
   }
 }
