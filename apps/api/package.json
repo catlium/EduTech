@@ -26,6 +26,7 @@
     "test:academic-scope": "tsx --test src/authorization/academic-scope.integration.ts",
     "test:auth-session": "tsx --test src/identity/auth-session.integration.ts",
     "test:resource-scope": "tsx --test src/authorization/resource-scope.integration.ts",
+    "test:authz-regression": "tsx --test src/authorization/authz-regression.integration.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

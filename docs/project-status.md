@@ -1,5 +1,59 @@
 # Project Status
 
+## Phase L — Security & Authorization Regression Matrix (2026-09-21)
+
+**Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**
+Executes the Phase K "Next task": a DB-backed security/authorization regression
+matrix across the full guard chain plus the role/permission services. No runtime
+authorization behavior changed — every matrix area validates existing
+guards/services; the only change is one DB-gated test suite + a dev test script.
+
+- **New suite** `apps/api/src/authorization/authz-regression.integration.ts`
+  (`test:authz-regression`, `TEST_DATABASE_URL`-gated like the other suites,
+  self-sufficient on a freshly migrated DB — runs the idempotent
+  `PermissionSyncService` first). 7 matrix areas (+ harness) exercising the
+  REAL guards (`AccessTokenGuard → TenantGuard → RolesGuard /
+  PermissionGuard / PlatformGuard`) against live database grants:
+  1. **auth → tenant chain**: memo 401/403 matrix — no token, revoked session,
+     deactivated user (401); missing/non-UUID institute header, no membership,
+     inactive membership (403); success populates `request.tenant.roles` from
+     `membership_roles`.
+  2. **per-institute split**: ONE access token is TEACHER at institute A and
+     INSTITUTE_ADMIN at institute B — distinct PermissionGuard + RolesGuard
+     outcomes per `x-institute-id`.
+  3. **institute picker**: only own memberships, raw grants exposed, no
+     platform permission through any membership; manage-implication proven at
+     the check layer (admin `content.read` via `content.manage`).
+  4. **permission matrix**: admin allow / student deny / zero-role default-deny
+     / no-metadata opt-in default allow (DB-fresh, no claims caching).
+  5. **role-assignment immediacy**: TEACHER→INSTITUTE_ADMIN→TEACHER on a
+     membership flips the guard with the SAME token (no JWT regeneration);
+     SUPER_ADMIN rejected as a membership role.
+  6. **custom-role lifecycle**: create→assign→grant, `setRolePermissions`
+     instant effect, restore→delete cascade, system-role immutability,
+     platform-key + reserved-key rejects at create, cross-institute custom-role
+     assignment rejected.
+  7. **platform boundary**: SUPER_ADMIN grants `ocr-workers.read`
+     tenant-free (no `x-institute-id`); membership-only user 403; an
+     institute-domain key is unsatisfiable on the platform plane.
+- **Suite notes**: `RolesGuard` is a synchronous guard (deny throws, allow
+  returns a boolean) while the other four guards are async — the matrix asserts
+  against each contract.
+- **Validation**: `pnpm test` 226 pass; typecheck clean (10/10); `pnpm lint`
+  clean (9/9); all 7 integration suites green (14+3+1+1+1+1+8) against scratch
+  `catlium_dbtest` (migrated + permission-synced; fixture rows removed after
+  each run); API (`nest build`) + web (`next build`) builds pass; api image
+  rebuilt from source, all 11 containers healthy, `/api/v1/health` 200 via the
+  nginx loopback.
+
+### Next task
+
+Phase M — final security audit: re-audit against the new architecture and bring
+`docs/architecture/security.md` + this status to final-state truth. Remaining
+deferred-but-documented items to carry into the audit: admin deactivation
+mutation (endpoint/UI), scheduled session-purge job, Super Admin UI/APIs,
+institutes lifecycle endpoints.
+
 ## Phase J — Frontend Permission & Academic Scope Alignment (2026-09-21)
 
 **Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**
@@ -47,14 +101,13 @@ semantics. Excluded: attempts/practice_sessions redesign, Super Admin UI,
 
 ### Next task
 
-Phase L — security/authorization regression matrix (`test:auth-session` +
-`test:ocr-worker` + `test:academic-scope` act as the templates for the
-remaining tenant-isolation/permission/scope cases). Phase K's planned §19/D7
-hardening is complete (see the tail checkpoint); deferred Phase K items —
-admin deactivation mutation (the status gates are live, only the endpoint/UI
-is absent) and a scheduled session-purge job (opportunistic purge only) —
-plus deferred Phase D follow-ups (Super Admin management UI/APIs, institutes
-lifecycle endpoints) remain not-built. Phase M (final audit) not-started.
+Phase L referred from here is now complete (see the Phase L section at the top).
+Phase M (final security audit + documentation to final-state truth) is the
+remaining planned phase. Deferred Phase K items — admin deactivation mutation
+(the status gates are live, only the endpoint/UI is absent) and a scheduled
+session-purge job (opportunistic purge only) — plus deferred Phase D follow-ups
+(Super Admin management UI/APIs, institutes lifecycle endpoints) remain
+not-built.
 
 ## Phase I — Module-by-Module Authorization Migration (2026-09-21)
 

@@ -621,17 +621,15 @@ in-flight or done.
 ### Phase L — Security & Authorization Test Matrix
 
 - **Objective:** a comprehensive, regression-proof authorization test matrix.
-- **Scope:**
-  - Matrix covering: tenant isolation; permission grants/denials; role
-    composition (built-in + custom); platform vs institute boundary; academic
-    scope positive/negative cases; ownership rules; cross-tenant attempts;
-    revocation timeliness.
-  - Expand the API native suite + e2e scripts accordingly.
-- **Dependencies:** phases I, J, K (post-enforcement reality).
-- **Major decisions:** matrix structure; which security-audit findings become
-  permanent regression tests.
-- **Expected outcome:** machine-checked authorization guarantees.
-- **NOT included:** new features.
+- **Status: COMPLETE 2026-09-21.** Landed as the DB-gated integration suite
+  `apps/api/src/authorization/authz-regression.integration.ts`
+  (`test:authz-regression`) — 7 matrix areas over the real guard chain
+  (auth→tenant→roles/permissions/platform) + role/permission services:
+  auth/tenant rejections, per-institute role split on one token, institute
+  picker isolation, permission matrix + manage implication, role-assignment
+  immediacy (no claims refresh), custom-role lifecycle, and the platform
+  boundary. Existing phase suites unchanged; all 7 integration suites + the
+  226-test pure suite green, typecheck/lint clean, API + web builds pass.
 
 ### Phase M — Final Security Audit + Documentation
 

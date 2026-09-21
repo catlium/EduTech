@@ -80,16 +80,18 @@
 - [x] **Phase J — Frontend Permission & Academic Scope:** align UI gating with
       permissions + academic scope; fix authorization-403 frontend handling.
       **COMPLETE 2026-09-21 — see the section below.**
-- [~] **Phase K — Authentication / Session Hardening:** rotation race,
+- [x] **Phase K — Authentication / Session Hardening:** rotation race,
       revocation, logout, session cleanup, password reset, CSRF strategy,
       403 handling, stale institute selection, multi-device sessions (separate
       related track per `docs/architecture/authorization.md` §9; decisions
       recorded in §19/D7, resolves audit F1–F6/H1–H7). Parts 1–3 landed
-      (incl. OCR worker E2E validation); remaining §19 items outstanding — see
-      the Phase K section below.
-- [ ] **Phase L — Security & Authorization Test Matrix:** comprehensive
+      (incl. OCR worker E2E validation); §19 items complete — deferred admin
+      deactivation mutation + scheduled purge remain tracked under the
+      Phase K section below. **COMPLETE 2026-09-21.**
+- [x] **Phase L — Security & Authorization Test Matrix:** comprehensive
       regression matrix (tenant isolation, permissions, roles, platform
       boundary, academic scope, ownership, cross-tenant, revocation).
+      **COMPLETE 2026-09-21 — see the Phase L section below.**
 - [ ] **Phase M — Final Security Audit + Documentation:** re-audit against the
       new architecture; docs to final-state truth.
 
@@ -410,6 +412,51 @@
       mutation** (endpoint/UI to flip `users.status` — the login/refresh/
       access gates are live, only the mutation is absent) and a **scheduled
       session-purge job** (opportunistic purge only today).
+
+## Phase L — Security & Authorization Regression Matrix (2026-09-21, COMPLETE)
+
+> Implements the security/authorization regression matrix across the FULL guard
+> chain (`AccessTokenGuard → TenantGuard →
+> RolesGuard/PermissionGuard/PlatformGuard`) plus the role/permission services
+> against a live database. Existing suites (auth-session F-series, ocr-worker,
+> teacher/student placements, academic-scope, resource-scope) stay as-is; the
+> new DB-gated suite `apps/api/src/authorization/authz-regression.integration.ts`
+> (`test:authz-regression`) proves the cross-cutting guarantees no single phase
+> suite covered. Self-sufficient on a freshly migrated DB — it runs the
+> idempotent `PermissionSyncService` before its assertions.
+
+- [x] **Auth → tenant chain (#1):** no token 401; revoked session 401;
+      deactivated user 401; missing/non-UUID institute header 403; no
+      membership 403; inactive membership 403; success populates
+      `request.tenant` with the membership's role set.
+- [x] **Per-institute role/permission split (#2):** the same access token
+      yields TEACHER at institute A and INSTITUTE_ADMIN at institute B —
+      distinct PermissionGuard and RolesGuard outcomes per `x-institute-id`.
+- [x] **Institute picker (#3):** only own memberships surfaced; raw grants
+      exposed (not manage-implied ones); no platform permission through a
+      membership; manage-implication proven at the check layer (admin
+      `content.read` via `content.manage`).
+- [x] **Permission matrix (#4):** DB-fresh grants — admin allow, student
+      deny, zero-role membership deny (default-deny), no-metadata opt-in
+      default allow.
+- [x] **Role-assignment immediacy (#5):** TEACHER→INSTITUTE_ADMIN→TEACHER on
+      a membership flips PermissionGuard outcome with the SAME access token
+      (no claims refresh); SUPER_ADMIN rejected as a membership role.
+- [x] **Custom-role lifecycle (#6):** create→assign→grant; setRolePermissions
+      instant effect independent of the TEACHER built-in union;
+      restore→delete cascades grants; system roles immutable on every mutation
+      path; platform keys + reserved built-in keys rejected at create;
+      cross-institute custom-role assignment rejected.
+- [x] **Platform boundary (#7):** SUPER_ADMIN via `platform_user_roles` grants
+      `ocr-workers.read` with NO `x-institute-id`; membership-only user 403;
+      institute-domain key unsatisfiable on the platform plane.
+- [x] **Notes:** the suite distinguishes RolesGuard's synchronous contract
+      (deny throws, allow returns a boolean) from the async guards.
+- [x] **Validation:** `test:authz-regression` 8/8 green (7 matrix areas +
+      harness); all 7 integration suites green (14+3+1+1+1+1+8) against scratch
+      `catlium_dbtest`; `pnpm test` 226 pass; typecheck clean (10/10); lint
+      clean (9/9); API + web builds pass; api image rebuilt, all 11 containers
+      healthy, `/api/v1/health` 200 via nginx.
 
 ## Phase F — Teacher Assignments (2026-09-20, COMPLETE)
 
