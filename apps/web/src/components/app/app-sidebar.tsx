@@ -17,12 +17,11 @@ import {
   Library,
   Activity,
   LogOut,
-  ScanText,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
-import { useTenant, canManage, isInstituteAdmin } from '@/lib/tenant';
+import { useTenant, canManage, isInstituteAdmin, hasPermission } from '@/lib/tenant';
 import { BrandMark } from '@/components/app/brand-logo';
 import { ThemeToggle } from '@/components/app/theme-toggle';
 import { InstituteSwitcher } from '@/components/app/institute-switcher';
@@ -39,17 +38,22 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 
+// Nav items carry the backend catalogue read key they need (the workspace
+// split itself is role-based). `key: undefined` = workspace-level, no extra
+// permission check. /ocr/workers is intentionally absent from administration:
+// ocr-workers.* is platform-plane (D3/§15) and no institute membership can
+// hold it — the layout Forbids the route, and Super Admin UI is out of scope.
 const teacherNav = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/subjects', label: 'Subjects', icon: BookOpen },
-  { href: '/syllabus', label: 'Syllabi', icon: Library },
-  { href: '/materials', label: 'Materials', icon: FileText },
-  { href: '/content', label: 'Learning Content', icon: BookMarked },
-  { href: '/questions', label: 'Question Bank', icon: HelpCircle },
-  { href: '/assessments', label: 'Assessments', icon: ClipboardList },
-  { href: '/question-papers', label: 'Question Papers', icon: FileText },
-  { href: '/paper-patterns', label: 'Paper Patterns', icon: ScrollText },
-  { href: '/jobs', label: 'Job Monitor', icon: Activity },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, key: undefined as string | undefined },
+  { href: '/subjects', label: 'Subjects', icon: BookOpen, key: 'subjects.read' },
+  { href: '/syllabus', label: 'Syllabi', icon: Library, key: 'syllabus.read' },
+  { href: '/materials', label: 'Materials', icon: FileText, key: 'materials.read' },
+  { href: '/content', label: 'Learning Content', icon: BookMarked, key: 'content.read' },
+  { href: '/questions', label: 'Question Bank', icon: HelpCircle, key: 'questions.read' },
+  { href: '/assessments', label: 'Assessments', icon: ClipboardList, key: 'assessments.read' },
+  { href: '/question-papers', label: 'Question Papers', icon: FileText, key: 'question-papers.read' },
+  { href: '/paper-patterns', label: 'Paper Patterns', icon: ScrollText, key: 'paper-patterns.read' },
+  { href: '/jobs', label: 'Job Monitor', icon: Activity, key: 'jobs.read' },
 ];
 
 const studentNav = [
@@ -61,9 +65,8 @@ const studentNav = [
 const sharedNav = [{ href: '/practice', label: 'Practice', icon: Target }];
 
 const adminNav = [
-  { href: '/institute', label: 'Institute', icon: Building2 },
-  { href: '/users', label: 'Users', icon: Users },
-  { href: '/ocr/workers', label: 'OCR Workers', icon: ScanText },
+  { href: '/institute', label: 'Institute', icon: Building2, key: 'users.read' },
+  { href: '/users', label: 'Users', icon: Users, key: 'users.read' },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -77,7 +80,10 @@ export function AppSidebar() {
   const teacher = canManage(institute);
   const admin = isInstituteAdmin(institute);
 
-  const primary = teacher ? teacherNav : studentNav;
+  const primary = teacher
+    ? teacherNav.filter((item) => !item.key || hasPermission(institute, item.key))
+    : studentNav;
+  const adminLinks = adminNav.filter((item) => hasPermission(institute, item.key));
 
   return (
     <Sidebar collapsible="icon">
@@ -137,12 +143,12 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {admin && (
+        {admin && adminLinks.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Administration</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {adminNav.map((item) => (
+                {adminLinks.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={isActive(pathname, item.href)}>
                       <Link href={item.href}>
@@ -197,7 +203,6 @@ export function sideCrumb(pathname: string): { label: string; href: string } | n
     { href: '/practice', label: 'Practice' },
     { href: '/institute', label: 'Institute' },
     { href: '/users', label: 'Users' },
-    { href: '/ocr/workers', label: 'OCR Workers' },
   ];
   for (const item of map) {
     if (pathname === item.href || pathname.startsWith(item.href + '/')) {

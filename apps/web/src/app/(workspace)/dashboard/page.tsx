@@ -25,6 +25,7 @@ import { SectionHeader } from '@/components/app/section-header';
 import { StatCard } from '@/components/app/stat-card';
 import { StatusBadge } from '@/components/app/status-badge';
 import { MaterialProgress } from '@/components/app/material-progress';
+import { AcademicScopeCard } from '@/components/app/academic-scope-card';
 import { SkeletonCards, SkeletonRows } from '@/components/app/loading';
 import { ErrorState } from '@/components/app/error-state';
 import { Card, CardContent } from '@/components/ui/card';
@@ -157,6 +158,8 @@ export default function DashboardPage() {
           href="/assessments"
         />
       </div>
+
+      <AcademicScopeCard variant="teacher" />
 
       <section>
         <SectionHeader title="Quick actions" />

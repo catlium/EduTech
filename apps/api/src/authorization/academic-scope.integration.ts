@@ -283,6 +283,33 @@ test('academic scope: student/teacher/admin subject sets, overrides, enforcement
     const adminList = await materialsSvc.listMaterials(instA.id, adminA.membershipId, {});
     assert.deepEqual(adminList.map((m) => m.id).sort(), [mS1.id, mS2.id, mS3.id].sort());
 
+    // ── Phase J: describeScope self-view ─────────────────────────
+    // Offerings are the ACTOR'S OWN active teacher assignments only (admin and
+    // students have none; teacher1's instA assignment is deactivated above).
+    assert.deepEqual(await scope.describeScope(instA.id, adminA.membershipId), {
+      kind: 'whole-institute', subjectIds: [], offerings: [], placement: null,
+    });
+    const studentAView = await scope.describeScope(instA.id, studentA);
+    assert.equal(studentAView.kind, 'subject-set');
+    assert.deepEqual([...studentAView.subjectIds].sort(), [s1, s2].sort());
+    assert.deepEqual(studentAView.placement, {
+      academicYearId: yearA.id, academicYearName: 'Phase H Year',
+      classId: class1.id, className: 'Phase H Class 1',
+      divisionId: div1A.id, divisionName: 'A',
+    });
+    assert.deepEqual(studentAView.offerings, []);
+    const teacher2View = await scope.describeScope(instA.id, teacher2);
+    assert.deepEqual(teacher2View.subjectIds, [s1]);
+    assert.equal(teacher2View.placement, null);
+    assert.deepEqual(teacher2View.offerings, [
+      { classId: class1.id, className: 'Phase H Class 1', subjectId: s1, subjectName: 'Subject 1' },
+    ]);
+    // Deactivated assignment → empty scope, no placement surfaced, no offerings
+    const teacher1View = await scope.describeScope(instA.id, teacher1);
+    assert.deepEqual(teacher1View.subjectIds, []);
+    assert.equal(teacher1View.placement, null);
+    assert.deepEqual(teacher1View.offerings, []);
+
     // ── Enrollments service list + remove roundtrip ─────────────────────────
     const created = await enrollmentsSvc.createStudentEnrollment(instA.id, { placementId: placementA.id, subjectId: s3, kind: 'ENROLLED' });
     const listed = await enrollmentsSvc.listStudentEnrollments(instA.id, { placementId: placementA.id });

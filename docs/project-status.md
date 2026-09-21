@@ -1,5 +1,59 @@
 # Project Status
 
+## Phase J — Frontend Permission & Academic Scope Alignment (2026-09-21)
+
+**Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**
+Aligned the UI with the permission + academic-scope truth the API already
+enforces (Phases B/D/G/H/I). Backend stays authoritative; the frontend only
+mirrors it for navigation and for rendering a proper Forbidden view on GET 403.
+Reads are still API-side 404s (no existence leak); this phase changed no API
+semantics. Excluded: attempts/practice_sessions redesign, Super Admin UI,
+`division_subjects` (Phase K / later).
+
+- **Backend surface** (`tenancy/` + `authorization/`): `GET /memberships` items
+  now include `permissions` (resolved, sorted institute-domain keys from a
+  batch role join + `resolveGrantedKeys`); new `GET /memberships/scope` returns
+  `AcademicScopeService.describeScope` — admin bypass = `whole-institute`,
+  otherwise `subject-set` subjectIds + own active teacher `offerings` + active
+  student `placement` names. Contracts extended in `packages/contracts`.
+- **Frontend permission core** (`lib/permissions.ts`, `lib/tenant.tsx`):
+  `canUse` with the `*.manage ⇒ resource-actions` implication shared with the
+  backend rule, `canUseAny`, `hasPermission`. Workspace `RoleGuard` + sidebar
+  converted from prefix whitelists to read-key gating (`subjects/materials/
+  content/questions/assessments/question-papers/paper-patterns/syllabus/jobs`,
+  admin `users.read`). `/ocr/workers` gated by `ocr-workers.read` (platform
+  plane — no membership holds it), nav + crumb removed.
+- **Frontend scope core** (`lib/scope.ts`, `lib/use-my-scope.ts`,
+  `components/app/academic-scope-card.tsx`): `scopedSubjectIds` (null =
+  whole-institute → no client filter), offerings grouped by class, 5-min TTL
+  cache per institute with revision-based refresh. Student learning page
+  filters its subject grid by scope; teacher + student dashboards show the
+  scope card.
+- **403 handling**: GET 403 dispatches `catlium:forbidden` after the 401
+  refresh flow (so a rotated-then-still-denied session also gates); the
+  workspace `ForbiddenGate` renders the Permanently `Forbidden` view and
+  resets on route change; no logout or refresh loop. 401/404 untouched.
+- **Tests**: new `permissions.test.ts` + `scope.test.ts` (pure) and 403-case
+  coverage in `api.test.ts` (event vs silent-by-method, 404 no event,
+  403-after-refresh still event); `describeScope` assertions added to
+  `academic-scope.integration.ts` (admin/student/active-teacher/inactive-
+  teacher views, placement + offerings names).
+- **Validation**: `pnpm --filter @catlium/api test` 222 pass; typecheck clean
+  (api + web); `pnpm lint` clean (api); web `next build` + API `nest build`
+  pass; `test:academic-scope` runs green against a scratch Postgres clone of
+  the dev DB (host has no 5432 route into the running stack, so a one-off
+  socat proxy node on `edutech_default` bridged localhost → `postgres:5432`;
+  proxy + scratch DB removed afterwards).
+
+### Next task
+
+Phase K — Authentication / Session Hardening (`docs/architecture/
+authorization.md` §9/D7: rotation race, revocation, logout, session cleanup,
+password lifecycle, CSRF strategy, stale institute selection, multi-device
+sessions). Phases L (test matrix), M (final audit) remain not-started.
+Deferred Phase D follow-ups (NOT built): Super Admin management UI/APIs,
+institutes lifecycle endpoints.
+
 ## Phase I — Module-by-Module Authorization Migration (2026-09-21)
 
 **Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**
@@ -70,10 +124,10 @@ subject institute-wide content stays admin-only (§18.7).
 
 ### Next task
 
-Phase J — Frontend permission & academic scope alignment (UI gating, 403
-handling). Phases K (session hardening), L (test matrix), M (final audit)
-remain not-started. Deferred Phase D follow-ups (NOT built): Super Admin
-management UI/APIs, institutes lifecycle endpoints.
+Phase J (frontend permission & academic scope alignment) — implemented and
+committed above this section. Phases K (session hardening), L (test matrix), M
+(final audit) remain not-started. Deferred Phase D follow-ups (NOT built):
+Super Admin management UI/APIs, institutes lifecycle endpoints.
 
 ## Phase H — Resource Scope Authorization (2026-09-21)
 

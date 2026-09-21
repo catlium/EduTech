@@ -77,8 +77,9 @@
 - [x] **Phase I — Module-by-Module Authorization Migration:** convert existing
       controllers/services to permission + scope + ownership, module by module.
       **COMPLETE 2026-09-21 — see the issued tasks below.**
-- [ ] **Phase J — Frontend Permission & Academic Scope:** align UI gating with
+- [x] **Phase J — Frontend Permission & Academic Scope:** align UI gating with
       permissions + academic scope; fix authorization-403 frontend handling.
+      **COMPLETE 2026-09-21 — see the section below.**
 - [ ] **Phase K — Authentication / Session Hardening:** rotation race,
       revocation, logout, session cleanup, password lifecycle, CSRF strategy,
       403 handling, stale institute selection, multi-device sessions (separate
@@ -266,6 +267,63 @@
       postgres:5432); vertical-exerciser/exam suite unaffected.
 - [x] Docs: §18 Phase H table updated to final state; project-status + tasks
       updated.
+
+## Phase J — Frontend Permission & Academic Scope Alignment (2026-09-21, COMPLETE)
+
+> Issued task. Backend already owns permission + academic-scope truth
+> (Phases B/D/G/H/I); Phase J surfaces it to the UI so navigation reflects
+> what the API will actually allow, and page-load authorization denials render
+> a proper Forbidden view instead of a cryptic error. Backend stays
+> authoritative: nothing about UI gating goes into JWTs or changes API
+> semantics. Read deny = 404 (no existence leak), request deny = 403;
+> frontend checks are UX-only. `docs/architecture/authorization.md` §18 is the
+> source of truth. Boundary: attempts/practice_sessions redesign, Super Admin
+> UI, and `division_subjects` remain OUT (Phase K / later).
+
+- [x] Backend: `GET /api/v1/memberships` now returns each membership's
+      `permissions` (institute-domain resolved grant keys, sorted) resolved in
+      `TenancyService.listMemberships` via a batch role join
+      (`membershipRoles → roles → rolePermissions → permissions`) +
+      `resolveGrantedKeys(keys,'institute')`.
+- [x] Backend: `GET /api/v1/memberships/scope` (AccessTokenGuard + TenantGuard,
+      `@Tenant()` context) returns `{ scope }` from new
+      `AcademicScopeService.describeScope` — admin bypass = `whole-institute`,
+      otherwise `subject-set` subjectIds + the actor's own `offerings` (active
+      teacher assignments → class/subject names) + `placement` (active student
+      placement → year/class/division names).
+- [x] Contracts: `MembershipListItemSchema.permissions: string[]`; new
+      `AcademicScopeOfferingSchema` / `AcademicScopePlacementSchema` /
+      `AcademicScopeDetailSchema` (`packages/contracts`).
+- [x] Frontend permission core: `lib/permissions.ts` (`canUse` with
+      `*.manage ⇒ resource actions` implication + key-shape validation,
+      `canUseAny`); `lib/tenant.tsx` exposes `hasPermission` /
+      `hasAnyPermission`; sidebar rows + workspace `RoleGuard` route map
+      converted to read-key gating (`subjects/materials/content/questions/
+      assessments/question-papers/paper-patterns/syllabus/jobs`, admin
+      `users.read`; `/ocr/workers` gated by platform-plane `ocr-workers.read`,
+      nav + crumb entries removed).
+- [x] Frontend scope core: `lib/scope.ts` (`scopedSubjectIds`, null =
+      whole-institute → no client filter; `groupOfferingsByClass`);
+      `lib/use-my-scope.ts` (5-min TTL cache per institute, revision-based
+      refresh); `components/app/academic-scope-card.tsx` (teacher offerings
+      chips / student placement / admin-wide state); student learning page
+      filters the subject grid by scope; teacher + student dashboards render
+      the scope card.
+- [x] 403 handling: GET 403 dispatches `catlium:forbidden` (after the 401
+      refresh flow, so a rotated-then-still-denied session also gates);
+      workspace `ForbiddenGate` listens and swaps in the Permanently
+      `Forbidden` view (reset on route change); no logout / refresh loop.
+      401/404 flows untouched.
+- [x] Tests: `web/src/lib/permissions.test.ts`, `scope.test.ts` (pure), and
+      403-case tests in `api.test.ts` (GET 403 event, mutation 403 silent,
+      404 no event, 403-after-refresh still event); `describeScope` assertions
+      appended to `academic-scope.integration.ts`.
+- [x] Validation: `pnpm --filter @catlium/api test` 222 pass, typecheck clean
+      (api + web), `pnpm lint` clean (api), web build + API `nest build`
+      pass; `test:academic-scope` passes against a scratch Postgres clones of
+      the dev DB (host migration path unavailable → scratch DB restored via
+      pg_dump).
+- [x] Docs: this section + project-status updated.
 
 ## Phase F — Teacher Assignments (2026-09-20, COMPLETE)
 

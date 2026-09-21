@@ -566,6 +566,25 @@ in-flight or done.
 
 ### Phase J — Frontend Permission & Academic Scope
 
+- **Status: IMPLEMENTED (2026-09-21).** Backend surfaces membership
+  `permissions` on `GET /memberships` and a new `GET /memberships/scope`
+  (`AcademicScopeService.describeScope`: admin bypass = `whole-institute`;
+  otherwise `subject-set` subjectIds + own active teacher `offerings` +
+  active student `placement`, all name-enriched). Frontend mirrors it — UX
+  only, never the boundary:
+  - `lib/permissions.ts` `canUse` (share the `*.manage ⇒ resource-actions`
+    implication + key-shape validation) / `canUseAny`; `lib/tenant.tsx`
+    `hasPermission`/`hasAnyPermission`.
+  - Workspace `RoleGuard` + sidebar converted from route-prefix whitelists to
+    read-key gating; `/ocr/workers` gated by `ocr-workers.read` (platform
+    plane, held by no membership), nav/crumb removed.
+  - `lib/use-my-scope.ts` (5-min TTL per-institute cache, revision refresh);
+    `lib/scope.ts` `scopedSubjectIds` (null = whole-institute → no client
+    filter) + `groupOfferingsByClass`; `academic-scope-card.tsx`; student
+    learning page filters by scope.
+  - GET 403 dispatches `catlium:forbidden` after the 401 refresh flow;
+    workspace `ForbiddenGate` renders the Forbidden view (resets on route
+    change; no logout/refresh loop). 401/404 untouched.
 - **Objective:** align the UI's menu/navigation/dialog gating with the new
   permission vocabulary and academic scope.
 - **Scope:**
@@ -580,7 +599,8 @@ in-flight or done.
   mapping works.
 - **Expected outcome:** UI gating matches backend permissions and scope;
   users are directed to valid alternatives when denied.
-- **NOT included:** any enforcement change (frontend is never the boundary).
+- **NOT included:** any enforcement change (frontend is never the boundary);
+  attempts/practice_sessions redesign; Super Admin UI; `division_subjects`.
 
 ### Phase K — Authentication / Session Hardening
 

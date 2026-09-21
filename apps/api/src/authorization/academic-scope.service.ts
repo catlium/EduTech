@@ -11,6 +11,9 @@ import {
   studentPlacements,
   studentSubjectEnrollments,
   teacherAssignments,
+  classes,
+  subjects,
+  academicYears,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
@@ -31,6 +34,37 @@ export type AcademicScope = Readonly<
   | { kind: 'subject-set'; subjectIds: string[] }
 >;
 
+/** Class → Subject offering the actor teaches (active teacher assignments). */
+export interface ScopeOffering {
+  classId: string;
+  className: string;
+  subjectId: string;
+  subjectName: string;
+}
+
+/** The actor's own Academic Year → Class → Division placement (active). */
+export interface ScopePlacement {
+  academicYearId: string;
+  academicYearName: string;
+  classId: string;
+  className: string;
+  divisionId: string;
+  divisionName: string;
+}
+
+/**
+ * Human-readable academic scope for the active membership — the actor's own
+ * view, never anyone else's. UX data for `GET /memberships/scope`: the same DB
+ * state `resolveScope` trusts, just joined to names. Read-only; the frontend
+ * caches it as a non-authoritative snapshot.
+ */
+export interface AcademicScopeDetail {
+  kind: 'whole-institute' | 'subject-set';
+  subjectIds: string[];
+  offerings: ScopeOffering[];
+  placement: ScopePlacement | null;
+}
+
 @Injectable()
 export class AcademicScopeService {
   constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
@@ -44,6 +78,87 @@ export class AcademicScopeService {
       this.teacherSubjectSet(instituteId, membershipId),
     ]);
     return { kind: 'subject-set', subjectIds: [...new Set([...studentSubjectIds, ...teacherSubjectIds])] };
+  }
+
+  /** The actor's own scope, enriched with class/subject/placement names. */
+  async describeScope(instituteId: string, membershipId: string): Promise<AcademicScopeDetail> {
+    if (await this.isInstituteAdmin(membershipId)) {
+      return { kind: 'whole-institute', subjectIds: [], offerings: [], placement: null };
+    }
+    const [subjectIds, offerings, placement] = await Promise.all([
+      this.resolveScope(instituteId, membershipId).then((s) =>
+        s.kind === 'whole-institute' ? [] : s.subjectIds,
+      ),
+      this.describeOfferings(instituteId, membershipId),
+      this.describePlacement(instituteId, membershipId),
+    ]);
+    return { kind: 'subject-set', subjectIds, offerings, placement };
+  }
+
+  /** Active teacher assignments → class/subject names (teacher's own scope). */
+  private async describeOfferings(
+    instituteId: string,
+    membershipId: string,
+  ): Promise<ScopeOffering[]> {
+    const assignments = await this.db
+      .select({ classSubjectId: teacherAssignments.classSubjectId })
+      .from(teacherAssignments)
+      .where(
+        and(
+          eq(teacherAssignments.instituteId, instituteId),
+          eq(teacherAssignments.membershipId, membershipId),
+          eq(teacherAssignments.status, 'active'),
+        ),
+      );
+    if (!assignments.length) return [];
+
+    const offerings = await this.db
+      .select({
+        classId: classes.id,
+        className: classes.name,
+        subjectId: subjects.id,
+        subjectName: subjects.name,
+      })
+      .from(classSubjects)
+      .innerJoin(classes, eq(classSubjects.classId, classes.id))
+      .innerJoin(subjects, eq(classSubjects.subjectId, subjects.id))
+      .where(inArray(classSubjects.id, assignments.map((a) => a.classSubjectId)));
+
+    return offerings.map((o) => ({
+      classId: o.classId,
+      className: o.className,
+      subjectId: o.subjectId,
+      subjectName: o.subjectName,
+    }));
+  }
+
+  /** Active student placement → Academic Year / Class / Division names. */
+  private async describePlacement(
+    instituteId: string,
+    membershipId: string,
+  ): Promise<ScopePlacement | null> {
+    const [row] = await this.db
+      .select({
+        academicYearId: academicYears.id,
+        academicYearName: academicYears.name,
+        classId: classes.id,
+        className: classes.name,
+        divisionId: divisions.id,
+        divisionName: divisions.name,
+      })
+      .from(studentPlacements)
+      .innerJoin(divisions, eq(studentPlacements.divisionId, divisions.id))
+      .innerJoin(classes, eq(divisions.classId, classes.id))
+      .innerJoin(academicYears, eq(studentPlacements.academicYearId, academicYears.id))
+      .where(
+        and(
+          eq(studentPlacements.instituteId, instituteId),
+          eq(studentPlacements.membershipId, membershipId),
+          eq(studentPlacements.status, 'active'),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
   }
 
   /** SQL predicate for list queries: `undefined` = no filter (admin sees the

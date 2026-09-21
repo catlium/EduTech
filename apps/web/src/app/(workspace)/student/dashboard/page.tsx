@@ -7,6 +7,7 @@ import { ClipboardList, Clock, Gauge, ListChecks } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import { useTenant } from '@/lib/tenant';
+import { AcademicScopeCard } from '@/components/app/academic-scope-card';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,9 @@ export default function StudentDashboardPage() {
   return (
     <div>
       <PageHeader title="Student Dashboard" description="Assessments open for you right now." />
+      <div className="mb-6">
+        <AcademicScopeCard variant="student" />
+      </div>
       {loading ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : assessments.length === 0 ? (

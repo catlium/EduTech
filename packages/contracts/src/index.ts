@@ -4,14 +4,46 @@ export const RoleEnum = z.enum(['INSTITUTE_ADMIN', 'TEACHER', 'STUDENT']);
 export type Role = z.infer<typeof RoleEnum>;
 
 // A user's membership in an institute, used by the institute picker.
+// `permissions` is the backend-resolved institute-domain grant set for that
+// membership (never from JWTs). UX-only on the client: the API remains the
+// authority. The frontend applies the `*.manage` implication rule against it.
 export const MembershipListItemSchema = z.object({
   instituteId: z.string().uuid(),
   instituteName: z.string(),
   slug: z.string(),
   status: z.string(),
   roles: z.array(RoleEnum),
+  permissions: z.array(z.string()),
 });
 export type MembershipListItem = z.infer<typeof MembershipListItemSchema>;
+
+// The actor's own academic scope inside the active institute (GET
+// /memberships/scope). Backend-derived, non-authoritative cache on the client.
+export const AcademicScopeOfferingSchema = z.object({
+  classId: z.string().uuid(),
+  className: z.string(),
+  subjectId: z.string().uuid(),
+  subjectName: z.string(),
+});
+export type AcademicScopeOffering = z.infer<typeof AcademicScopeOfferingSchema>;
+
+export const AcademicScopePlacementSchema = z.object({
+  academicYearId: z.string().uuid(),
+  academicYearName: z.string(),
+  classId: z.string().uuid(),
+  className: z.string(),
+  divisionId: z.string().uuid(),
+  divisionName: z.string(),
+});
+export type AcademicScopePlacement = z.infer<typeof AcademicScopePlacementSchema>;
+
+export const AcademicScopeDetailSchema = z.object({
+  kind: z.enum(['whole-institute', 'subject-set']),
+  subjectIds: z.array(z.string().uuid()),
+  offerings: z.array(AcademicScopeOfferingSchema),
+  placement: AcademicScopePlacementSchema.nullable(),
+});
+export type AcademicScopeDetail = z.infer<typeof AcademicScopeDetailSchema>;
 
 export const JobStatusEnum = z.enum(['queued', 'processing', 'completed', 'failed']);
 export type JobStatus = z.infer<typeof JobStatusEnum>;

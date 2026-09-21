@@ -15,17 +15,19 @@ export function Forbidden({ role = 'student' }: { role?: 'student' | 'teacher' }
   const params = useParams();
   const isTeacherInInstitute = canManage(institute);
   const backHref = isTeacherInInstitute ? '/dashboard' : '/student/dashboard';
+  const description =
+    params && 'attemptId' in params
+      ? "You don't have access to this attempt — it belongs to another student."
+      : isTeacherInInstitute
+        ? "You don't have access to this area — it may be outside your permissions or academic scope."
+        : 'This area is only available to teachers and institute admins.';
 
   return (
     <main className="flex min-h-[60vh] items-center justify-center p-6">
       <EmptyState
         icon={<AlertTriangle className="size-5" />}
         title="No access"
-        description={
-          params && 'attemptId' in params
-            ? "You don't have access to this attempt — it belongs to another student."
-            : 'This area is only available to teachers and institute admins.'
-        }
+        description={description}
       >
         <Button asChild size="sm">
           <Link href={backHref}>Back to dashboard</Link>

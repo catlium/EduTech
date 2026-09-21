@@ -35,6 +35,15 @@ function onUnauthorized() {
   }
 }
 
+function onForbidden() {
+  // Authenticated-but-not-authorized (403), distinct from a dead session
+  // (401). The workspace layout renders an access-denied view; no logout, no
+  // refresh loop — mutating requests keep their normal error toast instead.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('catlium:forbidden'));
+  }
+}
+
 let refreshPromise: Promise<RefreshOutcome> | null = null;
 
 type RefreshOutcome = 'ok' | 'unauthorized' | 'unavailable';
@@ -130,6 +139,13 @@ export async function api<T>(
   } else if (response.status === 401) {
     // Direct /auth/refresh 401 = the session is genuinely gone.
     onUnauthorized();
+  }
+
+  // Authenticated-but-not-authorized page-load denial (401 flow already
+  // handled above, so this also fires when a refreshed session is still
+  // denied). Surface the Forbidden view; never a logout or refresh loop.
+  if (response.status === 403 && method.toUpperCase() === 'GET') {
+    onForbidden();
   }
 
   if (!response.ok) {

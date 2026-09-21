@@ -1,8 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { eq, and, inArray } from 'drizzle-orm';
-import { memberships, membershipRoles, roles, institutes } from '@catlium/database';
+import {
+  memberships,
+  membershipRoles,
+  roles,
+  institutes,
+  rolePermissions,
+  permissions,
+} from '@catlium/database';
 import type { Database } from '@catlium/database';
+import { resolveGrantedKeys } from '../authorization/permission-catalogue.js';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 
 export interface MembershipWithRoles {
@@ -19,6 +27,8 @@ export interface MembershipListItem {
   slug: string;
   status: string;
   roles: string[];
+  /** Institute-domain permission keys resolved from the membership's roles. */
+  permissions: string[];
 }
 
 @Injectable()
@@ -89,12 +99,30 @@ export class TenancyService {
       .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
       .where(inArray(membershipRoles.membershipId, membershipIds));
 
+    // Resolved grants (Phase B, D1): membership → membership_roles → roles →
+    // role_permissions → permissions, filtered to the institute domain. The raw
+    // keys power the frontend's `*.manage` implication UI checks; only the pure
+    // catalogue layer decides "can" — no permissions ever ride in JWTs.
+    const grantRows = await this.db
+      .select({ membershipId: membershipRoles.membershipId, key: permissions.key })
+      .from(membershipRoles)
+      .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
+      .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(inArray(membershipRoles.membershipId, membershipIds));
+
+    const grantedFor = (membershipId: string): string[] => {
+      const keys = grantRows.filter((g) => g.membershipId === membershipId).map((g) => g.key);
+      return [...resolveGrantedKeys(keys, 'institute')].sort();
+    };
+
     return rows.map((r) => ({
       instituteId: r.instituteId,
       instituteName: r.instituteName,
       slug: r.slug,
       status: r.membershipStatus,
       roles: roleRows.filter((rr) => rr.membershipId === r.membershipId).map((rr) => rr.roleKey),
+      permissions: grantedFor(r.membershipId),
     }));
   }
 }

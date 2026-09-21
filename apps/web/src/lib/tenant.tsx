@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { setActiveInstituteId } from './api';
 import { useAuth } from './auth';
+import { canUse, canUseAny } from './permissions';
 import type { MembershipListItem } from '@catlium/contracts';
 
 interface TenantState {
@@ -76,6 +77,18 @@ export function isTeacher(institute: MembershipListItem | null): boolean {
 
 export function canManage(institute: MembershipListItem | null): boolean {
   return isInstituteAdmin(institute) || isTeacher(institute);
+}
+
+// Permission-aware UI checks (Phase J). `granted` is the backend-resolved
+// institute-domain key set from /memberships; these helpers apply the `*.manage`
+// implication exactly like the server's hasPermission. UX-only — the API is
+// still the authorization boundary.
+export function hasPermission(institute: MembershipListItem | null, key: string): boolean {
+  return canUse(institute?.permissions ?? [], key);
+}
+
+export function hasAnyPermission(institute: MembershipListItem | null, keys: string[]): boolean {
+  return canUseAny(institute?.permissions ?? [], keys);
 }
 
 export function cleanupInstituteStorage() {

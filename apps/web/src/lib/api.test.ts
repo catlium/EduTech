@@ -113,3 +113,35 @@ test('concurrent 401s share ONE refresh (single-flight) and both retry', async (
   assert.equal(refreshCount, 1);
   assert.deepEqual(events, []);
 });
+
+test('GET 403 dispatches catlium:forbidden WITHOUT a refresh/logout', async () => {
+  dataStatus = 403;
+  await assert.rejects(api('/questions'), (e: unknown) => e instanceof ApiError && e.status === 403);
+  assert.equal(refreshCount, 0);
+  assert.deepEqual(events, ['catlium:forbidden']);
+});
+
+test('mutation 403 keeps the normal throw — no forbidden event', async () => {
+  dataStatus = 403;
+  await assert.rejects(
+    api('/questions', { method: 'POST', body: {} }),
+    (e: unknown) => e instanceof ApiError && e.status === 403,
+  );
+  assert.equal(refreshCount, 0);
+  assert.deepEqual(events, []);
+});
+
+test('GET 404 does NOT dispatch forbidden or unauthorized', async () => {
+  dataStatus = 404;
+  await assert.rejects(api('/questions'), (e: unknown) => e instanceof ApiError && e.status === 404);
+  assert.equal(refreshCount, 0);
+  assert.deepEqual(events, []);
+});
+
+test('GET 403 is checked only AFTER the 401 refresh path', async () => {
+  data401sLeft = 1;
+  dataStatus = 403;
+  await assert.rejects(api('/questions'), (e: unknown) => e instanceof ApiError && e.status === 403);
+  assert.equal(refreshCount, 1);
+  assert.deepEqual(events, ['catlium:forbidden']);
+});
