@@ -66,7 +66,7 @@ export class ContentController {
     @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
     @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
   ) {
-    const contents = await this.contentService.listContent(tenant.instituteId, {
+    const contents = await this.contentService.listContent(tenant.instituteId, tenant.membershipId, {
       type,
       status,
       q,
@@ -79,7 +79,11 @@ export class ContentController {
 
   @Get(':contentId')
   async get(@Tenant() tenant: TenantContext, @Param('contentId', ParseUUIDPipe) contentId: string) {
-    const { item, current } = await this.contentService.getContent(tenant.instituteId, contentId);
+    const { item, current } = await this.contentService.getContent(
+      tenant.instituteId,
+      tenant.membershipId,
+      contentId,
+    );
     return { content: { ...item, current } };
   }
 
@@ -105,7 +109,11 @@ export class ContentController {
     @Tenant() tenant: TenantContext,
     @Param('contentId', ParseUUIDPipe) contentId: string,
   ) {
-    const versions = await this.contentService.listVersions(tenant.instituteId, contentId);
+    const versions = await this.contentService.listVersions(
+      tenant.instituteId,
+      tenant.membershipId,
+      contentId,
+    );
     return { versions };
   }
 
@@ -115,7 +123,12 @@ export class ContentController {
     @Param('contentId', ParseUUIDPipe) contentId: string,
     @Param('version', ParseIntPipe) version: number,
   ) {
-    const v = await this.contentService.getVersion(tenant.instituteId, contentId, version);
+    const v = await this.contentService.getVersion(
+      tenant.instituteId,
+      tenant.membershipId,
+      contentId,
+      version,
+    );
     return { version: v };
   }
 

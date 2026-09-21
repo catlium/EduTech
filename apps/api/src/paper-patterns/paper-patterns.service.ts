@@ -196,7 +196,7 @@ export class PaperPatternsService {
 
   // ── AI analysis ───────────────────────────
 
-  async analyze(instituteId: string, userId: string, patternId: string, source: AnalyzeSource) {
+  async analyze(instituteId: string, membershipId: string, userId: string, patternId: string, source: AnalyzeSource) {
     const row = await this.requirePattern(instituteId, patternId);
     if (row.status === 'APPROVED') {
       throw new ConflictException('Approved paper patterns cannot be re-analyzed');
@@ -205,6 +205,7 @@ export class PaperPatternsService {
 
     const sourceMaterialId = await this.resolveSourceMaterial(
       instituteId,
+      membershipId,
       userId,
       row.title,
       subjectIds,
@@ -493,6 +494,7 @@ export class PaperPatternsService {
    */
   private async resolveSourceMaterial(
     instituteId: string,
+    membershipId: string,
     userId: string,
     patternTitle: string,
     subjectIds: string[],
@@ -559,7 +561,7 @@ export class PaperPatternsService {
       }
     }
 
-    const created = await this.materials.createTextMaterial(instituteId, userId, {
+    const created = await this.materials.createTextMaterial(instituteId, membershipId, userId, {
       title: `${patternTitle} — Source text`,
       text: source.text,
       subjectId: scopeSubjectId,

@@ -191,6 +191,7 @@ export class PaperPatternsController {
   ) {
     const generation = await this.paperPatternsService.analyze(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       patternId,
       dto.source,

@@ -71,8 +71,9 @@
       class/division. Student-side academic scoping (resource reads) remains
       Phase H. **COMPLETE 2026-09-20 — see the issued tasks below.**
       Design recorded in §17 (D5).
-- [ ] **Phase H — Resource Scope / Policy Engine:** academic scope + ownership
-      policy evaluation. Design recorded in §18 (D6).
+- [x] **Phase H — Resource Scope / Policy Engine:** academic scope + ownership
+      policy evaluation. **COMPLETE 2026-09-21 — see the issued tasks below.**
+      Design recorded in §18 (D6).
 - [ ] **Phase I — Module-by-Module Authorization Migration:** convert existing
       controllers/services to permission + scope + ownership, module by module.
 - [ ] **Phase J — Frontend Permission & Academic Scope:** align UI gating with
@@ -157,6 +158,60 @@
       clean; live-PG verification; container rebuilt + verified healthy with
       the Phase G code.
 - [x] Docs: §17 student model documented; project-status + tasks updated.
+
+## Phase H — Resource Scope Authorization (2026-09-21, COMPLETE)
+
+> Issued task. Implements the D6/§18 resource-scope engine: an
+> `AcademicScopeService` resolving teacher/student subject scope from
+> DB-fresh state (placement → division → class → `class_subjects` ±
+> `student_subject_enrollments` overrides; active `teacher_assignments` →
+> `class_subjects`), plus scope enforcement on resource reads (404) and
+> writes (403). `docs/architecture/authorization.md` §18 is the source of
+> truth. Boundary: ownership checks (O1–O3) deferred; module-by-module
+> migration of questions/assessments/question-papers/paper-patterns to
+> scope is Phase I; content/syllabus WRITES stay role-gated.
+
+- [x] Schema (`packages/database/src/schema/academic.ts`):
+      `student_subject_enrollments(id, instituteId, placementId, subjectId,
+      kind ENROLLED|EXCLUDED, created_at)` — cascade FKs; unique
+      `(placement_id, subject_id)` makes ENROLLED/EXCLUDED mutually exclusive;
+      no status column (delete reverts to class default). Exported from
+      schema/index + package index.
+- [x] Migration `0044_student_subject_enrollments.sql` (journal idx 44)
+      applied on the live compose Postgres (`catlium_dev`, max applied id 44;
+      journal entry added by hand + migrate image rebuilt per the stale-image
+      rule); table, 3 cascade FKs + unique index verified live.
+- [x] `apps/api/src/authorization/academic-scope.service.ts`: `resolveScope`
+      (`whole-institute` admin | `subject-set`), `subjectScopePredicate`
+      (`AnyPgColumn` → `SQL | undefined`; undefined = no filter),
+      `requireReadableSubject` (404 default-deny), `requireWritableSubject`
+      (403, pre-mutation); scope always resolved from current DB state, never
+      JWTs; INSTITUTE_ADMIN = sole bypass. Registered in the `@Global`
+      AuthorizationModule.
+- [x] Materials enforcement (flagship surface): create (text/file/upload) 403
+      on out-of-scope subject, list via predicate, get 404,
+      update 403 + subject-repointing gate, setStatus 403, process/retry 403
+      inside the tx after `FOR UPDATE` lock; OCR sub-surface
+      (listMaterialPages read gate, save/clearCorrection write gates);
+      controller passes `tenant.membershipId` everywhere.
+- [x] Content + syllabus READ scoping (list/get/versions predicate + 404);
+      writes deferred to Phase I. Paper-patterns analyze flow threads
+      membershipId through to `createTextMaterial`.
+- [x] Enrollments admin API (`academic-structure/student-enrollments`,
+      INSTITUTE_ADMIN-only): create (validates ACTIVE placement, same-institute
+      subject, EXCLUDED must be class-offered, ENROLLED must not be → else 400;
+      duplicate → 409 via 23505), list, remove (404). Delete reverts a student
+      to the class default curriculum.
+- [x] DB-backed integration test `academic-scope.integration.ts` (gated on
+      `TEST_DATABASE_URL`, `test:academic-scope`): student/teacher/admin sets,
+      division-shared class scope (§18.1), comprehension/update/overrides/
+      validation errors/revert-to-default, cross-tenant denials, inactive
+      placement/assignment → empty set, write 403s, repoint 403, admin bypass.
+- [x] Validation: `pnpm test` 222 pass; `pnpm typecheck` clean; `pnpm lint`
+      clean; integration suites academic-scope/teacher-assignments/
+      student-placements all pass; migration DBoid, deleted prior scratch
+      residue; containers rebuilt + verified healthy with Phase H code.
+- [x] Docs: §18 updated; project-status + tasks updated.
 
 ## Phase F — Teacher Assignments (2026-09-20, COMPLETE)
 

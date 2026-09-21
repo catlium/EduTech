@@ -57,6 +57,7 @@ export class MaterialsController {
   ) {
     const material = await this.materialsService.createTextMaterial(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
     );
@@ -94,6 +95,7 @@ export class MaterialsController {
     const chunk = this.chunks.parse(uploadId, chunkIndex, chunkTotal);
     const result = await this.materialsService.createFromUpload(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       dto,
       file,
@@ -107,7 +109,7 @@ export class MaterialsController {
     // triggered, then the pipeline auto-starts so the teacher just watches the
     // detail page progress. Best-effort so a queue hiccup still returns the 201.
     await this.materialsService
-      .processMaterial(tenant.instituteId, result.material.id)
+      .processMaterial(tenant.instituteId, tenant.membershipId, result.material.id)
       .catch(() => undefined);
     return { material: result.material };
   }
@@ -136,7 +138,7 @@ export class MaterialsController {
     @Query('chapterId', new ParseUUIDPipe({ optional: true })) chapterId?: string,
     @Query('topicId', new ParseUUIDPipe({ optional: true })) topicId?: string,
   ) {
-    const materials = await this.materialsService.listMaterials(tenant.instituteId, {
+    const materials = await this.materialsService.listMaterials(tenant.instituteId, tenant.membershipId, {
       materialType,
       sourceType,
       processingStatus,
@@ -154,7 +156,7 @@ export class MaterialsController {
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
   ) {
-    return this.ocrCoordinator.listMaterialPages(tenant.instituteId, materialId);
+    return this.ocrCoordinator.listMaterialPages(tenant.instituteId, tenant.membershipId, materialId);
   }
 
   @Put(':materialId/ocr-pages/:page/correction')
@@ -168,6 +170,7 @@ export class MaterialsController {
   ) {
     return this.ocrCoordinator.saveCorrection(
       tenant.instituteId,
+      tenant.membershipId,
       materialId,
       page,
       dto.text,
@@ -182,7 +185,7 @@ export class MaterialsController {
     @Param('materialId', ParseUUIDPipe) materialId: string,
     @Param('page', ParseIntPipe) page: number,
   ) {
-    return this.ocrCoordinator.clearCorrection(tenant.instituteId, materialId, page);
+    return this.ocrCoordinator.clearCorrection(tenant.instituteId, tenant.membershipId, materialId, page);
   }
 
   @Get(':materialId')
@@ -190,7 +193,7 @@ export class MaterialsController {
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
   ) {
-    const material = await this.materialsService.getMaterial(tenant.instituteId, materialId);
+    const material = await this.materialsService.getMaterial(tenant.instituteId, tenant.membershipId, materialId);
     return { material };
   }
 
@@ -204,6 +207,7 @@ export class MaterialsController {
   ) {
     const material = await this.materialsService.updateMaterial(
       tenant.instituteId,
+      tenant.membershipId,
       user.userId,
       materialId,
       dto,
@@ -218,7 +222,7 @@ export class MaterialsController {
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
   ) {
-    return this.materialsService.processMaterial(tenant.instituteId, materialId);
+    return this.materialsService.processMaterial(tenant.instituteId, tenant.membershipId, materialId);
   }
 
   @Post(':materialId/retry')
@@ -228,7 +232,7 @@ export class MaterialsController {
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
   ) {
-    return this.materialsService.retryMaterial(tenant.instituteId, materialId);
+    return this.materialsService.retryMaterial(tenant.instituteId, tenant.membershipId, materialId);
   }
 
   @Post(':materialId/archive')
@@ -239,6 +243,7 @@ export class MaterialsController {
   ) {
     const material = await this.materialsService.setStatus(
       tenant.instituteId,
+      tenant.membershipId,
       materialId,
       'ARCHIVED',
     );
@@ -253,6 +258,7 @@ export class MaterialsController {
   ) {
     const material = await this.materialsService.setStatus(
       tenant.instituteId,
+      tenant.membershipId,
       materialId,
       'ACTIVE',
     );

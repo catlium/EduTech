@@ -1,5 +1,84 @@
 # Project Status
 
+## Phase H — Resource Scope Authorization (2026-09-21)
+
+**Status: IMPLEMENTED + VALIDATED — migration applied on live compose Postgres.**
+Implements the D6/§18 resource-scope engine: an `AcademicScopeService` that
+resolves teacher/student subject scope from DB-fresh state and enforces
+subject-scope on resource reads (404, no existence leak) and writes (403,
+pre-mutation). INSTITUTE_ADMIN is the sole bypass. Ownership checks (O1–O3)
+deferred; module-by-module migration of questions/assessments/question-papers/
+paper-patterns to scope (kept role-gated for now) is Phase I.
+
+- **Schema** (`packages/database/src/schema/academic.ts`):
+  `student_subject_enrollments(id, instituteId, placementId, subjectId, kind
+  ENROLLED|EXCLUDED, created_at)` — cascade FKs to `institutes`,
+  `student_placements`, `subjects`; unique `(placement_id, subject_id)` makes
+  ENROLLED/EXCLUDED mutually exclusive; **no status column** (delete reverts to
+  the class default curriculum). Scope formula: `studentSubjectSet` =
+  (class `class_subjects` − EXCLUDED) ∪ ENROLLED; divisions of one class share
+  an identical scope (class-level curriculum, revised D4). Exported from
+  `schema/index.ts` + package index.
+- **Migration** `0044_student_subject_enrollments.sql` (journal idx 44; journal
+  entry added by hand, style-matching 0041–0043). Applied live: `drizzle
+  .__drizzle_migrations` max applied id 44; table, 3 cascade FKs + unique index
+  verified in `catlium_dev`.
+- **Scope engine** (`apps/api/src/authorization/academic-scope.service.ts`, in
+  the `@Global` AuthorizationModule): `resolveScope(membershipId)` →
+  `{ kind: 'whole-institute' }` for INSTITUTE_ADMIN or `{ kind: 'subject-set',
+  subjectIds[] }` from actual DB bonds (placement → division → class →
+  `class_subjects` ± overrides; active `teacher_assignments` →
+  `class_subjects`). Cross-institute bonds contribute NO scope (an instB
+  assignment grants nothing inside instA). Returns `subject-set` empty (default
+  allow-nothing) for members with no bonds; scope is resolved per-request, never
+  from JWTs. `subjectScopePredicate(column: AnyPgColumn)` → `SQL | undefined`
+  (undefined = no filter) powers DB query scoping; `requireReadableSubject`
+  (404), `requireWritableSubject` (403).
+- **Materials enforcement** (flagship surface): create (text/file/upload) 403
+  on out-of-scope subject; `listMaterials` filtered by predicate;
+  `getMaterial` 404; `updateMaterial` 403 + subject-repointing gate (new scope
+  must also be reachable); `setStatus` 403; `processMaterial`/`retryMaterial`
+  403 inside the tx after the `FOR UPDATE` lock; OCR sub-surface
+  (`OcrCoordinatorService.listMaterialPages` read gate,
+  `saveCorrection`/`clearCorrection` write gates). All write/read paths take
+  `tenant.membershipId` from the controller.
+- **Content + syllabus reads** scoped (list/get/versions, predicate + 404);
+  writes remain role-gated (Phase I). Paper-patterns analyze flow threads
+  membershipId through to `createTextMaterial`.
+- **Enrollments API** (`academic-structure/student-enrollments`,
+  INSTITUTE_ADMIN-only): create validates ACTIVE same-institute placement,
+  same-institute subject, EXCLUDED subject must be class-offered, ENROLLED must
+  NOT be class-offered (→ 400), duplicate (placementId, subjectId) → 409
+  (pg `23505` unwrapped); list (filterable by placementId); remove → 404 if
+  missing; delete reverts the student to the class default curriculum.
+- **Validation**: `pnpm test` 222 pass; `pnpm typecheck` clean (api +
+  database); `pnpm lint` clean; DB-backed integration test
+  `test:academic-scope` (`academic-scope.integration.ts`, `TEST_DATABASE_URL`-
+  gated) covers student/teacher/admin subject sets, division-shared class
+  scope, list/get enforcement, content predicate, overrides + validation
+  errors + revert-to-default, cross-tenant denials (incl. instB assignment
+  giving nothing in instA), inactive placement/assignment → empty scope, write
+  403s, repoint 403, admin whole-institute + null-subject bypass, and the
+  enrollments list/create/remove roundtrip. Teacher + student placements
+  integration suites re-run green. Scratch residue from a mid-iteration failed
+  cleanup run identified and purged from `catlium_dev`.
+- **Containers**: migrate image rebuilt then migration
+  applied; postgres was temporarily loopback-published via a throwaway compose
+  override so host-side tests could connect, then restored to the base posture
+  (no host ports). Full stack rebuilt with the Phase H code:
+  `docker compose ps` all healthy; API serves `GET /api/v1/health`.
+- **Docs**: §18 updated with enrollments implemented + Phase H surface; tasks
+  + project-status updated.
+
+### Next task
+
+Phase I — Module-by-module authorization migration: convert
+questions/assessments/question-papers/paper-patterns to scope-aware read/write
+enforcement (currently role-gated only), plus ownership checks (O1–O3) and
+content/syllabus writes. Phases J (frontend), K (session hardening), L/M (test
+matrix, final audit) remain not-started. Deferred Phase D follow-ups (NOT
+built): Super Admin management UI/APIs, institutes lifecycle endpoints.
+
 ## Phase G — Student Academic Assignments (2026-09-20)
 
 **Status: IMPLEMENTED + VALIDATED — migration applied on live compose Postgres.**

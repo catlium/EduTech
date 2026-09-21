@@ -1224,7 +1224,8 @@ class-year.
 ## 17. D5 — Teacher and student academic assignments (DECIDED; teacher in Phase F, student in Phase G)
 
 Recorded 2026-09-20. **Phase F (2026-09-20) implemented the teacher portion;
-Phase G (2026-09-20) implemented the student portion.** This section
+Phase G (2026-09-20) implemented the student portion; Phase H (2026-09-21)
+implemented `student_subject_enrollments`.** This section
 supersedes the earlier division-level sketch: teacher assignments sit at
 **class-subject offering granularity** (Teacher → `class_subjects`), NOT per
 division, and no `division_subjects` table is created.
@@ -1302,9 +1303,9 @@ student_placements (
 
 student_subject_enrollments (
   id, instituteId, placementId, subjectId, kind 'ENROLLED'|'EXCLUDED',
-  created_at, updated_at,
+  created_at,
   UNIQUE (placementId, subjectId)
-)                       -- NOT implemented yet (Phase H+); empty-by-design
+)                     -- implemented Phase H; ENROLLED/EXCLUDED mutually exclusive via the unique key
 ```
 
 Implementation notes (Phase G, deviations from the earlier sketch):
@@ -1339,8 +1340,18 @@ Placement-time validation (enforced in Phase G):
   G), and reads are admin-only too — placement data is not exposed to
   students; students cannot assign themselves and teachers cannot modify
   placements.
-- `ENROLLED`/`EXCLUDED` validation applies when enrollments are implemented
-  (unused today).
+- `ENROLLED`/`EXCLUDED` enrollment validation (enforced in Phase H):
+  - the placement is **ACTIVE** and belongs to `enrollment.instituteId`;
+  - the subject belongs to the institute;
+  - `EXCLUDED` requires the subject be **offered by the placement's class**
+    (otherwise there is nothing to opt out of);
+  - `ENROLLED` requires the subject **NOT be offered by the placement's class**
+    (class offerings are already in scope; an explicit ENROLLED duplicate is a
+    mistake → 400);
+  - duplicate (placement, subject) → **409** (unique key); there is **no
+    status column** — deleting the enrollment (404 if absent) reverts the
+    student to the class default curriculum, which avoids contradictory rows.
+    Enrollment management is **INSTITUTE_ADMIN-only** (no self-service).
 
 **Historical academic assignments are preserved, never overwritten.** A
 promotion adds a new `student_placements` row for the new year/division; prior
@@ -1352,10 +1363,14 @@ nothing relies on a mutable "current class" field on the user.
 
 ```
 accessible(student) =
-  offerings(student's division for that academic year)
+  (offerings(student's class for that academic year) − {EXCLUDED subjects})
   ∪ {ENROLLED subjects}
-  − {EXCLUDED subjects}
 ```
+
+Implemented in Phase H exactly as above. Divisions of the same class inherit the
+same `class_subjects` set, and pairs of placements in them therefore resolve to
+identical scopes — this is correct: scope follows the class curriculum, and
+enrollments are the only per-student modifier.
 
 ### Concrete examples
 
@@ -1399,10 +1414,12 @@ class_subjects:       (Class 10, 2026-27) → { Mathematics, Physics }  # inheri
 
 ---
 
-## 18. D6 — Resource scope and authorization evaluation (DECIDED, not implemented)
+## 18. D6 — Resource scope and authorization evaluation (DECIDED; mechanism in Phase H 2026-09-21)
 
 Recorded 2026-09-20. Applies to Phase H (mechanism) and Phase I (module
-enforcement). Not yet implemented.
+enforcement). The scope engine and the resource surfaces below marked
+**implemented** shipped in Phase H; the remaining module-by-module enforcement
+is Phase I (those resources stay role-gated meanwhile).
 
 ### The evaluation chain (conceptual, fixed)
 
@@ -1611,6 +1628,37 @@ Mathematics ∈ the student's cohort set.
 | Student A (10-A) | questions.read | shared question subject=Chemistry | Chemistry ∉ cohort → false | ❌ |
 | INSTITUTE_ADMIN | questions.* (manage) | any 10-A or 10-B question | whole-institute → true | ✅ |
 | Custom 'ExamCoord', no assignment | questions.manage | any question | no scope → false | ❌ deny |
+
+### 18.13 Phase H implementation status (2026-09-21)
+
+The `AcademicScopeService` (`apps/api/src/authorization/academic-scope.service.ts`,
+in the `@Global` AuthorizationModule) implements the actor-scope box:
+`resolveScope(membershipId)` → `whole-institute` (INSTITUTE_ADMIN only) or a
+`subject-set` derived from **current DB state** — for teachers the union of
+subjects across their active `teacher_assignments → class_subjects`, for
+students `(placement's class `class_subjects` − EXCLUDED) ∪ ENROLLED` via
+`student_placements` (read, division→class) + `student_subject_enrollments`
+(§17). Scope is never taken from JWTs; an actor with no bonds gets an empty
+set (default deny), and cross-institute bonds contribute nothing. Read scope
+denials surface as **404** (no existence leak), write denials as **403**
+checked *before* mutation (create paths gate the input subject; update paths
+gate the current subject and any subject repoint).
+
+Enforced surfaces (Phase H):
+
+| surface | enforcement |
+|---|---|
+| `materials` (create/list/get/update/setStatus/process/retry) | full read+write **implemented** |
+| materials OCR sub-surface (page list, corrections) | read/write **implemented** |
+| `content_items` reads (list/get/versions) | **implemented** (writes stay role-gated until Phase I) |
+| `syllabi` reads (list/get/versions) | **implemented** (writes stay role-gated until Phase I) |
+| `paper_patterns` analyze → `createTextMaterial` | membershipId threaded; gated by materials write path |
+| `questions`, `assessments`, `question_papers`, `paper_patterns` (other), `attempts`, `practice_sessions` | role-gated only — **Phase I** |
+| ownership checks (O1–O3, §18.6) | **deferred to Phase I** |
+
+Null-subject (institute-wide academic content) is **admin-only**: non-admin
+actors get 404 on read / 403 on write for resources whose chain resolves no
+subject (the §18.7 default-deny documented exception, INSTITUTE_ADMIN exempt).
 
 ---
 

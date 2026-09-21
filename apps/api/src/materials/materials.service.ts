@@ -14,6 +14,7 @@ import { materials } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { resolveScopeChain } from '../common/utils/scope-resolver.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import type { Job } from '../jobs/jobs.service.js';
 import { OcrCoordinatorService } from '../ocr/ocr-coordinator.service.js';
@@ -62,6 +63,7 @@ export class MaterialsService {
     private readonly jobsService: JobsService,
     private readonly ocrCoordinator: OcrCoordinatorService,
     private readonly enhancements: MaterialEnhancementService,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   // ── Create ────────────────────────────────
@@ -72,6 +74,7 @@ export class MaterialsService {
    *  (validated type, storage, material row). */
   async createFromUpload(
     instituteId: string,
+    membershipId: string,
     createdBy: string,
     input: CreateFileMaterialInput,
     file: Express.Multer.File,
@@ -81,7 +84,11 @@ export class MaterialsService {
     | { chunk: ChunkUpload }
   > {
     if (!chunk) {
-      return { material: await this.createFileMaterial(instituteId, createdBy, input, file) };
+      return {
+        material: await this.createFileMaterial(
+          instituteId, membershipId, createdBy, input, file,
+        ),
+      };
     }
 
     const assembled = await this.chunks.acceptOrAssemble(chunk, instituteId, file.buffer);
@@ -92,19 +99,23 @@ export class MaterialsService {
       throw new BadRequestException('File exceeds 20 MB limit');
     }
     return {
-      material: await this.createFileMaterial(instituteId, createdBy, input, {
-        ...file,
-        buffer: assembled,
-        size: assembled.length,
-      }),
+      material: await this.createFileMaterial(
+        instituteId, membershipId, createdBy, input, { ...file, buffer: assembled, size: assembled.length },
+      ),
     };
   }
 
-  async createTextMaterial(instituteId: string, createdBy: string, input: CreateTextMaterialInput) {
+  async createTextMaterial(
+    instituteId: string,
+    membershipId: string,
+    createdBy: string,
+    input: CreateTextMaterialInput,
+  ) {
     const chain = await resolveScopeChain(
       { db: this.db, instituteId, requireSubject: true },
       input,
     );
+    await this.scope.requireWritableSubject(instituteId, membershipId, chain.subjectId);
 
     const [material] = await this.db
       .insert(materials)
@@ -135,6 +146,7 @@ export class MaterialsService {
 
   async createFileMaterial(
     instituteId: string,
+    membershipId: string,
     createdBy: string,
     input: CreateFileMaterialInput,
     file: Express.Multer.File,
@@ -143,6 +155,7 @@ export class MaterialsService {
       { db: this.db, instituteId, requireSubject: true },
       input,
     );
+    await this.scope.requireWritableSubject(instituteId, membershipId, chain.subjectId);
 
     const validated = this.validateFile(file);
     const materialId = randomUUID();
@@ -185,11 +198,16 @@ export class MaterialsService {
 
   // ── Read ──────────────────────────────────
 
-  async listMaterials(instituteId: string, filters: ListMaterialFilters) {
+  async listMaterials(instituteId: string, membershipId: string, filters: ListMaterialFilters) {
     const conditions: SQL[] = [
       eq(materials.instituteId, instituteId),
       isNull(materials.deletedAt),
     ];
+
+    const scopeFilter = await this.scope.subjectScopePredicate(
+      instituteId, membershipId, materials.subjectId,
+    );
+    if (scopeFilter) conditions.push(scopeFilter);
 
     if (filters.materialType) conditions.push(eq(materials.materialType, filters.materialType));
     if (filters.sourceType) conditions.push(eq(materials.sourceType, filters.sourceType));
@@ -216,8 +234,9 @@ export class MaterialsService {
       .orderBy(desc(materials.createdAt));
   }
 
-  async getMaterial(instituteId: string, materialId: string) {
+  async getMaterial(instituteId: string, membershipId: string, materialId: string) {
     const material = await this.assertMaterialExists(instituteId, materialId);
+    await this.scope.requireReadableSubject(instituteId, membershipId, material.subjectId);
     const job = await this.jobsService.latestMaterialJob(instituteId, materialId);
     return {
       ...material,
@@ -235,6 +254,7 @@ export class MaterialsService {
 
   async updateMaterial(
     instituteId: string,
+    membershipId: string,
     userId: string,
     materialId: string,
     input: {
@@ -247,6 +267,7 @@ export class MaterialsService {
     },
   ) {
     const current = await this.assertMaterialExists(instituteId, materialId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, current.subjectId);
 
     const updates: Record<string, unknown> = {
       updatedBy: userId,
@@ -281,6 +302,9 @@ export class MaterialsService {
         { db: this.db, instituteId, requireSubject: true },
         { subjectId: input.subjectId, chapterId: input.chapterId, topicId: input.topicId },
       );
+      // Repointing scope moves the resource's subject — it must stay inside
+      // the actor's reach too (Phase H, §18.5).
+      await this.scope.requireWritableSubject(instituteId, membershipId, chain.subjectId);
       if (
         chain.subjectId !== current.subjectId ||
         chain.chapterId !== current.chapterId ||
@@ -318,7 +342,9 @@ export class MaterialsService {
 
   // ── Status ────────────────────────────────
 
-  async setStatus(instituteId: string, materialId: string, status: MaterialStatus) {
+  async setStatus(instituteId: string, membershipId: string, materialId: string, status: MaterialStatus) {
+    const current = await this.assertMaterialExists(instituteId, materialId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, current.subjectId);
     const [updated] = await this.db
       .update(materials)
       .set({ status, updatedAt: new Date() })
@@ -334,12 +360,12 @@ export class MaterialsService {
 
   // ── Processing ────────────────────────────
 
-  async processMaterial(instituteId: string, materialId: string) {
-    return this.enqueueProcessing(instituteId, materialId, 'process');
+  async processMaterial(instituteId: string, membershipId: string, materialId: string) {
+    return this.enqueueProcessing(instituteId, membershipId, materialId, 'process');
   }
 
-  async retryMaterial(instituteId: string, materialId: string) {
-    return this.enqueueProcessing(instituteId, materialId, 'retry');
+  async retryMaterial(instituteId: string, membershipId: string, materialId: string) {
+    return this.enqueueProcessing(instituteId, membershipId, materialId, 'retry');
   }
 
   /**
@@ -354,6 +380,7 @@ export class MaterialsService {
    */
   private async enqueueProcessing(
     instituteId: string,
+    membershipId: string,
     materialId: string,
     action: 'process' | 'retry',
   ) {
@@ -369,6 +396,7 @@ export class MaterialsService {
       if (!locked) {
         throw new NotFoundException('Material not found');
       }
+      await this.scope.requireWritableSubject(instituteId, membershipId, locked.subjectId);
 
       was = locked.processingStatus;
 

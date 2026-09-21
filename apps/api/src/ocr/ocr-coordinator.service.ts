@@ -6,6 +6,7 @@ import { and, asc, eq, inArray, isNull, lt, or } from 'drizzle-orm';
 import { jobs, materials, ocrChunks, ocrPageCorrections, ocrWorkers } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { DATABASE_TOKEN } from '../database/database.module.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import { MaterialEnhancementService } from '../material-enhancement/enhancement.service.js';
 import { STORAGE_PROVIDER } from '../materials/storage/storage-provider.interface.js';
@@ -54,6 +55,7 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
     private readonly jobsService: JobsService,
     private readonly enhancements: MaterialEnhancementService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -474,9 +476,11 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
 
   public async listMaterialPages(
     instituteId: string,
+    membershipId: string,
     materialId: string,
   ): Promise<OcrPageListResponse> {
-    await this.assertMaterialScoped(instituteId, materialId);
+    const material = await this.assertMaterialScoped(instituteId, materialId);
+    await this.scope.requireReadableSubject(instituteId, membershipId, material.subjectId);
     const job = await this.jobsService.latestMaterialJob(instituteId, materialId);
     if (!job || job.type !== 'MATERIAL_PROCESS') {
       return { documentPages: null, chunkSize: CHUNK_SIZE, chunks: [], pages: [] };
@@ -522,12 +526,14 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
    *  downstream AI never reads stale uncorrected text. */
   public async saveCorrection(
     instituteId: string,
+    membershipId: string,
     materialId: string,
     page: number,
     text: string,
     correctedBy: string,
   ): Promise<OcrPageDetail> {
     const material = await this.assertMaterialScoped(instituteId, materialId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, material.subjectId);
     const chunks = await this.chunksOfLatestJob(instituteId, materialId);
 
     const chunk = chunks.find((c) => c.startPage <= page && page <= c.endPage);
@@ -574,10 +580,12 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
    *  the aggregate `textContent` is recomputed (bumped only if it changed). */
   public async clearCorrection(
     instituteId: string,
+    membershipId: string,
     materialId: string,
     page: number,
   ): Promise<OcrPageDetail> {
     const material = await this.assertMaterialScoped(instituteId, materialId);
+    await this.scope.requireWritableSubject(instituteId, membershipId, material.subjectId);
     const [deleted] = await this.db
       .delete(ocrPageCorrections)
       .where(

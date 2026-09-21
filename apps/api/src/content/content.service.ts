@@ -6,6 +6,7 @@ import type { Database } from '@catlium/database';
 import { ContentPayloadSchemas } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { resolveScopeChain } from '../common/utils/scope-resolver.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 
 type ContentType = 'NOTE' | 'FLASHCARD_SET' | 'CORNELL_NOTE' | 'SUMMARY' | 'IMPORTANT_CONCEPTS';
 type ContentSource = 'MANUAL' | 'AI_GENERATED' | 'OCR_EXTRACTED' | 'IMPORTED';
@@ -46,7 +47,10 @@ interface ListContentFilters {
 
 @Injectable()
 export class ContentService {
-  constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE_TOKEN) private readonly db: Database,
+    private readonly scope: AcademicScopeService,
+  ) {}
 
   // ── Create ────────────────────────────────
 
@@ -96,11 +100,16 @@ export class ContentService {
 
   // ── Read ──────────────────────────────────
 
-  async listContent(instituteId: string, filters: ListContentFilters) {
+  async listContent(instituteId: string, membershipId: string, filters: ListContentFilters) {
     const conditions: SQL[] = [
       eq(contentItems.instituteId, instituteId),
       isNull(contentItems.deletedAt),
     ];
+
+    const scopeFilter = await this.scope.subjectScopePredicate(
+      instituteId, membershipId, contentItems.subjectId,
+    );
+    if (scopeFilter) conditions.push(scopeFilter);
 
     if (filters.type) conditions.push(eq(contentItems.type, filters.type));
     if (filters.status) conditions.push(eq(contentItems.status, filters.status));
@@ -116,8 +125,9 @@ export class ContentService {
       .orderBy(desc(contentItems.updatedAt));
   }
 
-  async getContent(instituteId: string, contentId: string) {
+  async getContent(instituteId: string, membershipId: string, contentId: string) {
     const item = await this.assertContentExists(instituteId, contentId);
+    await this.scope.requireReadableSubject(instituteId, membershipId, item.subjectId);
 
     const [current] = await this.db
       .select()
@@ -190,8 +200,9 @@ export class ContentService {
 
   // ── Version history ───────────────────────
 
-  async listVersions(instituteId: string, contentId: string) {
-    await this.assertContentExists(instituteId, contentId);
+  async listVersions(instituteId: string, membershipId: string, contentId: string) {
+    const item = await this.assertContentExists(instituteId, contentId);
+    await this.scope.requireReadableSubject(instituteId, membershipId, item.subjectId);
 
     return this.db
       .select()
@@ -200,8 +211,9 @@ export class ContentService {
       .orderBy(desc(contentVersions.version));
   }
 
-  async getVersion(instituteId: string, contentId: string, version: number) {
-    await this.assertContentExists(instituteId, contentId);
+  async getVersion(instituteId: string, membershipId: string, contentId: string, version: number) {
+    const item = await this.assertContentExists(instituteId, contentId);
+    await this.scope.requireReadableSubject(instituteId, membershipId, item.subjectId);
 
     const [row] = await this.db
       .select()

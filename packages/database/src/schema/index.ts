@@ -3,7 +3,7 @@ export { authSessions } from './auth.js';
 export { institutes } from './institutes.js';
 export { memberships, membershipRoles } from './memberships.js';
 export { jobs } from './jobs.js';
-export { subjects, chapters, topics, academicYears, classes, classSubjects, divisions, teacherAssignments, studentPlacements } from './academic.js';
+export { subjects, chapters, topics, academicYears, classes, classSubjects, divisions, teacherAssignments, studentPlacements, studentSubjectEnrollments } from './academic.js';
 export { contentItems, contentVersions } from './content.js';
 export { materials } from './materials.js';
 export { materialEnhancements, materialEnhancementSegments, materialEnhancementSegmentMappings } from './material-enhancements.js';

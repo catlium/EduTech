@@ -91,19 +91,31 @@ export class SyllabusController {
     @Tenant() tenant: TenantContext,
     @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
   ) {
-    const syllabi = await this.syllabusService.listSyllabi(tenant.instituteId, subjectId);
+    const syllabi = await this.syllabusService.listSyllabi(
+      tenant.instituteId,
+      tenant.membershipId,
+      subjectId,
+    );
     return { syllabi };
   }
 
   @Get(':id')
   async get(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    const syllabus = await this.syllabusService.getSyllabus(tenant.instituteId, id);
+    const syllabus = await this.syllabusService.getSyllabus(
+      tenant.instituteId,
+      tenant.membershipId,
+      id,
+    );
     return { syllabus };
   }
 
   @Get(':id/versions')
   async versions(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    const versions = await this.syllabusService.getVersions(tenant.instituteId, id);
+    const versions = await this.syllabusService.getVersions(
+      tenant.instituteId,
+      tenant.membershipId,
+      id,
+    );
     return { versions };
   }
 

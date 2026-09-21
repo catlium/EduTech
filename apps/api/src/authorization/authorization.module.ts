@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 
+import { AcademicScopeService } from './academic-scope.service.js';
 import { PermissionCheckService } from './permission-check.service.js';
 import { PermissionSyncService } from './permission-sync.service.js';
 import { PermissionGuard } from './permissions.guard.js';
@@ -12,7 +13,8 @@ import { RolesService } from './roles.service.js';
  * Permission foundation (Phase B) + membership role assignment and custom
  * institute role management (Phase C) + the platform plane guard (Phase D),
  * global so guards/decorators resolve from any module; sync runs on API boot
- * to keep the DB catalogue aligned with the code catalogue.
+ * to keep the DB catalogue aligned with the code catalogue. Academic resource
+ * scope resolution (Phase H) also lives here so any module can enforce it.
  */
 @Global()
 @Module({
@@ -24,6 +26,7 @@ import { RolesService } from './roles.service.js';
     PlatformGuard,
     RoleAssignmentService,
     RolesService,
+    AcademicScopeService,
   ],
   exports: [
     PermissionCheckService,
@@ -31,6 +34,7 @@ import { RolesService } from './roles.service.js';
     PlatformGuard,
     RoleAssignmentService,
     RolesService,
+    AcademicScopeService,
   ],
 })
 export class AuthorizationModule {}

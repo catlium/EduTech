@@ -206,3 +206,37 @@ export const studentPlacements = pgTable(
       .where(sql`${table.status} = 'active'`),
   ],
 );
+
+// Phase H — student subject enrollments: per-student subject SCOPE overrides
+// (D5/§17, D6/§18). Students inherit their class's subject set (placement →
+// division → class → class_subjects); this table lets an institute EXCLUDE a
+// subject from one student or ENROLL them into a subject NOT offered by their
+// class (elective). One row per (placement, subject) — the unique key makes a
+// subject's ENROLLED and EXCLUDED states mutually exclusive for a placement,
+// and OVERRIDE history within a placement is irrelevant (a deleted row simply
+// reverts to the class default). No rows are ever auto-created; overrides are
+// admin-invoked. The placement row already pins institute/year/class, so no
+// copies of those live here.
+export const studentSubjectEnrollments = pgTable(
+  'student_subject_enrollments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    instituteId: uuid('institute_id')
+      .notNull()
+      .references(() => institutes.id, { onDelete: 'cascade' }),
+    placementId: uuid('placement_id')
+      .notNull()
+      .references(() => studentPlacements.id, { onDelete: 'cascade' }),
+    subjectId: uuid('subject_id')
+      .notNull()
+      .references(() => subjects.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 20 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('student_subject_enrollments_placement_subject_unique').on(
+      table.placementId,
+      table.subjectId,
+    ),
+  ],
+);

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import type { Database } from '@catlium/database';
@@ -20,6 +21,7 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import { STORAGE_PROVIDER } from '../materials/storage/storage-provider.interface.js';
 import type { StorageProvider } from '../materials/storage/storage-provider.interface.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 
 type DbTx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -49,6 +51,7 @@ export class SyllabusService {
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly jobs: JobsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly scope: AcademicScopeService,
   ) {}
 
   // ── Create ────────────────────────────────
@@ -126,20 +129,17 @@ export class SyllabusService {
 
   // ── Read ──────────────────────────────────
 
-  /** Latest version per subject. */
-  async listSyllabi(instituteId: string, subjectId?: string) {
+  /** Latest version per subject, restricted to the actor's subject scope. */
+  async listSyllabi(instituteId: string, membershipId: string, subjectId?: string) {
+    const conditions: SQL[] = [eq(syllabi.instituteId, instituteId), isNull(syllabi.deletedAt)];
+    if (subjectId) conditions.push(eq(syllabi.subjectId, subjectId));
+    const scopeFilter = await this.scope.subjectScopePredicate(instituteId, membershipId, syllabi.subjectId);
+    if (scopeFilter) conditions.push(scopeFilter);
+
     const rows = await this.db
       .select()
       .from(syllabi)
-      .where(
-        subjectId
-          ? and(
-              eq(syllabi.instituteId, instituteId),
-              eq(syllabi.subjectId, subjectId),
-              isNull(syllabi.deletedAt),
-            )
-          : and(eq(syllabi.instituteId, instituteId), isNull(syllabi.deletedAt)),
-      )
+      .where(and(...conditions))
       .orderBy(desc(syllabi.createdAt));
 
     const latestBySubject = new Map<string, (typeof rows)[number]>();
@@ -165,8 +165,9 @@ export class SyllabusService {
     }));
   }
 
-  async getSyllabus(instituteId: string, syllabusId: string) {
+  async getSyllabus(instituteId: string, membershipId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
+    await this.scope.requireReadableSubject(instituteId, membershipId, row.subjectId);
     const [subj] = await this.db
       .select({ name: subjects.name })
       .from(subjects)
@@ -175,8 +176,9 @@ export class SyllabusService {
     return { ...this.toSyllabus(row), subjectName: subj?.name ?? null };
   }
 
-  async getVersions(instituteId: string, syllabusId: string) {
+  async getVersions(instituteId: string, membershipId: string, syllabusId: string) {
     const row = await this.getSyllabusRow(instituteId, syllabusId);
+    await this.scope.requireReadableSubject(instituteId, membershipId, row.subjectId);
     const rows = await this.db
       .select()
       .from(syllabi)
