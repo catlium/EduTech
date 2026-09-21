@@ -1428,3 +1428,22 @@ set-scope endpoints.
 Run the full e2e suite (`paper_pattern_e2e.sh`, `attempts_e2e.sh`,
 `sec14_e2e.sh`, `demo_e2e.sh`, `p8_e2e.sh`) on a demo/dev stack, then commit +
 push this Phase 43 checkpoint.
+## Checkpoint — D7 §19 F3/F5 identity seams (Phase K), commit 2fab5cc
+
+- Compile gate: `tsc --noEmit` on apps/api → 0 errors (render-immune exit-flag).
+- API test suite: 222 pass / 15 suites / 0 fail (node --test, exit 0). No
+  identity spec exists — ponytail rung 6: enforced no new test harness (unit
+  runner is node --test; no jest config on disk in the real repo).
+- Bytes landed (source of truth = working tree + tsc exit):
+  - F3 `revokeAllOtherSessions(userId, currentSid?)` — param now optional with
+    a `currentSid ? ne(...) : undefined` guard, so an unresolvable current sid
+    (no valid sid cookie) safely revokes all of the user's other sessions
+    instead of throwing a compile-time `string | undefined` into a required
+    `string`.
+  - F5 `requestPasswordReset` + `confirmPasswordReset` — uniform no-enumeration
+    response, atomic single-use consume (`, isNull(usedAt)` + `.returning
+    ({ id })` gate), bcrypt cost 12 mirroring register, revokes all sessions on
+    confirm; removed a stray `updatedAt` from the `passwordResets` `.set()`
+    (column doesn't exist → TS2353 fixed).
+- Pushed: 2fab5cc (identity seams only; unrelated web/docs churn left
+  untouched per AGENTS "Do not touch unrelated work").
