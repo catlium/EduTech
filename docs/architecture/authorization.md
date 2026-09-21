@@ -1696,9 +1696,13 @@ subject (the §18.7 default-deny documented exception, INSTITUTE_ADMIN exempt).
 
 ---
 
-## 19. D7 — Authentication / session hardening (DECIDED, not implemented)
+## 19. D7 — Authentication / session hardening (DECIDED, partially implemented)
 
-Recorded 2026-09-20. Applies to Phase K. Not yet implemented.
+Recorded 2026-09-20. Applies to Phase K. **Partially implemented** — Phase K
+Parts 1–2 (DB auth/session + password-reset foundation), the F3/F5 identity
+seams, and the Part 3 OCR-worker end-to-end validation are landed; the
+remaining decisions below are still outstanding. See the `docs/project-status.md`
+Phase K checkpoints for landed byte-level state.
 
 Resolves the audit's F1–F6 (`docs/architecture/security-audit.md` §F) and the
 §9 issues, grounded in the verified implementation: `identity/auth.service.ts`

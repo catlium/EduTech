@@ -84,7 +84,9 @@
       revocation, logout, session cleanup, password reset, CSRF strategy,
       403 handling, stale institute selection, multi-device sessions (separate
       related track per `docs/architecture/authorization.md` §9; decisions
-      recorded in §19/D7, resolves audit F1–F6/H1–H7).
+      recorded in §19/D7, resolves audit F1–F6/H1–H7). Parts 1–3 landed
+      (incl. OCR worker E2E validation); remaining §19 items outstanding — see
+      the Phase K section below.
 - [ ] **Phase L — Security & Authorization Test Matrix:** comprehensive
       regression matrix (tenant isolation, permissions, roles, platform
       boundary, academic scope, ownership, cross-tenant, revocation).
@@ -324,6 +326,41 @@
       the dev DB (host migration path unavailable → scratch DB restored via
       pg_dump).
 - [x] Docs: this section + project-status updated.
+
+## Phase K — Authentication / Session Hardening (2026-09-21, IN PROGRESS)
+
+> Issued track per `docs/architecture/authorization.md` §9/§19 (D7). Resolves
+> audit F1–F6 / H1–H7. Only the parts below are landed; the remaining §19
+> decisions are still tracked there (do not mark Phase K complete).
+
+- [x] **Part 1 — DB auth/session hardening** (commit 7625f65): session + auth
+      schema foundation and `password_resets` table.
+- [x] **Part 2 — `passwordResets` barrel seam** (commit d83c919).
+- [x] **D7 §19 F3/F5 identity seams** (commit 2fab5cc): `revokeAllOtherSessions(
+      userId, currentSid?)` with an optional current sid; `requestPasswordReset`
+      + `confirmPasswordReset` (uniform no-enumeration response, atomic
+      single-use consume, revoke-all-sessions on confirm).
+- [x] **Part 3 — OCR worker end-to-end validation** (2026-09-21):
+      - [x] Focused DB-backed integration test
+            `apps/api/src/ocr/ocr-worker-flow.integration.ts` (script
+            `test:ocr-worker`) covering the worker bearer guard
+            (missing/malformed/unknown/wrong-token/rotated/disabled → 401;
+            valid → attached context), path/context worker mismatch, single
+            owner per claim, cross-worker source/result refusal, source
+            download, serial chunk materialization, duplicate/late callback
+            refusal, sweep-owned finalization to READY with ordered aggregate
+            text, cross-tenant job invisibility, disabled-worker lease reclaim,
+            and transient vs permanent failure settlement.
+      - [x] Live wire validation through nginx: SUPER_ADMIN registry
+            list/register/disable 200; INSTITUTE_ADMIN list 403 (platform plane
+            only); unauthenticated/forged/disabled worker calls 401;
+            path/context mismatch `{ok:false}`.
+      - [x] Live real-worker E2E: a seeded queued `MATERIAL_PROCESS` job was
+            adopted by the coordinator sweep (15s), then the real
+            `edutech-ocr-worker` processed the 861-page `bigtext.pdf`
+            (87 chunks) → job `completed` (`{pages:861, textLength:3168833}`),
+            material `READY`. Worker + temp registry row cleaned up afterwards.
+- [ ] Remaining Phase K hardening (rest of §19/D7) — not built yet.
 
 ## Phase F — Teacher Assignments (2026-09-20, COMPLETE)
 

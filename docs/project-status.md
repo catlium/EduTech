@@ -1447,3 +1447,59 @@ push this Phase 43 checkpoint.
     (column doesn't exist → TS2353 fixed).
 - Pushed: 2fab5cc (identity seams only; unrelated web/docs churn left
   untouched per AGENTS "Do not touch unrelated work").
+
+## Checkpoint — Phase K Part 3: OCR worker end-to-end validation (2026-09-21)
+
+**Status: VALIDATED.** The platform-authorized OCR worker registry + the
+worker-facing pull protocol were exercised end to end (unit → wire → live
+worker). No production behavior changed: this checkpoint adds one DB-backed
+integration test, its `test:ocr-worker` script, and docs.
+
+- **New test** `apps/api/src/ocr/ocr-worker-flow.integration.ts` (mirrors the
+  existing `*.integration.ts` convention; skipped unless `TEST_DATABASE_URL`
+  is set; run with `pnpm --filter @catlium/api run test:ocr-worker`). Three
+  specs, all green against the live compose Postgres:
+  1. bearer guard matrix — missing header / no token / non-`owr_` / unknown
+     worker / wrong token / rotated-away token / disabled worker all 401;
+     valid token attaches `{workerId, name, version}`; rotation + disable
+     invalidate.
+  2. lifecycle — `enqueueJob` (chunk 1, job `processing`, material
+     `PROCESSING`) → heartbeat → single-owner claim (sibling claim `null`) →
+     cross-worker source/result refused → source bytes streamed → submit
+     materializes chunk 2 (pages 11–12) → duplicate/late callback refused →
+     both chunks submitted → **sweep-owned** finalization → job `completed`,
+     material `READY`, `textContent` = ordered page blocks, `progress` cleared;
+     cross-tenant `getJob` → 404.
+  3. failure/reclaim — disabling the holder returns its lease to `pending` at
+     the next sweep; a transient `failChunk` returns it to `pending`
+     (attempts++), a permanent one is terminal and settles job `failed` +
+     material `FAILED`.
+- **Live wire validation through nginx** (`http://nginx:80/api/v1`, node fetch
+  from inside `catlium-api`): SUPER_ADMIN `GET/POST/PATCH /ocr/workers`
+  200/201; INSTITUTE_ADMIN `GET` → **403** (platform plane only); worker
+  `claim` unauthenticated → 401, forged `owr_` token → 401, disabled worker →
+  401; valid heartbeat → `{ok:true}`; path/context worker mismatch →
+  `{ok:false}`. Temp registered worker deleted afterwards (registry back to
+  its 2 pre-existing rows).
+- **Live real-worker E2E**: a queued `MATERIAL_PROCESS` job for the 861-page
+  `bigtext.pdf` was adopted by the coordinator sweep (`processing` + chunk 1
+  `pending`), then the real `edutech-ocr-worker` image ran the full document
+  (87 chunks, `Extracted chunk` × 87) against `api:3000` and produced job
+  `completed` `{pages:861, textLength:3168833}`, material `READY`
+  (`textContent` 3,168,833 chars, `progress` null). Worker container removed;
+  stack restored to the base (no host-published) posture.
+- **Validation**: `pnpm --filter @catlium/api run test:ocr-worker` 3/3 pass;
+  full API suite 222/222; `pnpm typecheck` and `pnpm lint` clean (api); test
+  cleaned up all scratch tenants/users/workers.
+- **Side effect to note**: `bigtext.pdf` (material
+  `0cf7fff2-d801-48bd-930e-06b14f320867`) changed from `QUEUED` to `READY`
+  with real extracted text as a result of the live worker run.
+- **Boundary**: Phase K is NOT complete — Parts 1–3 are landed; the remaining
+  §19/D7 hardening items are still outstanding (status line added to §19).
+
+### Exact recommended next task
+
+Continue Phase K from the remaining §19/D7 items, or start Phase L (the
+security/authorization regression matrix) using the new
+`test:ocr-worker` integration test as the template for the remaining
+tenant-isolation/permission/scope cases. Do not mark Phase K complete.

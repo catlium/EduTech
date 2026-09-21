@@ -19,6 +19,7 @@
     "test:export": "node --test src/export/export.service.test.ts",
     "test:pdf-smoke": "node --test src/export/pdf-smoke.test.ts",
     "test:ocr": "node --test src/ocr/ocr-workers.test.ts src/ocr/ocr-coordinator.util.test.ts src/ocr/ocr-page-inspection.test.ts",
+    "test:ocr-worker": "tsx --test src/ocr/ocr-worker-flow.integration.ts",
     "test:paper-pattern-export": "node --test src/export/paper-pattern-doc.test.ts",
     "test:teacher-assignments": "tsx --test src/academic-structure/teacher-assignments.integration.ts",
     "test:student-placements": "tsx --test src/academic-structure/student-placements.integration.ts",
