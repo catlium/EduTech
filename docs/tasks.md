@@ -80,8 +80,8 @@
 - [x] **Phase J — Frontend Permission & Academic Scope:** align UI gating with
       permissions + academic scope; fix authorization-403 frontend handling.
       **COMPLETE 2026-09-21 — see the section below.**
-- [ ] **Phase K — Authentication / Session Hardening:** rotation race,
-      revocation, logout, session cleanup, password lifecycle, CSRF strategy,
+- [~] **Phase K — Authentication / Session Hardening:** rotation race,
+      revocation, logout, session cleanup, password reset, CSRF strategy,
       403 handling, stale institute selection, multi-device sessions (separate
       related track per `docs/architecture/authorization.md` §9; decisions
       recorded in §19/D7, resolves audit F1–F6/H1–H7).
