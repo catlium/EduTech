@@ -38,6 +38,8 @@ import type { DocBlock, DocumentModel } from './export.content-blocks.js';
 import { paperPatternDoc } from './paper-pattern-doc.js';
 import { buildAnalytics } from '../attempts/analytics.js';
 import { PuppeteerService } from './puppeteer.service.js';
+import { AcademicScopeService } from '../authorization/academic-scope.service.js';
+import { ExaminationsService } from '../examinations/examinations.service.js';
 
 export type { DocBlock, DocumentModel };
 
@@ -46,6 +48,8 @@ export class ExportService {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly puppeteer: PuppeteerService,
+    private readonly scope: AcademicScopeService,
+    private readonly examinations: ExaminationsService,
   ) {}
 
   /** Send the document as PDF via the shared Puppeteer renderer — the same
@@ -85,6 +89,7 @@ export class ExportService {
 
   async buildQuestionsDoc(
     instituteId: string,
+    membershipId: string,
     scope: { subjectId?: string; chapterId?: string; topicId?: string; patternId?: string } = {},
     include: 'paper' | 'answers' = 'paper',
     buckets?: Array<{ questionType: string; difficulty: string; count: number }>,
@@ -99,6 +104,16 @@ export class ExportService {
         isNull(questions.deletedAt),
       ),
     ];
+    // Teacher/admins export within their academic scope only (D6/§18): the
+    // membership's subject set predicates the bank the same way the questions
+    // module's list read does. The scope filter is undefined for institute
+    // admins (whole-institute).
+    const scopeFilter = await this.scope.subjectScopePredicate(
+      instituteId,
+      membershipId,
+      questions.subjectId,
+    );
+    if (scopeFilter) conditions.push(scopeFilter);
     // A pattern is the *arrangement rule* for the bank export, not a filter:
     // generated bank questions carry no provenance stamp, so pattern-scoped
     // exports select by scope (subject/chapter/topic) and group by the
@@ -409,15 +424,22 @@ export class ExportService {
 
   async buildAssessmentDoc(
     instituteId: string,
+    membershipId: string,
+    userId: string,
     assessmentId: string,
     scope: 'paper' | 'teacher' = 'paper',
   ): Promise<DocumentModel> {
-    const [assessment] = await this.db
-      .select()
-      .from(assessments)
-      .where(and(eq(assessments.id, assessmentId), eq(assessments.instituteId, instituteId)))
-      .limit(1);
-    if (!assessment) throw new NotFoundException('Assessment not found');
+    // Read-gate through the examinations module (D6/§18): DRAFT is the
+    // creator's private staging (owner/admin only), finalized assessments are
+    // pure academic scope; denials are 404 (no existence leak). The answer-key
+    // ('teacher') export rides the same read gate — a caller who cannot read
+    // the assessment cannot extract its questions either.
+    const assessment = await this.examinations.getAssessment(
+      instituteId,
+      membershipId,
+      userId,
+      assessmentId,
+    );
 
     const links = await this.db
       .select({

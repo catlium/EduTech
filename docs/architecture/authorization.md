@@ -631,8 +631,12 @@ in-flight or done.
   boundary. Existing phase suites unchanged; all 7 integration suites + the
   226-test pure suite green, typecheck/lint clean, API + web builds pass.
 
-### Phase M — Final Security Audit + Documentation
+### Phase M — Final Security Audit + Remediation (`feature/authorization-overhaul`)
 
+- **Status:** audit ran 2026-09-21 @ `f884880`; HIGH-1 and MEDIUM-1 findings
+  remediated at the `fix(authz): close export and job tenant authorization gaps`
+  checkpoint. LOW-1, LOW-2, DOC-1 remain deferred (see
+  `docs/architecture/security-audit.md`).
 - **Objective:** re-audit and document the end state.
 - **Scope:**
   - Repeat the §9/audit review against the new architecture.
@@ -645,6 +649,15 @@ in-flight or done.
 - **Expected outcome:** a clean final audit with no unmet goals, and docs that
   match the code.
 - **NOT included:** further implementation beyond remediating audit findings.
+- **Remediation implemented:**
+  - Export answer-key bypass closed: `export.controller.ts` routes now
+    `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')`; `buildQuestionsDoc` applies
+    `subjectScopePredicate`; `buildAssessmentDoc` gates via
+    `ExaminationsService.getAssessment`.
+  - Job tenant isolation: sweep/`getSource`/`processJob` material lookups match
+    `materials.instituteId` to the job/chunk institute.
+  - Regression suite `apps/api/src/authorization/phase-m-remediation.integration.ts`
+    (`test:phase-m-remediation`).
 
 ---
 

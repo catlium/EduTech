@@ -204,7 +204,13 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       const [material] = await this.db
         .select()
         .from(materials)
-        .where(and(eq(materials.id, chunk.sourceId), isNull(materials.deletedAt)))
+        .where(
+          and(
+            eq(materials.id, chunk.sourceId),
+            eq(materials.instituteId, chunk.instituteId),
+            isNull(materials.deletedAt),
+          ),
+        )
         .limit(1);
       if (!material) {
         throw new Error('Source material not found');
@@ -336,7 +342,13 @@ export class OcrCoordinatorService implements OnApplicationBootstrap, OnModuleDe
       const [material] = await this.db
         .select({ processingStatus: materials.processingStatus })
         .from(materials)
-        .where(and(eq(materials.id, materialId), isNull(materials.deletedAt)))
+        .where(
+          and(
+            eq(materials.id, materialId),
+            eq(materials.instituteId, job.instituteId),
+            isNull(materials.deletedAt),
+          ),
+        )
         .limit(1);
       if (!material || material.processingStatus === 'READY') continue;
       await this.enqueueJob(job, materialId);

@@ -1,5 +1,57 @@
 # Project Status
 
+## Phase M — Final Security Audit + Remediation (2026-09-21)
+
+**Status: HIGH-1 + MEDIUM-1 REMEDIATED + VALIDATED — committed on
+`feature/authorization-overhaul` (`fix(authz): close export and job tenant
+authorization gaps`).** Phase M audit (read-only at `f884880`) recorded HIGH-1
+(export answer-key bypass), MEDIUM-1 (cross-institute OCR/enhancement job
+adoption), LOW-1, LOW-2, DOC-1 in `docs/architecture/security-audit.md`. The
+HIGH and MEDIUM findings are now fixed and covered by a new regression suite;
+the three low/doc items remain documented deferrals.
+
+- **HIGH-1 fixed (export):** `export.controller.ts` — `exportQuestions`,
+  `previewQuestions`, `exportAssessment`, `previewAssessment` now
+  `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')` with `@CurrentUser()`
+  threaded into the handlers; `export.service.ts` —
+  `buildQuestionsDoc(instituteId, membershipId, scope, …)` applies
+  `AcademicScopeService.subjectScopePredicate` (teacher subject scope identical
+  to the questions module list read); `buildAssessmentDoc(…)` gates through
+  `ExaminationsService.getAssessment` (DRAFT owner/admin-only, finalized pure
+  scope, denials 404); `ExportModule` now imports `ExaminationsModule`.
+- **MEDIUM-1 fixed (jobs):** `ocr-coordinator.service.ts` sweep and `getSource`
+  plus `enhancement.service.ts` `processJob` now match
+  `materials.instituteId = job/chunk.instituteId` (same pattern as
+  question-extraction.service.ts:244-248) before adopting/advertising a job.
+- **Regression coverage:** new
+  `apps/api/src/authorization/phase-m-remediation.integration.ts`
+  (`test:phase-m-remediation`, `TEST_DATABASE_URL`-gated). 4 scenarios: (1)
+  STUDENT denied on all 4 export routes incl. `include=answers`, TEACHER
+  allowed, via the REAL guard chain over the REAL `ExportController` handlers;
+  (2) teacher subject-scope — whole-bank export vs. per-subject export
+  filtering; out-of-scope assessment → `NotFoundException`; (3) cross-institute
+  `MATERIAL_PROCESS` job stays `queued`/material `QUEUED`/no `ocrChunks` while
+  the same-institute job is adopted; (4) cross-institute `MATERIAL_ENHANCE`
+  fails with "Material not found" and writes no `materialEnhancements`.
+- **Validation:** `pnpm test` 226 pass; integration suites green
+  (auth-session 14, phase-m-remediation 1, academic-scope 1, resource-scope 1,
+  teacher-assignments 1, student-placements 1, authz-regression 8,
+  ocr-worker 3) against a freshly-migrated scratch `catlium_dbtest`;
+  typecheck 10/10; lint 9/9; API (`nest build`) + web (`next build`) builds
+  pass; api image rebuilt from source, `catlium-api` healthy,
+  `/api/v1/health` 200, new gates confirmed in the running image.
+- **Deferred (unchanged):** LOW-1 jobs owner column, LOW-2 stale institute
+  storage on logout, DOC-1 `security.md`/`authorization.md` header refresh —
+  plus the pre-existing Phase L "Next task" carryovers below.
+
+### Next task
+
+Remaining Phase M documentation deferral: bring `docs/architecture/security.md`
+and the `authorization.md` header to final-state truth (DOC-1), and decide the
+LOW-1/LOW-2 items. Unrelated carryover backlog: admin deactivation mutation,
+scheduled session-purge job, Super Admin UI/APIs, institutes lifecycle
+endpoints.
+
 ## Phase L — Security & Authorization Regression Matrix (2026-09-21)
 
 **Status: IMPLEMENTED + VALIDATED — committed on `feature/authorization-overhaul`.**
@@ -48,11 +100,27 @@ guards/services; the only change is one DB-gated test suite + a dev test script.
 
 ### Next task
 
-Phase M — final security audit: re-audit against the new architecture and bring
-`docs/architecture/security.md` + this status to final-state truth. Remaining
-deferred-but-documented items to carry into the audit: admin deactivation
-mutation (endpoint/UI), scheduled session-purge job, Super Admin UI/APIs,
-institutes lifecycle endpoints.
+Phase M (final security audit + remediation) is complete — see the Phase M
+section at the top of this file. Remaining deferred-but-documented items to
+carry forward: LOW-1/LOW-2/DOC-1 from the audit, plus the pre-existing admin
+deactivation mutation (endpoint/UI), scheduled session-purge job, Super Admin
+UI/APIs, institutes lifecycle endpoints.
+
+**Phase M audit ran 2026-09-21 (read-only, all 8 integration suites + 226 API
+tests + typecheck + lint green at `f884880`).** Findings recorded in
+`docs/architecture/security-audit.md` (Phase M section): **HIGH-1** export
+answer-key bypass (`export.controller.ts:100-141,143-182` — no
+`@RequiredRoles` on question-bank/assessment-paper `include=answers` routes;
+students can download teacher answer keys and teachers bypass subject scope),
+**MEDIUM-1** OCR + enhancement sweeps adopt jobs without re-verifying the
+payload material belongs to the job's institute
+(`ocr-coordinator.service.ts:329-343`, `enhancement.service.ts:243-295`),
+**LOW-1** no jobs owner column, **LOW-2** stale institute storage on logout,
+**DOC-1** `security.md`/`authorization.md` header stale.
+
+**Remediated 2026-09-21** — HIGH-1 and MEDIUM-1 fixed, covered by
+`test:phase-m-remediation`, all validation green; see the Phase M section at
+the top of this file. LOW-1/LOW-2/DOC-1 remain documented deferrals.
 
 ## Phase J — Frontend Permission & Academic Scope Alignment (2026-09-21)
 

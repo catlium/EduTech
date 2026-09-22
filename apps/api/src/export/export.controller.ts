@@ -12,6 +12,8 @@ import { RolesGuard } from '../common/guards/roles.guard.js';
 import { RequiredRoles } from '../common/decorators/roles.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
+import { CurrentUser } from '../common/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
 const EXPORT_FORMATS = ['pdf', 'docx', 'xlsx'] as const;
 const EXPORT_INCLUDES = ['paper', 'answers'] as const;
@@ -98,6 +100,7 @@ export class ExportController {
   }
 
   @Get('questions')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async exportQuestions(
     @Tenant() tenant: TenantContext,
     @Res() res: Response,
@@ -113,6 +116,7 @@ export class ExportController {
   ): Promise<void> {
     const doc = await this.exportService.buildQuestionsDoc(
       tenant.instituteId,
+      tenant.membershipId,
       { subjectId, chapterId, topicId, patternId },
       include,
       parseBucketsParam(buckets),
@@ -121,6 +125,7 @@ export class ExportController {
   }
 
   @Get('questions/preview')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async previewQuestions(
     @Tenant() tenant: TenantContext,
     @Query('subjectId') subjectId?: string,
@@ -133,6 +138,7 @@ export class ExportController {
   ): Promise<PreviewPayload> {
     const doc = await this.exportService.buildQuestionsDoc(
       tenant.instituteId,
+      tenant.membershipId,
       { subjectId, chapterId, topicId, patternId },
       include,
       parseBucketsParam(buckets),
@@ -141,8 +147,10 @@ export class ExportController {
   }
 
   @Get('assessment/:assessmentId')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async exportAssessment(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
@@ -153,6 +161,8 @@ export class ExportController {
   ): Promise<void> {
     const doc = await this.exportService.buildAssessmentDoc(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
       include === 'answers' ? 'teacher' : 'paper',
     );
@@ -167,14 +177,18 @@ export class ExportController {
   }
 
   @Get('assessment/:assessmentId/preview')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async previewAssessment(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Query('include', new ParseEnumPipe(EXPORT_INCLUDES, { optional: true }))
     include: (typeof EXPORT_INCLUDES)[number] = 'paper',
   ): Promise<PreviewPayload> {
     const doc = await this.exportService.buildAssessmentDoc(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
       include === 'answers' ? 'teacher' : 'paper',
     );

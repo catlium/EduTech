@@ -285,7 +285,9 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
     const [material] = await this.db
       .select()
       .from(materials)
-      .where(and(eq(materials.id, materialId), isNull(materials.deletedAt)))
+      .where(
+        and(eq(materials.id, materialId), eq(materials.instituteId, instituteId), isNull(materials.deletedAt)),
+      )
       .limit(1);
     if (!material || material.processingStatus !== 'READY') {
       await this.jobsService.updateJobStatus(jobId, 'failed', undefined, {

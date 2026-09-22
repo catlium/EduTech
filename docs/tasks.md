@@ -92,8 +92,17 @@
       regression matrix (tenant isolation, permissions, roles, platform
       boundary, academic scope, ownership, cross-tenant, revocation).
       **COMPLETE 2026-09-21 — see the Phase L section below.**
-- [ ] **Phase M — Final Security Audit + Documentation:** re-audit against the
-      new architecture; docs to final-state truth.
+- [x] **Phase M — Final Security Audit + Documentation:** re-audit against the
+      new architecture; docs to final-state truth. **Audit DONE 2026-09-21** —
+      findings recorded in `docs/architecture/security-audit.md` (Phase M
+      section): HIGH-1 export answer-key bypass, MEDIUM-1 cross-institute
+      OCR/enhancement job adoption, LOW-1 jobs owner column, LOW-2 stale
+      institute storage on logout, DOC-1 stale security/authorization docs.
+      **HIGH-1 + MEDIUM-1 REMEDIATED 2026-09-21** (`fix(authz): close export
+      and job tenant authorization gaps`): export routes gated + academic scope
+      enforced; sweep/getSource/processJob material lookups tenant-scoped; new
+      `test:phase-m-remediation` regression suite. LOW-1, LOW-2, DOC-1 remain
+      deferred.
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 
