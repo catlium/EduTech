@@ -6,8 +6,10 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -16,19 +18,54 @@ import { PlatformGuard } from '../authorization/platform.guard.js';
 import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import {
   PlatformInstitutesService,
+  type InstituteAdmin,
+  type InstituteDetail,
   type InstituteSubscriptionResult,
+  type InstituteSummary,
 } from './platform-institutes.service.js';
+import type { CreateInstituteDto, UpdateInstituteDto } from './platform-institutes.dto.js';
 
-// Institute lifecycle mutations (institute-lifecycle §7/§11) — platform plane:
+// Institute management (institute-lifecycle §5/§6/§7/§9/§11) — platform plane:
 // Authentication → PlatformGuard only. No TenantGuard, no x-institute-id by
-// construction; SUPER_ADMIN holds institutes.update on the platform plane,
-// institute-plane users hold no platform keys and are denied. Tenant access
-// flips on the next request via TenantGuard's DB-fresh institute status
-// check; memberships, institute data, and auth sessions stay untouched.
+// construction; SUPER_ADMIN holds the institutes.* keys on the platform plane,
+// institute-plane users hold no platform keys and are denied. Institute status
+// NEVER gates these endpoints (they carry no institute context by design);
+// tenant access flips on the next request via TenantGuard's DB-fresh status
+// check. Lifecycle state transitions stay owned by deactivate/reactivate.
 @Controller('platform/institutes')
 @UseGuards(AccessTokenGuard, PlatformGuard)
 export class PlatformInstitutesController {
   constructor(private readonly institutes: PlatformInstitutesService) {}
+
+  @Get()
+  @RequiredPermission('institutes.read')
+  list(@Query('status') status?: string): Promise<InstituteSummary[]> {
+    return this.institutes.list(status);
+  }
+
+  @Post()
+  @RequiredPermission('institutes.create')
+  create(@Body() dto: CreateInstituteDto): Promise<InstituteDetail> {
+    return this.institutes.create(dto);
+  }
+
+  @Get(':id')
+  @RequiredPermission('institutes.read')
+  get(@Param('id', ParseUUIDPipe) id: string): Promise<InstituteDetail> {
+    return this.institutes.get(id);
+  }
+
+  @Patch(':id')
+  @RequiredPermission('institutes.update')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateInstituteDto): Promise<InstituteSummary> {
+    return this.institutes.update(id, dto);
+  }
+
+  @Get(':id/admins')
+  @RequiredPermission('institutes.read')
+  admins(@Param('id', ParseUUIDPipe) id: string): Promise<InstituteAdmin[]> {
+    return this.institutes.listAdmins(id);
+  }
 
   @Post(':id/deactivate')
   @HttpCode(HttpStatus.OK)

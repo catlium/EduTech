@@ -136,52 +136,75 @@ themselves).** Recorded in `authorization.md` §2/§15; executed in Phase D.
 
 ## 5. Institute creation / provisioning flow
 
-**PLANNED (no code exists).** The designed platform-plane flow, to live in a
-new `apps/api/src/platform/` (or `institutes`) module gated by
-`@UseGuards(AccessTokenGuard, PlatformGuard)`:
+**IMPLEMENTED (Phase N.4).** Platform-plane flow in
+`apps/api/src/platform/`, gated by `@UseGuards(AccessTokenGuard, PlatformGuard)`
+and `@RequiredPermission('institutes.create')`:
 
 ```
 PlatformAdmin (SUPER_ADMIN)
   POST /api/v1/platform/institutes            institutes.create
-    └─ validate slug uniqueness, name
+    └─ validate slug uniqueness, name, planCode, optional primaryAdmin
     └─ tx: insert institutes (status='active')
           insert institute_subscriptions (plan_id from body, default 'starter')
-    └─ respond { instituteId, status:'active' }
+          attach primary admin (existing user or new-user invite), if supplied
+    └─ respond InstituteDetail { id, name, slug, status, memberCount, subscription }
 ```
 
-- Slug is globally unique (schema constraint); duplicate → 409.
+- Slug is globally unique (schema constraint); supplied slug must match
+  `^[a-z0-9]+(?:-[a-z0-9]+)*$`, and when omitted a kebab-case slug is derived
+  from the name (fallback `institute-<random>`); duplicate either way → 409
+  `'An institute with this slug already exists'`.
 - Subscription is write-one-time at provision (ledger row must exist), plan
-  defaults to `starter` for a no-plan call.
+  defaults to `starter` for a no-plan call; a supplied `planCode` must resolve
+  to an active plan (shared `resolveActivePlanId`) or provision fails 404.
 - Institute-scoped data (curriculum, users, materials, …) is created later by
   the institute's own admin through the existing tenant-plane APIs; the
   provision API creates only the tenant shell + subscription.
 - **No self-serve signup flow** (user-created institutes) — DEFERRED (§9);
   signals/emails about a created institute are also out of scope.
+- Listing/detail/update (all IMPLEMENTED, Phase N.4):
+  - `GET /api/v1/platform/institutes?status=` (`institutes.read`) — all
+    institutes `ORDER BY created_at DESC`, optional `active|deactivated`
+    filter; each item carries `memberCount` (membership count).
+  - `GET /api/v1/platform/institutes/:id` (`institutes.read`) — 404 if
+    nonexistent; returns detail with `memberCount` and the current subscription
+    (`planCode` + `planName`, or `null`).
+  - `PATCH /api/v1/platform/institutes/:id` (`institutes.update`) — `name`
+    and/or `slug` only; the lifecycle `status`/`deactivatedAt` are owned by the
+    deactivate/reactivate mutations and are rejected here (400, unknown field
+    via the global whitelist ValidationPipe). Duplicate slug → 409; record
+    fields in the response are refreshed from the DB.
+  - `GET /api/v1/platform/institutes/:id/admins` (`institutes.read`) — the
+    institute's admins via `membership_roles → roles.key = 'INSTITUTE_ADMIN'`
+    (404 if the institute is nonexistent).
 
 ---
 
 ## 6. Primary admin provisioning
 
-**PLANNED (no code exists).** The designed disposition, when proposing who
-runs a new institute:
+**IMPLEMENTED (Phase N.4).** The provision call accepts an optional
+`primaryAdmin` identity: `{ email, name? }`.
 
-- The platform provision call accepts an optional **primary admin identity**
-  (existing platform/vendor user) or an optional **invitation payload** (name +
-  email) to create a new user.
-- Provisioning steps, one transaction:
-  1. create/upsert `users` (unique email; password set via the existing
-     password-reset seam — F5, Phase K — so the admin never receives a
-     credentials email from this API);
-  2. insert `memberships` (`status='active'`);
-  3. grant the `INSTITUTE_ADMIN` role via `membership_roles`
-     (role resolution through the existing `RoleAssignmentService` —
-     built-in-first);
-  4. attach the subscription ledger row.
-- A primary admin may be omitted at provision and added later by the platform
-  admin on the institute plane.
+- Provisioning steps, one transaction, together with the institute +
+  subscription row:
+  1. if the email exists → **attach**: must be a `status='active'` user (else
+     400) and must not already be an institute member (else 409);
+  2. if the email is new → **create**: `name` is required (else 400); the user
+     is created with a non-login password (`bcryptjs.hash(randomUUID(), 12)`)
+     so the brand-new account is claimed only through the existing
+     password-reset seam (password-reset, Phase K) — no credentials email from
+     this API;
+  3. insert `memberships` (`status='active'`);
+  4. grant the `INSTITUTE_ADMIN` role via `membership_roles` (role resolution
+     through the existing `RoleAssignmentService` — built-in-first).
+- A primary admin may be omitted at provision (`create` without the field) and
+  added later by the platform admin via `GET :id/admins` + the tenant-plane
+  membership flow.
 - This is the platform-authority analogue of the institutes-local
   `UsersService.createInstituteUser` — it is a **cross-institute** action and
-  therefore must be platform-gated, never reachable by any institute admin.
+  therefore is platform-gated, never reachable by any institute admin
+  (`institutes.create` must be held; `INSTITUTE_ADMIN` with a tenant header is
+  denied 403).
 
 ---
 
@@ -304,7 +327,7 @@ institutes is designed work, not behavior.
 | --- | --- | --- | --- | --- |
 | OCR worker registry | platform | `PlatformGuard` | `ocr-workers.read/create/update` | IMPLEMENTED (Phase D) |
 | Institute lifecycle mutations (`:id/deactivate`, `:id/reactivate`) | platform | `PlatformGuard` | `institutes.update` | IMPLEMENTED (Phase N.2) |
-| Institute lifecycle CRUD (create/get/list/patch) | platform | `PlatformGuard` | `institutes.read/create/update/delete/manage` | PLANNED |
+| Institute lifecycle CRUD (create/get/list/patch/admins) | platform | `PlatformGuard` | `institutes.read/create/update` | IMPLEMENTED (Phase N.4) |
 | Subscription read/write | platform | `PlatformGuard` | `institutes.read` / `institutes.manage` | IMPLEMENTED (Phase N.3) |
 | Institute switcher + memberships (own) | institute | `AccessTokenGuard` only | — (own memberships, per §8) | IMPLEMENTED |
 | Membership status flip | institute | `TenantGuard + RolesGuard + PermissionGuard` | `users.update` + `INSTITUTE_ADMIN` | IMPLEMENTED (pre-Phase N) |
@@ -319,25 +342,30 @@ L matrix 7).
 
 ## 11. Intended platform APIs and frontend console
 
-**PLANNED (only the lifecycle mutations and subscription API below are built — Phase N.2/N.3).**
+**IMPLEMENTED (the CRUD surface below is built — Phase N.4; lifecycle mutations
+Phase N.2, subscription Phase N.3).**
 
 **Platform API** (base prefix `/api/v1/platform/...`, sits alongside the
-existing platform OCR surface and the live lifecycle mutations):
+existing platform OCR surface):
 
 ```
-POST   /platform/institutes            create institute + subscription [+ primary admin]   [PLANNED]
-GET    /platform/institutes            list institutes (filter by status)                   [PLANNED]
-GET    /platform/institutes/:id        institute detail (+ subscription, member count)      [PLANNED]
-PATCH  /platform/institutes/:id        rename / update metadata                             [PLANNED]
+POST   /platform/institutes            create institute + subscription [+ primary admin]   [IMPLEMENTED N.4]
+GET    /platform/institutes            list institutes (filter by status)                   [IMPLEMENTED N.4]
+GET    /platform/institutes/:id        institute detail (+ subscription, member count)      [IMPLEMENTED N.4]
+PATCH  /platform/institutes/:id        rename / update metadata (name/slug only)            [IMPLEMENTED N.4]
+GET    /platform/institutes/:id/admins institute admins (INSTITUTE_ADMIN role)              [IMPLEMENTED N.4]
 POST   /platform/institutes/:id/deactivate     → status='deactivated', stamp deactivated_at [IMPLEMENTED N.2]
 POST   /platform/institutes/:id/reactivate     → status='active', clear deactivated_at       [IMPLEMENTED N.2]
 GET    /platform/institutes/:id/subscription   current plan                                 [IMPLEMENTED N.3]
 PUT    /platform/institutes/:id/subscription   attach/switch plan                            [IMPLEMENTED N.3]
-GET    /platform/plans                 plan catalog                                          [PLANNED]
+GET    /platform/plans                 plan catalog                                          [PLANNED / DEFERRED]
 ```
 
 All gated `AccessTokenGuard + PlatformGuard` with `institutes.*` keys; all
-completely independent of `x-institute-id`.
+completely independent of `x-institute-id`. Response shapes (Phase N.4):
+`InstituteSummary { id, name, slug, status, members, createdAt }`, `InstituteDetail
+{ id, name, slug, status, deactivatedAt, memberCount, subscription: { planCode,
+planName } | null }`, `InstituteAdmin { id, email, name }`.
 
 **Super Admin console (frontend, PLANNED):** a platform section in `apps/web`
 gated by platform permissions the way `/ocr/workers` already is

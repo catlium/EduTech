@@ -322,6 +322,73 @@
       this file).
 - [x] Commit `feat(platform): add institute lifecycle mutations`.
 
+## Phase N.4 — Institute Management API (2026-09-22)
+
+> Issued task (follow-on). Fourth slice: platform-plane institute CRUD —
+> list/detail/create/update + admins read + primary-admin provisioning on the
+> existing `institutes` + `institute_subscriptions` + `memberships` schema.
+> Canonical design: `docs/architecture/institute-lifecycle.md` §5/§6/§10/§11.
+> Scope: SUPER_ADMIN/platform-plane ONLY (`AccessTokenGuard → PlatformGuard`,
+> no TenantGuard / `x-institute-id`). Keys: list/get/admins =
+> `institutes.read`, POST = `institutes.create`, PATCH + deactivate/reactivate =
+> `institutes.update`, subscription PUT = `institutes.manage`. PATCH changes
+> `name`/`slug` only — `status`/`deactivatedAt` stay owned by
+> deactivate/reactivate. Create = one transaction: institute
+> (`status='active'`, slug unique → 409) + subscription ledger row (`planCode`
+> default `'starter'`, validated active via shared `resolveActivePlanId`) +
+> optional primary admin (`primaryAdmin: { email, name? }`; existing email →
+> attach, must be active user else 400 / already a member else 409; new email →
+> requires name else 400, unknown login password via
+> `bcryptjs.hash(randomUUID(), 12)` + claim-through-password-reset seam,
+> membership + `INSTITUTE_ADMIN` via shared `RoleAssignmentService`). Out of
+> scope (all deferred): Super Admin frontend console, `GET /platform/plans`
+> catalog, audit-log, billing/payments, expiry/suspension jobs, quota
+> enforcement, subscription cancellation, scheduled deactivation, self-serve
+> signup.
+
+- [x] DTOs (`apps/api/src/platform/platform-institutes.dto.ts`):
+      `PrimaryAdminDto` (`@IsEmail() email`, optional `name`),
+      `CreateInstituteDto` (`name`, optional `slug` matching
+      `^[a-z0-9]+(?:-[a-z0-9]+)*$`, optional `planCode`, optional nested
+      `primaryAdmin`), `UpdateInstituteDto` (`name?`, `slug?` only).
+- [x] Service (`platform-institutes.service.ts`): `list(status?)` (`active|
+      deactivated` filter, `ORDER BY created_at DESC`, `memberCount`);
+      `get(id)` (404, member `count()`, subscription join or `null`);
+      `create(dto)` (transactional, 409 slug mapping with slug probe);
+      `update(id, dto)` (404, 409 on slug); `listAdmins(id)` (404, admins via
+      `membership_roles → roles.key = 'INSTITUTE_ADMIN'`). Constructor now
+      `(db, roleAssignment)` (both existing suites updated). Helpers
+      `resolveActivePlanId`, `attachPrimaryAdmin`, `slugify`. Result types
+      `InstituteSummary | InstituteDetail | InstituteAdmin`.
+- [x] Controller (`platform-institutes.controller.ts`): `GET /` (+`status`),
+      `POST /`, `GET /:id`, `PATCH /:id`, `GET /:id/admins` alongside the
+      existing N.2 deactivate/reactivate + N.3 subscription routes.
+- [x] Integration suite `test:institute-crud`
+      (`src/platform/institute-crud.integration.ts`, `TEST_DATABASE_URL`-gated,
+      same harness as the other platform suites — real guards + `reqContext` +
+      `PermissionSyncService`): 10 scenarios — SUPER_ADMIN list/detail/create/
+      update; member-count + subscription-join correctness; non-platform users
+      403 across all 9 surface paths (with and without `x-institute-id` seed);
+      cross-tenant isolation (TenantGuard refuses seed-header access);
+      duplicate slug 409 (create + update); validation-pipeline 400s (missing
+      name, bad slug shape, `status` smuggled into PATCH); invalid/
+      nonexistent institute 404; primary-admin provisioning (new user + new
+      institute) and attachment (existing user + new institute) with rollback
+      invariants + `INSTITUTE_ADMIN` membership correctness; deactivated
+      visibility + deactivate/reactivate semantics preserved (repeat call 409,
+      subscription independent); 401 anonymous.
+- [x] Validation: `pnpm test` 226 pass; `test:institute-crud` 11/11 +
+      `test:institute-lifecycle` 8/8 + `test:plan-subscription` 10/10 +
+      `test:authz-regression` 8/8 on scratch `catlium_n4` DB (48/48 migrations
+      applied via psql — drizzle-kit migrate failed silently on scratch;
+      `catlium_dev` untouched; DB dropped after); typecheck 10/10; lint 9/9;
+      API `nest build` + web `next build` pass. Base posture restored
+      (postgres internal-only); api container rebuilt + verified healthy with
+      new code live.
+- [x] Docs: institute-lifecycle.md §5/§6/§10/§11 → IMPLEMENTED with actual
+      response shapes; project-status.md Phase N.4 + next task; this file.
+- [x] Commit `feat(platform): add institute management API`.
+
 ## Phase N.3 — Subscription Management (2026-09-22)
 
 > Issued task (follow-on). Third slice: platform-plane subscription

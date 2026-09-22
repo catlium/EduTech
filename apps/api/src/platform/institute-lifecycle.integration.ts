@@ -34,6 +34,7 @@ import { PlatformGuard } from '../authorization/platform.guard.ts';
 import { TenancyService } from '../tenancy/tenancy.service.ts';
 import { PermissionCheckService } from '../authorization/permission-check.service.ts';
 import { PermissionSyncService } from '../authorization/permission-sync.service.ts';
+import { RoleAssignmentService } from '../authorization/role-assignment.service.ts';
 import { PlatformInstitutesController } from './platform-institutes.controller.ts';
 import { PlatformInstitutesService } from './platform-institutes.service.ts';
 
@@ -137,7 +138,7 @@ test('institute lifecycle mutations', { skip: testDbUrl ? false : 'TEST_DATABASE
   const sidAdmin = await liveSession(instAdmin!.id);
   const sidTeacher = await liveSession(teacher!.id);
 
-  const service = new PlatformInstitutesService(db as unknown as Database);
+  const service = new PlatformInstitutesService(db as unknown as Database, new RoleAssignmentService(db as unknown as Database));
   const controller = new PlatformInstitutesController(service);
   const noInstituteHeader = (token: string) => ({ cookies: { access_token: token } });
   const withInstitute = (token: string) => ({ headers: { 'x-institute-id': inst!.id }, cookies: { access_token: token } });

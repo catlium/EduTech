@@ -1,5 +1,101 @@
 # Project Status
 
+## Phase N.4 — Institute Management API (2026-09-22)
+
+**Status: IMPLEMENTED + VALIDATED (API; frontend console still PLANNED).**
+Commit: `feat(platform): add institute management API`.
+
+Fourth slice of the institute-lifecycle track: the full platform-plane
+institute CRUD surface — list/detail/create/update + primary-admin
+provisioning + admins read — on the existing `institutes` +
+`institute_subscriptions` + `memberships` schema. Canonical design:
+`docs/architecture/institute-lifecycle.md` §5/§6/§10/§11 (now marked
+IMPLEMENTED).
+
+- **Endpoints** (`apps/api/src/platform/platform-institutes.controller.ts`,
+  `AccessTokenGuard` + `PlatformGuard`, NEVER TenantGuard / `x-institute-id`):
+  - `GET /api/v1/platform/institutes?status=` (`institutes.read`) — all
+    institutes `ORDER BY created_at DESC`, optional `active|deactivated`
+    filter, each item carries `memberCount`;
+  - `POST /api/v1/platform/institutes` (`institutes.create`) — transactional
+    create: institute (`status='active'`, slug unique → 409) + subscription
+    ledger row (`planCode` default `'starter'`, validated active via shared
+    `resolveActivePlanId`) + optional primary admin;
+  - `GET /api/v1/platform/institutes/:id` (`institutes.read`) — detail +
+    `memberCount` + current subscription (`planCode`/`planName` or `null`);
+  - `PATCH /api/v1/platform/institutes/:id` (`institutes.update`) — `name`/`slug`
+    only; `status`/`deactivatedAt` stay owned by deactivate/reactivate (unknown
+    fields rejected 400 by the global whitelist ValidationPipe); duplicate slug
+    → 409;
+  - `GET /api/v1/platform/institutes/:id/admins` (`institutes.read`) — admins via
+    `membership_roles → roles.key = 'INSTITUTE_ADMIN'`.
+  - Existing deactivate/reactivate (N.2) + subscription get/switch (N.3) routes
+    unchanged.
+- **Primary admin provisioning** (`primaryAdmin: { email, name? }`): existing
+  email → attach (must be `status='active'` → else 400; no existing membership
+  → else 409); new email → requires `name` (else 400), user created with
+  `bcryptjs.hash(randomUUID(), 12)` (claim-only-via-password-reset seam);
+  membership `'active'` + `INSTITUTE_ADMIN` granted through the shared
+  `RoleAssignmentService` (built-in-first) — all in the create transaction.
+- **DTOs** (`platform-institutes.dto.ts`): `CreateInstituteDto` (`name`,
+  optional `slug` matching `^[a-z0-9]+(?:-[a-z0-9]+)*$`, optional `planCode`,
+  optional nested `primaryAdmin`), `UpdateInstituteDto` (`name?`, `slug?`),
+  `PrimaryAdminDto` (`@IsEmail() email`, optional `name`). Slug auto-derivation
+  is kebab-case from name with `institute-<random>` fallback.
+- **Service** (`platform-institutes.service.ts`): now constructed with
+  `(db, roleAssignment)` (tests updated to match); `list/get/create/update/
+  listAdmins` join-shaped DTOs (`InstituteSummary`, `InstituteDetail`,
+  `InstituteAdmin`) documented in §11; 404 vs 409 distinguished via `isUniqueViolation`
+  + slug probe. Existing lifecycle/subscription methods preserved untouched
+  except the constructor change.
+- **Tests** — new DB-gated suite `test:institute-crud`
+  (`src/platform/institute-crud.integration.ts`, `TEST_DATABASE_URL`-gated,
+  self-sufficient harness — real guards + `reqContext` + `PermissionSyncService`):
+  10 scenarios: SUPER_ADMIN list/detail/create/update round-trips; member-count
+  AND subscription join correctness; non-platform users 403 across all 9 paths
+  (with and without `x-institute-id`); cross-tenant isolation (seed header →
+  TenantGuard); duplicate slug 409; validation-pipeline 400s (missing name,
+  bad slug, `status` injected into PATCH); invalid/nonexistent institute 404;
+  primary-admin provisioning (new-user + new-institute) and attachment (existing
+  user + new institute) with membership + `INSTITUTE_ADMIN` correctness;
+  deactivated-institute visibility; deactivate/reactivate semantics preserved
+  (repeat call 409, subscription independent).
+- **Validation:** `pnpm test` 226 pass (suites 15); typecheck 10/10 (repo
+  turbo); lint 9/9; API `nest build` + web `next build` pass. Scratch
+  `catlium_n4` DB (48/48 migrations applied via psql through the postgres
+  container — drizzle-kit migrate failed silently, so the canonical `migrate`
+  service path was bypassed for scratch only; `catlium_dev` untouched; dropped
+  after the run): `test:institute-crud` 11/11, `test:institute-lifecycle` 8/8,
+  `test:plan-subscription` 10/10, `test:authz-regression` 8/8. Base posture
+  restored (postgres internal-only) and api container rebuilt +
+  verified healthy with the new code live.
+- **Deferred (explicitly NOT in this slice):** Super Admin frontend console
+  (`apps/web`), `GET /platform/plans` catalog endpoint (→ §12), audit-log,
+  billing/payments, expiry/suspension jobs, quota enforcement, subscription
+  cancellation, scheduled deactivation, self-serve signup.
+
+### Next task
+
+Next slice of the institute-lifecycle track, in order:
+1. ~~**Design doc** — capture the missing design (repo has none) before further
+   implementation.~~ **DONE 2026-09-22 —
+   `docs/architecture/institute-lifecycle.md`** (implemented/planned/deferred
+   clearly separated; canonical reference for the remaining slices).
+2. ~~**Deactivation mutation** — Super Admin / platform-plane API.~~ **DONE
+   2026-09-22 — Phase N.2 (`feat(platform): add institute lifecycle
+   mutations`): `POST /api/v1/platform/institutes/:id/{deactivate,reactivate}`,
+   documented + regression-tested above.**
+3. ~~**Subscription management API** on `institute_subscriptions` (read +
+   switch plan).~~ **DONE 2026-09-22 — Phase N.3 (`feat(platform): add
+   subscription management`), documented + regression-tested above.**
+4. ~~**Institute CRUD API** — list/detail/create/update + admins read.~~ **DONE
+   2026-09-22 — Phase N.4 (`feat(platform): add institute management API`),
+   documented + regression-tested above.**
+5. **Super Admin console (frontend)** — institute list/search/create in
+   `apps/web`, gated by platform permissions like `/ocr/workers`; the
+   plan-catalog `GET /platform/plans` endpoint becomes needed when the console
+   renders a create form with a plan selector, and is deferred with it (§11).
+
 ## Phase N.3 — Subscription Management (2026-09-22)
 
 **Status: IMPLEMENTED + VALIDATED + COMMITTED (`feat(platform): add

@@ -33,6 +33,7 @@
     "test:mod-4-attempts-scope": "tsx --test src/authorization/mod-4-attempts-scope.integration.ts",
     "test:institute-lifecycle": "tsx --test src/platform/institute-lifecycle.integration.ts",
     "test:plan-subscription": "tsx --test src/platform/plan-subscription.integration.ts",
+    "test:institute-crud": "tsx --test src/platform/institute-crud.integration.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
