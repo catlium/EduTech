@@ -12,6 +12,7 @@ export const MembershipListItemSchema = z.object({
   instituteName: z.string(),
   slug: z.string(),
   status: z.string(),
+  instituteStatus: z.string(),
   roles: z.array(RoleEnum),
   permissions: z.array(z.string()),
 });

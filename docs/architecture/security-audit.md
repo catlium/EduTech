@@ -635,6 +635,71 @@ api image rebuilt + healthy (see commit).
 
 ---
 
+## AUDIT 2026-09-22 — Institute lifecycle foundation (REMEDIATED)
+
+**Conclusion: verified and REMEDIATED 2026-09-22 at `feat(platform): add
+institute lifecycle foundation` (Phase N).** The platform had institute
+deactivation state on paper (`institutes.status`) but no enforcement, no
+lifecycle wiring, and no subscription ledger:
+`institutes.status` was a DB enum + an over-broad CHECK that accepted any
+string (`IN (DEFAULT, 'deactivated')`); memberships used the legacy
+`'inactive'` vocabulary; nothing gated deactivated institutes at runtime
+(TenantGuard only read the membership side); the picker still listed
+deactivated institutes as selectable.
+
+### Finding (as delivered)
+
+1. **No runtime gate on institute status.** A deactivated institute's
+   memberships kept working (membership side active) — the tenant guard
+   never consulted `institutes.status`. A flip to `'deactivated'` would have
+   had zero enforcement effect.
+2. **Non-normalized status vocabulary.** `institutes` allowed any status
+   string (`IN (DEFAULT, 'deactivated')` — `DEFAULT` casts to `'active'`, so
+   the CHECK accepted every non-`'deactivated'` value); `memberships` used
+   `'inactive'` while `institutes` used `'deactivated'`. Two vocabularies for
+   the same concept, no schema cross-check.
+3. **No deactivation state field.** No `deactivated_at`; no way to record
+   when/how an institute left the active set.
+
+### Remediation (2026-09-22, `feat(platform): add institute lifecycle foundation`)
+
+- Migration `0047_short_whistler.sql` (journal idx 47): `institutes` gains
+  `deactivated_at` + `CHECK (status IN ('active','deactivated'))`;
+  `memberships` gains `CHECK (status IN ('active','deactivated'))`
+  (vocabulary normalized); new `plans` (`code` unique, starter/growth/institute
+  seeded idempotently) + `institute_subscriptions` (unique on institute) — the
+  subscription ledger referenced by future lifecycle work.
+- `tenant.guard.ts` `getMembership`: **rejects deactivated institutes with
+  403** — `instituteStatus !== 'active'` throws `ForbiddenException('Institute
+  is not active')`. Institute deactivation is now enforced at the tenant
+  boundary the moment the row flips; no session/refresh work needed (membership
+  resolution is DB-fresh per request).
+- `tenancy.service.ts`: `instituteStatus` on `MembershipListItem`/
+  `MembershipWithRoles`; `getMembership` joins institutes; `listMemberships`
+  returns it; dead `createMembership` deleted.
+- Web: institute switcher disables deactivated institutes ("Deactivated"
+  label); `tenant.tsx` auto-selects only usable memberships and guards
+  `selectInstitute` — no more picking a dead institute into 403 land.
+- Contracts: `MembershipListItemSchema.instituteStatus`.
+
+### Validation
+
+`authz-regression` matrix 1 adds a deactivated institute: real guard chain
+→ 403, reactivation (`status`→`active`) restores access on the next request;
+matrix 3 asserts `instituteStatus` in the picker list. `student-placements`
+fixture moved `'inactive'`→`'deactivated'` (new CHECK). Full validation in
+`docs/project-status.md` Phase N: typecheck/lint green, 48 migrations applied
+on fresh + populated DBs, `pnpm test` 226 pass, 10 integration suites green,
+API + web builds, api/web images rebuilt + verified live, stack healthy.
+
+### Deferred (next slices, explicitly NOT this change)
+
+Automated deactivation trigger, institute lifecycle CRUD APIs, subscription
+management API/UI, and Super Admin platform-plane institute management remain
+on the track (see `project-status.md` Phase N "Next task" — design doc first).
+
+---
+
 ## Pre-overhaul audit (checkpoint `3258b6d`, 2026-09-20) — HISTORY ONLY
 
 Status: Read-only audit, current checkpoint `3258b6d`. No code was modified.

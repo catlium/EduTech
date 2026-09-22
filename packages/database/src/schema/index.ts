@@ -1,6 +1,7 @@
 export { users } from './users.js';
 export { authSessions } from './auth.js';
 export { institutes } from './institutes.js';
+export { plans, instituteSubscriptions } from './plans.js';
 export { memberships, membershipRoles } from './memberships.js';
 export { jobs } from './jobs.js';
 export { subjects, chapters, topics, academicYears, classes, classSubjects, divisions, teacherAssignments, studentPlacements, studentSubjectEnrollments } from './academic.js';

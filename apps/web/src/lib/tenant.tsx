@@ -29,8 +29,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setActiveInstituteId(instituteId);
   }, [instituteId]);
 
+  const usable = (m: MembershipListItem) => m.status === 'active' && m.instituteStatus === 'active';
   const selected = memberships.find((m) => m.instituteId === instituteId) ?? null;
-  const match = selected ?? (memberships.length === 1 ? memberships[0] : undefined);
+  const match =
+    (selected && usable(selected) ? selected : null) ??
+    memberships.find(usable) ??
+    (memberships.length === 1 ? memberships[0] : undefined);
   const effective = match ?? null;
 
   useEffect(() => {
@@ -46,6 +50,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const selectInstitute = useCallback(
     (institute: MembershipListItem) => {
+      if (institute.status !== 'active' || institute.instituteStatus !== 'active') return;
       window.localStorage.setItem(STORAGE_KEY, institute.instituteId);
       setActiveInstituteId(institute.instituteId);
       setInstituteId(institute.instituteId);

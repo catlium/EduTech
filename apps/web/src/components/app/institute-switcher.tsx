@@ -46,12 +46,17 @@ export function InstituteSwitcher() {
           <DropdownMenuItem
             key={m.instituteId}
             onClick={() => selectInstitute(m)}
-            disabled={m.instituteId === institute.instituteId}
+            disabled={
+              m.instituteId === institute.instituteId || m.instituteStatus !== 'active' || m.status !== 'active'
+            }
           >
             <span className="flex min-w-0 flex-1 items-center gap-2">
               <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="truncate">{m.instituteName}</span>
             </span>
+            {m.instituteStatus !== 'active' && (
+              <span className="shrink-0 text-xs text-muted-foreground">Deactivated</span>
+            )}
             {m.instituteId === institute.instituteId && (
               <Check className="size-3.5 shrink-0 text-primary" />
             )}

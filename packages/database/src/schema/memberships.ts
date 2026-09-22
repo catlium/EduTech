@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, unique, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 import { roles } from './authorization.js';
 import { institutes } from './institutes.js';
@@ -18,7 +19,10 @@ export const memberships = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique('memberships_user_institute_unique').on(table.userId, table.instituteId)],
+  (table) => [
+    unique('memberships_user_institute_unique').on(table.userId, table.instituteId),
+    check('memberships_status_check', sql`${table.status} IN ('active', 'deactivated')`),
+  ],
 );
 
 // D2/§14 — membership → role binding. `role_id` references a `roles` row

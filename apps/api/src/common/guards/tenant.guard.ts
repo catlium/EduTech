@@ -43,6 +43,10 @@ export class TenantGuard implements CanActivate {
       throw new ForbiddenException('Membership is not active');
     }
 
+    if (membership.instituteStatus !== 'active') {
+      throw new ForbiddenException('Institute is not active');
+    }
+
     (request as unknown as Record<string, unknown>)['tenant'] = {
       instituteId: membership.instituteId,
       membershipId: membership.id,

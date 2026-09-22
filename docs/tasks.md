@@ -145,6 +145,49 @@
       suite (7 scenarios) + all validation green (see `security-audit.md`
       MOD-4 Remedy).
 
+## Phase N — Institute Lifecycle Foundation (2026-09-22)
+
+> Issued task. First slice of the institute-lifecycle track: DB status
+> normalization + deactivation foundation + subscription plan ledger. Boundary:
+> NO institute lifecycle/CRUD/subscription APIs, NO Super Admin frontend, NO
+> automated deactivation (that's the next slice — see `project-status.md`).
+>
+> NOTE: no design doc for this task was found in the repo (`docs/`,
+> `.planning/`, `docs/proposal/`, `test-doc/`); scope implemented from the
+> issued message only. Reference design was NOT linked to launch the pending
+> "Phase N — the design doc is required" state — this implements the message.
+
+- [x] Migration `0047_short_whistler.sql` (journal idx 47): `institutes`
+      `deactivated_at` + `CHECK (status IN ('active','deactivated'))`
+      (was abrupt `IN (DEFAULT, 'deactivated')`); `memberships`
+      `CHECK (status IN ('active','deactivated'))` (was `'inactive'`);
+      `plans` (`code` unique, starter/growth/institute seeded idempotently via
+      `ON CONFLICT ("code") DO NOTHING`) + `institute_subscriptions`
+      (iid-unique). Applied + verified on fresh and populated dev DBs.
+- [x] `packages/database/src/schema/plans.ts` + exports from schema/index.
+- [x] `tenancy.service.ts`: `instituteStatus` on `MembershipListItem`/
+      `MembershipWithRoles`; `getMembership` joins institutes;
+      `listMemberships` returns `instituteStatus`; dead `createMembership`
+      removed (zero callers).
+- [x] `tenant.guard.ts`: `getMembership` now rejects deactivated institutes
+      with 403 (dual gate: membership + institute status) — enforcement
+      upgrade, runtime identity check (`tenant.identity.id`).
+- [x] Contracts: `MembershipListItemSchema.instituteStatus`.
+- [x] Web: institute switcher disables deactivated institutes with a
+      "Deactivated" label; `tenant.tsx` auto-select only usable
+      memberships + `selectInstitute` guard.
+- [x] Tests: authz-regression adds instC (deactivated) → matrix 1
+      deactivated-institute 403 + reactivation restores access next request;
+      matrix 3 asserts `instituteStatus` on the picker list.
+      `student-placements.integration.ts` fixture `'inactive'`→`'deactivated'`
+      (matches the new membership CHECK).
+- [x] Validation: typecheck/lint green (database, contracts, api; web typecheck
+      green, no lint script); migrations on fresh (`catlium_fresh_m9`, 48/48,
+      dropped) + populated (`catlium_dev`); `pnpm test` 226 pass; all 10
+      integration suites green vs scratch `catlium_suite_0047`; API + web
+      builds pass; api/web images rebuilt + verified live; stack healthy
+      (postgres internal-only again). See `project-status.md` Phase N.
+
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 
 > Issued task (recovery session). Implements the revised D4/§16 structural

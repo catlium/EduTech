@@ -1,5 +1,72 @@
 # Project Status
 
+## Phase N — Institute Lifecycle Foundation (2026-09-22)
+
+**Status: COMPLETE + VALIDATED + COMMITTED (`feat(platform): add institute
+lifecycle foundation`).**
+
+First slice of the institute-lifecycle track: DB status normalization +
+deactivation foundation + subscription plan ledger. NOTE: no design doc for
+this task was found in the repo (`docs/`, `.planning/`, `docs/proposal/`,
+`test-doc/`) — the design-doc must-exist state was never started, so the scope
+implemented below is from the issued task message only.
+
+- **Migration `0047_short_whistler.sql` (journal idx 47).** `institutes`
+  gains `deactivated_at` + `CHECK (status IN ('active','deactivated'))`
+  (replaces the abrupt `IN (DEFAULT, 'deactivated')`); `memberships` gains
+  `CHECK (status IN ('active','deactivated'))` (was `'inactive'`);
+  new `plans` (`code` unique; `starter`/`growth`/`institute` seeded
+  idempotently, `ON CONFLICT ("code") DO NOTHING`) and `institute_subscriptions`
+  (unique on institute). Schema: new `packages/database/src/schema/plans.ts`,
+  exported from `schema/index.ts`; `institutes.deactivated_at` +
+  `institutes_status_check`; `memberships_status_check`.
+- **API.** `tenancy.service.ts`: `instituteStatus` added to
+  `MembershipListItem`/`MembershipWithRoles`; `getMembership` joins
+  `institutes`; `listMemberships` returns `instituteStatus`; dead
+  `createMembership` deleted (zero callers). `tenant.guard.ts`:
+  `getMembership` now throws 403 when `instituteStatus !== 'active'`
+  (dual gate — membership + institute status). Contracts:
+  `MembershipListItemSchema.instituteStatus`.
+- **Web.** Institute switcher disables deactivated institutes with a
+  "Deactivated" label (checks both institute + membership status);
+  `tenant.tsx` auto-select only usable memberships and `selectInstitute`
+  guards non-active.
+- **Tests.** `authz-regression.integration.ts` matrix 1 adds a deactivated
+  institute — 403 on the real guard chain, reactivation restores access on the
+  next request; matrix 3 asserts `instituteStatus` in the picker list.
+  `student-placements.integration.ts` fixture `'inactive'` → `'deactivated'`
+  (matches the new membership CHECK; service semantics unchanged).
+- **Validation.** typecheck green (database, contracts, api, web); lint green
+  (database, contracts, api; web has no lint script); migrations applied fresh
+  (`catlium_fresh_m9`, 48/48, dropped) and on populated `catlium_dev`
+  (deactivated_at + both CHECKs + 3 plans + empty subscriptions verified);
+  `pnpm test` 226 pass; all 10 integration suites green vs scratch
+  `catlium_suite_0047` (authz-regression 8, auth-session 14, phase-m-remediation,
+  resource-scope, job-ownership 9, mod-3-export-scope, mod-4-attempts-scope,
+  academic-scope, teacher-assignments, student-placements; `test:ocr-worker`
+  skipped — needs RabbitMQ, unrelated); API (`nest build`) + web (`next build`)
+  builds pass; api/web images rebuilt and verified live in the running
+  containers ("Institute is not active" in api dist guard, "Deactivated" in web
+  chunk); full stack 9 services healthy, postgres internal-only
+  (production posture restored).
+- **Deferred (explicitly NOT in this slice):** automated institute
+  deactivation (scheduled / super-admin mutation), institute lifecycle
+  CRUD APIs, subscription management APIs/UI, Super Admin frontend — these are
+  the next slices of the track.
+
+### Next task
+
+Next slice of the institute-lifecycle track, in order:
+1. **Design doc** — capture the missing design (repo has none) before further
+   implementation.
+2. **Deactivation mutation** — Super Admin / platform-plane API to set
+   `institutes.status = 'deactivated'` + `deactivated_at` (already enforced by
+   TenantGuard once written).
+3. **Subscription management API** on `institute_subscriptions` (the ledger
+   exists; no read/write endpoints yet).
+   Do NOT touch assessment/examination semantics, academic authorization, or
+   other platforms.
+
 ## Phase M — Final Security Audit + Remediation (2026-09-21)
 
 **Status: HIGH-1 + MEDIUM-1 + LOW-1 + LOW-2 REMEDIATED + VALIDATED, DOC-1

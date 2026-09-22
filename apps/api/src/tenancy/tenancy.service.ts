@@ -18,6 +18,7 @@ export interface MembershipWithRoles {
   userId: string;
   instituteId: string;
   status: string;
+  instituteStatus: string;
   roles: string[];
 }
 
@@ -26,6 +27,9 @@ export interface MembershipListItem {
   instituteName: string;
   slug: string;
   status: string;
+  /** Institute status ('active' | 'deactivated') — deactivated institutes are
+   *  unusable (TenantGuard rejects) and shown as disabled in the picker. */
+  instituteStatus: string;
   roles: string[];
   /** Institute-domain permission keys resolved from the membership's roles. */
   permissions: string[];
@@ -37,8 +41,15 @@ export class TenancyService {
 
   async getMembership(userId: string, instituteId: string): Promise<MembershipWithRoles | null> {
     const membership = await this.db
-      .select()
+      .select({
+        id: memberships.id,
+        userId: memberships.userId,
+        instituteId: memberships.instituteId,
+        status: memberships.status,
+        instituteStatus: institutes.status,
+      })
       .from(memberships)
+      .innerJoin(institutes, eq(institutes.id, memberships.instituteId))
       .where(and(eq(memberships.userId, userId), eq(memberships.instituteId, instituteId)))
       .limit(1);
 
@@ -57,22 +68,8 @@ export class TenancyService {
       userId: membership[0]!.userId,
       instituteId: membership[0]!.instituteId,
       status: membership[0]!.status,
+      instituteStatus: membership[0]!.instituteStatus,
       roles: roleRows.map((r) => r.roleKey),
-    };
-  }
-
-  async createMembership(userId: string, instituteId: string): Promise<MembershipWithRoles> {
-    const [membership] = await this.db
-      .insert(memberships)
-      .values({ userId, instituteId })
-      .returning();
-
-    return {
-      id: membership!.id,
-      userId: membership!.userId,
-      instituteId: membership!.instituteId,
-      status: membership!.status,
-      roles: [],
     };
   }
 
@@ -84,6 +81,7 @@ export class TenancyService {
         membershipStatus: memberships.status,
         instituteId: institutes.id,
         instituteName: institutes.name,
+        instituteStatus: institutes.status,
         slug: institutes.slug,
       })
       .from(memberships)
@@ -121,6 +119,7 @@ export class TenancyService {
       instituteName: r.instituteName,
       slug: r.slug,
       status: r.membershipStatus,
+      instituteStatus: r.instituteStatus,
       roles: roleRows.filter((rr) => rr.membershipId === r.membershipId).map((rr) => rr.roleKey),
       permissions: grantedFor(r.membershipId),
     }));

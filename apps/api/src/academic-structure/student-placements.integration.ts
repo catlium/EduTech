@@ -79,7 +79,7 @@ test('student placements: create, role/inactive/cross-tenant rejection, consiste
     };
 
     const studentA = await member(instA.id, 'Student A', studentRole.id);
-    const studentInactive = await member(instA.id, 'Student Inactive', studentRole.id, 'inactive');
+    const studentInactive = await member(instA.id, 'Student Inactive', studentRole.id, 'deactivated');
     const teacherA = await member(instA.id, 'Teacher A', teacherRole.id);
     const studentB = await member(instB.id, 'Student B', studentRole.id);
 

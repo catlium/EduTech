@@ -143,8 +143,10 @@ test('authz regression matrix', { skip: testDbUrl ? false : 'TEST_DATABASE_URL n
   const suffix = randomUUID().slice(0, 8);
   const slugA = `reg-a-${suffix}`;
   const slugB = `reg-b-${suffix}`;
+  const slugC = `reg-c-${suffix}`;
   const [instA] = await db!.insert(institutes).values({ name: `Reg Alpha ${suffix}`, slug: slugA }).returning();
   const [instB] = await db!.insert(institutes).values({ name: `Reg Beta ${suffix}`, slug: slugB }).returning();
+  const [instC] = await db!.insert(institutes).values({ name: `Reg Gamma ${suffix}`, slug: slugC, status: 'deactivated', deactivatedAt: new Date() }).returning();
 
   const adminA = await createUser(`adminA-${suffix}@example.test`);
   const both = await createUser(`both-${suffix}@example.test`);
@@ -159,6 +161,7 @@ test('authz regression matrix', { skip: testDbUrl ? false : 'TEST_DATABASE_URL n
   const plainTeacher = await createUser(`teacheronly-${suffix}@example.test`);
 
   await grantMembership(instA!.id, adminA!.id, ['INSTITUTE_ADMIN']);
+  await grantMembership(instC!.id, adminA!.id, ['INSTITUTE_ADMIN']);
   await grantMembership(instA!.id, both!.id, ['TEACHER']);
   await grantMembership(instB!.id, both!.id, ['INSTITUTE_ADMIN']);
   await grantMembership(instA!.id, studentA!.id, ['STUDENT']);
@@ -204,7 +207,7 @@ test('authz regression matrix', { skip: testDbUrl ? false : 'TEST_DATABASE_URL n
     await db.delete(platformUserRoles).where(inArray(platformUserRoles.userId, userIds));
     await db.delete(authSessions).where(inArray(authSessions.userId, userIds));
     await db.delete(users).where(inArray(users.email, emails));
-    await db.delete(institutes).where(inArray(institutes.slug, [slugA, slugB]));
+    await db.delete(institutes).where(inArray(institutes.slug, [slugA, slugB, slugC]));
     void noRoleMembership;
     void roleUpMembership;
     void customMembership;
@@ -257,6 +260,20 @@ test('authz regression matrix', { skip: testDbUrl ? false : 'TEST_DATABASE_URL n
     await accessGuard().canActivate(deactivatedCtx);
     await assert.rejects(tenantGuard().canActivate(deactivatedCtx), ForbiddenException);
 
+    // Deactivated institute → 403 even with an active membership.
+    const deadInstCtx = reqContext(StubController.noPermission, {
+      headers: { 'x-institute-id': instC!.id },
+      cookies: { access_token: await sign(adminA!.id, sidForum.adminA) },
+    });
+    await accessGuard().canActivate(deadInstCtx);
+    await assert.rejects(tenantGuard().canActivate(deadInstCtx), ForbiddenException);
+
+    // Reactivation restores access on the NEXT request (same token).
+    await db!.update(institutes).set({ status: 'active', deactivatedAt: null }).where(eq(institutes.id, instC!.id));
+    await tenantGuard().canActivate(deadInstCtx);
+    const tenantC = deadInstCtx.switchToHttp().getRequest() as Record<string, unknown>;
+    assert.equal((tenantC['tenant'] as { instituteId: string }).instituteId, instC!.id);
+
     // Full chain success: tenant context carries the membership's role set.
     const ok = reqContext(StubController.noPermission, {
       headers: { 'x-institute-id': instA!.id },
@@ -296,6 +313,8 @@ test('authz regression matrix', { skip: testDbUrl ? false : 'TEST_DATABASE_URL n
     const bySlug = new Map(forSelf.map((m) => [m.slug, m]));
     assert.deepEqual(bySlug.get(slugA)!.roles, ['TEACHER']);
     assert.deepEqual(bySlug.get(slugB)!.roles, ['INSTITUTE_ADMIN']);
+    assert.equal(bySlug.get(slugA)!.instituteStatus, 'active', 'picker surfaces institute status');
+    assert.equal(bySlug.get(slugB)!.instituteStatus, 'active');
     const mTeach = bySlug.get(slugA)!;
     const mAdmin = bySlug.get(slugB)!;
     assert.equal(mTeach.permissions.includes('content.read'), true, 'teacher raw grants surfaced');
