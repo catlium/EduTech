@@ -433,10 +433,41 @@
             lint clean. Live-verified through nginx: login → rotation (cookie
             changed) → spent-token replay 401 `Session revoked` → csrf-missing
             logout 403 → logout 200 + cookies cleared.
-- [ ] Deferred from Phase K (documented in §19): **admin deactivation
-      mutation** (endpoint/UI to flip `users.status` — the login/refresh/
-      access gates are live, only the mutation is absent) and a **scheduled
-      session-purge job** (opportunistic purge only today).
+- [x] **Admin deactivation mutation — AUDITED 2026-09-22 (no code changed):
+      already satisfied.** The audit (see `security-audit.md`) found the
+      INSTITUTE_ADMIN need is fully met by the existing MEMBERSHIP-scoped
+      mutation (`PATCH /api/v1/users/:userId/status` → `setMembershipStatus`,
+      frontend Deactivate/Activate incl. reactivation + self-guard). The only
+      genuinely absent surface is flipping the GLOBAL `users.status`, which is
+      a cross-institute/platform-authority action; that item is **re-posited as
+      a Super Admin / platform-plane user-lifecycle item** and stays deferred.
+      The session side is fully covered: a deactivated membership 403s the next
+      request (TenantGuard) with no session revocation needed.
+- [ ] Deferred (unchanged, re-audited 2026-09-22): **scheduled session-purge
+      job** (opportunistic `purgeExpiredSessions` on login/rotation only) —
+      **AUDIT DONE 2026-09-22, NO CODE:** live table has 0 purgeable rows
+      (568 total: 376 live, 192 dead all under retention); the purge is
+      correctness-safe (deleting dead rows cannot weaken replay detection /
+      rotation / logout / reset revocation); repo trigger "add a scheduler
+      only if the table grows under load" is unmet → **remains deferred**.
+      Design (API sweep pattern, daily, same predicate, advisory-lock upgrade
+      for multi-replica, one-line Logger) + the only real leak found
+      (`password_resets` used/expired tokens never purged — ride the same
+      sweep when built) recorded in `security-audit.md` §AUDIT 2026-09-22.
+      And the **re-posited global `users.status` lifecycle mutation** (Super
+      Admin / platform plane, per the audit above).
+- [x] **Zombie `PARENT` role key (H12 remnant) — REMEDIATED 2026-09-22**
+      (`fix(authz): remove zombie PARENT role key`): `question-types.controller.ts:22`
+      was the sole guard-chain reference to a non-built-in role
+      (`@RequiredRoles('STUDENT', 'PARENT', ...WRITE_ROLES)`); no such role
+      exists in `BUILT_IN_ROLE_KEYS`, in the live DB, or anywhere in the
+      codebase/frontend. LOW / hygiene only — no privilege escalation
+      (STUDENT already satisfies the gate), no sensitive data, no cross-tenant
+      path. Audited 2026-09-22 (see `security-audit.md` §AUDIT 2026-09-22),
+      then remediated by deleting `'PARENT'` (one token,
+      `@RequiredRoles('STUDENT', ...WRITE_ROLES)`); no authorization
+      semantics/permissions/catalogue/DB/migrations/frontend changed;
+      `pnpm test` + typecheck + lint green, api image rebuilt + healthy.
 
 ## Phase L — Security & Authorization Regression Matrix (2026-09-21, COMPLETE)
 

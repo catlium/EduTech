@@ -283,6 +283,268 @@ to the remediation step of Phase M).
 
 ---
 
+## AUDIT 2026-09-22 — Admin deactivation mutation (audit-only, no code changed)
+
+**Conclusion: the INSTITUTE_ADMIN deactivation/reactivation need that Phase
+K/§19 deferred is ALREADY fully implemented at the correct granularity — the
+per-institute MEMBERSHIP status. The only genuinely absent surface is flipping
+the GLOBAL `users.status`, which is a cross-institute, platform-authority
+action and stays deferred to the Super Admin track. Recommend NO implementation
+in this phase.**
+
+### What already exists (membership-scoped, INSTITUTE_ADMIN)
+
+- `PATCH /api/v1/users/:userId/status` (`users.controller.ts:50-64`) →
+  `UsersService.setMembershipStatus` (`users.service.ts:122-161`) flips
+  `memberships.status` (`active`/`deactivated`, `UpdateUserStatusDto`). Reactivation
+  rides the same endpoint/status value — no separate endpoint needed.
+- Frontend `users/page.tsx` has the full Deactivate/Activate UI incl. reactivation;
+  the actor's own row hides the button (self-guard mirrored server-side:
+  `users.service.ts:137-139`).
+- Guard chain: `AccessTokenGuard → TenantGuard → RolesGuard(→PermissionGuard on
+  `PUT .../roles` only)`. Tenant-scoped lookup → cross-institute/wrong-id targets
+  404; already-inactive target is idempotent.
+
+### What is genuinely absent (global user status)
+
+- **No production code writes `users.status`** — the column is `default 'active'` and
+  inert; only the test suites mutate it directly. Login/refresh/access already
+  check `users.status='active'` (F1/F5), so a global flip would take effect on the
+  next request, but **no endpoint, UI, or privilege exists to flip it.**
+- A global flip is a **platform-plane action**: `users.status` is user-global
+  (affects every institute membership, login, refresh, and the access guard for
+  ALL tenants). An INSTITUTE_ADMIN of institute A flipping it would lock the user
+  out of institute B — a cross-tenant power mutation that violates tenant
+  isolation. It does not belong under any institute-domain permission, and the
+  platform plane currently grants only `institutes.*` + `ocr-workers.*` (no user
+  lifecycle key), consistent with the deferred Super Admin track (AGENTS.md: do not
+  implement Super Admin UI/APIs).
+
+### Session behavior
+
+- Membership deactivation must NOT revoke sessions: `auth_sessions` rows belong to
+  the USER (multi-device, other institutes stay live). TenantGuard's live
+  `memberships.status='active'` check on each request is exactly sufficient.
+- A future global deactivation SHOULD revoke all auth_sessions when status flips
+  (the documented §19 F5 intent "deactivation revokes all refresh sessions"), but
+  live status checks alone already gate login/refresh/access.
+
+### Edge cases found (do not block this phase)
+
+- **No last-admin protection on membership status** — only the self-guard. A
+  provable zero-admin lockout is impossible (1 admin cannot deactivate self), so
+  no extra constraint is needed; note for the Super Admin phase if it adds
+  institute-level admin removal.
+- `requestPasswordReset`/`confirmPasswordReset` never check `users.status` — a
+  deactivated user can still reset a password, but login/refresh reject afterwards,
+  so it is harmless today. Revisit only if the global mutation lands.
+- **No audit trail** exists for status flips (no audit/event table or logger on this
+  path). Out of scope here — the repo has no audit subsystem to plug into.
+
+### Verdict
+
+Change NOT made. The Phase K deferred item is **already satisfied** at the
+institute-admin granularity; the outstanding global `users.status` mutation is
+**re-posited as a Super Admin / platform-plane user-lifecycle item** and remains
+deferred. No security exposure: all deactivation gates are live and a deactivated
+membership 403s on the next request.
+
+---
+
+## AUDIT 2026-09-22 — Scheduled session purge (audit-only, no code changed)
+
+**Conclusion: the scheduled purge can safely remain deferred.** The repo's
+own Phase K trigger — "add a scheduled job only if the table grows under
+load" — is NOT met on the live DB (568 `auth_sessions` rows, 376 live, 192
+dead, **0 purgeable** past retention), the opportunistic purge is
+correctness-safe under all traffic patterns, and deleting dead rows cannot
+weaken replay detection, rotation, logout, session management, or
+password-reset revocation. The one genuinely unbounded leak found is
+`password_resets` (used/expired tokens are **never** purged by any path — 0
+rows today, but it grows with reset traffic forever); it should ride the same
+sweep when one is built, not be built separately now. Recommended design is
+recorded below for the moment the trigger is hit. NO code was modified.
+
+### Current cleanup behavior (evidence)
+
+- `AuthService.purgeExpiredSessions` (`apps/api/src/identity/auth.service.ts:263-278`)
+  is the only purge. Single atomic `DELETE FROM auth_sessions WHERE
+  expires_at < cutoff AND (revoked_at IS NULL OR revoked_at < cutoff)`,
+  `cutoff = now − AUTH_SESSION_RETENTION_DAYS` (**code default 90** — the knob
+  is not in `.env.example`, only `REFRESH_TOKEN_EXPIRY_DAYS=30` is).
+- It runs **opportunistically on the request hot path only**: after a
+  successful login (`auth.service.ts:68`) and after a successful rotation
+  claim (`auth.service.ts:155`). Return value (`purged.length`) is discarded —
+  zero observability today.
+- Live table (`catlium_dev`): 568 rows / 376 live / 192 dead (revoked or
+  expired) / **0 dead-past-retention**. Row lifetime is bounded: refresh TTL
+  30 d + retention 90 d ≈ ≤120 d after creation for a revoked row.
+- Indexes: PK(`id`) + `auth_sessions_user_id_idx (user_id)` only. No
+  `expires_at` index — irrelevant at this scale.
+
+### Removable row set (no semantics invented)
+
+The predicate removes exactly: rows whose `expires_at` predates `cutoff` AND
+that are either never revoked (naturally expired) or were revoked before
+`cutoff`. Concretely for the current knobs (30 d TTL / 90 d retention):
+
+| Row kind | Purged? | When (evidence) |
+|---|---|---|
+| Expired (unrevoked) | Yes | 90 d past `expires_at` |
+| Revoked (incl. rotated/spent lineage rows) | Yes, only if also 90 d past `expires_at` | revoked-at-login rows linger ~120 d total |
+| Live/normal current session | **Never** — live rows have future `expires_at`, can't match | — |
+| password_resets (used/expired) | **Never — no purge path exists** | unbounded growth |
+
+### Why deletion past retention cannot break auth behavior
+
+- **Refresh replay detection:** it lives on the presented session row's
+  `revoked_at`/hash. A row past retention is by definition revoked or expired
+  past the window; replaying its spent token after purge yields "Session not
+  found" 401 — no mint, same outcome as the revoked-row reject. Purging cannot
+  resurrect a live session (predicate excludes live rows).
+- **Rotation / atomic claim:** the claim targets a live row (`revoked_at IS
+  NULL AND hash match`); live rows are never purged.
+- **Logout / session management (F3):** logout tolerates a missing session;
+  `revokeSessionByOwner` 401s on a purged sid (already-revoked outcome);
+  listing simply drops device rows past retention (the documented intent of
+  the window).
+- **Password-reset revocation:** `confirmPasswordReset` revokes only live rows
+  (`WHERE revoked_at IS NULL`); dead-row purge is orthogonal.
+- **Lineage revoke (`rotated_from_sid` walk):** any live descendant of a
+  revoked root is revoked with it, so by retention time every descendant is
+  dead; the FK `ON DELETE set null` only severs pointers inside already-dead
+  families.
+- **Auditability trade-off (only cost):** guaranteed deletion after the window
+  instead of best-effort. That is the documented retention semantics, not a
+  shortening; nothing deletes forensic data earlier than today.
+
+### Required design (when built — smallest safe)
+
+- **Place:** API process, reusing the repo's five existing sweep services'
+  pattern (`OnApplicationBootstrap` + `setInterval` + `onModuleDestroy`
+  clearInterval; first tick immediately) — zero new dependencies, no new
+  container, no Celery beat. Fold into `AuthService` (it already owns
+  `purgeExpiredSessions`); daily `PURGE_INTERVAL_MS = 24h` const (retention is
+  days-scale; daily keeps the table within one retention-rollover of clean),
+  matching the existing `SWEEP_INTERVAL_MS` env-knob convention if ops wants a
+  knob.
+- **Delete:** call the existing `purgeExpiredSessions()` unchanged (same
+  predicate = same retention semantics). Single statement is atomic by
+  construction; no batching now. Upgrade path if per-run volume ever grows:
+  loop `DELETE ... WHERE expires_at < cutoff` in `LIMIT` chunks ordered by
+  `expires_at`, still inside the daily sweep.
+- **Concurrency (multi-API-replica):** the DELETE is idempotent — two
+  instances running the same predicate concurrently delete disjoint/lapped
+  rows with no correctness consequence. If duplicate runs must be suppressed,
+  wrap the scheduled run in one transaction guarded by
+  `pg_try_advisory_xact_lock(hashtext('auth_session_purge'))` (Postgres
+  built-in; same one-line posture as `ocr-coordinator.service.ts:62-63`'s
+  ponytail note). Keep the login/refresh opportunistic calls as-is (harmless,
+  zero behavior change).
+- **Observability:** NestJS `Logger` — one line on rows deleted (`n>0` only)
+  and one on failure; no metrics infra exists in this repo and none is
+  warranted for a daily statement. Duration/batch counts are noise at this
+  scale.
+- **Same-mechanism optional companion:** one extra predicate in the same sweep
+  purging `password_resets WHERE used_at IS NOT NULL OR expires_at < now()` —
+  the only true unbounded leak found. Pure garbage collection: a
+  live/unconsumed-in-window reset token and its provider delivery are the only
+  things to preserve.
+
+### Verdict
+
+Change NOT made. Keep the scheduled purge deferred; the trigger is
+specifically "table grows under load," and current evidence shows the
+opportunistic purge keeps the table inside retention (0 purgeable rows). Build
+per the design above (≈15 lines + timer) when either: purgeable volume appears
+under load, a hosted/multi-replica deployment wants a guaranteed-deletion
+compliance claim, or `password_resets` accumulation becomes observable.
+
+---
+
+## AUDIT 2026-09-22 — Zombie `PARENT` role key in `question-types` gate (REMEDIATED)
+
+**Conclusion: the finding was verified — a LOW / hygiene remnant of the
+historical H12 finding ("PARENT exists only in question-types.controller.ts").
+No privilege escalation, no data leak, no cross-tenant exposure; the remedy
+is a one-token deletion** (`@RequiredRoles('STUDENT', 'PARENT',
+...WRITE_ROLES)` → `@RequiredRoles('STUDENT', ...WRITE_ROLES)`),
+behavior-neutral for every caller, closing the last literal non-built-in role
+string in the guard chain. **REMEDIATED 2026-09-22 at
+`fix(authz): remove zombie PARENT role key` (see the Remedy below).**
+
+### Current behavior (evidence)
+
+- `apps/api/src/questions/question-types.controller.ts:22` is the **only**
+  role gate in the API that references a role outside the built-in set:
+  `@RequiredRoles('STUDENT', 'PARENT', ...WRITE_ROLES)` on `GET
+  /question-types`. Every other controller uses consts that expand to
+  `['INSTITUTE_ADMIN','TEACHER']` or `['INSTITUTE_ADMIN']` (verified across
+  all 20+ controllers) — PARENT appears nowhere else in the codebase.
+- Built-in roles are exactly `INSTITUTE_ADMIN / TEACHER / STUDENT /
+  SUPER_ADMIN` (`BUILT_IN_ROLE_KEYS`, permission-catalogue.ts:158); live DB
+  `roles` table contains exactly those four keys and **zero** custom roles.
+- `isBuiltinRoleKey('PARENT') === false` (collision guard covers only built-in
+  names), so an INSTITUTE_ADMIN **could** create a custom role literally keyed
+  `PARENT`; it would satisfy this gate and reach the same tenant-scoped
+  question-types catalog read a STUDENT reaches anyway (`typesService.list(
+  tenant.instituteId)`).
+- The endpoint payload is non-sensitive (question-type definitions: id/name/
+  kind/description), tenant-scoped, read-only for the list route.
+- Frontend consumes `GET /question-types` for question/paper builders with no
+  PARENT role expectation (no `'PARENT'` handling anywhere in `apps/web`).
+
+### Verified finding
+
+The H12 remnant persists post-Phase-C centralization: `'PARENT'` is a dead,
+unreserved, hardcoded role string that (1) implies a supported "parent" role
+that does not exist, (2) bypasses the centralized build-in role vocabulary,
+and (3) silently reserves a name that would collide if a PARENT built-in is
+ever added later. It is a hygiene/dead-reference issue only — with zero
+membership ever holding PARENT, it neither grants nor denies anything today.
+
+### Impact
+
+**LOW.** Not exploitable: no privilege escalation (STUDENT already passes the
+gate), no sensitive data (tenant-scoped type catalog), no cross-tenant path,
+and the endpoint is also rolestack-safe for teachers/admins via WRITE_ROLES.
+Its only real cost is misleading/ambiguous vocabulary in the guard chain and
+a future-name collision hazard if PARENT becomes a built-in role.
+
+### Recommended remediation (smallest safe)
+
+Remove `'PARENT'` from the decorator at `question-types.controller.ts:22`:
+`@RequiredRoles('STUDENT', ...WRITE_ROLES)`. Behavior-neutral for every real
+caller; keeps the student read surface open and WRITE_ROLES (<TEACHER,
+INSTITUTE_ADMIN) on create. No migration, no permission-catalogue change, no
+frontend change. Optionally (consistency, not required): migrate the list gate
+to `@RequiredPermission('question-types.read')` — that key is already
+catalogued and granted to STUDENT/TEACHER (ADMIN via `question-types.manage`)
+— but the repo's current convention is `@RequiredRoles` on non-permission-
+migrated read surfaces, so the one-token deletion is the right-sized fix.
+
+### Validation needed (when built)
+
+`pnpm test` (existing roles/permission tests assert the built-in vocabulary),
+`pnpm typecheck`, `pnpm lint`; a build of the api image. No new test required
+— the removed key grants nothing today.
+
+### Verdict
+
+Change NOT made in the audit phase (2026-09-22), consistent with the
+audit-only mandate. **Remediated 2026-09-22** — see the Remedy below.
+
+#### Remedy (2026-09-22, `fix(authz): remove zombie PARENT role key`)
+
+`apps/api/src/questions/question-types.controller.ts:22`:
+`@RequiredRoles('STUDENT', 'PARENT', ...WRITE_ROLES)` →
+`@RequiredRoles('STUDENT', ...WRITE_ROLES)`. One-token deletion; no
+authorization semantics, permissions, catalogue, database, migrations, or
+frontend changed. Validation: `pnpm test`, `pnpm typecheck`, `pnpm lint`,
+api image rebuilt + healthy (see commit).
+
+---
+
 ## Pre-overhaul audit (checkpoint `3258b6d`, 2026-09-20) — HISTORY ONLY
 
 Status: Read-only audit, current checkpoint `3258b6d`. No code was modified.

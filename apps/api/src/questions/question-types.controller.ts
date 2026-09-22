@@ -19,7 +19,7 @@ export class QuestionTypesController {
   constructor(private readonly typesService: QuestionTypesService) {}
 
   @Get()
-  @RequiredRoles('STUDENT', 'PARENT', ...WRITE_ROLES)
+  @RequiredRoles('STUDENT', ...WRITE_ROLES)
   async list(@Tenant() tenant: TenantContext) {
     const types = await this.typesService.list(tenant.instituteId);
     return { types };

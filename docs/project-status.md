@@ -66,23 +66,57 @@ fixed and covered (LOW-2 by the wiring verified in the web build); DOC-1 (stale
   hygiene issue (NOT a security/authorization vulnerability): backend 403
   still guards foreign memberships; no backend, tenant-auth, or institute-
   picker semantics changed. See `security-audit.md` §LOW-2.
+- **Admin deactivation mutation — AUDITED 2026-09-22 (audit-only, no code
+  changed): ALREADY SATISFIED at the institute-admin granularity.** The
+  membership-scoped mutation (`PATCH /api/v1/users/:userId/status` →
+  `setMembershipStatus`, frontend Deactivate/Activate + reactivation +
+  self-guard) fully covers an INSTITUTE_ADMIN's deactivation need; a deactivated
+  membership 403s on the next request via TenantGuard (no session revocation
+  needed — sessions are user-global). The only truly absent surface is flipping
+  the GLOBAL `users.status` (no production code writes it), which is a
+  cross-institute/platform-authority action and is **re-posited as a Super
+  Admin / platform-plane user-lifecycle item, remaining deferred**. Full report
+  in `security-audit.md` §AUDIT 2026-09-22.
 - **Deferred (unchanged):** the pre-existing Phase L "Next task" carryovers
   below. (LOW-1 remediated 2026-09-22 at `fix(authz): enforce trusted job
   ownership`; LOW-2 remediated 2026-09-22 at `fix(auth): clear institute
-  context on session termination` — see `security-audit.md`.)
+  context on session termination`; **H12 PARENT role key remediated 2026-09-22
+  at `fix(authz): remove zombie PARENT role key`** — see `security-audit.md`.)
 
 ### Next task
 
 Phase M audit findings are fully remediated. Unrelated carryover backlog:
-admin deactivation mutation, scheduled session-purge job, Super Admin
-UI/APIs, institutes lifecycle endpoints. Also tracked from the LOW-1
+**admin deactivation mutation — AUDITED 2026-09-22, already satisfied at the
+membership level; the global `users.status` piece is re-posited to the Super
+Admin / platform-plane track (see the Phase M section below and
+`security-audit.md`)**; **scheduled session-purge job — AUDITED 2026-09-22,
+NO CODE (audit-only): live table has 0 purgeable rows (568 total: 376 live,
+192 dead, all under the 90-day retention), the opportunistic
+`purgeExpiredSessions` is correctness-safe (dead-row deletion cannot weaken
+replay detection / rotation / logout / session management / password-reset
+revocation), and the repo's own Phase K trigger — "add a scheduler only if
+the table grows under load" — is unmet; therefore **remains deferred**, with
+the ready-to-build design (API-process sweep pattern, daily, same predicate,
+advisory-lock multi-replica upgrade, one-line Logger) plus the only real leak
+found (`password_resets` used/expired tokens are never purged by any path) in
+`security-audit.md` §AUDIT 2026-09-22**; Super Admin UI/APIs;
+institutes lifecycle endpoints. Also tracked from the LOW-1
 remediation: `drizzle-kit migrate`/`generate` tooling was broken by a
 snapshot/journal mismatch — **RESOLVED 2026-09-22** at `fix(db): normalize
 drizzle migration metadata`: snapshots 0024–0046 backfilled (per-migration
 replay + introspection, chain-anchored to 0023) so the meta directory matches
 the 47-entry journal; `drizzle-kit check` clean, `generate` = "No schema
 changes", fresh-DB `migrate` applies all 47, populated-DB `migrate` no-ops
-(see `security-audit.md`).
+(see `security-audit.md`). **Zombie `PARENT` role key (H12 remnant) —
+REMEDIATED 2026-09-22** (`fix(authz): remove zombie PARENT role key`):
+audited 2026-09-22 — `question-types.controller.ts:22` was the sole
+guard-chain reference to a non-built-in role (`@RequiredRoles('STUDENT',
+'PARENT', ...WRITE_ROLES)`); no such role exists in `BUILT_IN_ROLE_KEYS`/live
+DB/anywhere else; LOW · hygiene only (no privilege escalation, no sensitive
+data, no cross-tenant path). Remediated by deleting `'PARENT'` (one token,
+behavior-neutral; no authorization/permission/catalogue/DB/frontend change);
+`pnpm test` + typecheck + lint green, api image rebuilt + healthy; see
+`security-audit.md` §AUDIT 2026-09-22.**
 
 ## Phase L — Security & Authorization Regression Matrix (2026-09-21)
 
