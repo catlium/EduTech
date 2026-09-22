@@ -1,17 +1,23 @@
 import {
+  Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { PlatformGuard } from '../authorization/platform.guard.js';
 import { RequiredPermission } from '../authorization/permissions.decorator.js';
-import { PlatformInstitutesService } from './platform-institutes.service.js';
+import {
+  PlatformInstitutesService,
+  type InstituteSubscriptionResult,
+} from './platform-institutes.service.js';
 
 // Institute lifecycle mutations (institute-lifecycle §7/§11) — platform plane:
 // Authentication → PlatformGuard only. No TenantGuard, no x-institute-id by
@@ -36,5 +42,20 @@ export class PlatformInstitutesController {
   @RequiredPermission('institutes.update')
   reactivate(@Param('id', ParseUUIDPipe) id: string): Promise<{ id: string; status: string; deactivatedAt: Date | null }> {
     return this.institutes.reactivate(id);
+  }
+
+  @Get(':id/subscription')
+  @RequiredPermission('institutes.read')
+  subscription(@Param('id', ParseUUIDPipe) id: string): Promise<InstituteSubscriptionResult> {
+    return this.institutes.getSubscription(id);
+  }
+
+  @Put(':id/subscription')
+  @RequiredPermission('institutes.manage')
+  updateSubscription(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { planCode: string },
+  ): Promise<InstituteSubscriptionResult> {
+    return this.institutes.updateSubscription(id, body);
   }
 }

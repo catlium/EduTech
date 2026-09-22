@@ -1,5 +1,80 @@
 # Project Status
 
+## Phase N.3 — Subscription Management (2026-09-22)
+
+**Status: IMPLEMENTED + VALIDATED + COMMITTED (`feat(platform): add
+subscription management`).**
+
+Third slice of the institute-lifecycle track: platform-plane subscription
+management (read + switch plan) on the existing `plans` +
+`institute_subscriptions` tables. Canonical design:
+`docs/architecture/institute-lifecycle.md` §9/§10.
+
+- **Endpoints** (`apps/api/src/platform/platform-institutes.controller.ts`,
+  `AccessTokenGuard` + `PlatformGuard`, NEVER TenantGuard / `x-institute-id`):
+  - `GET /api/v1/platform/institutes/:id/subscription`
+    (`@RequiredPermission('institutes.read')`);
+  - `PUT /api/v1/platform/institutes/:id/subscription`
+    (`@RequiredPermission('institutes.manage')`, body `{ planCode }`).
+- **Service** (`platform-institutes.service.ts`): `getSubscription(id)` returns
+  a join-shaped result (`instituteId`, `planCode`, `planName`, `updatedAt`),
+  distinguishing 404 'Institute not found' (nonexistent id) from 'Institute has
+  no subscription'. `updateSubscription(id, { planCode })` validates the
+  plan (unknown or `is_active=false` → 400), then upserts transactionally with
+  `onConflictDoUpdate` on the `institute_id` PK — one row per institute — and
+  answers via `getSubscription`.
+- **Schema decision (user-confirmed):** `institute_subscriptions` keeps its
+  compact ledger shape (`institute_id` PK, `plan_id`, `created_at`,
+  `updated_at`). **No `status` column, no migration.** Subscription
+  availability = `plans.is_active` (assignable-or-not); `institutes.status`
+  stays the SOLE tenant-access lifecycle gate — a plan switch never alters
+  institute status/deactivated_at, and a deactivated institute keeps its
+  subscription (read/write still work on the platform plane) without
+  reactivating.
+- **Tests** — new DB-gated suite `test:plan-subscription`
+  (`src/platform/plan-subscription.integration.ts`, `TEST_DATABASE_URL`-gated,
+  self-sufficient harness like authz-regression — runs PermissionSyncService and
+  the REAL controller handlers through the REAL AccessTokenGuard + PlatformGuard
+  chain): 9 scenarios covering SUPER_ADMIN read/switch; anonymous 401 and
+  INSTITUTE_ADMIN/TEACHER 403 (even with `x-institute-id` set); 404
+  nonexistent / 400 non-UUID; 400 unknown + deactivated plan (flip a seeded
+  plan's `is_active` in-DB); valid plan transitions round-trip; one-row upsert
+  invariant under repeated writes; lifecycle independence (deactivate →
+  TenantGuard 403 but platform-plane subscription GET/PUT unaffected, status/
+  deactivated_at untouched, reactivate restores tenant access, subscription
+  survives the flips); cross-tenant isolation (two institutes, distinct plans).
+- **Validation:** `pnpm test` 226 pass (suites 15); typecheck 10/10; lint 9/9;
+  API `nest build` + web `next build` pass. `test:plan-subscription` 9/9
+  subtests, `test:institute-lifecycle` 8/8, `test:authz-regression` 8/8,
+  `test:academic-scope` all green against a scratch `catlium_n3` DB (48/48
+  migrations applied, dropped afterwards). Runnable via the dev override
+  (postgres host loopback 127.0.0.1:5432 restored for the run, then set back
+  internal-only).
+- **Note:** `@catlium/database` `src/index.ts` did not re-export `plans` /
+  `instituteSubscriptions`; added (mirrors `schema/index.ts`), `dist/`
+  regenerated. The Phase N.2 dist-staleness fix still holds.
+- **Deferred (explicitly NOT in this slice):** `GET /platform/plans` catalog
+  endpoint, institute CRUD, Super Admin frontend, audit-log, billing/payments,
+  expiry/suspension jobs, quota enforcement, subscription cancellation and
+  status semantics (no `status` field — see §9), scheduled deactivation.
+
+### Next task
+
+Next slice of the institute-lifecycle track, in order:
+1. ~~**Design doc** — capture the missing design (repo has none) before further
+   implementation.~~ **DONE 2026-09-22 —
+   `docs/architecture/institute-lifecycle.md`** (implemented/planned/deferred
+   clearly separated; canonical reference for the remaining slices).
+2. ~~**Deactivation mutation** — Super Admin / platform-plane API.~~ **DONE
+   2026-09-22 — Phase N.2 (`feat(platform): add institute lifecycle
+   mutations`): `POST /api/v1/platform/institutes/:id/{deactivate,reactivate}`,
+   documented + regression-tested above.**
+3. ~~**Subscription management API** on `institute_subscriptions` (read +
+   switch plan).~~ **DONE 2026-09-22 — Phase N.3 (`feat(platform): add
+   subscription management`), documented + regression-tested above.**
+4. **Institute CRUD + Super Admin console** — institute list/create/detail/
+   update and the frontend section (`apps/web`), still PLANNED (§11).
+
 ## Phase N.2 — Institute Lifecycle Mutations (2026-09-22)
 
 **Status: IMPLEMENTED + VALIDATED + COMMITTED (`feat(platform): add institute
@@ -75,8 +150,14 @@ Next slice of the institute-lifecycle track, in order:
 **Status: COMPLETE + VALIDATED.** Fresh formal academic black book generated
 at `docs/blackbook/` (the earlier draft was deleted; nothing was reused).
 Ground truth = the current repository; content verified against code before
-writing. Compiles with `latexmk -xelatex` (Times New Roman, 12pt, A4,
-one-and-a-half spacing).
+writing. Compiles with `latexmk -xelatex`. Latest checkpoint: format & layout
+rounds done 2026-09-22 — book opened up (`twoside,openright`), single spacing,
+bottom page numbers, chapter-opening pages, section ordering per the
+project-blackbook skill; chapter-opening content vertically centered; front-
+matter roman page numbers restored (Abstract=v, Abbreviations=vii, the
+LOF/LOT page=iv; only the Contents first page `i` and LOF first page `iii`
+are left unnumbered, standard for a section's opening page; chapter openings
+stay numberless); 72 pages, 0 Overfull, 0 float overflow.
 
 - **Structure.** 12 chapters: Introduction; Literature Review and Existing
   Systems; System Analysis and Requirements; Development Methodology and
@@ -98,13 +179,20 @@ one-and-a-half spacing).
   AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard;
   `Authorization: Bearer` on the worker→OmniRoute AI gateway; no OCR business
   logic, deterministic OCR normalization.
-- **Validation.** `latexmk -xelatex` exit 0; 64 pages; no undefined
-  references/citations in the final pass; no multiply-defined labels; max
-  residual overfull hbox 0.5pt; no right-margin ink bleed (pixel scan);
-  zero colored pixels (strictly B&W); no placeholder text (TODO/TBD/Lorem);
-  11/11 figures in the List of Figures; bibliography renders with resolved
-  [n] citations. `docs/blackbook/.gitignore` excludes build artifacts
-  (`out/` + aux files); the final PDF is `docs/blackbook/out/main.pdf`.
+- **Validation.** `latexmk -xelatex` exit 0; **72 pages**; no undefined
+  references/citations in the final pass; no multiply-defined labels; **0
+  Overfull hbox**; no right-margin ink bleed; zero colored pixels (strictly
+  B&W); no placeholder text (TODO/TBD/Lorem); 11/11 figures in the List of
+  Figures; no `Float too large` warnings (Figure 7.2 permission-model was
+  re-rendered as a compact, height-fitted guard chain — the inline
+  `%%{init: themeVariables %%}` block corrupts this mermaid version's layout,
+  so B&W/typography now come from `docs/blackbook/diagrams/mermaid-bw.json`);
+  page-number scheme odd→right / even→left; chapters open on odd pages with
+  title+description only; 8 genuinely-blank forcing pages; the front matter
+  carries a complete TOC on pages 1–3 (every chapter, section, References,
+  Glossary, and appendix with its page number). `.gitignore` excludes build
+  artifacts (`out/` + aux files); the final PDF is
+  `docs/blackbook/out/main.pdf`.
 - **Known limitations (documented in the book, Chapter 11).** Not built and
   recorded as future/KNOWN-GAP: FORM/OMR/OSM, full academic export redesign,
   question versioning and set delete/merge, TEXT/essay auto-grading,

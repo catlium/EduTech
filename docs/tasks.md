@@ -31,6 +31,50 @@
       11/11 figures in the LoF. See `docs/project-status.md` for the full
       validation list.
 
+### Format & layout round (2026-09-22, COMPLETE) — per latest project-blackbook skill
+
+- [x] Re-validated all factual claims against the repo (subagent audit + real
+      `pnpm test` run in `apps/api`: 226 tests / 15 suites / 226 pass / 0 fail
+      — exact match, no content edits needed).
+- [x] `main.tex`: book class `twoside,openright`; geometry top/bottom 0.9in,
+      inner 1.3in, outer 0.9in; `\singlespacing`; chapter headings 20pt bold
+      ALL-CAPS centered; bottom page numbers (odd→right, even→left, `plain`
+      empty on chapter openers); genuinely-blank `\cleardoublepage` forcing
+      pages; section order TOC → LOF → LOT → Abstract/Abbreviations → ch1–12 →
+      References → Glossary → Appendices (appendices lettered via
+      `\@mainmattertrue`); `\bibname{References}`.
+- [x] All 12 chapters + 2 appendices: opening page carries only number, title,
+      and a short description; content starts on the next page.
+- [x] All figure/table floats `[h]`→`[htbp]`; two residual overfull boxes fixed
+      (`\seqsplit` in ch7, `sloppypar` in ch10) → 0 Overfull.
+- [x] Fixed Figure 7.2 overflow (`Float too large ... by 658.8pt`): re-rendered
+      `permission-model-bw` as a faithful 8-node guard-chain (B&W theme now via
+      `docs/blackbook/diagrams/mermaid-bw.json` config — the inline
+      `%%{init:themeVariables%%}` block breaks this mermaid version's layout),
+      sized `height=0.86\textheight,keepaspectratio`, placed on its own page.
+- [x] Validated final build: `latexmk -xelatex` exit 0; 72 pages; 0 Float-too-
+      large; 0 Overfull; no number-only/stranded pages; 8 genuine blank forcing
+      pages; Figure 7.2 caption present in body (page 38) and in the LoF.
+
+### Layout round 2 — centering + front-matter page numbers (2026-09-22, COMPLETE)
+
+- [x] Chapter-opening pages: the number/title/description block is now
+      vertically centered (`\vspace*{\fill}` at the top of the chapter title
+      format + `\vspace*{\fill}` before the opening `\clearpage` in all 12
+      chapters + 2 appendices); verified each opener's ink block sits around
+      50% of page height.
+- [x] Front-matter page numbers restored: Abstract= v, Abbreviations= vii,
+      LOF/LOT page= iv (per-file `\thispagestyle{fancy}` after each
+      `\chapter*`; placed inside `abstract.tex`/`abbreviations.tex` because
+      LaTeX's `\include` eats a trailing `\thispagestyle`). Contents page i
+      and List of Figures page iii stay unnumbered (standard practice for
+      that first-of-section page).
+- [x] Re-validated final build: `latexmk -xelatex` exit 0; 72 pages; 0
+      Float-too-large; 0 Overfull; no undefined refs/citations; chapter
+      openers on odd arabic 1,5,9,…,55 matching the TOC; 8 genuine blank
+      forcing pages; full TOC (all chapters + sections + References/Glossary/
+      Appendices) present on pages 1–3 with page numbers.
+
 ## Authorization Overhaul — Architecture & Roadmap (2026-09-20)
 
 > Only the architecture, roadmap, and the D1–D7 design decisions are
@@ -277,6 +321,60 @@
       dropped. Docs updated (institute-lifecycle.md §7/§11, project-status.md,
       this file).
 - [x] Commit `feat(platform): add institute lifecycle mutations`.
+
+## Phase N.3 — Subscription Management (2026-09-22)
+
+> Issued task (follow-on). Third slice: platform-plane subscription
+> management on the existing `plans` + `institute_subscriptions` tables.
+> Canonical design: `docs/architecture/institute-lifecycle.md` §9/§10.
+> Scope: SUPER_ADMIN/platform-plane ONLY (`AccessTokenGuard → PlatformGuard`,
+> no TenantGuard / `x-institute-id`). GET = `institutes.read`, PUT =
+> `institutes.manage`. Response shaped from a join (instituteId, planCode,
+> planName, updatedAt). Decision (user): `institute_subscriptions` KEEPS its
+> compact schema — PK `institute_id` (one row per institute), `plan_id`,
+> `created_at`, `updated_at`. **No `status` column, no migration.** Plan
+> availability = `plans.is_active`; `institutes.status` remains the sole
+> tenant-access lifecycle gate; a plan switch never alters it. Endpoints:
+> `GET /platform/institutes/:id/subscription` + `PUT
+> /platform/institutes/:id/subscription` (upsert on PK — single row invariant).
+> Out of scope: billing/payments, expiry jobs, quota enforcement, institute
+> CRUD, Super Admin frontend, audit log, scheduled deactivation, `GET
+> /platform/plans` catalog.
+
+- [x] Controller routes (`platform-institutes.controller.ts`):
+      `GET :id/subscription` (`institutes.read`) + `PUT :id/subscription`
+      (`institutes.manage`, `ParseUUIDPipe`, DTO `{ planCode: string }`).
+- [x] Service (`platform-institutes.service.ts`): `getSubscription(id)` —
+      join subscription→plan, 404 'Institute not found' vs 'Institute has no
+      subscription'; `updateSubscription(id, { planCode })` — 400 unknown/
+      inactive plan, 404 missing institute, transactional upsert
+      (`onConflictDoUpdate` on `institute_id` PK), replies via `getSubscription`.
+      `InstituteSubscriptionResult` (`instituteId`, `planCode`, `planName`,
+      `updatedAt`).
+- [x] `@catlium/database` `src/index.ts` re-exports `plans` +
+      `instituteSubscriptions` (were missing); `dist/` regenerated.
+- [x] Integration suite `test:plan-subscription`
+      (`src/platform/plan-subscription.integration.ts`, `TEST_DATABASE_URL`-
+      gated, same harness as institute-lifecycle: real controller handlers
+      through REAL AccessTokenGuard + PlatformGuard): 9 scenarios — SUPER_ADMIN
+      read; switch plan (DB row verified, institute status untouched);
+      anonymous 401 / INSTITUTE_ADMIN + TEACHER 403 (even with
+      `x-institute-id`); nonexistent institute 404 / non-UUID 400; unknown +
+      deliberately-deactivated plan 400; valid plan transitions round-trip;
+      one-row upsert invariant (repeated writes never create a second row);
+      lifecycle independence (deactivate → TenantGuard 403, but SUPER_ADMIN
+      subscription GET/PUT still works and does NOT alter status/deactivated_at;
+      reactivate restores tenant access; subscription survives the flips);
+      no cross-tenant exposure (two institutes, distinct plans, isolated reads).
+- [x] Validation: `pnpm test` 226 pass; `test:plan-subscription` 9/9 subtests
+      + `test:institute-lifecycle` 8/8 + `test:authz-regression` 8/8 +
+      `test:academic-scope` green on scratch `catlium_n3` DB (48/48
+      migrations, dropped after); typecheck 10/10; lint 9/9; API `nest build` +
+      web `next build` pass. `@catlium/database` `dist/` regenerated after the
+      index re-export. Postgres loopback restored (dev override) for the run,
+      then set back internal-only. Docs updated (institute-lifecycle.md
+      §9/§10/§11, project-status.md, this file).
+- [x] Commit `feat(platform): add subscription management`.
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 

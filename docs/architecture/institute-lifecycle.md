@@ -1,10 +1,12 @@
 # Institute Lifecycle
 
 **Status: foundation implemented + validated (Phase N, `feat(platform): add
-institute lifecycle foundation`, 2026-09-22) + **lifecycle mutations
-implemented + validated (Phase N.2, `feat(platform): add institute lifecycle
-mutations`, 2026-09-22)** — design captured here so the remaining slices
-(subscription API, Super Admin console) have a canonical reference.** The
+ institute lifecycle foundation`, 2026-09-22) + lifecycle mutations
+ implemented + validated (Phase N.2, `feat(platform): add institute lifecycle
+ mutations`, 2026-09-22) + subscription management implemented + validated
+ (Phase N.3, `feat(platform): add subscription management`, 2026-09-22)** —
+ design captured here so the remaining slices (institute CRUD, Super Admin
+ console) have a canonical reference.** The
 repository had no design document for this track before this file; the Phase N
 foundation was built from the issued task message only and is reconstructed
 verbatim below.
@@ -92,8 +94,10 @@ authorization planes are independent, built in Phase D (D3/§15 of
 - **Live platform surface today:** the global OCR worker registry
   (`/api/v1/ocr/workers`, `ocr-workers.read|create|update`) and the institute
   lifecycle mutations (`POST /api/v1/platform/institutes/:id/
-  {deactivate,reactivate}`, `institutes.update`) — the latter added in Phase
-  N.2 (`apps/api/src/platform/`). Subscription/CRUD/console remain PLANNED.
+  {deactivate,reactivate}`, `institutes.update`) — added in Phase N.2 — and the
+  subscription read/write (`GET|PUT /api/v1/platform/institutes/:id/
+  subscription`, `institutes.read`/`institutes.manage`) added in Phase N.3,
+  all under `apps/api/src/platform/`. Institute CRUD/console remain PLANNED.
 - A user can hold both planes simultaneously (SUPER_ADMIN + INSTITUTE_ADMIN)
   with neither implying the other.
 - Institute-scoped endpoints reject deactivated institutes at the tenant
@@ -269,23 +273,28 @@ institutes is designed work, not behavior.
 
 ## 9. Plans and institute subscriptions
 
-**IMPLEMENTED (ledger); PLANNED (API); DEFERRED (billing semantics).**
+**IMPLEMENTED (ledger + read/write API, Phase N.3); DEFERRED (billing semantics).**
 
 - `plans`/`institute_subscriptions` are a **subscription ledger only** today:
   exactly one plan per institute, no periods, no start/end, no price/limits,
-  no payments, no quotas. No API reads or writes them yet.
-- **Planned subscription API** (platform plane):
-  - `GET platform/plans` — catalog list (`institutes.read`/platform);
-  - `GET platform/institutes/:id/subscription` — current plan;
+  no payments, no quotas.
+- **Implemented subscription API** (platform plane, Phase N.3):
+  - `GET platform/institutes/:id/subscription` — current plan
+    (`institutes.read`);
   - `PUT platform/institutes/:id/subscription` — switch plan
-    (`institutes.manage`), validated against `plans.is_active`;
+    (`institutes.manage`), validated against `plans.is_active`, upsert on the
+    `institute_id` PK (one row per institute).
   - INSTITUTE-side read (`institutes.manage` on the tenant plane) so institute
     admins can display their plan.
-- **DEFERRED / explicitly out of scope:** plan pricing and feature/limit
-  columns, subscription periods and renewals, cancellation, payment/PBX
-  integration, quota enforcement (limits gating tenant capabilities), and any
-  enforcement that a deactivated plan downgrades the institute. The ledger is
-  deliberately minimal so these can be added without schema churn.
+- **DEFERRED / explicitly out of scope:** `GET platform/plans` catalog endpoint,
+  plan pricing and feature/limit columns, subscription periods and renewals,
+  cancellation, payment/PBX integration, quota enforcement (limits gating
+  tenant capabilities), and any enforcement that a deactivated plan downgrades
+  the institute. There is deliberately **no `status` field** on a subscription:
+  a row exists ⇔ the institute has the plan; `plans.is_active` is
+  availability-only and used to block assignment, never to auto-downgrade a
+  live institute. The ledger is deliberately minimal so the deferred items can
+  be added without schema churn.
 
 ---
 
@@ -296,7 +305,7 @@ institutes is designed work, not behavior.
 | OCR worker registry | platform | `PlatformGuard` | `ocr-workers.read/create/update` | IMPLEMENTED (Phase D) |
 | Institute lifecycle mutations (`:id/deactivate`, `:id/reactivate`) | platform | `PlatformGuard` | `institutes.update` | IMPLEMENTED (Phase N.2) |
 | Institute lifecycle CRUD (create/get/list/patch) | platform | `PlatformGuard` | `institutes.read/create/update/delete/manage` | PLANNED |
-| Subscription read/write | platform | `PlatformGuard` | `institutes.read` / `institutes.manage` | PLANNED |
+| Subscription read/write | platform | `PlatformGuard` | `institutes.read` / `institutes.manage` | IMPLEMENTED (Phase N.3) |
 | Institute switcher + memberships (own) | institute | `AccessTokenGuard` only | — (own memberships, per §8) | IMPLEMENTED |
 | Membership status flip | institute | `TenantGuard + RolesGuard + PermissionGuard` | `users.update` + `INSTITUTE_ADMIN` | IMPLEMENTED (pre-Phase N) |
 
@@ -310,7 +319,7 @@ L matrix 7).
 
 ## 11. Intended platform APIs and frontend console
 
-**PLANNED (only the two lifecycle mutations below are built — Phase N.2).**
+**PLANNED (only the lifecycle mutations and subscription API below are built — Phase N.2/N.3).**
 
 **Platform API** (base prefix `/api/v1/platform/...`, sits alongside the
 existing platform OCR surface and the live lifecycle mutations):
@@ -322,8 +331,9 @@ GET    /platform/institutes/:id        institute detail (+ subscription, member 
 PATCH  /platform/institutes/:id        rename / update metadata                             [PLANNED]
 POST   /platform/institutes/:id/deactivate     → status='deactivated', stamp deactivated_at [IMPLEMENTED N.2]
 POST   /platform/institutes/:id/reactivate     → status='active', clear deactivated_at       [IMPLEMENTED N.2]
+GET    /platform/institutes/:id/subscription   current plan                                 [IMPLEMENTED N.3]
+PUT    /platform/institutes/:id/subscription   attach/switch plan                            [IMPLEMENTED N.3]
 GET    /platform/plans                 plan catalog                                          [PLANNED]
-PUT    /platform/institutes/:id/subscription   attach/switch plan                            [PLANNED]
 ```
 
 All gated `AccessTokenGuard + PlatformGuard` with `institutes.*` keys; all
