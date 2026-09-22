@@ -132,7 +132,18 @@
       green (see `security-audit.md` MOD-3 Remedy). Backlog (NOT this fix):
       `attempts.controller.ts` `/attempts` + `/analytics` still resolve the
       assessment by instituteId only via `AttemptsService.getAssessment`
-      (`attempts.service.ts:126`).
+      (`attempts.service.ts:126`). **Closed by MOD-4 below.**
+      **MOD-4 (attempts/analytics academic-scope) COMPLETE 2026-09-22
+      (`fix(authz): scope attempt ledger and analytics to the assessment
+      academic gate`)** — `GET /assessments/:assessmentId/attempts` +
+      `/analytics` now resolve through `ExaminationsService.getAssessment`
+      (the authoritative academic gate: DRAFT owner/admin staging, finalized
+      pure subject scope, 404-deny) via threaded `membershipId` + `userId`;
+      the instituteId-only `getAssessment` is retained only on the student
+      `start` path (whole-institute availability by design); `AttemptsModule`
+      imports `ExaminationsModule`. New `test:mod-4-attempts-scope` regression
+      suite (7 scenarios) + all validation green (see `security-audit.md`
+      MOD-4 Remedy).
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 

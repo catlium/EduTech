@@ -30,6 +30,7 @@
     "test:phase-m-remediation": "tsx --test src/authorization/phase-m-remediation.integration.ts",
     "test:job-ownership": "tsx --test src/authorization/job-ownership.integration.ts",
     "test:mod-3-export-scope": "tsx --test src/authorization/mod-3-export-scope.integration.ts",
+    "test:mod-4-attempts-scope": "tsx --test src/authorization/mod-4-attempts-scope.integration.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

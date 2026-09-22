@@ -103,6 +103,21 @@ fixed and covered (LOW-2 by the wiring verified in the web build); DOC-1 (stale
   `/analytics` still resolve the assessment by instituteId only
   (`AttemptsService.getAssessment`, `attempts.service.ts:126`) — the same gap
   MOD-3 closed for exports; fix belongs with the attempts/analytics work.
+- **MOD-4 remediated (attempts/analytics academic scope, 2026-09-22):**
+  `fix(authz): scope attempt ledger and analytics to the assessment academic
+  gate`. `GET /assessments/:assessmentId/attempts` + `/analytics` now resolve
+  through `ExaminationsService.getAssessment` (authoritative academic gate:
+  DRAFT owner/admin staging, finalized pure subject scope, 404-deny) with
+  `membershipId` + `userId` threaded from the controller; the instituteId-only
+  private `getAssessment` is kept only on the student `start` path (intentional
+  whole-institute attempt availability); `AttemptsModule` imports
+  `ExaminationsModule`. New `test:mod-4-attempts-scope` regression suite
+  (7 scenarios: admin whole-institute incl. DRAFT staging, teacher in-scope,
+  teacher out-of-scope 404 on both, teacher other-subject isolation, STUDENT
+  whole-institute lifecycle intact + refused teacher routes, cross-institute
+  404, valid analytics) — all green against a scratch DB, typecheck 10/10,
+  lint 9/9. See `security-audit.md` §MOD-4. This closes the sibling-attempts
+  backlog noted in the MOD-3 entry above.
 
 ### Next task
 

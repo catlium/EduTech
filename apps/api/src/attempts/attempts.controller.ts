@@ -103,17 +103,29 @@ export class AttemptsController {
   @RequiredRoles(...TEACHER_ROLES)
   async listForAssessment(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
-    return this.attemptsService.listForAssessment(tenant.instituteId, assessmentId);
+    return this.attemptsService.listForAssessment(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      assessmentId,
+    );
   }
 
   @Get('assessments/:assessmentId/analytics')
   @RequiredRoles(...TEACHER_ROLES)
   async analytics(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ) {
-    return this.attemptsService.getAnalytics(tenant.instituteId, assessmentId);
+    return this.attemptsService.getAnalytics(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      assessmentId,
+    );
   }
 }

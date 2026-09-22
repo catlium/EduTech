@@ -22,6 +22,7 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 import { gradeAnswer } from './attempts.grade.js';
 import { buildAnalytics } from './analytics.js';
+import { ExaminationsService } from '../examinations/examinations.service.js';
 
 const ATTEMPTABLE_STATUSES = ['PUBLISHED', 'ACTIVE'] as const;
 type AttemptRow = typeof attempts.$inferSelect;
@@ -31,7 +32,10 @@ type Queryable = Pick<Database, 'select' | 'update' | 'insert'>;
 
 @Injectable()
 export class AttemptsService {
-  constructor(@Inject(DATABASE_TOKEN) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE_TOKEN) private readonly db: Database,
+    private readonly examinations: ExaminationsService,
+  ) {}
 
   // ── Shared helpers ─────────────────────────
 
@@ -567,9 +571,17 @@ export class AttemptsService {
 
   // ── Teacher endpoints ──────────────────────
 
-  /** Teacher/admin attempt ledger for an assessment (score null until Phase 10). */
-  async listForAssessment(instituteId: string, assessmentId: string) {
-    await this.getAssessment(instituteId, assessmentId);
+  /** Teacher/admin attempt ledger for an assessment (score null until Phase 10).
+   *  Read-gated through the examinations module (MOD-4): DRAFT is owner+admin
+   *  staging (O1), finalized assessments are pure academic scope (O2), denials
+   *  are 404 — same authorization as the assessment read. */
+  async listForAssessment(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    await this.examinations.getAssessment(instituteId, membershipId, userId, assessmentId);
 
     const rows = await this.db
       .select({
@@ -599,8 +611,13 @@ export class AttemptsService {
    * question accuracy plus topic/difficulty aggregation; no analytics tables.
    * Never exposes answer keys or per-student data (aggregates only).
    */
-  async getAnalytics(instituteId: string, assessmentId: string) {
-    await this.getAssessment(instituteId, assessmentId);
+  async getAnalytics(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    assessmentId: string,
+  ) {
+    await this.examinations.getAssessment(instituteId, membershipId, userId, assessmentId);
 
     const evaluated = ['SUBMITTED', 'EXPIRED'];
     const scope = and(

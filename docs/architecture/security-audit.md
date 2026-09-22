@@ -18,6 +18,17 @@ student 1 each), `pnpm typecheck` 10/10, `pnpm lint` 9/9. Findings below
 supersede the pre-overhaul sections (H1–H10/F1–F6 below were resolved by
 Phases K/L). No code was modified.
 
+Sibling endpoints closed since this header audit began at
+`feature/authorization-overhaul`:
+
+- **MOD-3 (exports academic scope)** — remediated 2026-09-22 at
+  `fix(authz): enforce academic scope on exports`; see the Remedy
+  heading immediately below.
+- **MOD-4 (attempts/analytics academic scope)** — remediated 2026-09-22 at a
+  commit whose message is `fix(authz): scope attempt ledger and analytics to
+  the assessment academic gate`; see the dedicated MOD-4 heading + findings
+  lower in this file.
+
 ## Remedy (2026-09-21, `fix(authz): close export and job tenant authorization gaps`)
 
 - **HIGH-1 fixed**: all four export/preview routes (`exportQuestions`,
@@ -81,12 +92,44 @@ authorization as its underlying read:
 - **Validation**: `pnpm test` 226 pass; integration suites incl. new mod-3 (7
   scenarios) + phase-m + resource-scope re-run green; typecheck 10/10; lint 9/9.
 
-**Remaining backlog (NOT in this fix — task-scoped out):** the sibling Attempts
-routes `GET /assessments/:assessmentId/attempts` and
-`GET /assessments/:assessmentId/analytics` (`attempts.controller.ts`,
-`AttemptsService.getAssessment` at `attempts.service.ts:126`) still resolve the
-assessment by instituteId only, the same gap MOD-3 closed for exports. Fix
-belongs with the attempts/analytics module work, not the export remediation.
+## Remedy — MOD-4 (2026-09-22, `fix(authz): scope attempt ledger and analytics to the assessment academic gate`)
+
+The sibling gap MOD-3 task-scoped out is closed: the teacher Attempts routes
+`GET /assessments/:assessmentId/attempts` and
+`GET /assessments/:assessmentId/analytics` (`attempts.controller.ts`) now
+resolve the assessment through the **authoritative academic-scope gate**
+`ExaminationsService.getAssessment` (private `gateAssessment`) — the same gate
+the MOD-3 export/results builder used:
+
+- `AttemptsService.listForAssessment(instituteId, membershipId, userId, assessmentId)`
+  and `getAnalytics(...)` now `await this.examinations.getAssessment(
+  instituteId, membershipId, userId, assessmentId)` before reading the ledger /
+  aggregates — DRAFT owner/admin staging (O1), finalized pure academic scope
+  (O2), denials are 404 (no existence leak). The instituteId-only private
+  `getAssessment` (`attempts.service.ts:126`) is now used **only** by the
+  student `start` path (whole-institute attempt availability by design — the
+  attempt lifecycle is not subject-scoped).
+- Both controller handlers thread `tenant.membershipId` + `user.userId` into
+  the service. `AttemptsModule` imports `ExaminationsModule` (no cycle).
+- **Regression coverage**: new
+  `apps/api/src/authorization/mod-4-attempts-scope.integration.ts`
+  (`test:mod-4-attempts-scope`), scenarios: (1) INSTITUTE_ADMIN reaches
+  attempts/analytics whole-institute incl. in-scope DRAFT staging bypass;
+  (2) TEACHER in-scope reaches own assessment's ledger + analytics;
+  (3) TEACHER out-of-scope 404 on both + another teacher's in-scope DRAFT 404;
+  (4) TEACHER on the other subject sees their own assessment (no scope
+  leaking); (5) cross-institute 404 on both endpoints; (6) STUDENT keeps the
+  intentional whole-institute availability (start→submit→result→listMine
+  intact on an assessment outside the teacher scope) and is refused both
+  teacher endpoints (RolesGuard, 403) while admin is allowed; (7) valid
+  analytics intact (`analytics.summary.evaluatedAttempts` counts the
+  student's submitted attempt).
+- **Validation**: `pnpm test` 226 pass; integration suites incl. new mod-4 +
+  mod-3 + phase-m + resource-scope re-run green; typecheck 10/10; lint 9/9.
+
+**This closes the sibling-attempts backlog that MOD-3 listed as task-scoped
+out** (previously: attempt routes resolved the assessment by instituteId only
+via `AttemptsService.getAssessment` at `attempts.service.ts:126`).
 
 ### FOUND — HIGH-1: Export routes bypass answer-key gating
 
