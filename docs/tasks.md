@@ -220,6 +220,79 @@
       suite (7 scenarios) + all validation green (see `security-audit.md`
       MOD-4 Remedy).
 
+## Phase N.5 — Super Admin Institute Console (2026-09-22)
+
+> Issued task (follow-on). Fifth and final slice of the institute-lifecycle
+> track: Super Admin frontend console in `apps/web` under `/platform` (outside
+> any institute workspace), plus the two minimal platform API prerequisites the
+> console needs — `GET /platform/plans` (plan catalog for the create form +
+> subscription switcher) and `GET /platform/permissions` (DB-fresh platform
+> permission probe). Canonical design: `docs/architecture/institute-lifecycle.md`
+> §11. Scope: platform-plane ONLY — no `x-institute-id`, no TenantGuard, no
+> billing/quota UI, no subscription cancel, no audit log, no scheduled
+> deactivation, no platform-user admin. No new dependencies.
+
+- [x] Backend — plan catalog + permission probe:
+      `PermissionCatalogue.PLATFORM_RESOURCES` gains `plans: { actions:
+      ['read'] }` (super admin auto-holds it); `PlatformInstitutesService`
+      gains `PlatformPlan` + `listPlans()` (active plans only, ordered by
+      code); new `PlatformAdminController` (`@Controller('platform')`,
+      `AccessTokenGuard → PlatformGuard`, no TenantGuard): `GET /plans`
+      (`@RequiredPermission('plans.read')`), `GET /permissions`
+      (PlatformGuard-only; returns sorted platform keys via
+      `resolveGrantedKeys(platformGrantKeysForUser(userId), 'platform')`).
+      Registered in `platform.module.ts`.
+- [x] Backend tests: new DB-gated suite `test:platform-plans`
+      (`src/platform/platform-plans.integration.ts`, same self-sufficient
+      harness — real guards + `reqContext` + `PermissionSyncService`): 5
+      scenarios — SUPER_ADMIN reads full active catalog (exact per-plan keys,
+      no internal fields); anonymous 401; institute users (incl. with
+      institute roles) 403 on both endpoints with and without seed header;
+      inactive plan excluded; permission probe returns platform keys only and a
+      bare INSTITUTE_ADMIN user gets `[]`. Catalogue unit tests updated
+      (`permission-catalogue.test.ts`).
+- [x] Frontend — console shell: `platform-scope.ts` (pure types/helpers —
+      `filterInstitutes`, `defaultPlanCode`, `planName`, `formatDate`);
+      `platform.tsx` (`PlatformProvider` + `usePlatform()` → `permissions /
+      loading / can / canAccessConsole`, sourced from `GET /platform/permissions`,
+      reusing the existing `canUse`); mounted in `providers.tsx`;
+      `middleware.ts` protects `/platform`; `platform-sidebar.tsx`;
+      `app/platform/layout.tsx` — `PlatformGate` (unauth → `/login`, no
+      `institutes.read` → Forbidden view), `ForbiddenGate` (403 event),
+      header/sidebar/crumb; `app/platform/page.tsx` redirects →
+      `/platform/institutes`.
+- [x] Frontend — institute list + create: `app/platform/institutes/page.tsx`
+      (status tabs + search; table with link-to-detail rows; create button
+      gated by `can('institutes.create')`); `create-institute-dialog.tsx`
+      (react-hook-form + zod; plan `Select` sourced from `GET /platform/plans`
+      with `defaultPlanCode('starter')`; primary-admin email/name; POST then
+      prepends to the list).
+- [x] Frontend — institute detail: `app/platform/institutes/[id]/page.tsx`
+      (overview card; subscription card with plan switcher gated by
+      `can('institutes.manage')` → `PUT /:id/subscription`; institute-admins
+      list; deactivate/reactivate via `ConfirmDialog` gated by
+      `can('institutes.update')`). Nav entries: `app-sidebar.tsx` platform
+      group (SUPER_ADMIN only via `canAccessConsole`) + `/institutes` picker
+      console card (covers platform admins with zero memberships).
+- [x] Frontend tests: `platform-scope.test.ts` (node --test; 4 subtests —
+      `filterInstitutes` status+search, `defaultPlanCode` fallback/first/none,
+      `planName`, `formatDate`; locale pinned to `en-US`) + web script
+      `test:platform-scope`.
+- [x] Validation: web typecheck + api typecheck clean; repo-wide typecheck
+      10/10, lint 9/9; web `next build` (all `/platform` routes emitted) + api
+      `nest build` pass; `test:platform-scope` 4/4 + api unit `test` 226/226;
+      `test:platform-plans` 5/5 + `test:institute-crud` 11/11 +
+      `test:plan-subscription` 10/10 + `test:institute-lifecycle` 8/8 on
+      scratch `catlium_test` DB (48/48 migrations via the postgres container,
+      dev-override loopback `127.0.0.1:5432`); api + web containers rebuilt
+      and healthy with new code live (`/platform/plans` + `/platform/permissions`
+      → 401 unauthenticated on the running API).
+- [x] Docs: institute-lifecycle.md header + §4 + §10 + §11 → IMPLEMENTED (N.5)
+      with `PlatformPlan`/`PlatformPermissionProbe` shapes + console surface
+      and the deferred OCR-fleet peek retained as the one not-built item;
+      project-status.md Phase N.5 + next task; this file.
+- [x] Commit `feat(platform): add super admin institute console`.
+
 ## Phase N — Institute Lifecycle Foundation (2026-09-22)
 
 > Issued task. First slice of the institute-lifecycle track: DB status

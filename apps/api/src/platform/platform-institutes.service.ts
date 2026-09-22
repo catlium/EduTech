@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as bcryptjs from 'bcryptjs';
 
@@ -55,6 +55,13 @@ export interface InstituteAdmin {
   name: string;
   status: string;
   createdAt: Date;
+}
+
+export interface PlatformPlan {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
 }
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -331,7 +338,23 @@ export class PlatformInstitutesService {
     return this.getSubscription(id);
   }
 
-  // ── Private helpers ──────────────────────────────────────────────────
+  // ── Plan catalog (§9) ─────────────────────────────────────────────
+
+  /** Assignable plans for the console's create/update surfaces — active plans
+   *  only, exactly the set `resolveActivePlanId` accepts. No billing/limit
+   *  fields: the ledger has none, so nothing internal is exposed. */
+  async listPlans(): Promise<PlatformPlan[]> {
+    return this.db
+      .select({
+        id: plans.id,
+        code: plans.code,
+        name: plans.name,
+        description: plans.description,
+      })
+      .from(plans)
+      .where(eq(plans.isActive, true))
+      .orderBy(asc(plans.code));
+  }
 
   private async resolveActivePlanId(code: string): Promise<{ id: string }> {
     const [plan] = await this.db

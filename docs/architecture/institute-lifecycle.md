@@ -1,13 +1,13 @@
 # Institute Lifecycle
 
-**Status: foundation implemented + validated (Phase N, `feat(platform): add
- institute lifecycle foundation`, 2026-09-22) + lifecycle mutations
- implemented + validated (Phase N.2, `feat(platform): add institute lifecycle
- mutations`, 2026-09-22) + subscription management implemented + validated
- (Phase N.3, `feat(platform): add subscription management`, 2026-09-22)** —
- design captured here so the remaining slices (institute CRUD, Super Admin
- console) have a canonical reference.** The
-repository had no design document for this track before this file; the Phase N
+**Status: fully implemented + validated (Phases N → N.5): foundation
+(`feat(platform): add institute lifecycle foundation`) → lifecycle mutations
+(`feat(platform): add institute lifecycle mutations`) → subscription management
+(`feat(platform): add subscription management`) → institute management API
+(`feat(platform): add institute management API`) → plan catalog + permission
+probe + Super Admin console (`feat(platform): add super admin institute
+console`), all 2026-09-22** — design captured here as the canonical reference.
+The repository had no design document for this track before this file; the Phase N
 foundation was built from the issued task message only and is reconstructed
 verbatim below.
 
@@ -97,7 +97,9 @@ authorization planes are independent, built in Phase D (D3/§15 of
   {deactivate,reactivate}`, `institutes.update`) — added in Phase N.2 — and the
   subscription read/write (`GET|PUT /api/v1/platform/institutes/:id/
   subscription`, `institutes.read`/`institutes.manage`) added in Phase N.3,
-  all under `apps/api/src/platform/`. Institute CRUD/console remain PLANNED.
+  all under `apps/api/src/platform/`. Institute CRUD (Phase N.4), the plan
+  catalog + permission probe (Phase N.5) and the frontend console (Phase N.5)
+  are IMPLEMENTED — see §11.
 - A user can hold both planes simultaneously (SUPER_ADMIN + INSTITUTE_ADMIN)
   with neither implying the other.
 - Institute-scoped endpoints reject deactivated institutes at the tenant
@@ -108,15 +110,18 @@ authorization planes are independent, built in Phase D (D3/§15 of
 
 ## 4. SUPER_ADMIN responsibilities
 
-**IMPLEMENTED (authority model); PLANNED (the institute-lifecycle duties
-themselves).** Recorded in `authorization.md` §2/§15; executed in Phase D.
+**IMPLEMENTED (authority model + institute-lifecycle duties).** Recorded in
+`authorization.md` §2/§15; authority model executed in Phase D, provisioning
+Phase N.4, subscription Phase N.3, deactivation/reactivation Phase N.2, with
+the frontend console completing Phase N.5.
 
 - `SUPER_ADMIN` is a **system platform role** (`kind='system'`,
   `domain='platform'`, `institute_id NULL`), granted only via
   `platform_user_roles`. It is never a membership role; `INSTITUTE_ADMIN`
   holds zero platform grants by construction. Platform grants resolve
   DB-fresh per request (never in JWTs).
-- The designed (PLANNED) SUPER_ADMIN institute-lifecycle responsibilities:
+- The SUPER_ADMIN institute-lifecycle responsibilities (all implemented via the
+  §11 console + API):
   - institute **creation/provisioning** and configuration — `institutes.create`,
     `institutes.update`;
   - **deactivation / reactivation** — `institutes.update` / `institutes.manage`;
@@ -329,6 +334,7 @@ institutes is designed work, not behavior.
 | Institute lifecycle mutations (`:id/deactivate`, `:id/reactivate`) | platform | `PlatformGuard` | `institutes.update` | IMPLEMENTED (Phase N.2) |
 | Institute lifecycle CRUD (create/get/list/patch/admins) | platform | `PlatformGuard` | `institutes.read/create/update` | IMPLEMENTED (Phase N.4) |
 | Subscription read/write | platform | `PlatformGuard` | `institutes.read` / `institutes.manage` | IMPLEMENTED (Phase N.3) |
+| Plan catalog + permission probe (`/plans`, `/permissions`) | platform | `PlatformGuard` (+ `plans.read` for `/plans`) | `plans.read` | IMPLEMENTED (Phase N.5) |
 | Institute switcher + memberships (own) | institute | `AccessTokenGuard` only | — (own memberships, per §8) | IMPLEMENTED |
 | Membership status flip | institute | `TenantGuard + RolesGuard + PermissionGuard` | `users.update` + `INSTITUTE_ADMIN` | IMPLEMENTED (pre-Phase N) |
 
@@ -343,7 +349,8 @@ L matrix 7).
 ## 11. Intended platform APIs and frontend console
 
 **IMPLEMENTED (the CRUD surface below is built — Phase N.4; lifecycle mutations
-Phase N.2, subscription Phase N.3).**
+Phase N.2, subscription Phase N.3, plan catalog + permission probe + frontend
+console Phase N.5).**
 
 **Platform API** (base prefix `/api/v1/platform/...`, sits alongside the
 existing platform OCR surface):
@@ -358,21 +365,34 @@ POST   /platform/institutes/:id/deactivate     → status='deactivated', stamp d
 POST   /platform/institutes/:id/reactivate     → status='active', clear deactivated_at       [IMPLEMENTED N.2]
 GET    /platform/institutes/:id/subscription   current plan                                 [IMPLEMENTED N.3]
 PUT    /platform/institutes/:id/subscription   attach/switch plan                            [IMPLEMENTED N.3]
-GET    /platform/plans                 plan catalog                                          [PLANNED / DEFERRED]
+GET    /platform/plans                 plan catalog                                          [IMPLEMENTED N.5]
+GET    /platform/permissions           platform permission probe (source for the console)     [IMPLEMENTED N.5]
 ```
 
 All gated `AccessTokenGuard + PlatformGuard` with `institutes.*` keys; all
-completely independent of `x-institute-id`. Response shapes (Phase N.4):
+completely independent of `x-institute-id`. `GET /platform/plans` is additionally
+gated by the `plans.read` platform permission (declared in the permission
+catalogue, §8.2 foundation) and `GET /platform/permissions` by PlatformGuard
+alone — the console's permission source. Response shapes (Phase N.4):
 `InstituteSummary { id, name, slug, status, members, createdAt }`, `InstituteDetail
 { id, name, slug, status, deactivatedAt, memberCount, subscription: { planCode,
-planName } | null }`, `InstituteAdmin { id, email, name }`.
+planName } | null }`, `InstituteAdmin { id, email, name }`, `PlatformPlan { id,
+code, name, description }`, `PlatformPermissionProbe { permissions: string[] }`.
 
-**Super Admin console (frontend, PLANNED):** a platform section in `apps/web`
-gated by platform permissions the way `/ocr/workers` already is
-(`ocr-workers.read` keys the existing nav/route). Planned surface: institute
-list + search, create, deactivate/reactivate, primary-admin provisioning,
-subscription view/switch, and a read-only peek at the OCR worker fleet (already
-API-capable today). No Super Admin UI exists today.
+**Super Admin console (frontend, IMPLEMENTED — Phase N.5):** a platform section
+in `apps/web` under `/platform`, not inside an institute workspace. Gated the
+same way `/ocr/workers` is — but the individual page controls additionally
+degrade gracefully on a DB-fresh permission probe (`GET /platform/permissions`)
+through the `usePlatform()` provider, so a stale role is read-only, never a
+logout loop. Delivered surface: institute list + create (with primary-admin
+provisioning and a plan-selector sourced from `GET /platform/plans`),
+deactivate/reactivate and subscription switch on the institute detail page, and
+read-only institute-admins visibility. The console lives outside the tenant
+provider, so no `x-institute-id` is involved; the workspace sidebar gains a
+"Platform → Super Admin console" entry for platform super admins, and the
+`/institutes` picker surfaces the console for platform admins with zero
+memberships. **A read-only peek at the OCR worker fleet is still not built**
+(the worker API is already console-capable today) — deferred.
 
 ---
 

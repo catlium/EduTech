@@ -34,6 +34,7 @@
     "test:institute-lifecycle": "tsx --test src/platform/institute-lifecycle.integration.ts",
     "test:plan-subscription": "tsx --test src/platform/plan-subscription.integration.ts",
     "test:institute-crud": "tsx --test src/platform/institute-crud.integration.ts",
+    "test:platform-plans": "tsx --test src/platform/platform-plans.integration.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

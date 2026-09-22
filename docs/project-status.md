@@ -1,5 +1,85 @@
 # Project Status
 
+## Phase N.5 — Super Admin Institute Console (2026-09-22)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Commit: `feat(platform): add super admin institute console`.
+
+Fifth and final slice of the institute-lifecycle track: the Super Admin
+frontend console in `apps/web` under `/platform` (outside any institute
+workspace) plus the two minimal platform API prerequisites it needs — the plan
+catalog and a DB-fresh platform permission probe. Canonical design:
+`docs/architecture/institute-lifecycle.md` §11 (now marked IMPLEMENTED).
+
+- **New platform APIs** (`apps/api/src/platform/platform-admin.controller.ts`,
+  `AccessTokenGuard` + `PlatformGuard`, never TenantGuard / `x-institute-id`):
+  - `GET /api/v1/platform/plans` (`plans.read` — new catalogue key
+    `plans: { actions: ['read'] }`, auto-held by SUPER_ADMIN) — active plans
+    `ORDER BY code`, shape `PlatformPlan { id, code, name, description }`;
+  - `GET /api/v1/platform/permissions` (PlatformGuard-only) — sorted platform
+    keys for the console via `resolveGrantedKeys(platformGrantKeysForUser(userId),
+    'platform')`, shape `PlatformPermissionProbe { permissions: string[] }`.
+  - `listPlans()` added to `PlatformInstitutesService`.
+- **Console — authorization is backend-authoritative.** The `usePlatform()`
+  provider loads `GET /platform/permissions` once per session and drives
+  `can(key)` / `canAccessConsole` on the workspace sidebar (`/platform/institutes`
+  entry), the `/institutes` picker, and per-control gating (create vs
+  read-only, plan switch, deactivate/reactivate). A stale role degrades to a
+  read-only console — never a login/logout loop. 401 → login redirect; 403
+  GET → inline Forbidden view (no full-page error).
+- **Console surface** (`apps/web/src/app/platform/**`, outside the tenant
+  provider, no `x-institute-id` anywhere):
+  - `/platform` → redirects to `/platform/institutes`; protected by
+    `middleware.ts`.
+  - Institute list: status tabs (`all|active|deactivated`, client-side search
+    via `filterInstitutes`), rows link to detail, create button
+    (`institutes.create`); `CreateInstituteDialog` — name, optional kebab-case
+    slug, plan `Select` sourced from `GET /platform/plans` (default
+    `defaultPlanCode('starter')`), optional primary-admin email/name → `POST
+    /platform/institutes`.
+  - Institute detail: overview (status/members/created/deactivated),
+    subscription card with plan switcher (`institutes.manage` → `PUT
+    /:id/subscription`), institute-admins list (`GET /:id/admins`),
+    deactivate/reactivate (`institutes.update`) behind `ConfirmDialog`.
+  - Pure helpers/tests: `platform-scope.ts` + `test:platform-scope` 4/4.
+- **Not built (deferred):** read-only OCR-worker-fleet peek in the console,
+  audit-log, billing/quota UI, subscription cancel, scheduled deactivation,
+  platform-user admin. No new dependencies added.
+- **Validation:** web typecheck + api typecheck clean; repo-wide typecheck
+  10/10, lint 9/9 (turbo); web `next build` (all `/platform` routes emitted) +
+  api `nest build` pass. Scratch `catlium_test` DB (48/48 migrations via the
+  postgres container with the dev override loopback `127.0.0.1:5432`):
+  `test:platform-plans` 5/5, `test:institute-crud` 11/11,
+  `test:plan-subscription` 10/10, `test:institute-lifecycle` 8/8, api unit
+  `test` 226/226, web `test:platform-scope` 4/4 + `test:paper-pattern-builder`
+  6/6. api + web containers rebuilt and healthy with the new code live (probed
+  `/api/v1/platform/plans` + `/permissions` → 401 unauthenticated on the
+  running containers).
+- **Next task:** the institute-lifecycle track is complete. Deferred items
+  (§12 of the design doc) — billing/quotas, subscription periods/cancel,
+  scheduled deactivation, pausing async work for deactivated institutes, the
+  OCR-fleet console peek, platform-user suspension/deletion — are the natural
+  follow-ons but none is scheduled.
+
+### Next task
+
+1. ~~**Design doc** — capture the missing design (repo has none) before further
+   implementation.~~ **DONE 2026-09-22 —
+   `docs/architecture/institute-lifecycle.md`**.
+2. ~~**Deactivation mutation** — Super Admin / platform-plane API.~~ **DONE
+   2026-09-22 — Phase N.2 (`feat(platform): add institute lifecycle
+   mutations`).**
+3. ~~**Subscription management API** on `institute_subscriptions`.~~ **DONE
+   2026-09-22 — Phase N.3 (`feat(platform): add subscription management`).**
+4. ~~**Institute CRUD API** — list/detail/create/update + admins read.~~ **DONE
+   2026-09-22 — Phase N.4 (`feat(platform): add institute management API`).**
+5. ~~**Super Admin console (frontend)** — institute list/search/create/detail +
+   lifecycle + subscription in `apps/web`, gated by platform permissions, plan
+   selector sourced from `GET /platform/plans`.~~ **DONE 2026-09-22 — Phase
+   N.5 (`feat(platform): add super admin institute console`), with
+   `GET /platform/plans` + `GET /platform/permissions` as its API
+   prerequisites. Institute-lifecycle track COMPLETE.**
+
 ## Phase N.4 — Institute Management API (2026-09-22)
 
 **Status: IMPLEMENTED + VALIDATED (API; frontend console still PLANNED).**

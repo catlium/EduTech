@@ -15,6 +15,7 @@ const PROTECTED = [
   '/users',
   '/ocr',
   '/profile',
+  '/platform',
 ];
 
 export function middleware(request: NextRequest) {
@@ -53,5 +54,6 @@ export const config = {
     '/users/:path*',
     '/ocr/:path*',
     '/profile/:path*',
+    '/platform/:path*',
   ],
 };

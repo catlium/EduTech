@@ -2,10 +2,12 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Building2, UserRound } from 'lucide-react';
+import { ArrowRight, Building2, ShieldCheck, UserRound } from 'lucide-react';
+import Link from 'next/link';
 
 import { useAuth } from '@/lib/auth';
 import { useTenant } from '@/lib/tenant';
+import { usePlatform } from '@/lib/platform';
 import { BrandMark } from '@/components/app/brand-logo';
 import { PageLoader } from '@/components/app/loading';
 import { Button } from '@/components/ui/button';
@@ -16,6 +18,7 @@ export default function InstitutesPage() {
   const router = useRouter();
   const { user, memberships, loading } = useAuth();
   const { selectInstitute } = useTenant();
+  const { canAccessConsole } = usePlatform();
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -82,6 +85,29 @@ export default function InstitutesPage() {
             </Card>
           ))}
         </div>
+
+        {canAccessConsole && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-start gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <ShieldCheck className="size-4.5" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">Super Admin platform console</p>
+                  <p className="text-sm text-muted-foreground">
+                    Manage institutes, their lifecycle and subscriptions across the whole platform.
+                  </p>
+                </div>
+              </div>
+              <Button asChild size="sm">
+                <Link href="/platform/institutes">
+                  Open console <ArrowRight className="ml-1.5 size-4" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -16,12 +16,14 @@ import {
   Users,
   Library,
   Activity,
+  ShieldCheck,
   LogOut,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { useTenant, canManage, isInstituteAdmin, hasPermission } from '@/lib/tenant';
+import { usePlatform } from '@/lib/platform';
 import { BrandMark } from '@/components/app/brand-logo';
 import { ThemeToggle } from '@/components/app/theme-toggle';
 import { InstituteSwitcher } from '@/components/app/institute-switcher';
@@ -79,6 +81,7 @@ export function AppSidebar() {
   const { institute } = useTenant();
   const teacher = canManage(institute);
   const admin = isInstituteAdmin(institute);
+  const { canAccessConsole } = usePlatform();
 
   const primary = teacher
     ? teacherNav.filter((item) => !item.key || hasPermission(institute, item.key))
@@ -158,6 +161,24 @@ export function AppSidebar() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {canAccessConsole && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Platform</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isActive(pathname, '/platform')}>
+                    <Link href="/platform/institutes">
+                      <ShieldCheck className="size-4" />
+                      <span>Super Admin console</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

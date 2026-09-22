@@ -50,6 +50,7 @@ export const INSTITUTE_RESOURCES = {
 export const PLATFORM_RESOURCES = {
   institutes: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   'ocr-workers': { actions: ['read', 'create', 'update', 'manage'] },
+  plans: { actions: ['read'] },
 } as const satisfies ResourceMap;
 
 type ResourceKeys<T extends ResourceMap> = {
