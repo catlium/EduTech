@@ -119,6 +119,20 @@
       `catlium:instituteId` key so a re-login cannot inherit the previous
       account's institute; UX-only by design (backend 403 remains the auth
       boundary); see `security-audit.md`.**
+      **MOD-3 (export academic-scope) COMPLETE 2026-09-22
+      (`fix(authz): enforce academic scope on exports`)** — export/content +
+      preview, export/paper-pattern + preview, export/question-paper + preview,
+      and export/assessment-results + preview now resolve through the
+      authoritative module reads (`ContentService.getContent` /
+      `PaperPatternsService.getPattern` / `QuestionPapersService.getPaper` /
+      `ExaminationsService.getAssessment`), inheriting gateContent,
+      gatePatternAccess, gatePaper and the assessment scope gate; the 2 content
+      routes gained `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')`; new
+      `test:mod-3-export-scope` regression suite (7 scenarios) + all validation
+      green (see `security-audit.md` MOD-3 Remedy). Backlog (NOT this fix):
+      `attempts.controller.ts` `/attempts` + `/analytics` still resolve the
+      assessment by instituteId only via `AttemptsService.getAssessment`
+      (`attempts.service.ts:126`).
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 

@@ -82,6 +82,27 @@ fixed and covered (LOW-2 by the wiring verified in the web build); DOC-1 (stale
   ownership`; LOW-2 remediated 2026-09-22 at `fix(auth): clear institute
   context on session termination`; **H12 PARENT role key remediated 2026-09-22
   at `fix(authz): remove zombie PARENT role key`** — see `security-audit.md`.)
+- **MOD-3 remediated (export academic scope, 2026-09-22):** `fix(authz)`
+  `enforce academic scope on exports`. export/content + preview,
+  export/paper-pattern + preview, export/question-paper + preview, and
+  export/assessment-results + preview replaced their instituteId-only table
+  lookups with the authoritative module read gates —
+  `ContentService.getContent` (gateContent), `PaperPatternsService.getPattern`
+  (gatePatternAccess), `QuestionPapersService.getPaper` (gatePaper),
+  `ExaminationsService.getAssessment` (assessment scope gate, DRAFT
+  owner/admin, 404-deny) — so exports enforce the same academic-scope
+  authorization as the underlying reads. The 2 content routes (the only
+  ungated export routes) gained `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')`.
+  New `test:mod-3-export-scope` regression suite (7 scenarios: admin
+  whole-institute, teacher in-scope, teacher out-of-scope 404 all families,
+  STUDENT refused all 8 routes, no teacher-scope crossing for results,
+  cross-institute 404 all families, valid export behavior intact).
+  Validation: `pnpm test` 226 pass + all integration suites green against a
+  scratch DB, typecheck 10/10, lint 9/9. See `security-audit.md` §MOD-3. 
+  **Backlog (NOT this fix):** `attempts.controller.ts` `/attempts` +
+  `/analytics` still resolve the assessment by instituteId only
+  (`AttemptsService.getAssessment`, `attempts.service.ts:126`) — the same gap
+  MOD-3 closed for exports; fix belongs with the attempts/analytics work.
 
 ### Next task
 

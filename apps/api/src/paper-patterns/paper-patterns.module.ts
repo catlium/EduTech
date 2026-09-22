@@ -11,5 +11,6 @@ import { QuestionsModule } from '../questions/questions.module.js';
   imports: [JobsModule, MaterialsModule, ExaminationsModule, QuestionsModule],
   controllers: [PaperPatternsController],
   providers: [PaperPatternsService, PaperPatternExtractionService],
+  exports: [PaperPatternsService],
 })
 export class PaperPatternsModule {}

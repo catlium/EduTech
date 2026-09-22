@@ -2,12 +2,8 @@ import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import type { Response } from 'express';
 import { and, eq, inArray, isNull, or, asc, isNotNull, sql } from 'drizzle-orm';
 import {
-  contentItems,
-  contentVersions,
   questions,
-  assessments,
   assessmentQuestions,
-  questionPapers,
   questionPaperQuestions,
   paperPatterns,
   paperPatternSubjects,
@@ -40,6 +36,9 @@ import { buildAnalytics } from '../attempts/analytics.js';
 import { PuppeteerService } from './puppeteer.service.js';
 import { AcademicScopeService } from '../authorization/academic-scope.service.js';
 import { ExaminationsService } from '../examinations/examinations.service.js';
+import { ContentService } from '../content/content.service.js';
+import { PaperPatternsService } from '../paper-patterns/paper-patterns.service.js';
+import { QuestionPapersService } from '../question-papers/question-papers.service.js';
 
 export type { DocBlock, DocumentModel };
 
@@ -50,6 +49,9 @@ export class ExportService {
     private readonly puppeteer: PuppeteerService,
     private readonly scope: AcademicScopeService,
     private readonly examinations: ExaminationsService,
+    private readonly content: ContentService,
+    private readonly patterns: PaperPatternsService,
+    private readonly papers: QuestionPapersService,
   ) {}
 
   /** Send the document as PDF via the shared Puppeteer renderer — the same
@@ -61,29 +63,24 @@ export class ExportService {
     res.send(buffer);
   }
 
-  async buildContentDoc(instituteId: string, contentId: string): Promise<DocumentModel> {
-    const [item] = await this.db
-      .select()
-      .from(contentItems)
-      .where(and(eq(contentItems.id, contentId), eq(contentItems.instituteId, instituteId)))
-      .limit(1);
-    if (!item) throw new NotFoundException('Content item not found');
-
-    const [version] = await this.db
-      .select()
-      .from(contentVersions)
-      .where(
-        and(
-          eq(contentVersions.contentId, contentId),
-          eq(contentVersions.version, item.currentVersion),
-        ),
-      )
-      .limit(1);
-    if (!version) throw new NotFoundException('Content version not found');
-
+  async buildContentDoc(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    contentId: string,
+  ): Promise<DocumentModel> {
+    // Read-gate through the content module (D6/§18): DRAFT is owner+admin
+    // staging (O1), ACTIVE/ARCHIVED are pure academic scope (O2), null-subject
+    // content is admin-only. Denials are 404 (no existence leak).
+    const { item, current } = await this.content.getContent(
+      instituteId,
+      membershipId,
+      userId,
+      contentId,
+    );
     return {
       title: item.title,
-      blocks: contentBlocks(item.type, version.payload as Record<string, unknown>),
+      blocks: contentBlocks(item.type, current.payload as Record<string, unknown>),
     };
   }
 
@@ -256,14 +253,20 @@ export class ExportService {
    * analysis (aggregates only — never per-student answers or answer keys). */
   async buildAssessmentResultsDoc(
     instituteId: string,
+    membershipId: string,
+    userId: string,
     assessmentId: string,
   ): Promise<DocumentModel> {
-    const [assessmentRow] = await this.db
-      .select()
-      .from(assessments)
-      .where(and(eq(assessments.id, assessmentId), eq(assessments.instituteId, instituteId)))
-      .limit(1);
-    if (!assessmentRow) throw new NotFoundException('Assessment not found');
+    // Read-gate through the examinations module (same as the paper export):
+    // DRAFT is owner/admin staging (O1), finalized assessments are pure
+    // academic scope (O2); denials are 404 (no existence leak). The attempts
+    // ledger lives under the assessment, so it can never cross academic scope.
+    const assessmentRow = await this.examinations.getAssessment(
+      instituteId,
+      membershipId,
+      userId,
+      assessmentId,
+    );
 
     const [attemptsRows, analytics] = await Promise.all([
       this.db
@@ -478,15 +481,15 @@ export class ExportService {
 
   async buildQuestionPaperDoc(
     instituteId: string,
+    membershipId: string,
+    userId: string,
     paperId: string,
     dateTime: { date?: string; time?: string } = {},
   ): Promise<DocumentModel> {
-    const [paper] = await this.db
-      .select()
-      .from(questionPapers)
-      .where(and(eq(questionPapers.id, paperId), eq(questionPapers.instituteId, instituteId)))
-      .limit(1);
-    if (!paper) throw new NotFoundException('Question paper not found');
+    // Read-gate through the question-papers module (D6/§18): scoped papers are
+    // pure academic scope, unscoped papers are owner-only (O1/§18.7); admins
+    // bypass. Denials are 404 (no existence leak).
+    const paper = await this.papers.getPaper(instituteId, membershipId, userId, paperId);
 
     const links = await this.db
       .select({
@@ -595,25 +598,24 @@ export class ExportService {
     return [];
   }
 
-  async buildPaperPatternDoc(instituteId: string, patternId: string): Promise<DocumentModel> {
-    const [pattern] = await this.db
-      .select()
-      .from(paperPatterns)
-      .where(and(eq(paperPatterns.id, patternId), eq(paperPatterns.instituteId, instituteId)))
-      .limit(1);
-    if (!pattern) throw new NotFoundException('Paper pattern not found');
+  async buildPaperPatternDoc(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    patternId: string,
+  ): Promise<DocumentModel> {
+    // Read-gate through the paper-patterns module (D6/§18): staging rows are
+    // owner-only, APPROVED rows are pure scope on their subjects (when any
+    // subject intersects the actor's scope), General patterns are admin-only;
+    // admins bypass. Denials are 404 (no existence leak).
+    const pattern = await this.patterns.getPattern(instituteId, membershipId, userId, patternId);
 
-    const subjectRows = await this.db
-      .select({ subjectId: paperPatternSubjects.subjectId })
-      .from(paperPatternSubjects)
-      .where(eq(paperPatternSubjects.patternId, patternId));
-    const subjectIds = subjectRows.map((r) => r.subjectId);
     const subjectNames: Record<string, string> = {};
-    if (subjectIds.length > 0) {
+    if (pattern.subjectIds.length > 0) {
       const nameRows = await this.db
         .select({ id: subjects.id, name: subjects.name })
         .from(subjects)
-        .where(inArray(subjects.id, subjectIds));
+        .where(inArray(subjects.id, pattern.subjectIds));
       for (const s of nameRows) subjectNames[s.id] = s.name;
     }
 
@@ -645,7 +647,7 @@ export class ExportService {
       description: pattern.description,
       status: pattern.status,
       version: pattern.version,
-      subjectIds,
+      subjectIds: pattern.subjectIds,
       structure,
       subjectNames,
       questionTypeNames,

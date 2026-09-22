@@ -79,23 +79,37 @@ export class ExportController {
   }
 
   @Get('content/:contentId')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async exportContent(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Param('contentId', ParseUUIDPipe) contentId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
     format: (typeof EXPORT_FORMATS)[number] = 'pdf',
   ): Promise<void> {
-    const doc = await this.exportService.buildContentDoc(tenant.instituteId, contentId);
+    const doc = await this.exportService.buildContentDoc(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      contentId,
+    );
     await this.send(res, doc, format, `content-${contentId}`);
   }
 
   @Get('content/:contentId/preview')
+  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async previewContent(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('contentId', ParseUUIDPipe) contentId: string,
   ): Promise<PreviewPayload> {
-    const doc = await this.exportService.buildContentDoc(tenant.instituteId, contentId);
+    const doc = await this.exportService.buildContentDoc(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      contentId,
+    );
     return { preview: withHtml(buildPreview(doc)) };
   }
 
@@ -201,6 +215,7 @@ export class ExportController {
   @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async exportAssessmentResults(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
@@ -208,6 +223,8 @@ export class ExportController {
   ): Promise<void> {
     const doc = await this.exportService.buildAssessmentResultsDoc(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     await this.send(res, doc, format, `assessment-${assessmentId}-results`);
@@ -217,10 +234,13 @@ export class ExportController {
   @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async previewAssessmentResults(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('assessmentId', ParseUUIDPipe) assessmentId: string,
   ): Promise<PreviewPayload> {
     const doc = await this.exportService.buildAssessmentResultsDoc(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       assessmentId,
     );
     return { preview: withHtml(buildPreview(doc)) };
@@ -230,12 +250,18 @@ export class ExportController {
   @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async exportPaperPattern(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Param('patternId', ParseUUIDPipe) patternId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
     format: (typeof EXPORT_FORMATS)[number] = 'pdf',
   ): Promise<void> {
-    const doc = await this.exportService.buildPaperPatternDoc(tenant.instituteId, patternId);
+    const doc = await this.exportService.buildPaperPatternDoc(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      patternId,
+    );
     await this.send(res, doc, format, `paper-pattern-${patternId}`);
   }
 
@@ -243,9 +269,15 @@ export class ExportController {
   @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async previewPaperPattern(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('patternId', ParseUUIDPipe) patternId: string,
   ): Promise<PreviewPayload> {
-    const doc = await this.exportService.buildPaperPatternDoc(tenant.instituteId, patternId);
+    const doc = await this.exportService.buildPaperPatternDoc(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      patternId,
+    );
     return { preview: withHtml(buildPreview(doc)) };
   }
 
@@ -253,6 +285,7 @@ export class ExportController {
   @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async exportQuestionPaper(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Param('paperId', ParseUUIDPipe) paperId: string,
     @Query('format', new ParseEnumPipe(EXPORT_FORMATS, { optional: true }))
@@ -263,6 +296,8 @@ export class ExportController {
     const dateTime = date || time ? { date, time } : {};
     const doc = await this.exportService.buildQuestionPaperDoc(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       paperId,
       dateTime,
     );
@@ -273,6 +308,7 @@ export class ExportController {
   @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
   async previewQuestionPaper(
     @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('paperId', ParseUUIDPipe) paperId: string,
     @Query('date') date?: string,
     @Query('time') time?: string,
@@ -280,6 +316,8 @@ export class ExportController {
     const dateTime = date || time ? { date, time } : {};
     const doc = await this.exportService.buildQuestionPaperDoc(
       tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
       paperId,
       dateTime,
     );

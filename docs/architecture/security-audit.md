@@ -41,6 +41,53 @@ Phases K/L). No code was modified.
   typecheck 10/10; lint 9/9; API + web builds; api image rebuilt, healthy,
   `/api/v1/health` 200, new gates confirmed in the running image.
 
+## Remedy — MOD-3 (2026-09-22, `fix(authz): enforce academic scope on exports`)
+
+Export builders replaced instituteId-only table lookups with the **authoritative
+module read gates**, so every export inherits the exact same academic-scope
+authorization as its underlying read:
+
+- **export/content + preview** — `buildContentDoc` now resolves through
+  `ContentService.getContent` (private `gateContent`), which was already the
+  Content module's read gate (ACTIVE in scope, DRAFT owner/admin, 404-deny).
+  Raw `contentItems`/`contentVersions` queries removed. `getContent` returns
+  `{ item, current }`, which is precisely what the builder needs. The 2 content
+  routes ALSO gained `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')` — they were
+  the only export routes with no role guard.
+- **export/paper-pattern + preview** — `buildPaperPatternDoc` resolves through
+  `PaperPatternsService.getPattern` (private `gatePatternAccess`); subject-name
+  resolution now uses `pattern.subjectIds`. Raw `paperPatterns`/
+  `paperPatternSubjects` lookup removed from this builder. `PaperPatternsModule`
+  now exports `PaperPatternsService`.
+- **export/question-paper + preview** — `buildQuestionPaperDoc` resolves through
+  `QuestionPapersService.getPaper` (private `gatePaper`). Raw `questionPapers`
+  lookup removed.
+- **export/assessment-results + preview** — `buildAssessmentResultsDoc` resolves
+  through `ExaminationsService.getAssessment` (private `gateAssessment`: DRAFT
+  owner/admin, finalized pure academic scope, 404-deny). Raw `assessments`
+  lookup removed.
+- All 8 MOD-3 routes (content/preview, paper-pattern/preview, question-paper/
+  preview, results/preview) thread `tenant.membershipId` + `user.userId` into
+  the builders.
+- **Regression coverage**: new
+  `apps/api/src/authorization/mod-3-export-scope.integration.ts`
+  (`test:mod-3-export-scope`), 7 scenarios: (1) INSTITUTE_ADMIN exports the
+  whole institute (all 4 families) + staging bypass; (2) TEACHER exports within
+  academic scope, incl. own DRAFT (O1); (3) TEACHER gets 404 outside scope for
+  all 4 families + another teacher's in-scope DRAFT; (4) STUDENT refused on all
+  8 MOD-3 routes (RolesGuard), admin allowed; (5) results/analytics cannot cross
+  teacher scope; (6) cross-institute 404 for all 4 families; (7) valid export
+  behavior intact (question-bank, assessment paper, results ledger render).
+- **Validation**: `pnpm test` 226 pass; integration suites incl. new mod-3 (7
+  scenarios) + phase-m + resource-scope re-run green; typecheck 10/10; lint 9/9.
+
+**Remaining backlog (NOT in this fix — task-scoped out):** the sibling Attempts
+routes `GET /assessments/:assessmentId/attempts` and
+`GET /assessments/:assessmentId/analytics` (`attempts.controller.ts`,
+`AttemptsService.getAssessment` at `attempts.service.ts:126`) still resolve the
+assessment by instituteId only, the same gap MOD-3 closed for exports. Fix
+belongs with the attempts/analytics module work, not the export remediation.
+
 ### FOUND — HIGH-1: Export routes bypass answer-key gating
 
 **Status: REMEDIATED — see Remedy above (2026-09-21).**

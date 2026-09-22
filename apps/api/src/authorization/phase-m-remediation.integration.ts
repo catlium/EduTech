@@ -92,7 +92,15 @@ test('Phase M: export role gate + academic scope; job tenant isolation', {
   const scope = new AcademicScopeService(svc);
   const examsSvc = new ExaminationsService(svc, scope);
   const puppetStub = { pdf: async () => Buffer.alloc(0) } as unknown as PuppeteerService;
-  const exportSvc = new ExportService(svc, puppetStub, scope, examsSvc);
+  const exportSvc = new ExportService(
+    svc,
+    puppetStub,
+    scope,
+    examsSvc,
+    {} as unknown as import('../content/content.service.ts').ContentService,
+    {} as unknown as import('../paper-patterns/paper-patterns.service.ts').PaperPatternsService,
+    {} as unknown as import('../question-papers/question-papers.service.ts').QuestionPapersService,
+  );
   const jobsService = new JobsService(svc, {} as unknown as RabbitMQService);
   const enhancementsSvc = new MaterialEnhancementService(svc, jobsService);
 

@@ -27,7 +27,7 @@ state, including the known authorization gap in §5.
 
 | Resource                          | Format(s)       | Teacher-only? | Notes                                          |
 | --------------------------------- | --------------- | ------------- | ---------------------------------------------- |
-| `GET /export/content/:contentId`  | pdf · docx      | —             | Learning content (note/summary/flashcard/…)    |
+| `GET /export/content/:contentId`  | pdf · docx      | YES            | Learning content (note/summary/flashcard/…)    |
 | `GET /export/questions`           | pdf · docx · xlsx | —           | Question bank export; filters subject/chapter/topic/pattern/buckets |
 | `GET /export/assessment/:id`      | pdf · docx      | —             | `include=paper` (student) / `include=answers` (answer key) |
 | `GET /export/assessment/:id/results` | pdf · docx · xlsx | YES        | Attempts ledger + aggregate analytics          |
@@ -43,33 +43,37 @@ Every route has a sibling `/preview` returning the rendered preview payload.
 - **answers**: the teacher answer key (`-answer-key` filename suffix). Answer
   key construction is scope-aware (`questionDocBlock` `scope: 'paper' | 'teacher'`).
 
-## 4. Current role-gating state (verified 2026-09-17)
+## 4. Role-gating state (verified 2026-09-22)
 
 `@RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')` is present on:
 
+- content export + preview (`exportContent`, `previewContent`)
 - results export + preview (`exportAssessmentResults`, `...Results/preview`)
 - paper-pattern export + preview
 - question-paper export + preview
 
-The `RolesGuard` **defaults to ALLOW** when no `@RequiredRoles` decorator is
-present, so every privileged route must decorate explicitly.
+`GET /export/questions` and `GET /export/assessment/:id` also carry the same
+roles decorator (HIGH-1 remediation, 2026-09-21). The `RolesGuard` **defaults
+to ALLOW** when no `@RequiredRoles` decorator is present, so every privileged
+route must decorate explicitly — all export/preview routes now do.
 
-## 5. KNOWN-GAP (security): answer key reachable by any role
+## 5. Academic-scope enforcement (verified 2026-09-22)
 
-Current code (verified):
+Every export builder resolves through the **authoritative module read gate**
+for its resource, so exports enforce exactly the underlying read's
+tenant-scoped + academic-scope authorization (MOD-3 remediation,
+2026-09-22). Denials outside scope are 404 (no existence leak):
 
-- `GET /export/content/:contentId[ /preview]` — **no** `@RequiredRoles`
-- `GET /export/questions?include=answers[ /preview]` — **no** `@RequiredRoles`
-- `GET /export/assessment/:id?include=answers[ /preview]` — **no**
-  `@RequiredRoles`
-
-Because the guard defaults to allow, a **STUDENT-scoped token could fetch an
-assessment's answer key** (`?include=answers`) or a full question-bank export
-with answers directly from the API. The web UI hides these buttons
-client-side, but that is not a server-side boundary. **This is the single most
-important export issue to fix** (add the role decorators + a test asserting a
-student token gets 403) — it is intentionally NOT implemented in this commit;
-it is documented here as the recommended next hardening item.
+- `buildContentDoc` → `ContentService.getContent` (private `gateContent`:
+  ACTIVE in scope, DRAFT owner/admin)
+- `buildPaperPatternDoc` → `PaperPatternsService.getPattern` (private
+  `gatePatternAccess`)
+- `buildQuestionPaperDoc` → `QuestionPapersService.getPaper` (private
+  `gatePaper`)
+- `buildAssessmentResultsDoc` → `ExaminationsService.getAssessment` (private
+  `gateAssessment`: DRAFT owner/admin, finalized pure academic scope)
+- `buildQuestionsDoc` → `AcademicScopeService.subjectScopePredicate`
+- `buildAssessmentDoc` → `ExaminationsService.getAssessment`
 
 ## 6. Edge notes
 
