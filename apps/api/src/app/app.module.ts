@@ -23,6 +23,7 @@ import { AttemptsModule } from '../attempts/attempts.module.js';
 import { ExportModule } from '../export/export.module.js';
 import { PracticeModule } from '../practice/practice.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { PlatformModule } from '../platform/platform.module.js';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { RabbitMQService } from '../common/services/rabbitmq.service.js';
@@ -66,6 +67,7 @@ import { CsrfGuard } from '../common/guards/csrf.guard.js';
     PracticeModule,
     UsersModule,
     ExportModule,
+    PlatformModule,
   ],
   providers: [
     {

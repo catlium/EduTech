@@ -1,5 +1,75 @@
 # Project Status
 
+## Phase N.2 — Institute Lifecycle Mutations (2026-09-22)
+
+**Status: IMPLEMENTED + VALIDATED + COMMITTED (`feat(platform): add institute
+lifecycle mutations`).**
+
+Second slice of the institute-lifecycle track: the platform-plane deactivate/
+reactivate mutations that the Phase N foundation's TenantGuard enforcement was
+waiting on. Canonical design: `docs/architecture/institute-lifecycle.md` §7/§11.
+
+- **New module `apps/api/src/platform/`** (PlatformModule, wired into
+  `app.module.ts`):
+  - `PlatformInstitutesController` — `@Controller('platform/institutes')`,
+    `@UseGuards(AccessTokenGuard, PlatformGuard)` (NEVER TenantGuard /
+    `x-institute-id`): `POST :id/deactivate` + `POST :id/reactivate`, both
+    `@RequiredPermission('institutes.update')`, `ParseUUIDPipe` (non-UUID →
+    400).
+  - `PlatformInstitutesService` — conditional
+    `UPDATE ... WHERE status = <expected>` doubles as the transition guard: a
+    repeat call (or a concurrent opposite flip) updates 0 rows, and one
+    existence probe distinguishes nonexistent (404 NotFound) from invalid
+    transition (409 Conflict — "already deactivated"/"already active").
+    Deactivate stamps `status='deactivated'` + `deactivated_at`; reactivate
+    sets `status='active'` + clears `deactivated_at`. Memberships, institute
+    data, and auth sessions are never touched — the DB-fresh TenantGuard
+    enforces the flip on the next request.
+- **Tests** — new DB-gated suite `test:institute-lifecycle`
+  (`src/platform/institute-lifecycle.integration.ts`, `TEST_DATABASE_URL`-
+  gated, self-sufficient like authz-regression — runs PermissionSyncService)
+  exercising the REAL controller handlers through the REAL guard chain:
+  1. SUPER_ADMIN deactivates (status + stamp verified in DB);
+  2. anonymous 401; INSTITUTE_ADMIN and TEACHER denied 403 on both mutations;
+  3. deactivate → `TenantGuard` 403 "Institute is not active" next request;
+  4. reactivate → tenant access restored next request (real chain);
+  5. repeated invalid transitions → 409 (deactivate×2, reactivate×2);
+  6. nonexistent id → 404 both ways; non-UUID → 400 (ParseUUIDPipe);
+  7. memberships stay `active`, institute name/slug + a subject row survive,
+     auth sessions live (not revoked) after both lifecycle flips.
+- **Validation:** `pnpm test` 226 pass (suites 15); typecheck 10/10; lint 9/9;
+  API `nest build` + web `next build` pass. All 11 DB-gated integration suites
+  green against a scratch `catlium_lifecycle` DB (48/48 migrations applied,
+  dropped afterwards): institute-lifecycle 8, authz-regression 8, auth-session
+  14, phase-m-remediation, resource-scope 1, job-ownership 9, mod-3 1, mod-4 1,
+  academic-scope 1, teacher-assignments, student-placements (ocr-worker
+  skipped — needs RabbitMQ, unrelated). api image rebuilt from source,
+  `catlium-api` healthy, `/api/v1/health` 200 in-container,
+  `platform-institutes.controller.js` present in the running dist.
+- **Note:** `@catlium/database` `dist/` was stale (predated Phase N schema —
+  missing `institutes.deactivated_at`/`plans`); `pnpm --filter @catlium/database
+  build` regenerated it so the api build/runtime resolve the source-truth
+  schema. Fix is a build artifact refresh, not a source change.
+- **Deferred (explicitly NOT in this slice):** institute creation/routes,
+  subscription management, plan changes, Super Admin frontend, audit-log
+  subsystem, billing automation, scheduled/automated deactivation.
+
+### Next task
+
+Next slice of the institute-lifecycle track, in order:
+1. ~~**Design doc** — capture the missing design (repo has none) before further
+   implementation.~~ **DONE 2026-09-22 —
+   `docs/architecture/institute-lifecycle.md`** (implemented/planned/deferred
+   clearly separated; canonical reference for the remaining slices).
+2. ~~**Deactivation mutation** — Super Admin / platform-plane API.~~ **DONE
+   2026-09-22 — Phase N.2 (`feat(platform): add institute lifecycle
+   mutations`): `POST /api/v1/platform/institutes/:id/{deactivate,reactivate}`,
+   documented + regression-tested above.**
+3. **Subscription management API** on `institute_subscriptions` (the ledger
+   exists; no read/write endpoints yet).
+   Do NOT touch assessment/examination semantics, academic authorization, or
+   other platforms.
+
 ## Black Book — Academic Project Documentation (2026-09-22)
 
 **Status: COMPLETE + VALIDATED.** Fresh formal academic black book generated

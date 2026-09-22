@@ -1,11 +1,13 @@
 # Institute Lifecycle
 
 **Status: foundation implemented + validated (Phase N, `feat(platform): add
-institute lifecycle foundation`, 2026-09-22) — design captured here so the
-remaining slices (lifecycle API, subscription API, Super Admin console) have a
-canonical reference.** The repository had no design document for this track
-before this file; the Phase N foundation was built from the issued task message
-only and is reconstructed verbatim below.
+institute lifecycle foundation`, 2026-09-22) + **lifecycle mutations
+implemented + validated (Phase N.2, `feat(platform): add institute lifecycle
+mutations`, 2026-09-22)** — design captured here so the remaining slices
+(subscription API, Super Admin console) have a canonical reference.** The
+repository had no design document for this track before this file; the Phase N
+foundation was built from the issued task message only and is reconstructed
+verbatim below.
 
 Every section marks its state: **IMPLEMENTED** (live in the repo),
 **PLANNED** (design agreed here; not built), or **DEFERRED** (out of scope,
@@ -37,7 +39,7 @@ populated DBs (48/48 migrations).
 
 ## 2. Institute lifecycle and states
 
-**IMPLEMENTED (schema + enforcement); PLANNED (state-changing API).**
+**IMPLEMENTED (schema + enforcement + mutation API).**
 
 An institute has exactly two states:
 
@@ -55,16 +57,21 @@ active ▸▸▸ deactivated (mutation stamps status='deactivated' + deactivated
   exists, rows are created by the demo/E2E seed scripts
   (`packages/database/scripts/seed-demo.ts`) and integration fixtures.
 - **No active→anything-else transitions exist as a mutation** — the only
-  writer today is direct SQL / test fixtures. The transition is enforced the
+  writer before Phase N.2 was direct SQL / test fixtures. The transition is
+  enforced the
   moment the row flips because enforcement is DB-fresh per request.
+  **Phase N.2 adds the platform-plane mutations (`institutes.update`,
+  `apps/api/src/platform/`), which are now the sole production writers**
+  (see §7).
 - Reactivation: flip `status` → `active`, clear `deactivated_at`. Proved
-  live in `authz-regression` matrix 1: a deactivated institute 403s through the
+  live in the Phase N `authz-regression` matrix 1 and the Phase N.2
+  `institute-lifecycle` suite: a deactivated institute 403s through the
   real guard chain, and reactivation restores access **on the next request**
   (no token/session rotation, no cache to invalidate).
 
-Planned mutation surfaces are the platform lifecycle API (§8): deactivate
-(reactive, immediate), reactivate, and — deferred — scheduled/automated
-deactivation (§9).
+The designed mutation surfaces were the platform lifecycle API (§8): deactivate
+(reactive, immediate), reactivate — both IMPLEMENTED in Phase N.2 — and —
+deferred — scheduled/automated deactivation (§9/§12).
 
 ---
 
@@ -83,9 +90,10 @@ authorization planes are independent, built in Phase D (D3/§15 of
 | Governs | every tenant-scoped resource | shared platform infrastructure + institute lifecycle |
 
 - **Live platform surface today:** the global OCR worker registry
-  (`/api/v1/ocr/workers`, `ocr-workers.read|create|update`) is the first and
-  only platform-plane controller. Institute lifecycle is the designed next
-  platform surface but is **not yet a controller** (PLANNED).
+  (`/api/v1/ocr/workers`, `ocr-workers.read|create|update`) and the institute
+  lifecycle mutations (`POST /api/v1/platform/institutes/:id/
+  {deactivate,reactivate}`, `institutes.update`) — the latter added in Phase
+  N.2 (`apps/api/src/platform/`). Subscription/CRUD/console remain PLANNED.
 - A user can hold both planes simultaneously (SUPER_ADMIN + INSTITUTE_ADMIN)
   with neither implying the other.
 - Institute-scoped endpoints reject deactivated institutes at the tenant
@@ -175,7 +183,7 @@ runs a new institute:
 
 ## 7. Deactivation / reactivation semantics + TenantGuard enforcement
 
-**IMPLEMENTED (enforcement + plumbing); the mutation endpoint is PLANNED.**
+**IMPLEMENTED (enforcement + plumbing + mutation endpoint).**
 
 **Runtime enforcement (IMPLEMENTED).** `apps/api/src/common/guards/tenant.guard.ts`
 resolves the membership with both statuses and now rejects on either:
@@ -199,12 +207,21 @@ request**:
   `AccessTokenGuard` (401) — institute deactivation only matters after the
   user is otherwise authenticated.
 
-**Deactivate mutation (PLANNED).** Platform-plane endpoint
-(`PATCH .../institutes/:id/status` or a dedicated `deactivate` route,
+**Deactivate mutation (IMPLEMENTED, Phase N.2).** Platform-plane endpoints
+(`POST .../platform/institutes/:id/deactivate` and `/:id/reactivate`,
 `institutes.update`): set `status='deactivated'`, stamp `deactivated_at` in
 one row update. No cascade touching memberships (membership rows stay
 `active`); no data deletion. **Reactivation** (`status='active'`,
 `deactivated_at` cleared) is the symmetric mutation and the only way back.
+
+Implementation (`apps/api/src/platform/`): `PlatformInstitutesController`
+(`AccessTokenGuard → PlatformGuard`, `ParseUUIDPipe`) →
+`PlatformInstitutesService`, whose conditional `UPDATE ... WHERE status =
+<expected>` doubles as the transition guard — a repeat or opposite-race call
+updates 0 rows and the service distinguishes nonexistent (404) from invalid
+transition (409 Conflict) with one existence probe. Invalid UUID → 400.
+Gated by `@RequiredPermission('institutes.update')` — platform grants resolve
+DB-fresh; institute-plane users hold no platform keys and are denied.
 
 **Invariants for both:**
 - the CHECK constraints keep status values in `{active, deactivated}` at the DB
@@ -277,7 +294,8 @@ institutes is designed work, not behavior.
 | Surface | Plane | Guard | Keys | State |
 | --- | --- | --- | --- | --- |
 | OCR worker registry | platform | `PlatformGuard` | `ocr-workers.read/create/update` | IMPLEMENTED (Phase D) |
-| Institute lifecycle CRUD | platform | `PlatformGuard` | `institutes.read/create/update/delete/manage` | PLANNED |
+| Institute lifecycle mutations (`:id/deactivate`, `:id/reactivate`) | platform | `PlatformGuard` | `institutes.update` | IMPLEMENTED (Phase N.2) |
+| Institute lifecycle CRUD (create/get/list/patch) | platform | `PlatformGuard` | `institutes.read/create/update/delete/manage` | PLANNED |
 | Subscription read/write | platform | `PlatformGuard` | `institutes.read` / `institutes.manage` | PLANNED |
 | Institute switcher + memberships (own) | institute | `AccessTokenGuard` only | — (own memberships, per §8) | IMPLEMENTED |
 | Membership status flip | institute | `TenantGuard + RolesGuard + PermissionGuard` | `users.update` + `INSTITUTE_ADMIN` | IMPLEMENTED (pre-Phase N) |
@@ -292,20 +310,20 @@ L matrix 7).
 
 ## 11. Intended platform APIs and frontend console
 
-**PLANNED (nothing below is built).**
+**PLANNED (only the two lifecycle mutations below are built — Phase N.2).**
 
-**Platform API** (base prefix suggestion `/api/v1/platform/...` to sit
-alongside the existing platform OCR surface):
+**Platform API** (base prefix `/api/v1/platform/...`, sits alongside the
+existing platform OCR surface and the live lifecycle mutations):
 
 ```
-POST   /platform/institutes            create institute + subscription [+ primary admin]
-GET    /platform/institutes            list institutes (filter by status)
-GET    /platform/institutes/:id        institute detail (+ subscription, member count)
-PATCH  /platform/institutes/:id        rename / update metadata
-POST   /platform/institutes/:id/deactivate     → status='deactivated', stamp deactivated_at
-POST   /platform/institutes/:id/reactivate     → status='active', clear deactivated_at
-GET    /platform/plans                 plan catalog
-PUT    /platform/institutes/:id/subscription   attach/switch plan
+POST   /platform/institutes            create institute + subscription [+ primary admin]   [PLANNED]
+GET    /platform/institutes            list institutes (filter by status)                   [PLANNED]
+GET    /platform/institutes/:id        institute detail (+ subscription, member count)      [PLANNED]
+PATCH  /platform/institutes/:id        rename / update metadata                             [PLANNED]
+POST   /platform/institutes/:id/deactivate     → status='deactivated', stamp deactivated_at [IMPLEMENTED N.2]
+POST   /platform/institutes/:id/reactivate     → status='active', clear deactivated_at       [IMPLEMENTED N.2]
+GET    /platform/plans                 plan catalog                                          [PLANNED]
+PUT    /platform/institutes/:id/subscription   attach/switch plan                            [PLANNED]
 ```
 
 All gated `AccessTokenGuard + PlatformGuard` with `institutes.*` keys; all

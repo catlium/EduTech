@@ -231,6 +231,53 @@
       subscription/Super Admin code written. `project-status`/`tasks` updated
       to reference it.
 
+## Phase N.2 — Institute Lifecycle Mutations (2026-09-22)
+
+> Issued task (follow-on). Second slice: the platform-plane deactivate/
+> reactivate mutations the foundation's TenantGuard enforcement waited on.
+> Canonical design: `docs/architecture/institute-lifecycle.md` §7/§11.
+> Scope: SUPER_ADMIN/platform-plane ONLY (no institute-plane routes, no
+> TenantGuard / `x-institute-id`), deactivate sets
+> `status='deactivated'`+`deactivated_at`, reactivate sets `status='active'`+
+> clears `deactivated_at`, memberships/data/sessions preserved, next-request
+> enforcement via the existing TenantGuard. Endpoints:
+> `POST /platform/institutes/:id/deactivate` + `/:id/reactivate`
+> (`institutes.update`, `AccessTokenGuard → PlatformGuard`).
+> Out of scope: institute creation/subscriptions/plans, Super Admin frontend,
+> audit log, billing, scheduled deactivation.
+
+- [x] New `apps/api/src/platform/` module (PlatformModule wired into
+      `app.module.ts`): `platform-institutes.controller.ts` (`AccessTokenGuard`
+      + `PlatformGuard`, NO TenantGuard, `@RequiredPermission('institutes.update')`,
+      `ParseUUIDPipe`) + `platform-institutes.service.ts` — conditional
+      `UPDATE ... WHERE status = <expected>` doubles as the transition guard;
+      one existence probe distinguishes 404 (nonexistent) from 409 Conflict
+      (invalid transition). Errors: non-UUID → 400, nonexistent → 404, repeat/
+      opposite transition → 409. POST handlers return 200.
+- [x] Integration suite `test:institute-lifecycle`
+      (`src/platform/institute-lifecycle.integration.ts`, `TEST_DATABASE_URL`-
+      gated, self-sufficient harness like authz-regression posting real
+      controller handlers through REAL guards + PermissionSyncService): 7
+      scenarios — SUPER_ADMIN deactivate; anonymous/INSTITUTE_ADMIN/TEACHER
+      denied (401/403); deactivate → TenantGuard 403 next request; reactivate →
+      access restored; repeated transitions → 409; nonexistent → 404 / non-UUID
+      → 400; memberships (stay active), institute rows + subject data, and auth
+      sessions all preserved through both flips.
+- [x] Regression run vs scratch `catlium_lifecycle` DB (48/48 migrations,
+      dropped after): institute-lifecycle 8/8, authz-regression 8, auth-session
+      14, phase-m-remediation, resource-scope 1, job-ownership 9, mod-3 1,
+      mod-4 1, academic-scope 1, teacher-assignments, student-placements — all
+      green (ocr-worker skipped, needs RabbitMQ).
+- [x] Validation: `pnpm test` 226 pass; typecheck 10/10; lint 9/9; API
+      `nest build` + web `next build` pass. `@catlium/database` `dist/` rebuilt
+      (was stale, missing `deactivated_at` — broke the api build until
+      regenerated). api image rebuilt from source; `catlium-api` healthy;
+      `/api/v1/health` 200 in-container; `platform-institutes.controller.js`
+      present in running dist. Postgres back to internal-only; scratch DB
+      dropped. Docs updated (institute-lifecycle.md §7/§11, project-status.md,
+      this file).
+- [x] Commit `feat(platform): add institute lifecycle mutations`.
+
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 
 > Issued task (recovery session). Implements the revised D4/§16 structural
