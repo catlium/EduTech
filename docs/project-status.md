@@ -9,7 +9,10 @@ First slice of the institute-lifecycle track: DB status normalization +
 deactivation foundation + subscription plan ledger. NOTE: no design doc for
 this task was found in the repo (`docs/`, `.planning/`, `docs/proposal/`,
 `test-doc/`) — the design-doc must-exist state was never started, so the scope
-implemented below is from the issued task message only.
+implemented below is from the issued task message only. **The missing design is
+now captured (2026-09-22) in `docs/architecture/institute-lifecycle.md`** —
+it reconstructs the foundation from this commit verbatim and separates
+implemented / planned / deferred lifecycle + subscription + Super Admin work.
 
 - **Migration `0047_short_whistler.sql` (journal idx 47).** `institutes`
   gains `deactivated_at` + `CHECK (status IN ('active','deactivated'))`
@@ -57,8 +60,10 @@ implemented below is from the issued task message only.
 ### Next task
 
 Next slice of the institute-lifecycle track, in order:
-1. **Design doc** — capture the missing design (repo has none) before further
-   implementation.
+1. ~~**Design doc** — capture the missing design (repo has none) before further
+   implementation.~~ **DONE 2026-09-22 —
+   `docs/architecture/institute-lifecycle.md`** (implemented/planned/deferred
+   clearly separated; canonical reference for the remaining slices).
 2. **Deactivation mutation** — Super Admin / platform-plane API to set
    `institutes.status = 'deactivated'` + `deactivated_at` (already enforced by
    TenantGuard once written).

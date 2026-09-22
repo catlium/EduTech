@@ -156,6 +156,8 @@
 > `.planning/`, `docs/proposal/`, `test-doc/`); scope implemented from the
 > issued message only. Reference design was NOT linked to launch the pending
 > "Phase N — the design doc is required" state — this implements the message.
+> **Design doc for the track (including this foundation) now exists:**
+> `docs/architecture/institute-lifecycle.md` (2026-09-22).
 
 - [x] Migration `0047_short_whistler.sql` (journal idx 47): `institutes`
       `deactivated_at` + `CHECK (status IN ('active','deactivated'))`
@@ -187,6 +189,16 @@
       integration suites green vs scratch `catlium_suite_0047`; API + web
       builds pass; api/web images rebuilt + verified live; stack healthy
       (postgres internal-only again). See `project-status.md` Phase N.
+- [x] **Design doc** `docs/architecture/institute-lifecycle.md`: canonical
+      institute-lifecycle design — states + `deactivated_at`, platform vs
+      institute planes, SUPER_ADMIN responsibilities, creation/provisioning +
+      primary-admin flow, deactivate/reactivate semantics, membership/session
+      behavior, TenantGuard enforcement, plans/subscriptions,
+      authorization/permission model, intended platform APIs + Super Admin
+      console, and deferred billing/lifecycle work. Implemented vs planned vs
+      deferred clearly separated. Documentation only — no lifecycle/
+      subscription/Super Admin code written. `project-status`/`tasks` updated
+      to reference it.
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 
