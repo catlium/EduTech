@@ -10,8 +10,9 @@ recorded HIGH-1 (export answer-key bypass), MEDIUM-1 (cross-institute
 OCR/enhancement job adoption), LOW-1, LOW-2, DOC-1 in
 `docs/architecture/security-audit.md`. The HIGH and MEDIUM findings are now
 fixed and covered by a new regression suite, and DOC-1 (stale
-`security.md`/`authorization.md` headers) is resolved; LOW-1 and LOW-2 remain
-documented deferrals.
+`security.md`/`authorization.md` headers) is resolved; LOW-1 is audited
+(design agreed, remediation queued — see security-audit.md) and LOW-2 remains
+a documented deferral.
 
 - **HIGH-1 fixed (export):** `export.controller.ts` — `exportQuestions`,
   `previewQuestions`, `exportAssessment`, `previewAssessment` now
@@ -43,16 +44,20 @@ documented deferrals.
   typecheck 10/10; lint 9/9; API (`nest build`) + web (`next build`) builds
   pass; api image rebuilt from source, `catlium-api` healthy,
   `/api/v1/health` 200, new gates confirmed in the running image.
-- **Deferred (unchanged):** LOW-1 jobs owner column, LOW-2 stale institute
-  storage on logout — plus the pre-existing Phase L "Next task" carryovers
-  below. (DOC-1 resolved at the `docs(authz): finalize security documentation
-  truth` commit, 2026-09-22.)
+- **Deferred (unchanged):** LOW-2 stale institute storage on logout — plus
+  the pre-existing Phase L "Next task" carryovers below. (DOC-1 resolved at
+  `docs(authz): finalize security documentation truth`, 2026-09-22; LOW-1
+  jobs owner column audited 2026-09-22 — design agreed, remediation queued,
+  see `security-audit.md`.)
 
 ### Next task
 
-Resolve the LOW-1/LOW-2 audit items (or explicitly accept them). Unrelated
-carryover backlog: admin deactivation mutation, scheduled session-purge job,
-Super Admin UI/APIs, institutes lifecycle endpoints.
+Implement the agreed LOW-1 design (nullable `jobs.created_by → users.id`,
+sweep owner-gates re-sourced off the column, actor stamping at issue time,
+`ALLOWED_JOB_TYPES` narrowing to fix the POST /jobs forge seam). LOW-2 still
+to decide (accept or fix). Unrelated carryover backlog: admin deactivation
+mutation, scheduled session-purge job, Super Admin UI/APIs, institutes
+lifecycle endpoints.
 
 ## Phase L — Security & Authorization Regression Matrix (2026-09-21)
 
@@ -122,8 +127,9 @@ payload material belongs to the job's institute
 
 **Remediated 2026-09-21** — HIGH-1 and MEDIUM-1 fixed, covered by
 `test:phase-m-remediation`, all validation green; see the Phase M section at
-the top of this file. LOW-1/LOW-2 remain documented deferrals; DOC-1 resolved
-2026-09-22 (`docs(authz): finalize security documentation truth`).
+the top of this file. LOW-1 audited + design agreed 2026-09-22 (remediation
+queued, see security-audit.md); LOW-2 remains a documented deferral; DOC-1
+resolved 2026-09-22 (`docs(authz): finalize security documentation truth`).
 
 ## Phase J — Frontend Permission & Academic Scope Alignment (2026-09-21)
 

@@ -3,9 +3,11 @@
 ## Phase M Re-audit (2026-09-21, `feature/authorization-overhaul` @ `f884880`)
 
 HIGH-1 and MEDIUM-1 remediated 2026-09-21 @ a follow-up commit (see Remedy
-below); LOW-1 and LOW-2 remain as documented deferrals. DOC-1 (stale
+below); LOW-2 remains as a documented deferral. DOC-1 (stale
 `security.md`/`authorization.md` headers) remediated 2026-09-22 by
-`docs(authz): finalize security documentation truth`.
+`docs(authz): finalize security documentation truth`. **LOW-1 (jobs owner
+column) audited + design agreed 2026-09-22 — remediation queued; see the
+LOW-1 finding below.**
 
 Read-only re-audit against the Phase B–L architecture (session-bound access
 JWT, global cookie-plane CSRF, DB-fresh permissions, platform plane, academic
@@ -99,10 +101,76 @@ foreign material UUID + admin/teacher role.
 
 ### FOUND — LOW-1: jobs rows have no owner column
 
+**Status: AUDITED 2026-09-22 + DESIGN AGREED — remediation queued
+(`docs(authz): audit LOW-1 jobs owner-column design`).**
+
 `jobs.instituteId` is NOT NULL at insert (jobs.service.ts:100-107) but there
 is no `createdBy`; creator identity is only an ad-hoc payload key
 (`userId` in question-extraction.service.ts:168, `requestedBy` in
 generation.service.ts:99). Attribution/audit gap only — no isolation impact.
+
+**Audit outcome (2026-09-22):** the self-assessment "attribution gap only"
+understates it. Owner identity is already load-bearing for authorization,
+popped into the payload instead of a column:
+
+- Three coordinator-owned sweeps enforce an **owner gate read from the
+  payload** — `QUESTION_EXTRACT` (gateCandidateJob,
+  question-extraction.service.ts:360-363), `QP_EXTRACT` (line 163-164) and
+  `PATTERN_EXTRACT` (line 157-158) deny non-owner polling unless the caller
+  has whole-institute scope — and two sweeps **hard-require** the payload
+  credential to even run (`QP_EXTRACT` fails without `userId`,
+  question-paper-extraction.service.ts:211; `PATTERN_EXTRACT` fails without
+  `userId` + `membershipId`, paper-pattern-extraction.service.ts:203-206).
+  `PATTERN_EXTRACT` then remediates the derived pattern UNDER the payload
+  membership (`createPattern(instituteId, membershipId, userId, …)`,
+  line 318) — full impersonation of payload-supplied identity.
+- Derived-resource attribution rides the same payload: the AI worker writes
+  `created_by` = `payload.requestedBy` on materials/questions/notes/summaries/
+  flashcards (worker/ai/service.py:702,831,979,1191,1726) — NOT NULL columns
+  referencing `users.id`.
+- **Forgeability:** `POST /jobs` accepts `PATTERN_EXTRACT` and every
+  `AI_GENERATE_*`/`AI_ANALYZE_SYLLABUS` type (jobs.service.ts:53-58) with a
+  client-controlled payload (create-job.dto.ts). The worker does not re-gate
+  (no permission/membership data in the RabbitMQ message); the sweep gates use
+  the payload id. A TEACHER/INSTITUTE_ADMIN can therefore enqueue an AI job or
+  pattern extraction attributed to ANY real user id of the institute, and can
+  target a TOPIC outside their own academic scope — bypassing the guarded
+  per-module factories (`assertWritableTopic`/`assertGeneratableMaterial`)
+  and the sweep owner gates. Same-institute only (instituteId on the row +
+  MEDIUM-1 re-scoping hold); no cross-tenant exposure — but it is a genuine
+  integrity + attribution-forgery + intra-institute academic-scope-bypass seam.
+
+**Recommended design (agreed):** one nullable `created_by uuid references
+users.id` column on `jobs` (pattern-consistent with `materials`/`questions`/
+`content`/`materialEnhancements.createdBy`; nullable because system jobs —
+`PROCESS_SYLLABUS`, OCR/`CORRECTION`/`TEXT_SOURCE` enhancement triggers — have
+no human owner, precedent: material-enhancements.ts:62):
+
+1. `jobs.service.insertJob/issueJob/createJob` gain a `createdBy` param,
+   stamped from `@CurrentUser()` at the JobsController and from the caller's
+   existing `userId` in every guarded factory (question/generation/pattern/
+   qp extraction, syllabus, manual enhancement, materials).
+2. Sweep owner gates read `job.createdBy` instead of `payload.userId`
+   (3 gate helpers — removes the forge seam). `PATTERN_EXTRACT` keeps the
+   snapshot `membershipId` for sweep-time `createPattern`, with an ownership
+   validation before impersonation.
+3. `Job` interface / `toJob` / list surface the column (job monitor `owner`
+   filter then becomes possible).
+4. Backfill: `UPDATE jobs SET created_by = NULLIF(payload->>'userId','')
+   WHERE payload ? 'userId'` then `requestedBy`; rows without either stay
+   NULL. Users are deactivated, not deleted, so the FK is safe to keep
+   strict (matches every other `created_by` FK).
+5. **Related hardening (fold into the same remediation):** narrow
+   `ALLOWED_JOB_TYPES` on `POST /jobs` to the stateless coordinator-owned
+   types (`MATERIAL_PROCESS`, `MATERIAL_ENHANCE`) so AI/pattern jobs can only
+   be enqueued through their guarded factories; this closes the academic-
+   scope/attribution bypass at the seam rather than per-flow.
+
+**Verdict: remediate** (small, ~5 touchpoints + 1 migration). Do NOT defer:
+kept deferred, the forgeable payload credentials continue to back real owner
+gates and derived-resource attribution. Re-verify with
+`test:phase-m-remediation`-style coverage (owner gate from column; forged
+`POST /jobs` attribution rejected).
 
 ### FOUND — LOW-2: `cleanupInstituteStorage` never called on logout
 

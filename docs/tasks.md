@@ -104,7 +104,10 @@
       `test:phase-m-remediation` regression suite. **DOC-1 COMPLETE 2026-09-22**
       (`docs(authz): finalize security documentation truth`) — `security.md`
       and `authorization.md` headers/status brought to final-state truth.
-      LOW-1 and LOW-2 remain deferred.
+      **LOW-1 (jobs owner column) AUDITED 2026-09-22 — design agreed
+      (nullable `jobs.created_by → users.id` + sweep owner-gate re-source +
+      actor stamping + `ALLOWED_JOB_TYPES` narrowing); remediation queued
+      (see `security-audit.md`).** LOW-2 remains deferred.
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 
