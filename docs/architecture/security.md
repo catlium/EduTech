@@ -1,8 +1,17 @@
 # Security Architecture
 
 This document describes the security posture of the API's authentication,
-CSRF, rate limiting, and tenant isolation layers. It was validated during
-Phase 1 — Foundation Validation & Security Hardening.
+CSRF, rate limiting, and tenant isolation layers.
+
+**Current truth:** maintained through the Phase B–M authorization overhaul;
+last full validation checkpoint `55f7af8` (2026-09-22, branch
+`feature/authorization-overhaul`). The Phase M audit (2026-09-21) and its
+remediation status — HIGH-1 (export answer-key bypass) and MEDIUM-1
+(cross-institute OCR/enhancement job adoption) remediated at `55f7af8`;
+LOW-1 (jobs owner column), LOW-2 (stale institute storage on logout) still
+deferred — are tracked in `docs/architecture/security-audit.md`.
+`docs/architecture/authorization.md` is the authoritative authorization
+reference for the current implementation.
 
 ## JWT Configuration
 
@@ -39,9 +48,9 @@ removes that class of misconfiguration.
 
 | Cookie          | HttpOnly | Path           | Purpose                                           |
 | --------------- | -------- | -------------- | ------------------------------------------------- |
-| `access_token`  | yes      | `/api/v1`      | Bearer-equivalent access JWT                      |
+| `access_token`  | yes      | `/`            | Bearer-equivalent access JWT                      |
 | `refresh_token` | yes      | `/api/v1/auth` | Refresh JWT, only sent to auth routes             |
-| `csrf_token`    | no       | `/api/v1`      | Double-submit CSRF token, readable by frontend JS |
+| `csrf_token`    | no       | `/`            | Double-submit CSRF token, readable by frontend JS |
 
 - All cookies use `SameSite` (default `lax`) and `Secure` when
   `COOKIE_SECURE=true`.
@@ -130,3 +139,9 @@ All flows were exercised against a clean PostgreSQL 17 and the running API:
 - Rate limit → 429 after 5 auth attempts in 60 s; window resets.
 - Tenant isolation → cross-institute read returns 404; non-member institute
   returns 403; malformed `x-institute-id` returns 403.
+
+The flows were re-validated as part of the Phase B–M authorization overhaul
+(2026-09-21/22): 226 unit tests plus the DB-gated integration suites
+(auth-session 14, authz-regression 8, ocr-worker 3,
+academic/resource/teacher/student 1 each, phase-m-remediation 1) — see
+`docs/architecture/security-audit.md` Phase M section.

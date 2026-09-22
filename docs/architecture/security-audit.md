@@ -3,7 +3,9 @@
 ## Phase M Re-audit (2026-09-21, `feature/authorization-overhaul` @ `f884880`)
 
 HIGH-1 and MEDIUM-1 remediated 2026-09-21 @ a follow-up commit (see Remedy
-below); LOW-1, LOW-2 and DOC-1 remain as documented deferrals.
+below); LOW-1 and LOW-2 remain as documented deferrals. DOC-1 (stale
+`security.md`/`authorization.md` headers) remediated 2026-09-22 by
+`docs(authz): finalize security documentation truth`.
 
 Read-only re-audit against the Phase B–L architecture (session-bound access
 JWT, global cookie-plane CSRF, DB-fresh permissions, platform plane, academic
@@ -110,6 +112,9 @@ re-login as a different user. UX-only (backend still returns 403 on a foreign
 membership), not a data exposure.
 
 ### FOUND — DOC-1: `security.md` and `authorization.md` header stale
+
+**Status: REMEDIATED 2026-09-22 (`docs(authz): finalize security documentation
+truth`).**
 
 `docs/architecture/security.md` still describes the pre-Phase-K model
 (stateless access JWT, CSRF on refresh/logout only, string roles);

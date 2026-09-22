@@ -1,20 +1,24 @@
-# Authorization & Permissions — Target Architecture and Roadmap
+# Authorization & Permissions
 
-Status: **PLANNING ONLY — no implementation has been performed.**
-Base checkpoint: `3258b6d` (branch `feature/authorization-overhaul`).
-Date: 2026-09-20.
-Scope: A read-only architectural document. No source, schema, guard,
-controller, service, or frontend code was changed.
-
-This document is the design reference for the upcoming authorization overhaul.
-It separates **CURRENT IMPLEMENTATION** (what exists today, verified against
-source at `3258b6d`) from **TARGET ARCHITECTURE** (what we intend to build).
-Nothing in the TARGET sections is implemented yet.
+Status: **IMPLEMENTED** — the authorization overhaul on branch
+`feature/authorization-overhaul` (Phases B–M) is complete. The Phase M final
+audit and remediation ran at `55f7af8` (2026-09-22): HIGH-1 (export
+answer-key bypass) and MEDIUM-1 (cross-institute OCR/enhancement job
+adoption) are fixed and covered by `test:phase-m-remediation`; LOW-1 (jobs
+owner column), LOW-2 (stale institute storage on logout) remain documented
+deferrals (see `docs/architecture/security-audit.md`).
+Base checkpoint: `55f7af8` (branch `feature/authorization-overhaul`).
+Date: 2026-09-22.
+Scope: authoritative design + implementation reference. CURRENT IMPLEMENTATION
+sections were verified against source; TARGET sections describe intended
+architecture and are implemented where marked (per-phase implementation
+status is tracked in `docs/tasks.md` and `docs/project-status.md`).
 
 Companion documents:
 - `docs/architecture/security.md` — existing security posture documentation.
 - `docs/architecture/security-audit.md` — findings from the auth/tenancy/
-  authorization audit (source of the hardening issues listed in §9).
+  authorization audit + Phase M remediation status (source of the hardening
+  issues listed in §9).
 
 ---
 
@@ -180,14 +184,14 @@ and §14 (role/permission storage); SUPER_ADMIN storage is §15.
 
 ### Current state (verified)
 
-- Academic structure today is `subjects` → `chapters` → `topics`, all
-  institute-scoped. There are **no classes, divisions, or teacher/student
-  assignments** in the schema or API (`packages/database/src/schema/` contains
-  no class/division/assignment table; confirmed at `3258b6d`).
-- Content, questions, materials, syllabus, assessments, practice, and attempts
-  are institute-scoped by `institute_id`; student data is additionally
-  owner-scoped (`attempts.studentId`, `practiceSessions.studentId`). Scope =
-  institute (± owner). See `security-audit.md` §2.
+- Academic structure now includes `academic_years`, `classes`, `class_subjects`
+  and year-bound `divisions`, with teacher subject assignments and student
+  division placements (Phases E/F/G; see §16/§17 and
+  `docs/tasks.md`). Content, questions, materials, syllabus, assessments,
+  practice, and attempts are institute-scoped by `institute_id`; student data is
+  additionally owner-scoped (`attempts.studentId`, `practiceSessions.studentId`).
+  Scope = institute (± owner) + academic/resource scope (§16–§18). See
+  `security-audit.md` §2.
 
 ### Target: roles alone are insufficient — add academic/resource scope
 
@@ -635,7 +639,9 @@ in-flight or done.
 
 - **Status:** audit ran 2026-09-21 @ `f884880`; HIGH-1 and MEDIUM-1 findings
   remediated at the `fix(authz): close export and job tenant authorization gaps`
-  checkpoint. LOW-1, LOW-2, DOC-1 remain deferred (see
+  checkpoint (2026-09-21); DOC-1 (this document + `security.md` header truth)
+  remediated at `docs(authz): finalize security documentation truth`
+  (2026-09-22). LOW-1, LOW-2 remain deferred (see
   `docs/architecture/security-audit.md`).
 - **Objective:** re-audit and document the end state.
 - **Scope:**

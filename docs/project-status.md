@@ -2,13 +2,16 @@
 
 ## Phase M — Final Security Audit + Remediation (2026-09-21)
 
-**Status: HIGH-1 + MEDIUM-1 REMEDIATED + VALIDATED — committed on
-`feature/authorization-overhaul` (`fix(authz): close export and job tenant
-authorization gaps`).** Phase M audit (read-only at `f884880`) recorded HIGH-1
-(export answer-key bypass), MEDIUM-1 (cross-institute OCR/enhancement job
-adoption), LOW-1, LOW-2, DOC-1 in `docs/architecture/security-audit.md`. The
-HIGH and MEDIUM findings are now fixed and covered by a new regression suite;
-the three low/doc items remain documented deferrals.
+**Status: HIGH-1 + MEDIUM-1 REMEDIATED + VALIDATED, DOC-1 (docs truth)
+COMPLETE — committed on `feature/authorization-overhaul` (`fix(authz): close
+export and job tenant authorization gaps`, then `docs(authz): finalize
+security documentation truth`).** Phase M audit (read-only at `f884880`)
+recorded HIGH-1 (export answer-key bypass), MEDIUM-1 (cross-institute
+OCR/enhancement job adoption), LOW-1, LOW-2, DOC-1 in
+`docs/architecture/security-audit.md`. The HIGH and MEDIUM findings are now
+fixed and covered by a new regression suite, and DOC-1 (stale
+`security.md`/`authorization.md` headers) is resolved; LOW-1 and LOW-2 remain
+documented deferrals.
 
 - **HIGH-1 fixed (export):** `export.controller.ts` — `exportQuestions`,
   `previewQuestions`, `exportAssessment`, `previewAssessment` now
@@ -41,16 +44,15 @@ the three low/doc items remain documented deferrals.
   pass; api image rebuilt from source, `catlium-api` healthy,
   `/api/v1/health` 200, new gates confirmed in the running image.
 - **Deferred (unchanged):** LOW-1 jobs owner column, LOW-2 stale institute
-  storage on logout, DOC-1 `security.md`/`authorization.md` header refresh —
-  plus the pre-existing Phase L "Next task" carryovers below.
+  storage on logout — plus the pre-existing Phase L "Next task" carryovers
+  below. (DOC-1 resolved at the `docs(authz): finalize security documentation
+  truth` commit, 2026-09-22.)
 
 ### Next task
 
-Remaining Phase M documentation deferral: bring `docs/architecture/security.md`
-and the `authorization.md` header to final-state truth (DOC-1), and decide the
-LOW-1/LOW-2 items. Unrelated carryover backlog: admin deactivation mutation,
-scheduled session-purge job, Super Admin UI/APIs, institutes lifecycle
-endpoints.
+Resolve the LOW-1/LOW-2 audit items (or explicitly accept them). Unrelated
+carryover backlog: admin deactivation mutation, scheduled session-purge job,
+Super Admin UI/APIs, institutes lifecycle endpoints.
 
 ## Phase L — Security & Authorization Regression Matrix (2026-09-21)
 
@@ -100,11 +102,11 @@ guards/services; the only change is one DB-gated test suite + a dev test script.
 
 ### Next task
 
-Phase M (final security audit + remediation) is complete — see the Phase M
-section at the top of this file. Remaining deferred-but-documented items to
-carry forward: LOW-1/LOW-2/DOC-1 from the audit, plus the pre-existing admin
-deactivation mutation (endpoint/UI), scheduled session-purge job, Super Admin
-UI/APIs, institutes lifecycle endpoints.
+Phase M (final security audit + remediation + docs truth pass) is complete —
+see the Phase M section at the top of this file. Remaining deferred-but-
+documented items to carry forward: LOW-1/LOW-2 from the audit, plus the pre-
+existing admin deactivation mutation (endpoint/UI), scheduled session-purge
+job, Super Admin UI/APIs, institutes lifecycle endpoints.
 
 **Phase M audit ran 2026-09-21 (read-only, all 8 integration suites + 226 API
 tests + typecheck + lint green at `f884880`).** Findings recorded in
@@ -120,7 +122,8 @@ payload material belongs to the job's institute
 
 **Remediated 2026-09-21** — HIGH-1 and MEDIUM-1 fixed, covered by
 `test:phase-m-remediation`, all validation green; see the Phase M section at
-the top of this file. LOW-1/LOW-2/DOC-1 remain documented deferrals.
+the top of this file. LOW-1/LOW-2 remain documented deferrals; DOC-1 resolved
+2026-09-22 (`docs(authz): finalize security documentation truth`).
 
 ## Phase J — Frontend Permission & Academic Scope Alignment (2026-09-21)
 

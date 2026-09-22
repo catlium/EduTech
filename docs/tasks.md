@@ -101,8 +101,10 @@
       **HIGH-1 + MEDIUM-1 REMEDIATED 2026-09-21** (`fix(authz): close export
       and job tenant authorization gaps`): export routes gated + academic scope
       enforced; sweep/getSource/processJob material lookups tenant-scoped; new
-      `test:phase-m-remediation` regression suite. LOW-1, LOW-2, DOC-1 remain
-      deferred.
+      `test:phase-m-remediation` regression suite. **DOC-1 COMPLETE 2026-09-22**
+      (`docs(authz): finalize security documentation truth`) — `security.md`
+      and `authorization.md` headers/status brought to final-state truth.
+      LOW-1 and LOW-2 remain deferred.
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 
