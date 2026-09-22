@@ -106,8 +106,12 @@
       and `authorization.md` headers/status brought to final-state truth.
       **LOW-1 (jobs owner column) AUDITED 2026-09-22 — design agreed
       (nullable `jobs.created_by → users.id` + sweep owner-gate re-source +
-      actor stamping + `ALLOWED_JOB_TYPES` narrowing); remediation queued
-      (see `security-audit.md`).** LOW-2 remains deferred.
+      actor stamping + `ALLOWED_JOB_TYPES` narrowing); REMEDIATED 2026-09-22
+      (`fix(authz): enforce trusted job ownership`) — migration 0046 +
+      server-stamped `created_by`, the 3 sweep owner-gates read the column,
+      `POST /jobs` narrowed to `MATERIAL_PROCESS`/`MATERIAL_ENHANCE`, new
+      `test:job-ownership` regression suite, full validation green (see
+      `security-audit.md`).** LOW-2 remains deferred.
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 

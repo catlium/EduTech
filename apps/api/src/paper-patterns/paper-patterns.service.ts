@@ -289,7 +289,7 @@ export class PaperPatternsService {
     // blocks a second concurrent analysis of the same pattern; maps to 409.
     let job: Job;
     try {
-      job = await this.jobs.insertJob(instituteId, OPERATION, payload);
+      job = await this.jobs.insertJob(instituteId, OPERATION, payload, userId);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('A blueprint analysis is already in progress');

@@ -160,13 +160,12 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       return { jobId: active.id, status: 'QUEUED', reused: true };
     }
 
-    const job = await this.jobsService.insertJob(instituteId, TYPE, {
-      materialId: material.id,
-      subjectId: input.subjectId,
-      chapterId: input.chapterId ?? null,
-      topicId: input.topicId ?? null,
+    const job = await this.jobsService.insertJob(
+      instituteId,
+      TYPE,
+      { materialId: material.id, subjectId: input.subjectId, chapterId: input.chapterId ?? null, topicId: input.topicId ?? null },
       userId,
-    });
+    );
     return { jobId: job.id, status: 'QUEUED', reused: false };
   }
 
@@ -199,7 +198,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       );
     for (const job of adoptable) {
       try {
-        await this.processJob(job.id, job.instituteId, job.payload);
+        await this.processJob(job.id, job.instituteId, job.payload, job.createdBy);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Extraction failed';
         await this.jobsService.updateJobStatus(job.id, 'failed', undefined, { message });
@@ -207,7 +206,12 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     }
   }
 
-  private async processJob(jobId: string, instituteId: string, payload: unknown): Promise<void> {
+  private async processJob(
+    jobId: string,
+    instituteId: string,
+    payload: unknown,
+    createdBy: string | null,
+  ): Promise<void> {
     const data = payloadOf(payload);
     if (!data) {
       await this.jobsService.updateJobStatus(jobId, 'failed', undefined, {
@@ -320,8 +324,8 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
         provenance,
         approvalStatus: 'PENDING',
         status: 'REVIEW',
-        createdBy: userIdOf(payload) ?? material.createdBy,
-        updatedBy: userIdOf(payload) ?? material.createdBy,
+        createdBy: createdBy ?? material.createdBy,
+        updatedBy: createdBy ?? material.createdBy,
       });
     }
 
@@ -357,7 +361,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     const subjectId = String(job.payload?.['subjectId'] ?? '');
     await this.scope.requireWritableSubject(instituteId, membershipId, subjectId);
     const scope = await this.scope.resolveScope(instituteId, membershipId);
-    const owner = userIdOf(job.payload);
+    const owner = job.createdBy ?? undefined;
     if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
       throw new NotFoundException('Question extraction run not found');
     }
@@ -795,11 +799,6 @@ function payloadOf(payload: unknown): Record<string, unknown> | null {
   return typeof payload === 'object' && payload !== null
     ? (payload as Record<string, unknown>)
     : null;
-}
-
-function userIdOf(payload: unknown): string | undefined {
-  const v = payloadOf(payload)?.['userId'];
-  return typeof v === 'string' ? v : undefined;
 }
 
 function normalizeMessage(message: string): string {

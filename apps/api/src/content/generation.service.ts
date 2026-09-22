@@ -104,7 +104,7 @@ export class GenerationService {
     // insert violates it and maps to a 409, consistent with material processing.
     let job: Job;
     try {
-      job = await this.jobs.insertJob(instituteId, operation, payload);
+      job = await this.jobs.insertJob(instituteId, operation, payload, userId);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('A generation is already in progress for this source');
@@ -146,7 +146,7 @@ export class GenerationService {
 
     let job: Job;
     try {
-      job = await this.jobs.insertJob(instituteId, STARTER_MATERIAL_OPERATION, payload);
+      job = await this.jobs.insertJob(instituteId, STARTER_MATERIAL_OPERATION, payload, userId);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('A generation is already in progress for this source');
@@ -199,7 +199,7 @@ export class GenerationService {
 
     let job: Job;
     try {
-      job = await this.jobs.insertJob(instituteId, CONTENT_PACKAGE_OPERATION, payload);
+      job = await this.jobs.insertJob(instituteId, CONTENT_PACKAGE_OPERATION, payload, userId);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('A generation is already in progress for this source');
@@ -395,7 +395,7 @@ export class GenerationService {
         this.hasExistingDerivedContent(instituteId, topicId, type),
       enqueueJob: async (operation, payload) => {
         try {
-          const job = await this.jobs.issueJob(instituteId, operation, payload);
+          const job = await this.jobs.issueJob(instituteId, operation, payload, userId);
           return { jobId: job.id, duplicate: false };
         } catch (error) {
           if (isUniqueViolation(error)) return { jobId: '', duplicate: true };
@@ -626,7 +626,7 @@ export class GenerationService {
 
     let job: Job;
     try {
-      job = await this.jobs.issueJob(instituteId, operation, payload);
+      job = await this.jobs.issueJob(instituteId, operation, payload, userId);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('A generation is already in progress for this resource');

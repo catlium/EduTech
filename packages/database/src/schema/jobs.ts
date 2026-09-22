@@ -2,6 +2,7 @@ import { pgTable, uuid, varchar, timestamp, jsonb, uniqueIndex } from 'drizzle-o
 import { sql } from 'drizzle-orm';
 
 import { institutes } from './institutes.js';
+import { users } from './users.js';
 
 export const jobs = pgTable(
   'jobs',
@@ -10,6 +11,11 @@ export const jobs = pgTable(
     instituteId: uuid('institute_id')
       .notNull()
       .references(() => institutes.id, { onDelete: 'cascade' }),
+    // Verifiable job owner — stamped from the authenticated actor at issue
+    // time (never from the request payload). NULL for system-generated jobs
+    // (PROCESS_SYLLABUS, OCR/CORRECTION triggered enhancement) — precedent:
+    // materialEnhancements.createdBy is nullable.
+    createdBy: uuid('created_by').references(() => users.id),
     type: varchar('type', { length: 100 }).notNull(),
     status: varchar('status', { length: 20 }).notNull().default('queued'),
     payload: jsonb('payload'),

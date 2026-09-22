@@ -10,6 +10,9 @@ import { isUniqueViolation } from '../common/utils/db-errors.util.js';
 export interface Job {
   id: string;
   instituteId: string;
+  /** Trusted owner (stamped from the authenticated actor, never the
+   * payload). NULL for system-generated jobs. */
+  createdBy: string | null;
   type: string;
   status: string;
   payload: Record<string, unknown> | null;
@@ -48,14 +51,13 @@ const JOB_QUEUE_BY_TYPE: Record<string, string> = {
   AI_ANALYZE_SYLLABUS: 'ai_generation',
 };
 
-// Types the generic `POST /jobs` endpoint accepts. Anything else is rejected
+// Types the generic `POST /jobs` endpoint accepts — only the stateless,
+// coordinator-owned production/OCR-enrichment jobs. AI-generation, syllabus
+// and extraction job types are reserved to their guarded service/factory
+// paths (which stamp the trusted owner); exposing them here would let a
+// caller forge `userId`/`requestedBy` attribution. Anything else is rejected
 // up front instead of being consumed (acked) and never progressed by a worker.
-export const ALLOWED_JOB_TYPES = [
-  'MATERIAL_PROCESS',
-  'MATERIAL_ENHANCE',
-  'PATTERN_EXTRACT',
-  ...Object.keys(JOB_QUEUE_BY_TYPE),
-] as const;
+export const ALLOWED_JOB_TYPES = ['MATERIAL_PROCESS', 'MATERIAL_ENHANCE'] as const;
 
 @Injectable()
 export class JobsService {
@@ -68,8 +70,9 @@ export class JobsService {
     instituteId: string,
     type: string,
     payload?: Record<string, unknown>,
+    createdBy?: string | null,
   ): Promise<Job> {
-    return this.issueJob(instituteId, type, payload);
+    return this.issueJob(instituteId, type, payload, createdBy);
   }
 
   /** Insert a job row and publish it. If publishing fails the row is marked
@@ -79,8 +82,9 @@ export class JobsService {
     instituteId: string,
     type: string,
     payload?: Record<string, unknown>,
+    createdBy?: string | null,
   ): Promise<Job> {
-    const job = await this.insertJob(instituteId, type, payload);
+    const job = await this.insertJob(instituteId, type, payload, createdBy);
     try {
       await this.publishJob(job);
     } catch (error) {
@@ -96,11 +100,13 @@ export class JobsService {
     instituteId: string,
     type: string,
     payload?: Record<string, unknown>,
+    createdBy?: string | null,
   ): Promise<Job> {
     const [job] = await this.db
       .insert(jobs)
       .values({
         instituteId,
+        createdBy: createdBy ?? null,
         type,
         status: 'queued',
         payload: payload ?? null,
@@ -250,6 +256,7 @@ export class JobsService {
     return {
       id: job.id,
       instituteId: job.instituteId,
+      createdBy: job.createdBy,
       type: job.type,
       status: job.status,
       payload: job.payload as Record<string, unknown> | null,

@@ -28,6 +28,7 @@
     "test:resource-scope": "tsx --test src/authorization/resource-scope.integration.ts",
     "test:authz-regression": "tsx --test src/authorization/authz-regression.integration.ts",
     "test:phase-m-remediation": "tsx --test src/authorization/phase-m-remediation.integration.ts",
+    "test:job-ownership": "tsx --test src/authorization/job-ownership.integration.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

@@ -2,17 +2,18 @@
 
 ## Phase M — Final Security Audit + Remediation (2026-09-21)
 
-**Status: HIGH-1 + MEDIUM-1 REMEDIATED + VALIDATED, DOC-1 (docs truth)
-COMPLETE — committed on `feature/authorization-overhaul` (`fix(authz): close
-export and job tenant authorization gaps`, then `docs(authz): finalize
-security documentation truth`).** Phase M audit (read-only at `f884880`)
-recorded HIGH-1 (export answer-key bypass), MEDIUM-1 (cross-institute
+**Status: HIGH-1 + MEDIUM-1 + LOW-1 REMEDIATED + VALIDATED, DOC-1 (docs
+truth) COMPLETE — committed on `feature/authorization-overhaul`
+(`fix(authz): close export and job tenant authorization gaps`,
+`docs(authz): finalize security documentation truth`,
+`docs(authz): audit LOW-1 jobs owner-column design`,
+`fix(authz): enforce trusted job ownership`).** Phase M audit (read-only at
+`f884880`) recorded HIGH-1 (export answer-key bypass), MEDIUM-1 (cross-institute
 OCR/enhancement job adoption), LOW-1, LOW-2, DOC-1 in
-`docs/architecture/security-audit.md`. The HIGH and MEDIUM findings are now
-fixed and covered by a new regression suite, and DOC-1 (stale
-`security.md`/`authorization.md` headers) is resolved; LOW-1 is audited
-(design agreed, remediation queued — see security-audit.md) and LOW-2 remains
-a documented deferral.
+`docs/architecture/security-audit.md`. HIGH, MEDIUM and LOW-1 are now fixed
+and covered by regression suites; DOC-1 (stale
+`security.md`/`authorization.md` headers) is resolved; LOW-2 remains a
+documented deferral.
 
 - **HIGH-1 fixed (export):** `export.controller.ts` — `exportQuestions`,
   `previewQuestions`, `exportAssessment`, `previewAssessment` now
@@ -44,20 +45,32 @@ a documented deferral.
   typecheck 10/10; lint 9/9; API (`nest build`) + web (`next build`) builds
   pass; api image rebuilt from source, `catlium-api` healthy,
   `/api/v1/health` 200, new gates confirmed in the running image.
+- **LOW-1 remediated (jobs owner column, 2026-09-22):** migration
+  `0046_jobs_created_by` adds nullable `jobs.created_by uuid → users.id`
+  (+ index), backfilled from legacy payload `userId`/`requestedBy` with
+  uuid-regex-guarded casts. `JobsService.insertJob/issueJob/createJob` take a
+  `createdBy` arg; `JobsController.create` stamps `@CurrentUser().userId` and
+  every guarded factory passes its caller `userId`; system jobs stay `NULL`.
+  The 3 sweep owner-gates (`QUESTION_EXTRACT` gateCandidateJob,
+  `QP_EXTRACT`, `PATTERN_EXTRACT`) now read the column, not the payload, with
+  admin whole-institute bypass preserved. `ALLOWED_JOB_TYPES` narrowed to
+  `MATERIAL_PROCESS` + `MATERIAL_ENHANCE`, closing the forgeable
+  `POST /jobs` AI/pattern seam. New `test:job-ownership` integration suite (8
+  scenarios). See `security-audit.md` §LOW-1 Remedy.
 - **Deferred (unchanged):** LOW-2 stale institute storage on logout — plus
-  the pre-existing Phase L "Next task" carryovers below. (DOC-1 resolved at
-  `docs(authz): finalize security documentation truth`, 2026-09-22; LOW-1
-  jobs owner column audited 2026-09-22 — design agreed, remediation queued,
-  see `security-audit.md`.)
+  the pre-existing Phase L "Next task" carryovers below. (LOW-1 remediated
+  2026-09-22 at `fix(authz): enforce trusted job ownership`, see
+  `security-audit.md`.)
 
 ### Next task
 
-Implement the agreed LOW-1 design (nullable `jobs.created_by → users.id`,
-sweep owner-gates re-sourced off the column, actor stamping at issue time,
-`ALLOWED_JOB_TYPES` narrowing to fix the POST /jobs forge seam). LOW-2 still
-to decide (accept or fix). Unrelated carryover backlog: admin deactivation
-mutation, scheduled session-purge job, Super Admin UI/APIs, institutes
-lifecycle endpoints.
+LOW-2 (stale institute storage on logout) still to decide — accept or fix.
+Unrelated carryover backlog: admin deactivation mutation, scheduled
+session-purge job, Super Admin UI/APIs, institutes lifecycle endpoints. Also
+tracked from the LOW-1 remediation: `drizzle-kit migrate` in this workspace
+silently no-ops on populated DBs and errors (no diagnostic) on fresh DBs —
+regenerate `packages/database/drizzle` snapshots and normalize the journal
+before any future migration (see `security-audit.md`).
 
 ## Phase L — Security & Authorization Regression Matrix (2026-09-21)
 

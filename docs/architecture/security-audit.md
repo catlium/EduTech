@@ -6,8 +6,8 @@ HIGH-1 and MEDIUM-1 remediated 2026-09-21 @ a follow-up commit (see Remedy
 below); LOW-2 remains as a documented deferral. DOC-1 (stale
 `security.md`/`authorization.md` headers) remediated 2026-09-22 by
 `docs(authz): finalize security documentation truth`. **LOW-1 (jobs owner
-column) audited + design agreed 2026-09-22 — remediation queued; see the
-LOW-1 finding below.**
+column) audited + design agreed 2026-09-22 and remediated 2026-09-22 — see
+the LOW-1 finding + Remedy below.**
 
 Read-only re-audit against the Phase B–L architecture (session-bound access
 JWT, global cookie-plane CSRF, DB-fresh permissions, platform plane, academic
@@ -101,8 +101,15 @@ foreign material UUID + admin/teacher role.
 
 ### FOUND — LOW-1: jobs rows have no owner column
 
-**Status: AUDITED 2026-09-22 + DESIGN AGREED — remediation queued
-(`docs(authz): audit LOW-1 jobs owner-column design`).**
+**Status: REMEDIATED 2026-09-22 (`fix(authz): enforce trusted job ownership`).**
+
+Migration `0046_jobs_created_by` adds nullable `jobs.created_by uuid →
+users.id` (+ index), backfilled from the legacy payload keys (`userId`
+preferred over `requestedBy`, uuid-regex-guarded casts so parseable payload
+values only — unparseable/junk keys stay NULL, i.e. classified as system
+jobs). Owner identity is now a column, server-stamped at issue time, never
+read from the request payload. See the audit outcome below for the rationale
+and the remediation notes for the closed seams.
 
 `jobs.instituteId` is NOT NULL at insert (jobs.service.ts:100-107) but there
 is no `createdBy`; creator identity is only an ad-hoc payload key
@@ -171,6 +178,65 @@ kept deferred, the forgeable payload credentials continue to back real owner
 gates and derived-resource attribution. Re-verify with
 `test:phase-m-remediation`-style coverage (owner gate from column; forged
 `POST /jobs` attribution rejected).
+
+#### LOW-1 Remedy (2026-09-22, `fix(authz): enforce trusted job ownership`)
+
+Implemented per the agreed design above, plus the related factory hardening:
+
+- **Schema + migration** `packages/database/drizzle/0046_jobs_created_by.sql`:
+  nullable `created_by uuid references users(id) ON DELETE no action`, index
+  `jobs_created_by_idx`, idempotent (`IF NOT EXISTS`). Hand-written SQL (
+  `drizzle-kit generate` is inoperative here — snapshots stop at 0023 while
+  the journal has 46+ entries, so generate prompts `promptNamedWithSchemas-
+  Conflict` on a non-TTY; 0024–0045 follow the same hand-written convention,
+  verified 2026-09-22).
+- **Stamping**: `JobsService.insertJob/issueJob/createJob` take a `createdBy`
+  argument; `JobsController.create` stamps `@CurrentUser().userId`; every
+  guarded factory passes its existing caller `userId` (generation, question
+  generation, syllabus `AI_ANALYZE_SYLLABUS`, manual/OCR `MATERIAL_ENHANCE`,
+  question/QP/pattern extraction). System jobs (`PROCESS_SYLLABUS`, system-
+  triggered `MATERIAL_ENHANCE`) stay `NULL`.
+- **Sweep owner gates** (3) now read `job.createdBy` instead of the payload:
+  `QUESTION_EXTRACT` `gateCandidateJob`, `QP_EXTRACT`, `PATTERN_EXTRACT`
+  (owner check preserved, whole-institute admin bypass preserved;
+  `createdBy ?? material.createdBy` fallback for candidate attribution).
+  `PATTERN_EXTRACT` keeps only the `membershipId` payload snapshot for
+  sweep-time `createPattern`.
+- **Seam closed**: `ALLOWED_JOB_TYPES` narrowed to `MATERIAL_PROCESS` +
+  `MATERIAL_ENHANCE`, so `POST /jobs` can no longer enqueue any
+  `AI_GENERATE_*`/`AI_ANALYZE_SYLLABUS`/`PATTERN_EXTRACT` job with a
+  client-controlled payload — AI/pattern jobs flow only through their
+  guarded factories (which now also stamp `created_by`).
+- **Worker attribution** (`worker/ai/service.py`, writes payload `requestedBy`
+  to derived-resource `created_by`) intentionally unchanged: the public seam
+  is closed, and guarded factories now stamp the same actor as `jobs.createdBy`,
+  so attribution remains consistent.
+- **Regression coverage**: `apps/api/src/authorization/job-ownership.integration.ts`
+  (`test:job-ownership`, `TEST_DATABASE_URL`-gated) — 8 scenarios covering
+  server-stamped vs forged payload, NULL system owners, `MATERIAL_PROCESS`/
+  `MATERIAL_ENHANCE` still green, all three owner polling gates reading the
+  column (with forged-payload-user 404s + admin bypass), tenant isolation
+  unchanged, and `CreateJobDto`/`ALLOWED_JOB_TYPES` rejecting the AI/
+  extraction types.
+- **Validation**: `pnpm test` 226; integration suites green incl. the new
+  `test:job-ownership` 8/8 (auth-session, phase-m, academic/resource scope,
+  teacher/student placements, authz-regression 8, ocr-worker 3); typecheck
+  10/10; lint 9/9; API (`nest build`) + web (`next build`) builds. Migration
+  applied + verified on the live `catlium_dev` (column, FK, index;
+  backfill: 993 owned / 33 system-NULL rows) and on `catlium_dbtest`;
+  api/web/worker images rebuilt from source and healthy, narrowed
+  `ALLOWED_JOB_TYPES = ["MATERIAL_PROCESS","MATERIAL_ENHANCE"]` confirmed in
+  the running api image.
+- **Known tooling issue (pre-existing, NOT caused by this change):**
+  `drizzle-kit migrate` in this workspace silently no-ops on a populated DB
+  (did not apply pending migrations) and exits RC=1 with no diagnostic on a
+  fresh DB, both on host and in the `migrate` image. The underlying
+  `drizzle-orm` `migrate()` (the exact library drizzle-kit invokes) works;
+  LOW-1 was applied through one-shot `drizzle-orm migrate` in the migrate
+  image, and the CLI then reports `"✓ migrations applied successfully!"` for
+  subsequent no-op runs. Worth a drizzle-kit upgrade/investigation separately
+  — recommend regenerating the `packages/database/drizzle` snapshots and
+  normalizing the journal before any future migration.
 
 ### FOUND — LOW-2: `cleanupInstituteStorage` never called on logout
 

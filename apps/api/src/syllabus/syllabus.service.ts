@@ -373,7 +373,7 @@ export class SyllabusService {
 
     let job;
     try {
-      job = await this.jobs.insertJob(instituteId, OPERATION, payload);
+      job = await this.jobs.insertJob(instituteId, OPERATION, payload, userId);
     } catch (error) {
       if (this.isUniqueViolation(error)) {
         throw new ConflictException('Syllabus analysis is already in progress for this syllabus');

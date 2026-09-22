@@ -160,7 +160,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
   ): Promise<Job> {
     const job = await this.jobsService.getJob(jobId, instituteId);
     const scope = await this.scope.resolveScope(instituteId, membershipId);
-    const owner = typeof job.payload?.['userId'] === 'string' ? job.payload['userId'] : undefined;
+    const owner = job.createdBy ?? undefined;
     if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
       throw new NotFoundException('Question paper extraction run not found');
     }
@@ -185,7 +185,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       );
     for (const job of adoptable) {
       try {
-        await this.processJob(job.id, job.instituteId, job.payload);
+        await this.processJob(job.id, job.instituteId, job.payload, job.createdBy);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Extraction failed';
         await this.jobsService.updateJobStatus(job.id, 'failed', undefined, { message });
@@ -193,11 +193,16 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
     }
   }
 
-  private async processJob(jobId: string, instituteId: string, payload: unknown): Promise<void> {
+  private async processJob(
+    jobId: string,
+    instituteId: string,
+    payload: unknown,
+    createdBy: string | null,
+  ): Promise<void> {
     const jobPayload = payloadOf(payload);
     const sourceHash =
       typeof jobPayload?.['sourceHash'] === 'string' ? jobPayload['sourceHash'] : undefined;
-    const userId = typeof jobPayload?.['userId'] === 'string' ? jobPayload['userId'] : undefined;
+    const userId = createdBy ?? undefined;
     const paperId =
       typeof jobPayload?.['paperId'] === 'string' ? jobPayload['paperId'] : undefined;
     if (!jobPayload) {
@@ -502,10 +507,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       return this.enqueueIntoPaper(instituteId, userId, payload);
     }
 
-    const job = await this.jobsService.insertJob(instituteId, TYPE, {
-      ...payload,
-      userId,
-    });
+    const job = await this.jobsService.insertJob(instituteId, TYPE, payload, userId);
     return { jobId: job.id, status: 'QUEUED', reused: false };
   }
 
@@ -530,11 +532,13 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       })
       .returning();
 
-    const job = await this.jobsService.insertJob(instituteId, TYPE, {
-      ...payload,
+    const job = await this.jobsService.insertJob(instituteId, TYPE,
+      {
+        ...payload,
+        paperId: paper!.id,
+      },
       userId,
-      paperId: paper!.id,
-    });
+    );
     return { jobId: job.id, status: 'QUEUED', reused: false, paperId: paper!.id };
   }
 

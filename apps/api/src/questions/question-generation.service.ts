@@ -120,7 +120,7 @@ export class QuestionGenerationService {
     // generation: only one active AI_GENERATE_QUESTIONS job per topic.
     let job: Job;
     try {
-      job = await this.jobs.insertJob(instituteId, OPERATION, payload);
+      job = await this.jobs.insertJob(instituteId, OPERATION, payload, userId);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('A generation is already in progress for this source');
@@ -251,6 +251,7 @@ export class QuestionGenerationService {
               requestedBy: userId,
               dependentResources,
             },
+            userId,
           );
           return {
             batchId,
@@ -280,10 +281,10 @@ export class QuestionGenerationService {
       const params: Record<string, unknown> = { ...child.payload.params };
       if (blueprint) params['blueprint'] = blueprint;
       try {
-        const job = await this.jobs.issueJob(instituteId, OPERATION, {
-          ...child.payload,
-          params,
-        });
+const job = await this.jobs.issueJob(instituteId, OPERATION, {
+        ...child.payload,
+        params,
+      }, userId);
         jobIds.push(job.id);
       } catch (error) {
         // The dedupKey slot is already active (or raced in) — skip, don't

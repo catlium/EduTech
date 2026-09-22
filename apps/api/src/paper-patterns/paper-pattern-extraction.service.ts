@@ -93,9 +93,10 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       kind: 'text',
       text: trimmed,
       sourceHash,
-      ...(userId ? { userId } : {}),
+      // membershipId is kept only as the createPattern snapshot — the owner
+      // identity comes from the trusted jobs.createdBy column.
       ...(membershipId ? { membershipId } : {}),
-    });
+    }, userId, membershipId);
   }
 
   /** Guard + queue extraction from an uploaded PDF/image. The file is stored so
@@ -135,9 +136,8 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
         mimeType,
         fileName: file.originalname.slice(0, 255) || 'source',
         sourceHash,
-        ...(userId ? { userId } : {}),
         ...(membershipId ? { membershipId } : {}),
-      });
+      }, userId, membershipId);
     } catch (error) {
       await this.storage.delete(storageKey).catch(() => undefined);
       throw error;
@@ -154,7 +154,9 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
   ): Promise<Job> {
     const job = await this.jobsService.getJob(jobId, instituteId);
     const scope = await this.scope.resolveScope(instituteId, membershipId);
-    const owner = typeof job.payload?.['userId'] === 'string' ? job.payload['userId'] : undefined;
+    // Ownership is validated against the trusted jobs.createdBy column — the
+    // payload may carry only the membershipId snapshot.
+    const owner = job.createdBy ?? undefined;
     if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
       throw new NotFoundException('Paper pattern extraction run not found');
     }
@@ -179,7 +181,7 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       );
     for (const job of adoptable) {
       try {
-        await this.processJob(job.id, job.instituteId, job.payload);
+        await this.processJob(job.id, job.instituteId, job.payload, job.createdBy);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Extraction failed';
         await this.jobsService.updateJobStatus(job.id, 'failed', undefined, { message });
@@ -187,13 +189,18 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     }
   }
 
-  private async processJob(jobId: string, instituteId: string, payload: unknown): Promise<void> {
+  private async processJob(
+    jobId: string,
+    instituteId: string,
+    payload: unknown,
+    createdBy: string | null,
+  ): Promise<void> {
     await this.jobsService.updateJobStatus(jobId, 'processing');
 
     const jobPayload = payloadOf(payload);
     const sourceHash =
       typeof jobPayload?.['sourceHash'] === 'string' ? jobPayload['sourceHash'] : undefined;
-    const userId = typeof jobPayload?.['userId'] === 'string' ? jobPayload['userId'] : undefined;
+    const userId = createdBy ?? undefined;
     const membershipId =
       typeof jobPayload?.['membershipId'] === 'string' ? jobPayload['membershipId'] : undefined;
     if (!sourceHash) {
@@ -387,6 +394,8 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     instituteId: string,
     sourceHash: string,
     payload: Record<string, unknown>,
+    userId?: string,
+    membershipId?: string,
   ): Promise<ExtractionEnqueueResult> {
     // Reuse an active (QUEUED/processing) or already completed run before
     // ever creating another resource — the source hash is the idempotency key.
@@ -401,8 +410,6 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
     // page (with live progress) the moment the request returns.
     const source: 'TEXT' | 'OCR' = payload['kind'] === 'file' ? 'OCR' : 'TEXT';
     const fileName = typeof payload['fileName'] === 'string' ? payload['fileName'] : undefined;
-    const userId = typeof payload['userId'] === 'string' ? payload['userId'] : undefined;
-    const membershipId = typeof payload['membershipId'] === 'string' ? payload['membershipId'] : undefined;
     const extraction: PatternExtractionMeta = {
       extractor: 'v1',
       source,
@@ -429,10 +436,12 @@ export class PaperPatternExtractionService implements OnApplicationBootstrap, On
       },
     );
 
-    const job = await this.jobsService.insertJob(instituteId, TYPE, {
-      ...payload,
-      patternId: pattern.id,
-    });
+    const job = await this.jobsService.insertJob(
+      instituteId,
+      TYPE,
+      { ...payload, patternId: pattern.id },
+      userId,
+    );
     return { jobId: job.id, status: 'QUEUED', reused: false, patternId: pattern.id };
   }
 

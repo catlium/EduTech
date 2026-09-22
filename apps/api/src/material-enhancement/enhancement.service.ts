@@ -126,11 +126,13 @@ export class MaterialEnhancementService implements OnApplicationBootstrap, OnMod
       return this.jobsService.getJob(existing.id, instituteId);
     }
 
-    return this.jobsService.insertJob(instituteId, 'MATERIAL_ENHANCE', {
-      materialId,
-      trigger,
-      ...(userId ? { userId } : {}),
-    });
+    return this.jobsService.insertJob(
+      instituteId,
+      'MATERIAL_ENHANCE',
+      { materialId, trigger },
+      // System triggers (OCR_COMPLETE, CORRECTION) have no actor → NULL owner.
+      userId,
+    );
   }
 
   // ── Reads ──────────────────────────────────────────────────────────────

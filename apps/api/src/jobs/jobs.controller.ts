@@ -33,11 +33,18 @@ export class JobsController {
   @HttpCode(HttpStatus.CREATED)
   @RequiredRoles(...WRITE_ROLES)
   async create(
-    @CurrentUser() _user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser,
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateJobDto,
   ) {
-    const job = await this.jobsService.createJob(tenant.instituteId, dto.type, dto.payload);
+    // The owner is stamped from the authenticated actor — never taken from the
+    // client payload (which carries no userId/requestedBy for these types).
+    const job = await this.jobsService.createJob(
+      tenant.instituteId,
+      dto.type,
+      dto.payload,
+      user.userId,
+    );
     return { job };
   }
 
