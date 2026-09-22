@@ -111,7 +111,14 @@
       server-stamped `created_by`, the 3 sweep owner-gates read the column,
       `POST /jobs` narrowed to `MATERIAL_PROCESS`/`MATERIAL_ENHANCE`, new
       `test:job-ownership` regression suite, full validation green (see
-      `security-audit.md`).** LOW-2 remains deferred.
+      `security-audit.md`).** **LOW-2 (stale institute storage on logout)
+      REMEDIATED 2026-09-22 (`fix(auth): clear institute context on session
+      termination`) — `apps/web/src/lib/auth.tsx` now calls the existing
+      `cleanupInstituteStorage` on both session-termination paths (`logout()`
+      + the `catlium:unauthorized` handler), clearing the persisted
+      `catlium:instituteId` key so a re-login cannot inherit the previous
+      account's institute; UX-only by design (backend 403 remains the auth
+      boundary); see `security-audit.md`.**
 
 ## Phase E — Academic Classes & Divisions (2026-09-20, COMPLETE)
 

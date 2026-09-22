@@ -2,18 +2,18 @@
 
 ## Phase M — Final Security Audit + Remediation (2026-09-21)
 
-**Status: HIGH-1 + MEDIUM-1 + LOW-1 REMEDIATED + VALIDATED, DOC-1 (docs
-truth) COMPLETE — committed on `feature/authorization-overhaul`
+**Status: HIGH-1 + MEDIUM-1 + LOW-1 + LOW-2 REMEDIATED + VALIDATED, DOC-1
+(docs truth) COMPLETE — committed on `feature/authorization-overhaul`
 (`fix(authz): close export and job tenant authorization gaps`,
 `docs(authz): finalize security documentation truth`,
 `docs(authz): audit LOW-1 jobs owner-column design`,
-`fix(authz): enforce trusted job ownership`).** Phase M audit (read-only at
-`f884880`) recorded HIGH-1 (export answer-key bypass), MEDIUM-1 (cross-institute
-OCR/enhancement job adoption), LOW-1, LOW-2, DOC-1 in
-`docs/architecture/security-audit.md`. HIGH, MEDIUM and LOW-1 are now fixed
-and covered by regression suites; DOC-1 (stale
-`security.md`/`authorization.md` headers) is resolved; LOW-2 remains a
-documented deferral.
+`fix(authz): enforce trusted job ownership`,
+`fix(auth): clear institute context on session termination`).** Phase M audit
+(read-only at `f884880`) recorded HIGH-1 (export answer-key bypass), MEDIUM-1
+(cross-institute OCR/enhancement job adoption), LOW-1, LOW-2, DOC-1 in
+`docs/architecture/security-audit.md`. HIGH, MEDIUM and LOW-1/LOW-2 are now
+fixed and covered (LOW-2 by the wiring verified in the web build); DOC-1 (stale
+`security.md`/`authorization.md` headers) is resolved.
 
 - **HIGH-1 fixed (export):** `export.controller.ts` — `exportQuestions`,
   `previewQuestions`, `exportAssessment`, `previewAssessment` now
@@ -57,20 +57,29 @@ documented deferral.
   `MATERIAL_PROCESS` + `MATERIAL_ENHANCE`, closing the forgeable
   `POST /jobs` AI/pattern seam. New `test:job-ownership` integration suite (8
   scenarios). See `security-audit.md` §LOW-1 Remedy.
-- **Deferred (unchanged):** LOW-2 stale institute storage on logout — plus
-  the pre-existing Phase L "Next task" carryovers below. (LOW-1 remediated
-  2026-09-22 at `fix(authz): enforce trusted job ownership`, see
-  `security-audit.md`.)
+- **LOW-2 remediated (stale institute storage on logout, 2026-09-22):**
+  `apps/web/src/lib/auth.tsx` now imports the existing
+  `cleanupInstituteStorage` (no duplicated `localStorage` logic) and calls it
+  on BOTH session-termination paths — `logout()` and the
+  `catlium:unauthorized` session-death handler — clearing the persisted
+  `catlium:instituteId` key alongside the in-memory id. Confirmed UX/session-
+  hygiene issue (NOT a security/authorization vulnerability): backend 403
+  still guards foreign memberships; no backend, tenant-auth, or institute-
+  picker semantics changed. See `security-audit.md` §LOW-2.
+- **Deferred (unchanged):** the pre-existing Phase L "Next task" carryovers
+  below. (LOW-1 remediated 2026-09-22 at `fix(authz): enforce trusted job
+  ownership`; LOW-2 remediated 2026-09-22 at `fix(auth): clear institute
+  context on session termination` — see `security-audit.md`.)
 
 ### Next task
 
-LOW-2 (stale institute storage on logout) still to decide — accept or fix.
-Unrelated carryover backlog: admin deactivation mutation, scheduled
-session-purge job, Super Admin UI/APIs, institutes lifecycle endpoints. Also
-tracked from the LOW-1 remediation: `drizzle-kit migrate` in this workspace
-silently no-ops on populated DBs and errors (no diagnostic) on fresh DBs —
-regenerate `packages/database/drizzle` snapshots and normalize the journal
-before any future migration (see `security-audit.md`).
+Phase M audit findings are fully remediated. Unrelated carryover backlog:
+admin deactivation mutation, scheduled session-purge job, Super Admin
+UI/APIs, institutes lifecycle endpoints. Also tracked from the LOW-1
+remediation: `drizzle-kit migrate` in this workspace silently no-ops on
+populated DBs and errors (no diagnostic) on fresh DBs — regenerate
+`packages/database/drizzle` snapshots and normalize the journal before any
+future migration (see `security-audit.md`).
 
 ## Phase L — Security & Authorization Regression Matrix (2026-09-21)
 
@@ -121,10 +130,10 @@ guards/services; the only change is one DB-gated test suite + a dev test script.
 ### Next task
 
 Phase M (final security audit + remediation + docs truth pass) is complete —
-see the Phase M section at the top of this file. Remaining deferred-but-
-documented items to carry forward: LOW-1/LOW-2 from the audit, plus the pre-
-existing admin deactivation mutation (endpoint/UI), scheduled session-purge
-job, Super Admin UI/APIs, institutes lifecycle endpoints.
+see the Phase M section at the top of this file. Phase M audit findings
+(LOW-1/LOW-2) are fully remediated; remaining deferred-but-documented items:
+admin deactivation mutation (endpoint/UI), scheduled session-purge job, Super
+Admin UI/APIs, institutes lifecycle endpoints.
 
 **Phase M audit ran 2026-09-21 (read-only, all 8 integration suites + 226 API
 tests + typecheck + lint green at `f884880`).** Findings recorded in
@@ -140,9 +149,11 @@ payload material belongs to the job's institute
 
 **Remediated 2026-09-21** — HIGH-1 and MEDIUM-1 fixed, covered by
 `test:phase-m-remediation`, all validation green; see the Phase M section at
-the top of this file. LOW-1 audited + design agreed 2026-09-22 (remediation
-queued, see security-audit.md); LOW-2 remains a documented deferral; DOC-1
+the top of this file. LOW-1 remediated 2026-09-22
+(`fix(authz): enforce trusted job ownership`), LOW-2 remediated 2026-09-22
+(`fix(auth): clear institute context on session termination`); DOC-1
 resolved 2026-09-22 (`docs(authz): finalize security documentation truth`).
+See `security-audit.md` for the findings + remedies.
 
 ## Phase J — Frontend Permission & Academic Scope Alignment (2026-09-21)
 

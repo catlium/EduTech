@@ -5,8 +5,8 @@ Status: **IMPLEMENTED** — the authorization overhaul on branch
 audit and remediation ran at `55f7af8` (2026-09-22): HIGH-1 (export
 answer-key bypass) and MEDIUM-1 (cross-institute OCR/enhancement job
 adoption) are fixed and covered by `test:phase-m-remediation`; LOW-1 (jobs
-owner column), LOW-2 (stale institute storage on logout) remain documented
-deferrals (see `docs/architecture/security-audit.md`).
+owner column) and LOW-2 (stale institute storage on logout) were audited and
+remediated 2026-09-22 (see `docs/architecture/security-audit.md`).
 Base checkpoint: `55f7af8` (branch `feature/authorization-overhaul`).
 Date: 2026-09-22.
 Scope: authoritative design + implementation reference. CURRENT IMPLEMENTATION
@@ -350,9 +350,12 @@ control.
   refresh-403 as session death (spurious multi-tab logout) and does not
   gracefully handle membership-level 403s (revoked membership → silent
   Forbidden screens instead of redirect/institute re-picker).
-- **Stale institute selection** — `cleanupInstituteStorage` is never called;
-  `catlium:instituteId` persists across logout and can leak the previous
-  account's institute to a later user.
+- **Stale institute selection** — `cleanupInstituteStorage` is now called on
+  every session-termination path (see the Phase K implementation status
+  below); the `catlium:instituteId` key is cleared on logout and on
+  `catlium:unauthorized` session death, so a later login on the same browser
+  cannot inherit the previous account's institute (LOW-2 remediated
+  2026-09-22).
 - **Multi-device/session management** — no session list, no "log out
   everywhere", no device identity.
 
@@ -641,8 +644,11 @@ in-flight or done.
   remediated at the `fix(authz): close export and job tenant authorization gaps`
   checkpoint (2026-09-21); DOC-1 (this document + `security.md` header truth)
   remediated at `docs(authz): finalize security documentation truth`
-  (2026-09-22). LOW-1, LOW-2 remain deferred (see
-  `docs/architecture/security-audit.md`).
+  (2026-09-22); LOW-1 (jobs owner column) remediated at
+  `fix(authz): enforce trusted job ownership` (2026-09-22); LOW-2 (stale
+  institute storage on logout) remediated at
+  `fix(auth): clear institute context on session termination` (2026-09-22).
+  See `docs/architecture/security-audit.md`.
 - **Objective:** re-audit and document the end state.
 - **Scope:**
   - Repeat the §9/audit review against the new architecture.

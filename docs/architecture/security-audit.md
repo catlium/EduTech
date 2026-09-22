@@ -3,11 +3,12 @@
 ## Phase M Re-audit (2026-09-21, `feature/authorization-overhaul` @ `f884880`)
 
 HIGH-1 and MEDIUM-1 remediated 2026-09-21 @ a follow-up commit (see Remedy
-below); LOW-2 remains as a documented deferral. DOC-1 (stale
+below); DOC-1 (stale
 `security.md`/`authorization.md` headers) remediated 2026-09-22 by
 `docs(authz): finalize security documentation truth`. **LOW-1 (jobs owner
 column) audited + design agreed 2026-09-22 and remediated 2026-09-22 — see
-the LOW-1 finding + Remedy below.**
+the LOW-1 finding + Remedy below.** **LOW-2 (stale institute storage on
+logout) remediated 2026-09-22 — see the LOW-2 finding + Remedy below.**
 
 Read-only re-audit against the Phase B–L architecture (session-bound access
 JWT, global cookie-plane CSRF, DB-fresh permissions, platform plane, academic
@@ -240,10 +241,33 @@ Implemented per the agreed design above, plus the related factory hardening:
 
 ### FOUND — LOW-2: `cleanupInstituteStorage` never called on logout
 
+**Status: REMEDIATED 2026-09-22 (`fix(auth): clear institute context on
+session termination`).**
+
 `apps/web/src/lib/tenant.tsx` defines `cleanupInstituteStorage` but no logout
-path calls it, so a stale instituteId persists in `localStorage` after a
+path called it, so a stale instituteId persisted in `localStorage` after a
 re-login as a different user. UX-only (backend still returns 403 on a foreign
-membership), not a data exposure.
+membership), not a data exposure. The original finding's low-severity /
+UX-only classification stands — this is session-hygiene, not an
+authorization vulnerability; no backend, tenant-auth, or institute-picker
+semantics changed.
+
+**Remedy:** `apps/web/src/lib/auth.tsx` now imports the existing
+`cleanupInstituteStorage` (no duplicated `localStorage` logic) and calls it on
+BOTH session-termination paths — `logout()` (apps/web/src/lib/auth.tsx:64) and
+the `catlium:unauthorized` session-death handler (apps/web/src/lib/auth.tsx:73),
+alongside the existing in-memory `setActiveInstituteId(null)`. `logout()`
+already clears the in-memory id; the unauthorized handler (dispatched by the
+refresh flow when the session is genuinely gone, api.ts 401/403 path) cleared
+in-memory state only. Both now also remove the persisted `catlium:instituteId`
+key, so a fresh login can never inherit the previous account's institute.
+Note: auth ↔ tenant import cycle is call-time only (both helpers are function
+bindings resolved when the handlers run, never at module-eval), and the web
+build passes — no structural workaround needed. Regression coverage was
+declined: the wiring lives in `.tsx` (JSX), which the repo's `node --test`
+type-stripping runner cannot import, and no react-testing-library/jsdom is
+installed; adding one purely for these two cases would force a test-framework
+refactor the fix does not justify.
 
 ### FOUND — DOC-1: `security.md` and `authorization.md` header stale
 
