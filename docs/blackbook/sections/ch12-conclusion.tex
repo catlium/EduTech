@@ -1,0 +1,60 @@
+\chapter{Conclusion and Future Scope}
+\label{ch:conclusion}
+
+\section{Conclusion}
+
+\noindent This project set out to build a single, tenant-isolated platform that
+walks a college through its content-preparation and examination lifecycle, and
+it delivered one: institutes are provisioned with users, roles, and
+permissions; academic structure is modelled and turned into enforceable
+academic scope; uploaded materials are OCR-processed by distributed workers
+into reusable text; syllabus documents are analysed into confirmed
+curricula; study content and question banks are generated with provenance
+through an internal AI gateway; paper patterns, question papers, and
+scheduled assessments are authored, published, attempted, and evaluated
+server-side for objective answer formats; aggregate analytics follow; an
+ungraded practice mode supports revision; and content, papers, patterns, and
+results export to PDF, DOCX, and XLSX.
+
+The engineering outcome is equally deliberate. The system is a modular
+monolith with asynchronous workers, a single PostgreSQL database, strict
+tenant scoping at the enforcement layers, and a security design ---
+session-bound tokens, strict refresh rotation, double-submit CSRF, DB-fresh
+permission evaluation from an explicit 83-key catalogue, academic scope, and a
+documentation-verified audit --- that resists the access-control leaks that
+plague role-name-based systems. The implementation is validated by 226
+passing unit tests, eleven database-integrated suites, strict type-checking
+and linting across both languages, and a recorded user-validation pass, with
+no unresolved security findings.
+
+\section{Future Scope}
+
+\noindent The following extensions are identified and left for future work:
+
+\begin{enumerate}
+  \item \textbf{Checking-system features} --- online answer sheets (FORM),
+  OMR scanning, and on-screen marking, including automated grading of
+  subjective text answers, which the current evaluation contract deliberately
+  records but does not grade.
+  \item \textbf{Attempt mechanics} --- true per-attempt N-of-M numbering with
+  maximum-attempt enforcement and auto-replenishment after selection.
+  \item \textbf{Offering-level academic scope} --- introducing the designed
+  \texttt{offeringId} binding so resources can additionally be restricted to a
+  single class--subject offering.
+  \item \textbf{Selection and deduplication quality} --- randomized selection
+  within pattern buckets, similarity-based de-duplication across the bank, and
+  a read path for question origin patterns.
+  \item \textbf{Platform administration surface} --- a working
+  \texttt{SUPER\_ADMIN} console for institute lifecycle and the OCR worker
+  registry.
+  \item \textbf{Operational hardening} --- distributed Redis-backed rate
+  limiting, S3-backed storage behind the existing storage abstraction,
+  quantitative OCR/AI quality metrics, worker observability, and web-level
+  end-to-end test automation.
+  \item \textbf{Academic export redesign} --- per-topic and per-resource
+  exports with richer document formats.
+\end{enumerate}
+
+\noindent The architecture is structured so that each extension lands as a new
+module or a role-gated surface without disturbing the tenant-isolation and
+authorization guarantees that this report describes.

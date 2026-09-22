@@ -1,16 +1,17 @@
-# LaTeX/XeLaTeX build artifacts — never commit these
-output/
+# Build artifacts
+out/
 *.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
 *.bbl
 *.blg
-*.fdb_latexmk
 *.fls
-*.lof
-*.log
-*.lot
-*.toc
-*.xdv
+*.fdb_latexmk
 *.synctex.gz
-*.out
-*.fff
-*.ttt
+*.xdv
+*.nav
+*.snm
+*.vrb

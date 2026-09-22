@@ -1,146 +1,54 @@
-\documentclass[12pt,twoside,openright]{report}
-
-% ---------- Fonts ----------
+\documentclass[12pt,a4paper,oneside]{book}
+\usepackage[top=1in,bottom=1in,left=1.4in,right=1in]{geometry}
 \usepackage{fontspec}
 \setmainfont{Times New Roman}
-
-% ---------- Page geometry (binding-aware) ----------
-\usepackage[margin=0.90in,inner=1.30in]{geometry}
-
-% ---------- Tables & floats ----------
-\usepackage{booktabs}
-\usepackage{array}
-\usepackage{longtable}
-\usepackage{multirow}
+\usepackage{setspace}
+\onehalfspacing
 \usepackage{graphicx}
-\usepackage{float}
 \usepackage{caption}
-
-% ---------- Headings: 20 pt bold centered ALL CAPS chapter titles ----------
-% Chapter opener pages are CENTERED ON BOTH AXES: the title block is
-% pushed to the vertical middle of the text block (vfill before+after) and
-% horizontally centered inside it. Hand-rolled in the class internals so we
-% control vertical placement exactly (titlesec cannot center a display
-% block vertically on the page).
-\makeatletter
-\renewcommand{\@makechapterhead}[1]{%
-  \vspace*{\fill}%
-  {\parindent \z@ \centering \normalfont
-   \large \bfseries \MakeUppercase{\@chapapp} \ \thechapter \par
-   \vspace{12pt}%
-   \fontsize{20}{24}\selectfont \bfseries #1\par}%
-  \vspace*{\fill}\par}
-\renewcommand{\@makeschapterhead}[1]{%
-  {\parindent \z@ \centering \normalfont
-   \fontsize{20}{24}\selectfont \bfseries #1\par}%
-  \vspace{40pt}}
-\makeatother
-
-% ---------- Headers/footers: page number at bottom, outer side ----------
-\usepackage{fancyhdr}
-\pagestyle{fancy}
-\fancyhf{}
-\fancyfoot[LE,RO]{\thepage}
-\renewcommand{\headrulewidth}{0pt}
-% Chapter pages and TOC/list pages use the 'plain' style; keep the
-% bottom outer-side page number there too (no centered number).
-\fancypagestyle{plain}{%
-  \fancyhf{}%
-  \fancyfoot[LE,RO]{\thepage}%
-  \renewcommand{\headrulewidth}{0pt}%
-}
-
-% ---------- Inserted blank pages carry NO page number ----------
-% The kernel \cleardoublepage on this TeX Live does not apply
-% \thispagestyle{empty} to the blank it inserts, so the blank would
-% inherit the active pagestyle and print a (roman) page number. That
-% violates the institutional rule that an inserted blank page must
-% contain no page number, header, footer, text, or decoration. Redefine
-% it to force the empty pagestyle on the inserted blank.
-\makeatletter
-\newcommand{\bb@cleardoublepage}{%
-  \clearpage
-  \if@twoside
-    \ifodd\c@page
-    \else
-      \hbox{}%
-      \thispagestyle{empty}%
-      \newpage
-      \if@twocolumn\hbox{}\newpage\fi
-    \fi
-  \fi
-}
-\let\cleardoublepage\bb@cleardoublepage
-\makeatother
-
-% ---------- Citations & links (black, no color) ----------
-\usepackage{cite}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
 \usepackage[hidelinks]{hyperref}
-
-% ---------- Code listings (monochrome) ----------
-\usepackage{listings}
-\lstset{
-  basicstyle=\ttfamily\footnotesize,
-  breaklines=true,
-  frame=single,
-  framesep=4pt,
-  keepspaces=true,
-  showstringspaces=false,
-  columns=fullflexible,
-}
-
-% ---------- Lists ----------
-\usepackage{enumitem}
-\setlist{itemsep=1pt,topsep=4pt,parsep=0pt}
-
-\emergencystretch=1em
+\usepackage{tocloft}
+\usepackage{seqsplit}
+\renewcommand{\cftdotsep}{1}
+\emergencystretch=2.5em
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+\captionsetup{font=small,labelsep=period}
 
 \begin{document}
 
-% ===== Preliminary pages (roman numerals) =====
-\pagenumbering{roman}
-\setcounter{page}{1}
-
-\input{sections/titlepage.tex}
-
-\input{sections/certificate.tex}
-\input{sections/declaration.tex}
-\input{sections/acknowledgement.tex}
-\input{sections/abstract.tex}
-\input{sections/proposal.tex}
-\input{sections/plagiarism.tex}
-
+\frontmatter
 \tableofcontents
-\clearpage
 \listoffigures
-\clearpage
 \listoftables
-\clearpage
-\input{sections/abbreviations.tex}
-\input{sections/glossary.tex}
 
-% ===== Main body (arabic numerals) =====
-\clearpage
-\pagenumbering{arabic}
-\setcounter{page}{1}
+\include{sections/abstract}
+\include{sections/abbreviations}
+\include{sections/glossary}
 
-\input{sections/introduction.tex}
-\input{sections/literature-review.tex}
-\input{sections/requirements.tex}
-\input{sections/system-design.tex}
-\input{sections/implementation.tex}
-\input{sections/testing.tex}
-\input{sections/results.tex}
-\input{sections/conclusion.tex}
+\mainmatter
+\include{sections/ch1-introduction}
+\include{sections/ch2-literature-review}
+\include{sections/ch3-requirements}
+\include{sections/ch4-methodology}
+\include{sections/ch5-system-architecture}
+\include{sections/ch6-database-design}
+\include{sections/ch7-security-authorization}
+\include{sections/ch8-core-features}
+\include{sections/ch9-implementation}
+\include{sections/ch10-testing}
+\include{sections/ch11-results}
+\include{sections/ch12-conclusion}
 
-% ===== References =====
-\clearpage
+\appendix
+\include{appendices/appendix-permissions}
+\include{appendices/appendix-environment}
+
+\backmatter
 \bibliographystyle{IEEEtran}
 \bibliography{references}
-
-% ===== Appendices =====
-\appendix
-\input{appendices/appendix-schema.tex}
-\input{appendices/appendix-config.tex}
 
 \end{document}

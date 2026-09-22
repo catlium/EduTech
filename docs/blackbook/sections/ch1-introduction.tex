@@ -1,0 +1,95 @@
+\chapter{Introduction}
+\label{ch:introduction}
+
+\section{Background and Motivation}
+
+Colleges continuously invest in preparation and assessment materials:
+syllabi, textbooks, notes, practice questions, and examinations. In most
+institutions these assets are created and managed with generic office tools and
+file storage. The consequences are well known: teaching material is duplicated
+or lost, syllabus meaning has to be manually re-derived for every subject,
+question banks accumulate without validation of correctness or alignment with
+exam patterns, and assessments are distributed and evaluated manually, so
+students receive little or no structured feedback.
+
+The project team built a platform that addresses these problems as \textbf{a
+multi-tenant, role- and permission-controlled web application} for educational
+institutes. A single deployment serves many institutes on one shared codebase,
+yet keeps every institute's data isolated and inaccessible to the others. The
+platform makes the preparation-and-assessment workflow structured: uploaded
+materials are OCR-processed into reusable text, syllabus documents are analysed
+into confirmed curriculum structures, study content is generated
+semi-automatically, question banks are built against explicit paper patterns,
+and assessments are scheduled, taken, and evaluated server-side.
+
+\section{Problem Statement}
+
+\noindent The problem addressed by this project is stated as follows:
+
+\emph{Educational institutes require a single, tenant-isolated platform that (i)
+converts unstructured teaching material (scanned PDFs, images, documents) into
+structured, searchable content through OCR and AI-assisted processing; (ii)
+turns syllabus documents into confirmed academic structures; (iii) builds
+curated question banks and examination assets from declarative paper patterns;
+(iv) runs scheduled assessments with automatic server-side evaluation and
+meaningful analytics; (v) offers ungraded practice for students; and (vi)
+exports all assets in standard, print-ready formats --- all while restricting
+every operation to the acting user's role, permissions, and academic scope.}
+
+\section{Objectives}
+
+\noindent The specific objectives of the implementation are:
+
+\begin{enumerate}
+  \item \textbf{Tenancy and identity:} model institutes, memberships, roles, and
+  users, and isolate data per tenant.
+  \item \textbf{Academic structure:} model years, classes, divisions, subjects,
+  class--subject offerings, and teacher/student assignments, and derive each
+  actor's academic scope from that structure.
+  \item \textbf{Materials and OCR:} upload PDF, image, and document materials
+  with chunked upload, process them through a distributed OCR pipeline with
+  embedded-text-first extraction and PaddleOCR fallback, and expose per-page
+  corrections.
+  \item \textbf{Syllabus intelligence:} analyse syllabus documents into a
+  confirmed global curriculum with topics, units, objectives, and learning
+  outcomes.
+  \item \textbf{Aided content creation:} generate notes, flashcards, Cornell
+  notes, summaries, and important-concepts content from eligible source
+  materials through an async AI generation pipeline, with provenance.
+  \item \textbf{Question assets:} establish a data-driven question-type system
+  and a question bank with generation, approval states, ranking, and difficulty
+  distribution; build paper patterns and question papers from blueprints.
+  \item \textbf{Examination:} author assessments from blueprints, publish and
+  activate them on schedules, record attempts with immutable question
+  snapshots, evaluate objective answers server-side, and produce aggregate
+  analytics.
+  \item \textbf{Practice:} provide flashcard and question practice modes with
+  instant per-item feedback and no grading.
+  \item \textbf{Export:} generate print-ready PDF, DOCX, and XLSX outputs for
+  content, questions, papers, and results.
+  \item \textbf{Security and architecture:} enforce tenant isolation at the
+  data layer, security decisions from an explicit permission catalogue, and
+  strictly internal compute for OCR and AI via a provider gateway.
+\end{enumerate}
+
+\section{Scope}
+
+The implemented system covers the full lifecycle described above. It does not
+implement online-answer-sheet (FORM), OMR-scanning, or on-screen-marking
+checking features, automated grading of subjective (essay-type) answers, or
+per-attempt N-of-M mechanics; these are identified as deferred future work in
+Chapter~\ref{ch:conclusion}.
+
+\section{Organisation of the Report}
+
+\noindent Chapter~\ref{ch:literature-review} reviews related systems and
+technologies. Chapter~\ref{ch:requirements} presents the requirements
+analysis. Chapter~\ref{ch:methodology} describes the development methodology and
+the project timeline. Chapter~\ref{ch:architecture} describes the system
+architecture and Chapter~\ref{ch:database-design} the database design.
+Chapter~\ref{ch:security} details the security and authorization architecture,
+and Chapter~\ref{ch:features} explains the core features and their workflows.
+Chapter~\ref{ch:implementation} covers implementation details,
+Chapter~\ref{ch:testing} the testing and validation strategy, and
+Chapter~\ref{ch:results} the results and discussion.
+Chapter~\ref{ch:conclusion} concludes the report and lists future scope.

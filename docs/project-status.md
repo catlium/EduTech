@@ -1,5 +1,53 @@
 # Project Status
 
+## Black Book — Academic Project Documentation (2026-09-22)
+
+**Status: COMPLETE + VALIDATED.** Fresh formal academic black book generated
+at `docs/blackbook/` (the earlier draft was deleted; nothing was reused).
+Ground truth = the current repository; content verified against code before
+writing. Compiles with `latexmk -xelatex` (Times New Roman, 12pt, A4,
+one-and-a-half spacing).
+
+- **Structure.** 12 chapters: Introduction; Literature Review and Existing
+  Systems; System Analysis and Requirements; Development Methodology and
+  Project Timeline (phase table + Gantt); System Architecture; Database
+  Design; Security and Authorization Architecture; Core Features and
+  Workflows; Implementation; Testing and Validation; Results and Discussion;
+  Conclusion and Future Scope. Front matter: Contents → List of Figures →
+  List of Tables → Abstract → List of Abbreviations → Glossary. Appendix A =
+  full permission catalogue, Appendix B = core environment variables.
+  IEEE (numeric) references from `references.bib` (16 entries).
+- **11 B&W diagrams** (Mermaid sources → SVG + grayscale PNG): system
+  architecture, authentication sequence (full guard chain, strict rotation),
+  permission model, academic scope, AI generation, OCR processing, OCR chunk
+  state, three database ERD families (identity/authz, academic/content,
+  questions/exam/practice/operations), and the proposal Gantt.
+- **Accuracy corrections captured.** Workers consume RabbitMQ directly via
+  pika (AGENTS.md's "Celery" mention is stale); refresh rotation is strict
+  one-time with lineage revocation (no 60s grace window); guard chain is
+  AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard;
+  `Authorization: Bearer` on the worker→OmniRoute AI gateway; no OCR business
+  logic, deterministic OCR normalization.
+- **Validation.** `latexmk -xelatex` exit 0; 64 pages; no undefined
+  references/citations in the final pass; no multiply-defined labels; max
+  residual overfull hbox 0.5pt; no right-margin ink bleed (pixel scan);
+  zero colored pixels (strictly B&W); no placeholder text (TODO/TBD/Lorem);
+  11/11 figures in the List of Figures; bibliography renders with resolved
+  [n] citations. `docs/blackbook/.gitignore` excludes build artifacts
+  (`out/` + aux files); the final PDF is `docs/blackbook/out/main.pdf`.
+- **Known limitations (documented in the book, Chapter 11).** Not built and
+  recorded as future/KNOWN-GAP: FORM/OMR/OSM, full academic export redesign,
+  question versioning and set delete/merge, TEXT/essay auto-grading,
+  practice scoring, per-attempt N-of-M mechanics.
+
+### Next task
+
+Black book delivered. Recommended next: review the compiled
+`docs/blackbook/out/main.pdf` (64 pages) for any phrasing/factual adjustments
+you want, then continue with the next scheduled task (the pending institute-
+lifecycle slices — deactivation mutation and subscription management — see the
+Phase N section; or the deferred Super Admin platform-plane work).
+
 ## Phase N — Institute Lifecycle Foundation (2026-09-22)
 
 **Status: COMPLETE + VALIDATED + COMMITTED (`feat(platform): add institute

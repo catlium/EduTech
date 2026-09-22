@@ -1,0 +1,156 @@
+\chapter{System Analysis and Requirements}
+\label{ch:requirements}
+
+\section{Analysis of the Existing Workflow}
+
+\noindent Before design, the current workflow in a typical college was
+analysed and the following recurring weaknesses identified:
+
+\begin{itemize}
+  \item \textbf{Fragmented material.} Course material exists as scattered
+  PDFs and scans that are hard to search, reuse, or convert into other
+  formats.
+  \item \textbf{No syllabus structure.} Syllabus documents are read manually
+  and translated into teaching plans repeatedly for each batch.
+  \item \textbf{Uncontrolled question creation.} Questions are composed ad hoc
+  without tracking origin, approval, or alignment to the examination pattern.
+  \item \textbf{Manual assessment.} Distribution, collection, and evaluation
+  are manual, giving students delayed and summary-only feedback.
+  \item \textbf{No access discipline.} Generic shared logins mean no
+  accountability and no restriction of what a user may do or where.
+\end{itemize}
+
+\section{Functional Requirements}
+
+\noindent The functional requirements of the platform are grouped by area. Each
+requirement is implemented and verified (see Chapter~\ref{ch:testing}).
+
+\begin{center}
+\small
+\begin{longtable}{@{}p{1.6cm}p{12.4cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Functional requirement} \\
+\midrule
+\endhead
+FR-01 & Institute-scoped user login with short-lived access sessions and
+refresh rotation. \\
+FR-02 & Multiple institutes served from one deployment with strict data
+isolation per institute. \\
+FR-03 & Institute admin creates users (teachers, students), assigns roles, and
+manages role permissions from an explicit catalogue. \\
+FR-04 & Academic structure: academic years, classes, divisions, subjects,
+class--subject offerings, teacher assignments, and student placements. \\
+FR-05 & Upload teaching material (PDF, image, document, or text) with chunked
+upload for large files. \\
+FR-06 & Distributed OCR processing: embedded-text-first extraction with
+per-page PaddleOCR fallback, chunk leasing, and retry; per-page text
+corrections. \\
+FR-07 & AI syllabus analysis producing a confirmed global curriculum (chapters,
+topics, units, objectives, learning outcomes). \\
+FR-08 & AI generation of study content (notes, flashcards, Cornell notes,
+summaries, important concepts) from eligible sources with provenance. \\
+FR-09 & Question types as data (global starters plus institute-custom types). \\
+FR-10 & Question bank CRUD with approval workflow and difficulty/source
+tracking. \\
+FR-11 & AI question-bank generation in batches with pattern-coverage checks
+(COVERED, AWAITING\_APPROVAL, INSUFFICIENT, GENERATING). \\
+FR-12 & Paper patterns: manual authoring, text/material analysis, deterministic
+validation, and approval-to-lock. \\
+FR-13 & Question papers: selection from pattern, coverage checking, generation
+of missing items, and conversion to assessments. \\
+FR-14 & Assessments: authoring, pattern-based selection, publishing,
+activation, and completion with schedule validation. \\
+FR-15 & Student attempts: timed start with an immutable question snapshot,
+per-answer saving, and idempotent submission with server-side evaluation. \\
+FR-16 & Aggregate analytics: score distribution, per-question accuracy, and
+topic/difficulty performance. \\
+FR-17 & Ungraded practice: flashcard sessions and question sessions with
+instant per-item feedback and no score. \\
+FR-18 & Export to PDF, DOCX, and XLSX for content, question sets, papers,
+patterns, and results. \\
+FR-19 & Asynchronous job lifecycle with retry, cancel, and status polling. \\
+FR-20 & Health checks for the API and OCR service. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\section{Non-functional Requirements}
+
+\begin{center}
+\small
+\begin{longtable}{@{}p{1.6cm}p{12.4cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Non-functional requirement} \\
+\midrule
+\endhead
+NFR-01 & \textbf{Security.} Cookie-based sessions with httpOnly attributes,
+double-submit CSRF on state-changing requests, origin check on login, and
+throttling on authentication endpoints. \\
+NFR-02 & \textbf{Tenant isolation.} Every query touching user data is scoped
+by the active institute; cross-tenant access must fail by default of the
+enforcement layers. \\
+NFR-03 & \textbf{Authorization.} Permission keys are DB-fresh per request with
+default-deny and \texttt{manage} implication; academic scope restricts
+permission reach. \\
+NFR-04 & \textbf{Availability of the API.} The API never blocks on long
+operations; heavy work happens in workers and returns \texttt{202 Accepted}. \\
+NFR-05 & \textbf{Scalability of OCR and AI.} OCR compute is distributed and
+lease-based; AI generation has bounded concurrency to protect the model
+gateway. \\
+NFR-06 & \textbf{Maintainability.} Monorepo with TypeScript packages shared
+between web and API; typed shared contracts; strict typing in both TypeScript
+and Python codebases. \\
+NFR-07 & \textbf{Portability.} Everything runs from one Docker Compose file
+with no service exposed on a host port in production. \\
+NFR-08 & \textbf{Traceability.} Generated AI artifacts store provenance
+(source type, source id, revisions) and are marked AI-generated. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\section{User Roles}
+
+\noindent The platform defines three built-in membership roles and one
+disjoint platform role:
+
+\begin{itemize}
+  \item \textbf{Institute admin (\texttt{INSTITUTE\_ADMIN}):} full management
+  of an institute's structure and content; holds \texttt{manage} across the
+  institute permission catalogue and whole-institute academic scope.
+  \item \textbf{Teacher (\texttt{TEACHER}):} creates and manages teaching
+  material, content, syllabus, questions, patterns, question papers, and
+  assessments within their assigned subjects; reads results and analytics.
+  \item \textbf{Student (\texttt{STUDENT}):} reads content and materials within
+  their placement scope, takes assessments (creating attempts), and uses
+  practice sessions.
+  \item \textbf{Platform admin (\texttt{SUPER\_ADMIN}):} operates on the
+  platform plane (institutes, OCR worker registry) through platform-domain
+  permissions, disjoint from institute membership.
+\end{itemize}
+
+\section{Constraints and Assumptions}
+
+\begin{itemize}
+  \item \textbf{Data.} PostgreSQL is the only primary database; MongoDB and
+  SQLite are not permitted.
+  \item \textbf{AI access.} AI calls must go through an internal provider
+  gateway; no direct cloud AI SDK is called from application code.
+  \item \textbf{Delegation.} Only OCR and asynchronous AI generation are
+  permitted to move off the request thread; the API remains a single
+  modular monolith.
+  \item \textbf{Provisioning.} Users are provisioned by the institute, not by
+  public self-registration.
+  \item \textbf{Text evaluation.} Only objective question formats are
+  auto-graded; subjective answers are recorded but not graded.
+  \item \textbf{Fonts and documents.} Exported assets must be deterministic and
+  printable; PDF generation is browser-based.
+\end{itemize}
+
+\section{Environment of Use}
+
+\noindent The system runs as a Docker Compose stack. Its runtime environment
+comprises a PostgreSQL~17 database, RabbitMQ~3 message broker, Node.js~20
+(TypeScript) API and web services, a Python~3.12 OCR service, Python workers, an
+internal AI gateway, an nginx reverse proxy, and a Cloudflare Tunnel for the
+only public ingress. No internal service is published on a host port in
+production.

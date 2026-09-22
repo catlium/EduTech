@@ -1,48 +1,48 @@
 \chapter*{Glossary}
 \addcontentsline{toc}{chapter}{Glossary}
 
-\begin{longtable}{@{}p{4.2cm}p{\dimexpr\textwidth-4.2cm-12pt\relax}@{}}
+\begin{center}
+\small
+\begin{longtable}{@{}p{3.9cm}p{10.2cm}@{}}
 \toprule
-\textbf{Term} & \textbf{Definition} \\
+\textbf{Term} & \textbf{Meaning} \\
 \midrule
 \endhead
-Assessment & A scheduled examination built from a question paper or question
-set, with a start/end period and attempt rules. \\
-Attempt & A student's snapshot of an assessment's question set, taken at
-start time and later submitted and evaluated. \\
-Chapter & A unit of academic structure within a subject, holding topics. \\
-Institute & The tenant anchor in the multi-tenant model; all data is scoped
-to an institute. \\
-Job & An asynchronous unit of work executed by a worker and tracked in the
-API with a lifecycle of queued, processing, completed, failed, or cancelled.
-\\
-Material & An uploaded or text study document processed through the OCR
-pipeline. \\
-Material Intelligence & The deterministic engine that cleans, structures,
-and segments extracted text and maps it to syllabus entities. \\
-Membership & The user--institute relationship that carries roles and
-determines tenancy. \\
-Modular monolith & A single deployable application with clearly bounded
-modules, avoiding premature microservices. \\
-Multi-tenant & Serving many institutes from one deployment while isolating
-their data. \\
-OCR & Optical character recognition; conversion of scanned documents and
-images into machine-readable text. \\
-Paper pattern & A nested structure of sections and question types with
-attempt rules that an examination paper must follow. \\
-Practice & Ungraded, per-item study sessions of flashcards and questions
-with instant feedback. \\
-Question bank & The data-driven repository of questions with types,
-difficulties, and review status. \\
-Question paper & A set of questions assembled against a paper pattern,
-exportable to document formats. \\
-Role & A permission level granted through a membership: institute
-administrator, teacher, or student. \\
-Syllabus & The academic subject structure proposed by AI and confirmed by a
-teacher. \\
-Tenant & An institute whose data is isolated from other institutes in the
-same deployment. \\
-Vertical slice & A thin end-to-end path through the full system, developed
-as the unit of a milestone. \\
+Academic scope & The set of subjects (or, in design, class offerings) within
+which an actor's permissions apply. Teachers and students are restricted to the
+subjects in their assignments/placements; the institute admin holds
+whole-institute scope. \\
+Attempt & A student's timed response to an assessment; it snapshots the chosen
+questions at its start and is evaluated server-side. \\
+Blueprint & A paper pattern used as a template for an assessment or question
+paper. \\
+Chunk & A contiguous page range of a source material (default 10 pages) that one
+OCR worker claims, processes, and submits. \\
+Coordinate & An OCR chunk plan, the sequence in which claims are granted, the
+lease of a claimed chunk, and the aggregation of chunk results. \\
+Double-submit CSRF & A CSRF defense in which the client sends the value of a
+cookie in a custom header and the server requires them to match. \\
+Institute & The primary tenant: a college or school that owns users,
+memberships, content, and assessments. \\
+Membership & The relation that makes a user a member of an institute and carries
+the user's roles within it. \\
+Modular monolith & A single deployable service organized into clear module
+boundaries. \\
+Multi-tenancy & Serving multiple independent institutes from one shared
+deployment while isolating their data and permissions. \\
+OmniRoute & The internal OpenAI-compatible AI gateway through which all model
+calls from workers must pass. \\
+Paper pattern & A declarative blueprint of sections, question types, counts,
+marks, and difficulty distributions. \\
+Permission & The atomic authorization unit of the form \texttt{resource.action},
+e.g. \texttt{questions.update}. \\
+Provisioning & Creation of users and memberships under institute control rather
+than public self-registration. \\
+Scope chain & The subject$\rightarrow$chapter$\rightarrow$topic hierarchy that
+confines a resource to its subject. \\
+Tenant & A customer organization of the platform (an institute). \\
+Worker & A long-running process that consumes messages from a queue (or the OCR
+coordinator) and performs heavy, asynchronous work. \\
 \bottomrule
 \end{longtable}
+\end{center}

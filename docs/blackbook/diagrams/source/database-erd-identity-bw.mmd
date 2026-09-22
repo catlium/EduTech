@@ -1,0 +1,88 @@
+---
+title: "CatLium EduTech — Database Schema (1/3): Identity, Tenancy, Authentication, Authorization"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    users ||--o{ auth_sessions : user_id
+    users ||--o{ password_resets : user_id
+    users ||--o{ memberships : user_id
+    users ||--o{ platform_user_roles : user_id
+    institutes ||--o{ memberships : institute_id
+    institutes ||--o{ institute_subscriptions : institute_id
+    plans ||--o| institute_subscriptions : plan_id
+    memberships ||--o{ membership_roles : membership_id
+    membership_roles }o--|| roles : role_id
+    roles ||--o{ role_permissions : role_id
+    permissions ||--o{ role_permissions : permission_id
+    roles ||--o{ platform_user_roles : role_id
+
+    users {
+        uuid id PK
+        varchar email UK
+        varchar name
+        varchar password_hash
+        varchar status "active | deactivated"
+    }
+    auth_sessions {
+        uuid id PK
+        uuid user_id FK
+        varchar refresh_token_hash "SHA-256"
+        timestamp expires_at
+        timestamp revoked_at
+        uuid rotated_from_sid FK
+        varchar user_agent
+        varchar last_ip
+    }
+    password_resets {
+        uuid id PK
+        uuid user_id FK
+        varchar token_hash "bcrypt of secret"
+        timestamp expires_at
+        timestamp used_at
+    }
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        varchar status "active | deactivated"
+    }
+    plans {
+        varchar code PK
+        varchar name
+        boolean is_active
+    }
+    institute_subscriptions {
+        uuid institute_id PK,FK
+        varchar plan_id FK
+    }
+    memberships {
+        uuid id PK
+        uuid user_id FK
+        uuid institute_id FK
+        varchar status "active | deactivated"
+    }
+    membership_roles {
+        uuid membership_id FK
+        uuid role_id FK
+    }
+    roles {
+        uuid id PK
+        varchar key
+        varchar kind "system | institute"
+        varchar domain "institute | platform"
+        uuid institute_id FK "custom roles only"
+    }
+    permissions {
+        uuid id PK
+        varchar key UK "resource.action"
+        varchar resource
+        varchar action
+    }
+    role_permissions {
+        uuid role_id FK
+        uuid permission_id FK
+    }
+    platform_user_roles {
+        uuid user_id FK
+        uuid role_id FK
+    }

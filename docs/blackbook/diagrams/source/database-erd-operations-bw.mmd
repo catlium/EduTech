@@ -1,0 +1,195 @@
+---
+title: "CatLium EduTech — Database Schema (3/3): Questions, Examination, Practice, Operations"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ question_types : institute_id
+    institutes ||--o{ questions : institute_id
+    subjects ||--o{ questions : subject_id
+    chapters ||--o{ questions : chapter_id
+    topics ||--o{ questions : topic_id
+    institutes ||--o{ paper_patterns : institute_id
+    materials ||--o{ paper_patterns : source_material_id
+    paper_patterns ||--o{ paper_pattern_subjects : pattern_id
+    subjects ||--o{ paper_pattern_subjects : subject_id
+    institutes ||--o{ question_papers : institute_id
+    paper_patterns o|--o{ question_papers : blueprint_id
+    question_papers ||--o{ question_paper_questions : paper_id
+    questions ||--o{ question_paper_questions : question_id
+
+    institutes ||--o{ assessments : institute_id
+    paper_patterns o|--o{ assessments : blueprint_id
+    assessments ||--o{ assessment_questions : assessment_id
+    questions ||--o{ assessment_questions : question_id
+    assessments ||--o{ attempts : assessment_id
+    attempts ||--o{ attempt_questions : attempt_id
+    questions ||--o{ attempt_questions : question_id
+    attempt_questions ||--o{ attempt_responses : attempt_question_id
+
+    institutes ||--o{ practice_sessions : institute_id
+    practice_sessions ||--o{ practice_session_items : session_id
+    practice_session_items ||--o{ practice_session_responses : session_item_id
+
+    institutes ||--o{ syllabi : institute_id
+    subjects ||--o{ syllabi : subject_id
+    institutes ||--o{ jobs : institute_id
+    jobs ||--o{ ocr_chunks : job_id
+    institutes ||--o{ ocr_chunks : institute_id
+    workers ||--o{ ocr_chunks : claimed_by
+
+    question_types {
+        uuid id PK
+        uuid institute_id FK "NULL = global starter"
+        varchar code UK "per track"
+        varchar answer_format "MCQ | TRUE_FALSE | FILL_IN_BLANK | TEXT | MATCHING | NUMERICAL"
+        varchar kind "OBJECTIVE | SUBJECTIVE"
+        int default_marks
+        jsonb evaluation_config
+    }
+    questions {
+        uuid id PK
+        uuid institute_id FK
+        text stem
+        varchar question_type
+        varchar answer_format
+        varchar difficulty "EASY | MEDIUM | HARD"
+        text explanation
+        jsonb payload
+        varchar approval_status "PENDING | APPROVED | REJECTED"
+        uuid source_pattern_id FK
+    }
+    paper_patterns {
+        uuid id PK
+        uuid institute_id FK
+        varchar title
+        varchar status "DRAFT | REVIEW | APPROVED"
+        boolean is_locked
+        int version
+        varchar source_type "MANUAL | TEXT | MATERIAL | PREVIOUS_YEAR_PAPER"
+        jsonb structure
+    }
+    paper_pattern_subjects {
+        uuid pattern_id FK
+        uuid subject_id FK
+    }
+    question_papers {
+        uuid id PK
+        uuid institute_id FK
+        uuid blueprint_id FK "set-null"
+        varchar title
+        jsonb instructions
+        int max_marks
+    }
+    question_paper_questions {
+        uuid id PK
+        uuid paper_id FK
+        uuid question_id FK "live FK, KNOWN GAP"
+        int marks
+        varchar section
+    }
+    assessments {
+        uuid id PK
+        uuid institute_id FK
+        varchar title
+        int duration_minutes
+        int max_marks
+        varchar status "DRAFT | PUBLISHED | ACTIVE | COMPLETED"
+        uuid blueprint_id FK "set-null"
+        timestamp starts_at
+        timestamp ends_at
+    }
+    assessment_questions {
+        uuid assessment_id FK
+        uuid question_id FK
+        int sort_order
+        int marks
+        varchar section
+    }
+    attempts {
+        uuid id PK
+        uuid institute_id FK
+        uuid assessment_id FK
+        uuid student_id FK
+        varchar status "IN_PROGRESS | SUBMITTED | EXPIRED"
+        timestamp deadline
+        int score
+        int total_marks
+        timestamp submitted_at
+    }
+    attempt_questions {
+        uuid id PK
+        uuid attempt_id FK
+        uuid question_id FK "snapshot at start"
+        int marks
+        text stem
+        jsonb payload
+    }
+    attempt_responses {
+        uuid attempt_question_id PK,FK
+        jsonb answer
+        boolean is_correct
+        int marks_awarded
+    }
+    practice_sessions {
+        uuid id PK
+        uuid institute_id FK
+        uuid student_id FK
+        varchar mode "FLASHCARD | QUESTION"
+        varchar status "IN_PROGRESS | COMPLETED"
+        uuid content_id FK "flashcards"
+        uuid topic_id FK "question mode"
+    }
+    practice_session_items {
+        uuid id PK
+        uuid session_id FK
+        varchar source_key "fc:ID | q:ID"
+        varchar prompt
+        varchar reveal
+        jsonb payload
+    }
+    practice_session_responses {
+        uuid session_item_id PK,FK
+        jsonb answer
+        varchar rating "AGAIN | GOOD"
+        boolean is_correct
+    }
+    syllabi {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK
+        int version
+        varchar processing_status "UPLOADED | QUEUED | PROCESSING | READY | FAILED"
+        varchar analysis_status "PENDING | PROCESSING | READY | FAILED"
+        varchar status "PROPOSED | CONFIRMED | ARCHIVED"
+        jsonb context
+        jsonb structure
+    }
+    jobs {
+        uuid id PK
+        uuid institute_id FK
+        varchar type
+        varchar status "queued | processing | completed | failed | cancelled"
+        jsonb payload
+        uuid created_by FK "NULL = system"
+        timestamp completed_at
+    }
+    workers {
+        uuid id PK
+        varchar name
+        varchar token_hash UK "SHA-256 of owr_ key"
+        boolean enabled
+        timestamp last_heartbeat_at
+        jsonb capabilities
+    }
+    ocr_chunks {
+        uuid id PK
+        uuid job_id FK
+        uuid institute_id FK
+        int chunk_index
+        int start_page
+        int end_page
+        varchar status "pending | claimed | submitted | failed | cancelled"
+        uuid claimed_by FK
+        timestamp lease_expires_at
+        int attempts
+    }

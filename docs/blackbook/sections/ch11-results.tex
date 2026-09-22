@@ -1,0 +1,118 @@
+\chapter{Results and Discussion}
+\label{ch:results}
+
+\section{Delivered Capabilities}
+
+\noindent Table~\ref{tab:results} maps the objectives of
+Chapter~\ref{ch:introduction} to the delivered, verified capabilities.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{2.9cm}p{11.4cm}@{}}
+\toprule
+\textbf{Objective} & \textbf{Delivered capability} \\
+\midrule
+Tenancy and identity & Multi-institute deployment with memberships, roles,
+and a permission catalogue; every query tenant-scoped by the enforcement
+layers. \\
+Academic structure & Years, classes, divisions, subjects, chapters, topics,
+offerings, teacher assignments, student placements/enrollments; academic scope
+derived from current DB state. \\
+Materials and OCR & Chunked upload; distributed OCR (embedded-text-first,
+PaddleOCR fallback); page corrections; coordinator-owned chunk leasing. \\
+Syllabus intelligence & AI analysis into per-subject structure and context
+with PROPOSED$\rightarrow$CONFIRMED lifecycle and per-subject versioning. \\
+Aided content creation & Typed, versioned content items generated from
+eligible sources with provenance and in-place regeneration. \\
+Question assets & Data-driven question types (11 global seeds), an approved
+question bank, pattern-aware generation, paper patterns, and question papers. \\
+Examination & Blueprint-driven assessments with schedule validation,
+snapshot attempts, server-side objective evaluation, and aggregate analytics. \\
+Practice & Ungraded flashcard and question sessions with instant per-item
+feedback. \\
+Export & Single-model PDF (Chromium), DOCX, XLSX rendering for content,
+questions, papers, patterns, and results; preview equals export. \\
+Security & Session-bound tokens, strict rotation with lineage revocation,
+double-submit CSRF, DB-fresh authorisation, academic scope, and a
+documentation-verified audit with no open high findings. \\
+\bottomrule
+\end{tabular}
+\caption{Objectives versus delivered capabilities.}
+\label{tab:results}
+\end{table}
+
+\section{Validation Summary}
+
+\noindent The implementation is supported by 226 passing API unit tests,
+eleven database-backed integration suites, strict type-checking and linting
+across TypeScript and Python, a standing user-validation log driven by a
+seeded demo dataset, and a security audit whose findings are all remediated
+and covered by regression tests.
+
+\section{Discussion}
+
+\noindent Three architectural choices deserve discussion.
+
+\subsection{Modular monolith over microservices}
+
+Keeping the business modules in one deployable unit means authorization
+evaluation, tenancy scoping, and database transactions stay simple and local.
+The two genuinely independent workloads --- OCR and AI generation --- were
+pushed out of the monolith to dedicated components behind queues, which is
+where elasticity actually matters. This matches the project's standing
+decision to avoid premature microservices.
+
+\subsection{Permission + scope instead of pure RBAC}
+
+Nesting academic scope under the permission model closes the classic RBAC
+leak: a teacher with \texttt{questions.update} still cannot touch a question in
+a subject they do not teach, because the scope gate evaluates the resource's
+subject against the teacher's assignment-derived subject set. The cost is a
+per-query scope predicate, which is cheap relative to the guarantee it gives.
+The 404-for-reads / 403-for-writes asymmetry keeps resource existence hidden
+from unauthorized actors.
+
+\subsection{Coordinator-owned OCR versus queue-based work}
+
+OCR workers are heterogenous and expected to be occasionally offline, so chunk
+ownership is expressed as a \emph{lease} with heartbeat renewal and
+sweep-based reclamation rather than an unbounded queue message. This design was
+chosen over retried queue delivery and validated against a real database in
+the OCR integration suite. A side effect is that the OCR pipeline can be
+incrementally scaled by adding workers with no coordinator downtime.
+
+\section{Limitations}
+
+\noindent The following limitations are accepted and documented in the
+repository:
+
+\begin{itemize}
+  \item \textbf{Selection randomness.} Pattern-to-paper selection is
+  deterministic; randomization within a bucket is not implemented.
+  \item \textbf{Question-paper immutability.} The question-paper junction
+  keeps a live foreign key to the bank question; a later edit to that question
+  can leak into paper exports (attempts, by contrast, are true snapshots).
+  \item \textbf{Provenance reads.} The \texttt{source\_pattern\_id} column is
+  write-only; there is no read path exposing a question's origin pattern in the
+  API or web client.
+  \item \textbf{Attempt-N-of-M.} Attempt numbering and max-attempt limits are
+  presentation metadata only; all linked questions are always evaluated.
+  \item \textbf{Duplication detection.} Within-batch exact-stem de-duplication
+  and a prompt instruction are used; there is no similarity/embedding scan
+  across the bank.
+  \item \textbf{Scope granularity.} Academic scope is currently subject-set
+  based; the designed offering-level scope (\texttt{offeringId} column) is
+  not yet in the schema.
+  \item \textbf{Rate limiting.} The global throttle is in-memory per instance;
+  a distributed (Redis-backed) limiter is deferred until cross-instance
+  rate limiting is needed.
+  \item \textbf{OCR/AI quality metrics.} Extraction accuracy and generated
+  content are validated structurally; quantitative quality metrics are not
+  produced.
+\end{itemize}
+
+Further deferred scope --- online answer sheets (FORM), OMR, on-screen
+marking, automated text grading, CRUD for a full \texttt{SUPER\_ADMIN}
+institute lifecycle UI, and web-level end-to-end automation --- is documented
+in Chapter~\ref{ch:conclusion}.

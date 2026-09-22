@@ -1,0 +1,108 @@
+\chapter{Testing and Validation}
+\label{ch:testing}
+
+\section{Testing Strategy}
+
+\noindent The project applies a three-tier test strategy:
+
+\begin{enumerate}
+  \item \textbf{Unit tests.} Pure-logic modules (guards, policies, validation,
+  parsers, bucket planners, renderers, writers) are tested with
+  \texttt{node:test} in the API.
+  \item \textbf{Database-gated integration suites.} Flows that touch real
+  PostgreSQL (academic scope resolution, authorization regression, session
+  hardening, OCR worker flow, export scope, job ownership) run as
+  \texttt{*.integration.ts} suites against a test database.
+  \item \textbf{Manual and end-to-end validation.} A seeded demo dataset drives
+  user-observable flows (login, upload, generation, scheduling, attempts,
+  exports), recorded in a standing user-validation log.
+\end{enumerate}
+
+\noindent Code standards add a fourth gate: \texttt{pnpm typecheck} (strict
+TypeScript across all workspaces) and \texttt{pnpm lint} run on the API, web,
+and worker sources, and the Python packages are checked with \texttt{ruff}
+and \texttt{mypy} (strict mode) plus pytest suites.
+
+\section{API Unit Tests}
+
+\noindent The API suite currently contains 226 tests across 15 suites, all
+passing (verified at the time of writing; a full run reports
+\texttt{tests 226, suites 15, pass 226, fail 0}). Coverage concentrates on the
+non-trivial, security-relevant logic:
+
+\begin{itemize}
+  \item \textbf{Authorization and CSRF.} permission catalogue semantics
+  (default-deny, \texttt{manage} implication, role/pass composition),
+  double-submit CSRF decisions, and cookie attributes;
+  \item \textbf{OCR.} coordinator utilities, page inspection/aggregation, and
+  worker registry validation;
+  \item \textbf{Material intelligence.} the deterministic enhancer (block
+  classification, keep/exclude/review findings, segment mapping);
+  \item \textbf{Word and worksheet generation.} DOCX and XLSX renderers, PDF
+  smoke tests, question/paper document builders;
+  \item \textbf{Question planning.} batch bucket building (difficulty
+  distribution allocations that sum exactly), batch planning floors/ceilings,
+  paper-pattern demand and validation, and the deterministic extractor;
+  \item \textbf{Scope resolution and identity.} scope-chain resolution and
+  login origin checks.
+\end{itemize}
+
+\section{Integration Suites}
+
+\noindent Eleven database-backed integration suites exercise cross-service
+behaviour that unit tests cannot:
+
+\begin{itemize}
+  \item \texttt{identity/auth-session.integration.ts} --- F1--F5 session
+  hardening: session-bound access tokens, strict one-time rotation,
+  lineage revocation, logout/revoke semantics, user-status gating, non-
+  enumerating login, and password-reset one-shot flow (14 tests);
+  \item \texttt{authorization/authz-regression.integration.ts} --- the guard
+  chain end to end;
+  \item \texttt{\seqsplit{authorization/academic-scope.integration.ts}} and
+  \texttt{\seqsplit{resource-scope.integration.ts}} --- scope resolution for teachers and
+  students and the 404/403 contract;
+  \item \texttt{\seqsplit{authorization/mod-3-export-scope}} /
+  \texttt{\seqsplit{mod-4-attempts-scope}}
+  and \texttt{\seqsplit{phase-m-remediation.integration.ts}} --- the remediation fixes of
+  the Phase~M security audit stay fixed;
+  \item \texttt{\seqsplit{authorization/job-ownership.integration.ts}} --- job requester
+  stamping and cross-institute adoption defence;
+  \item \texttt{academic-structure/*.integration.ts} --- teacher assignments
+  and student placements;
+  \item \texttt{ocr/ocr-worker-flow.integration.ts} --- the coordinator +
+  claim + lease + finalize loop against a real database.
+\end{itemize}
+
+\section{Security Validation}
+
+\noindent Security behaviour was validated in a dedicated audit phase that
+compared the implementation against a written threat model. It found and
+remediated: a HIGH-severity export path that could expose answer keys to
+unauthorized teachers (now every export route carries an explicit role
+restriction and resolves scope through the authoritative module gate); a
+MEDIUM-severity path by which a job created in one institute could be adopted
+with another institute's process; and two LOW-severity issues (jobs now record
+their requester; stale institute context is cleaned on logout and on
+unauthorized responses). Regression suites in the repository keep these fixes
+verified.
+
+\section{Manual and End-to-End Validation}
+
+\noindent A seeded demo workload (institutes, academic structure, materials,
+syllabi, generated content and questions, patterns, assessments, attempts, and
+practice sessions) is exercised through the web client and recorded in the
+user-validation log, covering the primary journeys that unit and integration
+suites cannot reach: multi-institute sign-in and switching, chunked uploads
+through the browser, OCR progress and corrections, AI-generation status
+polling, assessment scheduling and timing, attempt submission and the result
+view, practice sessions, and printed exports.
+
+\section{Limitations of Testing}
+
+\noindent Browser-level end-to-end automation is not yet present; web
+journeys are validated manually against the seeded dataset. OCR accuracy and
+AI output quality are validated functionally (structure, schema conformance,
+provenance) rather than by quantitative metrics; the AI pipeline's
+de-duplication and schema-validation guarantees are covered by worker
+unit tests in the Python packages.

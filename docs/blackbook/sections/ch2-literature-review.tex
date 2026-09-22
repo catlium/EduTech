@@ -1,0 +1,138 @@
+\chapter{Literature Review and Existing Systems}
+\label{ch:literature-review}
+
+\section{Existing Educational Platforms}
+
+Learning management systems (LMS) such as Moodle~\cite{moodle}, Google
+Classroom~\cite{gclassroom}, and Canvas~\cite{canvas} provide course delivery,
+assignments, and basic content organization to whole institutions. They are
+strong at the operational layer --- announcing courses, distributing
+assignments, and tracking participants --- but expose limited support for the
+specific preparation-and-assessment workflow this project targets: turning
+uploaded textbook chapters and previous-year papers into structured content,
+a structured question bank aligned to an exam blueprint, and scheduled
+server-evaluated assessments. Such platforms do not typically perform OCR of
+arbitrary educational documents, nor do they generate study content and
+examination assets with an AI pipeline and provenance for every produced
+artifact.
+
+Commercial and open-source tools exist for individual pieces of the workflow.
+OCR engines such as Tesseract and PaddleOCR extract text from scanned pages;
+document libraries such as PyMuPDF give programmatic access to PDF text and
+page rasterisation; AI content tools produce text on demand; quiz systems
+evaluate objective questions. The gap addressed here is a single
+tenant-isolated system that \emph{integrates} these pieces with an explicit
+authorization model, so that a college gets one coherent asset pipeline from
+``upload'' to ``evaluate''.
+
+\section{Optical Character Recognition}
+
+Tesseract is a long-established open-source OCR engine with excellent
+support for structured Latin-script documents~\cite{tesseract}. For
+handwritten and complex scripts, deep-learning OCR models are more robust.
+The PaddleOCR line of models (PP-OCR)~\cite{ppocr} provides lightweight,
+practical, multilingual OCR pipelines from the PaddlePaddle ecosystem and is
+widely used for real-world degradation (noise, watermarks, low contrast).
+Document payloads almost always live inside PDF files, which may contain an
+embedded digital text layer (born-digital PDFs) or be pure scans. PyMuPDF
+gives safe, dependency-light access to both: it extracts embedded text per
+page and rasterises pages to images for OCR fallback~\cite{pymupdf}.
+
+The design decision of this project is \emph{embedded-text-first, OCR-fallback
+per page}: a page whose embedded text has a usable length (at least five
+characters) is accepted directly, and only otherwise is it rasterised and
+passed to PaddleOCR. This reduces OCR load, preserves born-digital fidelity,
+and reserves compute for genuinely scanned material. OCR output is then
+normalised by a deterministic character pass, and the resulting text is stored
+on the material row so it can feed AI generation and text-based reuse without
+re-running vision models.
+
+\section{Large Language Models in Education}
+
+Transformer-based language models~\cite{vaswani2017} have made
+instruction-following generation practical for educational content. A
+retrieval-augmented pattern --- supply selected source material as context,
+then generate the desired artifact (notes, flashcards, summaries, questions)
+--- is the dominant integration shape for factual document-derived content
+because it grounds the output in the source document and makes the 
+\emph{source of truth} explicit~\cite{lewis2020rag}. This project follows that
+pattern: the AI worker assembles a bounded context budget from READY source
+materials, calls the model through an internal gateway, validates each
+response against strict schemas for the requested artifact, and stores
+generated items with provenance linking them to the exact source revisions
+used. Responses that fail schema validation or transient transport are
+retried with backoff up to a maximum number of attempts; terminal errors
+settle the associated job as failed rather than leaving it in a running state.
+
+\section{Multi-tenant Architecture}
+
+Multi-tenancy spans a spectrum from isolated deployments (one stack per
+tenant) through shared-database models (each tenant's rows prefixed or
+separated) with varied data-security trade-offs. The implementation chooses a
+shared-schema, tenant-scoped model: one PostgreSQL database whose tables carry
+an \texttt{institute\_id}, and every query that touches user data is filtered
+by the resolved active institute. Tenant resolution comes from an explicit
+header chosen by the client on each request, validated by a guard that checks
+a live, active membership. This yields low operational cost and strong
+consistency, and it is defensible because the enforcement is at the query
+layer rather than the presentation layer.
+
+\section{Authorization Models}
+
+Authorization is classically organised as role-based access control (RBAC),
+in which roles bundle rights, or attribute- and policy-based models that
+evaluate rules on each request. Pure RBAC is simple but coarse: a ``teacher''
+role grants the same rights over every class the teacher teaches, which leaks
+access across cohorts. Permission-based models refine RBAC by evaluating the
+\emph{permission key} (e.g. \texttt{questions.update}) and, additionally, by
+restricting \emph{where} that permission may operate (the academic scope).
+Libraries such as CASL provide attribute-based policy evaluation for such
+models~\cite{casl}, but this project implements its own compact engine ---- a
+single typed permission catalogue with a fixed \texttt{resource.action}
+vocabulary, default-deny, a \texttt{manage}-implies action rule, and no
+wildcards ---- deliberately avoiding a dependency for a decision that is at
+its core a few deterministic predicates. Roles become permission bundles: the
+built-in \texttt{INSTITUTE\_ADMIN}, \texttt{TEACHER}, and \texttt{STUDENT}
+roles, plus an institution-level \texttt{SUPER\_ADMIN} platform plane that is
+kept disjoint from institute membership.
+
+\section{Asynchronous Processing Patterns}
+
+Long-running operation must not block an API request. The classic pattern is a
+message broker with durable queues and worker consumers: the API writes a
+job row, publishes a message, returns \texttt{202 Accepted} with the job id,
+and a worker consumes the message, does the work, and settles the job. This
+project uses RabbitMQ~\cite{rabbitmq} with two queues --- one for material
+processing and one for AI generation with bounded concurrency. A variant for
+the OCR pipeline is a \emph{coordinator-owned} design: the API itself owns the
+OCR chunk registry, leases chunks to registered OCR workers by claim, and
+reclaims idle or expired leases, because OCR compute nodes are expected to be
+flaky, heterogeneous, and occasionally offline. This combination (queue for
+message-based work, coordinator for lease-based work) preserves the
+API-never-blocks guarantee while tolerating worker loss.
+
+\section{Security Baseline}
+
+Web authentication on this platform follows the OWASP cookie-session
+recommendations~\cite{owaspcsfr, owaspsession}: short-lived httpOnly access
+cookies, refresh tokens kept server-side as hashes, double-submit CSRF
+protection on all state-changing requests, origin checks on credential
+submission, and throttling. JWTs~\cite{rfc7519} are used only as
+transport-format access tokens and carry no permissions; authorization is
+re-evaluated from the current database state per request. Password hashing
+uses bcrypt~\cite{bcrypt}, session hashes use SHA-256 per
+FIPS~PUB~180-4~\cite{fips180}, and all internal service traffic is carried
+over the private Docker network with shared or per-worker keys.
+
+\section{Identified Gap}
+
+Existing systems separately provide LMS features, OCR, AI generation, quiz
+evaluation, or multi-tenancy. None of them combine, in one tenant-isolated
+product, the end-to-end lifecycle of \emph{OCR-of-materials ---\,
+AI-grounding ---\, syllabus structuring ---\, question-bank and paper-pattern
+authoring ---\, scheduled server-evaluated assessments ---\, practice ---\,
+print-ready export}, under an authorization model that restricts both the
+\emph{actions} and the \emph{academic scope} of every actor. This project
+targets exactly that gap; its contribution is architectural integration and a
+security posture where tenant isolation is enforced by the enforcement layers
+by default, not by incidental query shape.

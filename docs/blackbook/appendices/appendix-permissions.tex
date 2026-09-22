@@ -1,0 +1,61 @@
+\chapter{The Permission Catalogue}
+\label{app:permissions}
+
+\noindent The authorization catalogue is a typed map in code, mirrored into
+the \texttt{permissions} table on every API boot and verified for consistency.
+Keys are explicit \texttt{resource.action} strings; \texttt{manage} implies
+every other action of the same resource. Tables~\ref{tab:perm-institute} and
+\ref{tab:perm-platform} reproduce the catalogue.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{3.7cm}p{7.7cm}p{2.3cm}@{}}
+\toprule
+\textbf{Resource} & \textbf{Actions} & \textbf{Keys} \\
+\midrule
+\texttt{subjects} & read, create, update, delete, manage & 5 \\
+\texttt{chapters} & read, create, update, delete, manage & 5 \\
+\texttt{topics} & read, create, update, delete, manage & 5 \\
+\texttt{content} & read, create, update, delete, manage & 5 \\
+\texttt{materials} & read, create, update, delete, manage & 5 \\
+\texttt{syllabus} & read, create, update, delete, manage & 5 \\
+\texttt{questions} & read, create, update, delete, manage & 5 \\
+\texttt{question-types} & read, manage & 2 \\
+\texttt{paper-patterns} & read, create, update, delete, manage & 5 \\
+\texttt{question-papers} & read, create, update, delete, manage & 5 \\
+\texttt{assessments} & read, create, update, delete, manage & 5 \\
+\texttt{attempts} & read, create, update, manage & 4 \\
+\texttt{practice} & read, create, update, manage & 4 \\
+\texttt{exports} & read, manage & 2 \\
+\texttt{jobs} & read, update, manage & 3 \\
+\texttt{users} & read, create, update, manage & 4 \\
+\texttt{roles} & read, create, update, delete, manage & 5 \\
+\midrule
+\multicolumn{2}{r}{\textbf{Institute domain total}} & \textbf{74} \\
+\bottomrule
+\end{tabular}
+\caption{Institute-domain permission catalogue.}
+\label{tab:perm-institute}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{3.7cm}p{7.7cm}p{2.3cm}@{}}
+\toprule
+\textbf{Resource} & \textbf{Actions} & \textbf{Keys} \\
+\midrule
+\texttt{institutes} & read, create, update, delete, manage & 5 \\
+\texttt{ocr-workers} & read, create, update, manage & 4 \\
+\midrule
+\multicolumn{2}{r}{\textbf{Platform domain total}} & \textbf{9} \\
+\bottomrule
+\end{tabular}
+\caption{Platform-domain permission catalogue.}
+\label{tab:perm-platform}
+\end{table}
+
+\noindent The catalogue enforces explicit-only semantics: there are no
+wildcards, unknown keys resolve to \texttt{false}, and system roles are
+seeded from \texttt{BUILT\_IN\_ROLE\_DEFINITIONS} on boot.

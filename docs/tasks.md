@@ -1,5 +1,36 @@
 # Task Tracker
 
+## Black Book — Academic Project Documentation (2026-09-22, COMPLETE)
+
+> Issued task (final-year project deliverable). Produce a fresh, complete,
+> formal academic black book ("AI-Assisted Learning and Examination Management
+> System for Educational Institutes") built entirely from the current
+> repository, strictly black-and-white, no placeholders, no reused content from
+> the deleted draft. Compiled with `latexmk -xelatex`.
+
+- [x] 11 black-and-white diagrams (system architecture, authentication
+      sequence, permission model, academic scope, AI generation, OCR
+      processing, OCR chunk state, 3 database ERD families, Gantt) as Mermaid
+      sources in `docs/blackbook/diagrams/source/` rendered to SVG + grayscale
+      PNG figures.
+- [x] `docs/blackbook/main.tex` (book class 12pt A4, Times New Roman,
+      one-and-a-half spacing; front matter TOC → List of Figures → List of
+      Tables → Abstract → List of Abbreviations → Glossary; 12 chapters +
+      appendices + IEEE references). `IEEEtran.bst` restored from git HEAD
+      (not in texlive).
+- [x] All 12 chapters written from verified repo facts (workers use pika/direct
+      AMQP, not Celery; strict one-time refresh rotation with lineage
+      revocation; 226 unit tests / 11 integration suites; 47 tables, 48
+      migrations; 83-key/19-resource permission catalogue; API prefix
+      `api/v1`; health `GET /api/v1/health`).
+- [x] Appendices: full permission catalogue (App. A) and core environment
+      variables (App. B); `references.bib` (16 real, verifiable entries).
+- [x] Validated: `latexmk -xelatex` exit 0; 64 pages; no undefined
+      references/citations in the final pass; max residual overfull 0.5pt; no
+      right-margin bleed; zero colored pixels (strictly B&W); no placeholders;
+      11/11 figures in the LoF. See `docs/project-status.md` for the full
+      validation list.
+
 ## Authorization Overhaul — Architecture & Roadmap (2026-09-20)
 
 > Only the architecture, roadmap, and the D1–D7 design decisions are

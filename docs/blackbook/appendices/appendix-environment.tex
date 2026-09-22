@@ -1,0 +1,48 @@
+\chapter{Core Environment Variables}
+\label{app:environment}
+
+\noindent Table~\ref{tab:env} lists the configuration variables that most
+directly control the runtime behaviour described in this report. All
+configuration is via environment variables; the template lives at
+\texttt{.env.example} and \texttt{.env} files are never committed.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{6.2cm}p{8cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Purpose (default)} \\
+\midrule
+\texttt{JWT\_SECRET} & HS256 signing secret; boot failure in production if
+missing. \\
+\texttt{ACCESS\_TOKEN\_EXPIRY\_MINUTES} & Access-token lifetime (15). \\
+\texttt{REFRESH\_TOKEN\_EXPIRY\_DAYS} & Refresh-token lifetime, sliding (30). \\
+\texttt{COOKIE\_SAMESITE} / \texttt{COOKIE\_SECURE} & Cookie posture
+(\texttt{lax} / false). \\
+\texttt{RATE\_LIMIT\_LIMIT} / \texttt{RATE\_LIMIT\_TTL\_MS} & Global
+throttle (100 / 60000). \\
+\texttt{AUTH\_RATE\_LIMIT\_LIMIT} / \texttt{AUTH\_RATE\_LIMIT\_TTL\_MS} &
+Auth-route throttle (5 / 60000). \\
+\texttt{DATABASE\_URL} & PostgreSQL connection string. \\
+\texttt{REDIS\_URL} / \texttt{RABBITMQ\_URL} & Cache and broker addresses. \\
+\texttt{STORAGE\_LOCAL\_DIR} & Local file-storage root (abstraction for S3). \\
+\texttt{INTERNAL\_API\_KEY} & Shared internal-auth header key. \\
+\texttt{WORKER\_OCR\_CHUNK\_SIZE} & OCR chunk page count (10). \\
+\texttt{WORKER\_OCR\_LEASE\_SECONDS} & Chunk lease duration (300). \\
+\texttt{WORKER\_SWEEP\_INTERVAL\_MS} & Coordinator sweep interval (15000). \\
+\texttt{WORKER\_AI\_PROVIDER\_URL} & OmniRoute OpenAI-compatible base URL. \\
+\texttt{WORKER\_AI\_API\_KEY} & Endpoint key for the AI gateway. \\
+\texttt{WORKER\_AI\_MODEL} & Model selection (\texttt{auto}). \\
+\texttt{WORKER\_AI\_CONCURRENCY} & Parallel AI job threads (5). \\
+\texttt{WORKER\_AI\_MAX\_CONTEXT\_CHARS} & Source context budget per job (40000). \\
+\texttt{WORKER\_AI\_CHUNK\_SIZE\_CHARS} & Per-call context chunk (12000). \\
+\texttt{WORKER\_AI\_CHUNK\_OVERLAP\_CHARS} & Chunk overlap (400). \\
+\texttt{WORKER\_AI\_MAX\_RETRIES} & Transient-failure retry limit (3). \\
+\texttt{WORKER\_OCR\_SERVER\_URL} / \texttt{WORKER\_OCR\_WORKER\_ID} /
+\texttt{WORKER\_OCR\_API\_KEY} & Standalone OCR worker bootstrap. \\
+\texttt{TUNNEL\_TOKEN} & Cloudflare Tunnel credentials (only public ingress). \\
+\bottomrule
+\end{tabular}
+\caption{Core environment variables.}
+\label{tab:env}
+\end{table}

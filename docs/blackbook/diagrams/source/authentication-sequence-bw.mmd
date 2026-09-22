@@ -1,48 +1,57 @@
 ---
-title: CatLium EduTech — Cookie Auth + Tenant-Scoped Request Flow
+title: CatLium EduTech — Cookie Authentication and Tenant-Scoped Request Flow
 ---
-%%{init: {'theme':'neutral','htmlLabels':false,'themeVariables':{"primaryColor": "#ffffff", "primaryTextColor": "#000000", "primaryBorderColor": "#000000", "lineColor": "#000000", "secondaryColor": "#ffffff", "tertiaryColor": "#ffffff", "clusterBkg": "#ffffff", "clusterBorder": "#000000", "clusterTitleColor": "#000000", "edgeLabelBackground": "#ffffff", "actorBkg": "#ffffff", "actorBorder": "#000000", "actorTextColor": "#000000", "signalColor": "#000000", "signalTextColor": "#000000", "labelBoxBkgColor": "#ffffff", "labelBoxBorderColor": "#000000", "labelTextColor": "#000000", "noteBkgColor": "#ffffff", "noteBorderColor": "#000000", "noteTextColor": "#000000"},'sequence':{'useMaxWidth':false}}}%%
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','activationBkgColor':'#ffffff','activationBorderColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','labelTextColor':'#000000','loopTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','messageFontColor':'#000000'}}}%%
 sequenceDiagram
     autonumber
     participant B as Browser (Next.js web)
-    participant N as nginx (/api/ -> api:3000)
+    participant N as nginx (/api/ → api:3000)
     participant C as AuthController
     participant S as AuthService
     participant DB as PostgreSQL
-    participant T as TenantGuard
-    participant R as RolesGuard
+    participant AG as AccessTokenGuard
+    participant TG as TenantGuard
+    participant RG as RolesGuard
+    participant PG as PermissionGuard
+    participant AC as AcademicScopeService
     participant M as Feature Service
 
-    B->>N: POST /auth/login {email, password}
-    N->>C: forward (same origin /api/v1)
+    B->>N: POST /auth/login {email, password} (Origin checked)
+    N->>C: forward
     C->>S: login(email, password)
-    S->>DB: SELECT users WHERE email (normalized)
-    DB-->>S: user row (status, passwordHash)
-    S->>DB: bcrypt.compare(password, passwordHash)
-    S->>DB: INSERT auth_sessions (refreshTokenHash, expiresAt)  [createSession]
-    S-->>C: { user, accessToken, refreshToken, csrfToken }
-    C-->>B: 200 + set-cookie x3 (access_token, refresh_token httpOnly, csrf_token)
+    S->>DB: SELECT users WHERE email = normalized
+    DB-->>S: user row (status active, passwordHash)
+    S->>S: bcrypt.compare
+    S->>DB: INSERT auth_sessions (refreshTokenHash SHA-256, expiresAt)
+    S-->>C: { user, accessToken {sub,sid}, refreshToken, csrfToken }
+    C-->>B: 200 + Set-Cookie x3 (httpOnly access_token, httpOnly refresh_token path=/api/v1/auth, csrf_token)
 
-    alt Authenticated request (e.g. GET /content)
-        B->>N: GET /content + Cookie + x-institute-id header
-        N->>C: forward
-        Note over C,T: Guard stack: AccessToken → Tenant → Roles
-        C->>T: AccessTokenGuard verifies access_token JWT → request.user.userId
-        T->>DB: getMembership → memberships ⋈ membership_roles (user, institute, active)
-        DB-->>T: membership + roles
-        T-->>C: request.tenant = {instituteId, membershipId, roles}
-        C->>R: RolesGuard checks @RequiredRoles vs tenant.roles
+    alt Authenticated tenant request (e.g. GET /content)
+        B->>N: GET /content + Cookie + x-institute-id + (x-csrf-token on writes)
+        Note over AG,PG: Guard chain: AccessToken → Tenant → Roles → Permission
+        AG->>DB: verify JWT (HS256, 15 min) + session row live + user status active
+        DB-->>AG: session + user status
+        AG-->>C: request.user = { userId }
+        TG->>DB: getMembership(userId, x-institute-id, membership + institute active)
+        DB-->>TG: membership + roles
+        TG-->>C: request.tenant = { instituteId, membershipId, roles }
+        RG->>RG: @RequiredRoles against tenant.roles (OR, optional)
+        PG->>DB: grantKeysForMembership (permissions DB-fresh, never from JWT)
+        DB-->>PG: granted keys (manage implies action)
+        PG->>AC: resolveScope(membershipId)
+        AC-->>PG: whole-institute (admin) or subject-set
         C->>M: service call scoped by tenant.instituteId
-        M->>DB: every query WHERE institute_id = tenant
-        DB-->>M: rows (tenant-scoped)
+        M->>DB: queries filtered by institute_id + academic scope predicate
+        DB-->>M: rows (tenant + scope scoped)
         M-->>C: response
         C-->>B: 200 JSON
     end
 
     opt Refresh rotation
-        B->>C: POST /auth/refresh (refresh_token + csrf)
-        C->>S: verifyRefreshToken → session lookup
-        S->>S: decideRefreshRace (rotation/revoke/expired)
-        S->>DB: revoke old session, INSERT new session
-        C-->>B: rotated cookie set
+        B->>C: POST /auth/refresh (refresh_token + CSRF, repair-only CSRF)
+        C->>S: verify refresh token → session lookup
+        S->>S: strict one-time rotation (no grace window), lineage on reuse
+        S->>DB: UPDATE revoked_at = now() WHERE id = ? AND revoked_at IS NULL
+        S->>DB: INSERT successor session (rotated_from_sid)
+        C-->>B: rotated access + refresh cookies
     end

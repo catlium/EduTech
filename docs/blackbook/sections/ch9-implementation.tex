@@ -1,0 +1,132 @@
+\chapter{Implementation Details}
+\label{ch:implementation}
+
+\section{Technology Stack}
+
+\noindent Table~\ref{tab:stack} summarises the implemented technology stack.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{4.3cm}p{10.2cm}@{}}
+\toprule
+\textbf{Component} & \textbf{Technology} \\
+\midrule
+API framework & NestJS (TypeScript, ES2022, NodeNext modules, strict mode) \\
+Web client & Next.js (App Router) \\
+OCR service & FastAPI (Python 3.12+) \\
+Workers & Python 3.12+, pika (direct AMQP consumption) \\
+Database & PostgreSQL 17, Drizzle ORM \\
+Message broker & RabbitMQ 3 \\
+AI integration & Internal OpenAI-compatible gateway (OmniRoute) \\
+Validation & Zod (TypeScript), Pydantic (Python) \\
+OCR engines & PyMuPDF (embedded text), PaddleOCR (fallback) \\
+Deployment & Docker Compose, nginx, Cloudflare Tunnel \\
+Build & pnpm workspaces, Turborepo \\
+\bottomrule
+\end{tabular}
+\caption{Implemented technology stack.}
+\label{tab:stack}
+\end{table}
+
+\section{Repository Structure}
+
+\noindent The monorepo is organised as follows:
+
+\begin{itemize}
+  \item \texttt{apps/api} --- the NestJS modular monolith (twenty feature
+  modules plus application, database, and health scaffolding);
+  \item \texttt{apps/web} --- the Next.js client;
+  \item \texttt{apps/ocr} --- the FastAPI OCR service;
+  \item \texttt{apps/workers} --- the Python async workers
+  (\texttt{worker/} AI and material consumers, \texttt{ocr-worker/} pull
+  client);
+  \item \texttt{packages/contracts} --- shared API contracts and Zod schemas,
+  imported by both web and API;
+  \item \texttt{packages/database} --- Drizzle schema, 48 migrations, and the
+  database client;
+  \item \texttt{packages/auth}, \texttt{packages/ai}, \texttt{packages/shared}
+  --- shared authentication, AI, and common utilities;
+  \item \texttt{infrastructure/compose} --- the Docker Compose definitions;
+  \item \texttt{docs} --- architecture, proposal, status, tracker, and
+  user-validation documentation.
+\end{itemize}
+
+\noindent TypeScript is compile-strict: ESM with explicit \texttt{.js} import
+extensions, no \texttt{any} without an explicit exemption, and a single
+\texttt{pnpm typecheck} covering all workspaces. Shared contracts keep the web
+client and the API on the same DTOs, while Pydantic models on the Python side
+re-validate worker inputs at the boundary.
+
+\section{Backend (NestJS API)}
+
+\noindent Each feature area is a standalone NestJS module
+(\texttt{*Module}, \texttt{*Controller}, \texttt{*Service}, \texttt{*DTO}).
+Cross-cutting concerns are centralised: the global guard and exception
+infrastructure (Chapter~\ref{ch:security}), a DTO validation layer built on
+Zod schemas from the contracts package, and Drizzle repositories that always
+apply an \texttt{institute\_id} filter. Long-running operations from any
+controller call \texttt{JobsService}, which provides the insert-then-publish
+job lifecycle, cancellation, retry with deduplication, and status queries.
+Routing uses one global prefix \texttt{/api/v1}; the health endpoint lives at
+\texttt{GET /api/v1/health}.
+
+\section{AI and Material Workers (Python)}
+
+\noindent The Python workers are plain long-running processes that consume
+RabbitMQ queues directly over AMQP (pika), rather than a task framework: the
+AI consumer binds \texttt{ai\_generation} with bounded concurrency (default 5)
+and prefetch, and the material consumer binds \texttt{jobs}. On start, a
+worker recovers stale queued messages so that no work is lost across worker
+restarts. Generation work resolves READY source materials from the database,
+builds a context budget (a bounded character window divided into overlapping
+chunks), calls the model through OmniRoute (\texttt{POST
+/v1/chat/completions}), parses and Pydantic-validates each response, then
+writes results directly to PostgreSQL with provenance and deterministic
+de-duplication. Transient failures and transport errors are retried with
+backoff (maximum three attempts); terminal errors settle the job as failed.
+The material-enhancement pass runs entirely inside the \emph{API} coordinator
+(deterministic, no model), not in a worker.
+
+\section{OCR Service and OCR Worker}
+
+\noindent The OCR service is a dependency-lean FastAPI application with no
+business-domain knowledge. It exposes \texttt{GET /health} and extraction
+logic that, per page, first attempts PyMuPDF embedded text and falls back to
+rasterisation + PaddleOCR when the embedded text is too short; its output is
+then passed through a deterministic character-normalization pass. The
+standalone \texttt{ocr-worker} package is a pull client: it heartbeats, claims
+chunks from the API's worker endpoints, downloads source bytes from the
+corresponding read route, runs the extraction range locally, and submits page
+results with a page-count field. Legacy one-shot extraction (a file posted to
+the OCR service and text returned synchronously into a material) is retained
+for compatibility but is not the primary path.
+
+\section{Web Client (Next.js)}
+
+\noindent The web client is built on the App Router and consumes the shared
+contracts package. Tenancy is client-side state: the active institute id is
+kept in local storage, the API client attaches \texttt{x-institute-id} and the
+CSRF header on every request, and a single-flight refresh handles session
+renewal with an outcome that never logs the user out on an unavailable
+network. UI components are minimal and dependency-light (a small set of
+presentational components rather than a component library), and the
+institute-switcher shows the resolved institute-domain permissions per
+membership so navigation adapts to what the user may do.
+
+\section{Infrastructure and Deployment}
+
+\noindent The single \texttt{docker-compose.yml} defines 12 services:
+PostgreSQL~17, Redis~7, RabbitMQ~3, a one-shot migrate runner, the API, the
+web client, nginx, the Cloudflare Tunnel sidecar, OmniRoute, the OCR service,
+and the two worker images. In the production shape nothing publishes a host
+port; a development override binds 127.0.0.1 loopback ports (nginx on
+\texttt{8080} by default) for local tooling, and a demo overlay adds seed data
+and a worker-to-gateway wiring. Dockerfiles are dependency-first: pnpm
+workspace installs run on a shared cache mount so that build layers for
+third-party dependencies only rebuild when their manifests change, keeping
+whole-stack rebuilds fast while the running containers never hot-reload source
+code (this is why every code change to the API, web, or workers requires a
+deliberate rebuild and verification step). The nginx configuration splits
+paths exactly as described in Chapter~\ref{ch:architecture}; a Cloudflare
+Tunnel with one public hostname is the only ingress.

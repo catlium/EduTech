@@ -1,47 +1,43 @@
 ---
-title: CatLium EduTech — Async AI Generation (job lifecycle)
+title: CatLium EduTech — Asynchronous AI Generation (job lifecycle)
 ---
-%%{init: {'theme':'neutral','htmlLabels':false,'themeVariables':{"primaryColor": "#ffffff", "primaryTextColor": "#000000", "primaryBorderColor": "#000000", "lineColor": "#000000", "secondaryColor": "#ffffff", "tertiaryColor": "#ffffff", "clusterBkg": "#ffffff", "clusterBorder": "#000000", "clusterTitleColor": "#000000", "edgeLabelBackground": "#ffffff", "actorBkg": "#ffffff", "actorBorder": "#000000", "actorTextColor": "#000000", "signalColor": "#000000", "signalTextColor": "#000000", "labelBoxBkgColor": "#ffffff", "labelBoxBorderColor": "#000000", "labelTextColor": "#000000", "noteBkgColor": "#ffffff", "noteBorderColor": "#000000", "noteTextColor": "#000000"},'sequence':{'useMaxWidth':false}}}%%
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','activationBkgColor':'#ffffff','activationBorderColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','labelTextColor':'#000000','loopTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','messageFontColor':'#000000'}}}%%
 sequenceDiagram
     autonumber
     participant B as Browser (Next.js)
-    participant N as nginx
-    participant GC as GenerationController<br/>(or QuestionBank…)
-    participant G as GenerationService
+    participant G as GenerationController
+    participant Ge as GenerationService
     participant JS as JobsService
-    participant RMQ as RabbitMQ (ai_generation)
+    participant RQ as RabbitMQ (ai_generation)
     participant W as worker-ai consumer (concurrency 5)
-    participant AI as OmniRoute gateway<br/>POST /v1/chat/completions
+    participant AI as OmniRoute<br/>POST /v1/chat/completions
     participant DB as PostgreSQL
 
-    B->>N: POST /content/generate {materialId, operation}
-    N->>GC: /api/v1/content/generate
-    GC->>G: validate scope (material ACTIVE+READY, dedup key)
-    G->>JS: issueJob(type=AI_GENERATE_*)
-    JS->>DB: INSERT jobs (status='queued')
-    JS->>RMQ: publish(message {jobId, instituteId, type, payload})
-    RMQ-->>JS: ack
-    JS-->>G: job
-    G-->>B: 202 ACCEPTED {jobId}  (async, never blocks)
+    B->>G: POST /content/generate {materialId, operation}
+    G->>Ge: validate scope (material READY, dedup key)
+    Ge->>JS: issueJob(type = AI_GENERATE_*)
+    JS->>DB: INSERT jobs (status = 'queued')
+    JS->>RQ: publish {jobId, instituteId, type, payload}
+    RQ-->>JS: ack
+    JS-->>Ge: job record
+    Ge-->>B: 202 ACCEPTED {jobId} (async, API never blocks)
 
-    loop Every WORKER_AI_CONCURRENCY seconds — client polls
-        B->>GC: GET /content/generation-status / jobs/:jobId
-        GC->>DB: SELECT job
-        DB-->>GC: status
-        GC-->>B: {status: queued|processing|completed|failed}
+    loop Client polls
+        B->>G: GET jobs/:id (status)
+        G->>DB: SELECT job
+        DB-->>G: status
+        G-->>B: queued | processing | completed | failed
     end
 
-    RMQ->>W: deliver message (prefetch 1)
-    W->>DB: UPDATE jobs SET status='processing', startedAt
-    W->>DB: resolve source → READY materials (ACTIVE), build context chunks (40k char budget)
-    loop Each context chunk (12k chars, 400 overlap)
-        W->>AI: POST /chat/completions {model, messages, temperature:0.2}
+    RQ->>W: deliver message (prefetch)
+    W->>DB: jobs → processing
+    W->>DB: resolve READY source materials, build context chunks
+    loop Each context chunk
+        W->>AI: POST /chat/completions (temperature 0.2)
         AI-->>W: raw JSON response
     end
-    W->>W: parse_json_object → Pydantic schema validate (per-type)
-    W->>W: aggregate + deterministic dedup (questions by stem, flashcards front/back…)
-    W->>DB: persist content_items / questions (AI_GENERATED + provenance, PENDING)
-    W->>DB: UPDATE jobs SET status='completed', result, completedAt
-    Note over W,DB: Failure: transient responses and transport errors retried with backoff (max 3).<br/>Terminal error → job marked 'failed', never left 'processing'.
-
-    B->>B: render fetched content / question bank
+    W->>W: parse + Pydantic schema validate (per type)
+    W->>W: aggregate + deterministic dedup
+    W->>DB: persist content_items / questions (AI_GENERATED + provenance)
+    W->>DB: jobs → completed (completedAt)
+    Note over W,DB: Failure: transient responses/transport errors retried with backoff (max 3),<br/>terminal error → job failed, never left processing.
