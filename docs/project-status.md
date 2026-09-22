@@ -76,10 +76,13 @@ fixed and covered (LOW-2 by the wiring verified in the web build); DOC-1 (stale
 Phase M audit findings are fully remediated. Unrelated carryover backlog:
 admin deactivation mutation, scheduled session-purge job, Super Admin
 UI/APIs, institutes lifecycle endpoints. Also tracked from the LOW-1
-remediation: `drizzle-kit migrate` in this workspace silently no-ops on
-populated DBs and errors (no diagnostic) on fresh DBs — regenerate
-`packages/database/drizzle` snapshots and normalize the journal before any
-future migration (see `security-audit.md`).
+remediation: `drizzle-kit migrate`/`generate` tooling was broken by a
+snapshot/journal mismatch — **RESOLVED 2026-09-22** at `fix(db): normalize
+drizzle migration metadata`: snapshots 0024–0046 backfilled (per-migration
+replay + introspection, chain-anchored to 0023) so the meta directory matches
+the 47-entry journal; `drizzle-kit check` clean, `generate` = "No schema
+changes", fresh-DB `migrate` applies all 47, populated-DB `migrate` no-ops
+(see `security-audit.md`).
 
 ## Phase L — Security & Authorization Regression Matrix (2026-09-21)
 

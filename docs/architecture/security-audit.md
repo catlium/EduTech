@@ -186,11 +186,11 @@ Implemented per the agreed design above, plus the related factory hardening:
 
 - **Schema + migration** `packages/database/drizzle/0046_jobs_created_by.sql`:
   nullable `created_by uuid references users(id) ON DELETE no action`, index
-  `jobs_created_by_idx`, idempotent (`IF NOT EXISTS`). Hand-written SQL (
-  `drizzle-kit generate` is inoperative here — snapshots stop at 0023 while
-  the journal has 46+ entries, so generate prompts `promptNamedWithSchemas-
-  Conflict` on a non-TTY; 0024–0045 follow the same hand-written convention,
-  verified 2026-09-22).
+  `jobs_created_by_idx`, idempotent (`IF NOT EXISTS`). Hand-written at the
+  time (2026-09-22) because `drizzle-kit generate` was inoperative — snapshots
+  stopped at 0023 while the journal ran to 46+ entries. The missing snapshots
+  0024–0046 have since been backfilled so `generate` works again (see the
+  resolved tooling note below).
 - **Stamping**: `JobsService.insertJob/issueJob/createJob` take a `createdBy`
   argument; `JobsController.create` stamps `@CurrentUser().userId`; every
   guarded factory passes its existing caller `userId` (generation, question
@@ -229,15 +229,16 @@ Implemented per the agreed design above, plus the related factory hardening:
   `ALLOWED_JOB_TYPES = ["MATERIAL_PROCESS","MATERIAL_ENHANCE"]` confirmed in
   the running api image.
 - **Known tooling issue (pre-existing, NOT caused by this change):**
-  `drizzle-kit migrate` in this workspace silently no-ops on a populated DB
-  (did not apply pending migrations) and exits RC=1 with no diagnostic on a
-  fresh DB, both on host and in the `migrate` image. The underlying
-  `drizzle-orm` `migrate()` (the exact library drizzle-kit invokes) works;
-  LOW-1 was applied through one-shot `drizzle-orm migrate` in the migrate
-  image, and the CLI then reports `"✓ migrations applied successfully!"` for
-  subsequent no-op runs. Worth a drizzle-kit upgrade/investigation separately
-  — recommend regenerating the `packages/database/drizzle` snapshots and
-  normalizing the journal before any future migration.
+  `drizzle-kit migrate` in this workspace previously misbehaved (silently
+  no-oped on a populated DB / RC=1 on a fresh DB, causing LOW-1 to be applied
+  through one-shot `drizzle-orm migrate` in the migrate image).
+  **RESOLVED 2026-09-22** (`fix(db): normalize drizzle migration metadata`):
+  the missing `packages/database/drizzle/meta` snapshots 0024–0046 were
+  reconstructed (per-migration replay of 0024..0046 on a scratch DB, then
+  per-state introspection, chain-anchored to the committed 0023 snapshot) so
+  the meta directory again matches the 47-entry journal. Verified: `drizzle-
+  kit check` clean, `drizzle-kit generate` = "No schema changes", fresh-DB
+  `migrate` applies all 47, populated-DB `migrate` no-ops cleanly.
 
 ### FOUND — LOW-2: `cleanupInstituteStorage` never called on logout
 
