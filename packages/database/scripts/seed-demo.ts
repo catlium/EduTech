@@ -12,6 +12,11 @@ import {
   membershipRoles,
   roles,
   platformUserRoles,
+  academicYears,
+  classes,
+  classSubjects,
+  divisions,
+  studentPlacements,
   subjects,
   chapters,
   topics,
@@ -133,6 +138,120 @@ async function upsertSubject(
   const [row] = await db.insert(subjects).values({ instituteId, name, slug }).returning();
   if (!row) throw new Error('failed to create demo subject');
   return row;
+}
+
+// ── Phase 20b — demo student placement ───────────────────────────────────────
+// The demo curriculum is class-scoped: a student only ever sees subjects via
+// their placement (placement → division → class → class_subjects). Without a
+// placement the scope is an empty subject-set, so the demo student's "My
+// Subjects" page shows "No subjects in your scope". Seed the full chain so the
+// browser demo has subjects to walk through. Idempotent (unique keys on name,
+// class+subject, year+class+division, and the active-per-(year, member)
+// placement index all conflict-no-op).
+async function upsertAcademicYear(
+  db: ReturnType<typeof createDatabase>,
+  instituteId: string,
+  name: string,
+  sortOrder: number,
+) {
+  const existing = await db
+    .select()
+    .from(academicYears)
+    .where(and(eq(academicYears.instituteId, instituteId), eq(academicYears.name, name)))
+    .limit(1);
+  if (existing.length > 0) return existing[0]!;
+  const [row] = await db
+    .insert(academicYears)
+    .values({ instituteId, name, sortOrder })
+    .returning();
+  if (!row) throw new Error(`failed to create academic year ${name}`);
+  return row;
+}
+
+async function upsertClass(
+  db: ReturnType<typeof createDatabase>,
+  instituteId: string,
+  name: string,
+  sortOrder: number,
+) {
+  const existing = await db
+    .select()
+    .from(classes)
+    .where(and(eq(classes.instituteId, instituteId), eq(classes.name, name)))
+    .limit(1);
+  if (existing.length > 0) return existing[0]!;
+  const [row] = await db.insert(classes).values({ instituteId, name, sortOrder }).returning();
+  if (!row) throw new Error(`failed to create class ${name}`);
+  return row;
+}
+
+async function upsertDivision(
+  db: ReturnType<typeof createDatabase>,
+  instituteId: string,
+  academicYearId: string,
+  classId: string,
+  name: string,
+  sortOrder: number,
+) {
+  const existing = await db
+    .select()
+    .from(divisions)
+    .where(
+      and(
+        eq(divisions.academicYearId, academicYearId),
+        eq(divisions.classId, classId),
+        eq(divisions.name, name),
+      ),
+    )
+    .limit(1);
+  if (existing.length > 0) return existing[0]!;
+  const [row] = await db
+    .insert(divisions)
+    .values({ instituteId, academicYearId, classId, name, sortOrder })
+    .returning();
+  if (!row) throw new Error(`failed to create division ${name}`);
+  return row;
+}
+
+async function seedDemoPlacement(db: ReturnType<typeof createDatabase>, studentMembershipId: string) {
+  const instituteId = DEMO_INSTITUTE_ID;
+  const year = await upsertAcademicYear(db, instituteId, '2026-27', 0);
+  const klass = await upsertClass(db, instituteId, 'B.Sc. Computer Science', 0);
+  const division = await upsertDivision(db, instituteId, year.id, klass.id, 'Division A', 0);
+
+  const demoSubjects = await db
+    .select()
+    .from(subjects)
+    .where(
+      and(
+        eq(subjects.instituteId, instituteId),
+        inArray(subjects.slug, DEMO_SUBJECTS.map((s) => s.slug)),
+      ),
+    );
+  for (const subject of demoSubjects) {
+    await db
+      .insert(classSubjects)
+      .values({ classId: klass.id, subjectId: subject.id })
+      .onConflictDoNothing();
+  }
+
+  const existing = await db
+    .select()
+    .from(studentPlacements)
+    .where(
+      and(
+        eq(studentPlacements.instituteId, instituteId),
+        eq(studentPlacements.membershipId, studentMembershipId),
+        eq(studentPlacements.academicYearId, year.id),
+        eq(studentPlacements.status, 'active'),
+      ),
+    )
+    .limit(1);
+  if (existing.length > 0) return;
+  await db
+    .insert(studentPlacements)
+    .values({ instituteId, membershipId: studentMembershipId, academicYearId: year.id, divisionId: division.id })
+    .onConflictDoNothing();
 }
 
 // ── Phase 20 — demo curriculum ──────────────────────────────────────────────
@@ -1257,6 +1376,7 @@ async function main() {
 
   await cleanupPhasedOutDemoData(db);
   await seedDemoCurriculum(db);
+  await seedDemoPlacement(db, studentMembership.id);
   await seedValidationFixtures(db);
 
   // Phase D: a demo platform SUPER_ADMIN (D3/§15) — platform_user_roles, NOT a
@@ -1275,7 +1395,9 @@ async function main() {
       `    IKS in Computational System, Software Testing & QA (chapters/topics,\n` +
       `    syllabus + reading materials, approved questions, approved paper\n` +
       `    pattern, active assessment per subject; phased-out Mathematics/Physics\n` +
-      `    demo data removed deterministically)`,
+      `    demo data removed deterministically)\n` +
+      `  placement: student@catlium.dev → B.Sc. Computer Science / 2026-27 / Division A\n` +
+      `    (offers the 4 demo subjects so the student scope is non-empty)`
   );
 }
 
