@@ -44,7 +44,7 @@ function PlatformGate({ children }: { children: React.ReactNode }) {
   const { loading: probeLoading, canAccessConsole } = usePlatform();
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/login');
+    if (!loading && !user) router.replace('/');
   }, [loading, router, user]);
 
   if (loading || probeLoading) return <PageLoader />;

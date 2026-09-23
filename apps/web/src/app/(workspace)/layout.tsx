@@ -50,7 +50,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const { instituteId } = useTenant();
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/login');
+    if (!loading && !user) router.replace('/');
   }, [loading, router, user]);
   useEffect(() => {
     if (loading) return;

@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { Building2, LogOut, Mail, ShieldCheck, UserRound } from 'lucide-react';
 
 import { useAuth } from '@/lib/auth';
@@ -35,7 +34,6 @@ function RoleBadges({ roles }: { roles: string[] }) {
 }
 
 export default function ProfilePage() {
-  const router = useRouter();
   const { user, memberships, loading, logout } = useAuth();
   const { institute } = useTenant();
 
@@ -50,7 +48,6 @@ export default function ProfilePage() {
 
   const handleSignOut = async () => {
     await logout();
-    router.replace('/login');
   };
 
   const sortedMemberships = [...memberships].sort((a, b) => {

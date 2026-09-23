@@ -52,6 +52,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const goLanding = useCallback(() => {
+    // Anonymous viewers are never auto-pushed into the login flow; they land
+    // on the marketing page and sign in only by choice. No-op when already
+    // there so a 401 on the landing page doesn't reload/clobber it.
+    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+      router.replace('/');
+    }
+  }, [router]);
+
   const logout = useCallback(async () => {
     try {
       await api('/auth/logout', { method: 'POST' });
@@ -62,8 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMemberships([]);
     setActiveInstituteId(null);
     cleanupInstituteStorage();
-    router.replace('/login');
-  }, [router]);
+    goLanding();
+  }, [goLanding]);
 
   useEffect(() => {
     const onUnauthorized = () => {
@@ -71,11 +80,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMemberships([]);
       setActiveInstituteId(null);
       cleanupInstituteStorage();
-      router.replace('/login');
+      goLanding();
     };
     window.addEventListener('catlium:unauthorized', onUnauthorized);
     return () => window.removeEventListener('catlium:unauthorized', onUnauthorized);
-  }, [router]);
+  }, [goLanding]);
 
   useEffect(() => {
     refresh();

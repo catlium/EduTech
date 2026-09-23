@@ -21,7 +21,7 @@ export default function InstitutesPage() {
   const { canAccessConsole } = usePlatform();
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/login');
+    if (!loading && !user) router.replace('/');
   }, [loading, router, user]);
 
   if (loading) return <PageLoader />;
