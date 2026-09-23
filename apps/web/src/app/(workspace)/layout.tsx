@@ -31,6 +31,8 @@ const TEACHER_RESOURCE_ROUTES = [
 ];
 
 const ADMIN_RESOURCE_ROUTES = [
+  // placed before /institute so the more specific prefix wins the match
+  { prefix: '/institute/academic', key: 'users.read' },
   { prefix: '/institute', key: 'users.read' },
   { prefix: '/users', key: 'users.read' },
   // ocr-workers.* is platform-plane (D3/§15): no institute membership can hold

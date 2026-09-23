@@ -1,5 +1,53 @@
 # Task Tracker
 
+## Phase Q.2 — Academic-Structure Console (2026-09-23, COMPLETE)
+
+> Issued task: frontend-only implementation of the institute-plan
+> academic-structure console at `/institute/academic` (academic years, classes,
+> class-subject offerings, divisions), reusing the audited backend
+> (academic-structure module, `INSTITUTE_ADMIN` role-only writes). NO backend/
+> contract changes, NO teacher/student placement UI (Q.3/Q.4), NO roles
+> console (Q.5), NO new permission-catalogue keys (UI mirrors the existing
+> `INSTITUTE_ADMIN` role gate + `users.read` route key). Docs: project-status.md
+> + this tracker. Commit on a feature branch; do NOT merge into dev/main.
+
+- [x] Branch `feature/institute-admin-academic` created from
+      `feature/institute-admin-operations-audit` (unrelated working-tree changes
+      preserved untouched).
+- [x] `lib/academic.ts` — local row types (no contracts schemas exist for
+      years/classes/divisions), `canWriteAcademicStructure` (INSTITUTE_ADMIN
+      role mirror), `classDeleteWarning`/`divisionDeleteWarning` (exact cascade
+      impact wording), `bySortOrder`, `filterDivisions`.
+- [x] `lib/academic.test.ts` — 6 node:test cases (gating, delete-warning
+      wording + singulars, sort, division filtering).
+- [x] `app/(workspace)/institute/academic/page.tsx` — tabs console, 4 parallel
+      entity fetches (+ per-class offering counts), loading/error/empty states,
+      admin write gating.
+- [x] Academic-years section — list/create/edit (no delete: backend has none).
+- [x] Classes section — list/create/edit, Manage Subjects dialog (add/remove
+      offerings), destructive delete with live offering/division counts stated
+      in the confirm.
+- [x] Divisions section — list/create/edit/delete + year/class filters.
+- [x] Sidebar nav entry, breadcrumb, and workspace layout route gate
+      (`/institute/academic` → `users.read`, placed before `/institute`).
+- [x] Validation: `tsc --noEmit` clean, 6/6 tests pass, `next build` clean,
+      web container rebuilt + route served (HTTP 200, not 404).
+- [x] Docs updated: project-status.md (Phase Q.2 entry + next task), this
+      tracker.
+- [x] Commit `feat(web): add institute academic-structure console` on
+      `feature/institute-admin-academic`, pushed.
+
+### Deferred / backend gaps (unchanged, by design)
+
+- Class/division hard DELETE still cascades placement history — delete
+  hardening is a backend change and remains unscheduled; the UI surfaces the
+  exact cascade impact before confirming.
+- No aggregate offering-count endpoint — the console fetches per-class
+  offerings (N reads) to show the subject column and confirm text.
+- `/roles*` and `PUT /users/:userId/roles` still have no consumer (Q.5).
+- TEXT/essay auto-grading, FORM/OMR/OSM, practice scoring, question-set
+  delete/merge, academic-export redesign — all untouched (out of scope).
+
 ## Phase Q.1 — Institute Admin Operations Audit (2026-09-23, AUDIT COMPLETE)
 
 > Issued task. Audit the Institute Admin / institute-plane experience and
@@ -45,8 +93,10 @@
 
 ### Recommended next (not scheduled)
 
-- [ ] (PLANNED) Q.2 — Academic-structure console (years/classes/offerings/
-      divisions) + class/division delete hardening.
+- [x] Q.2 — Academic-structure console (years/classes/offerings/divisions)
+      — COMPLETE 2026-09-23 (see Phase Q.2 below). Delete hardening deferred
+      (backend unchanged by design; UI states the exact cascade in the
+      destructive confirm).
 - [ ] (PLANNED) Q.3 — Teacher → class-subject assignment UI.
 - [ ] (PLANNED) Q.4 — Student placement/transfer UI.
 - [ ] (PLANNED) Q.5 — User-management completeness + roles console

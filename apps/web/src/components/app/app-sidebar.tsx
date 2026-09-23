@@ -18,6 +18,7 @@ import {
   Activity,
   ShieldCheck,
   LogOut,
+  CalendarRange,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -68,6 +69,12 @@ const sharedNav = [{ href: '/practice', label: 'Practice', icon: Target }];
 
 const adminNav = [
   { href: '/institute', label: 'Institute', icon: Building2, key: 'users.read' },
+  {
+    href: '/institute/academic',
+    label: 'Academic Structure',
+    icon: CalendarRange,
+    key: 'users.read',
+  },
   { href: '/users', label: 'Users', icon: Users, key: 'users.read' },
 ];
 
@@ -222,6 +229,7 @@ export function sideCrumb(pathname: string): { label: string; href: string } | n
     { href: '/student/learning', label: 'My Subjects' },
     { href: '/student/exams', label: 'Exams' },
     { href: '/practice', label: 'Practice' },
+    { href: '/institute/academic', label: 'Academic Structure' },
     { href: '/institute', label: 'Institute' },
     { href: '/users', label: 'Users' },
   ];

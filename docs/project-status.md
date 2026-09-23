@@ -1,5 +1,54 @@
 # Project Status
 
+## Phase Q.2 — Academic-Structure Console (2026-09-23)
+
+**Status: IMPLEMENTED + VALIDATED (frontend only, on the audited backend).**
+Branch: `feature/institute-admin-academic` (from
+`feature/institute-admin-operations-audit`; unrelated working-tree changes
+preserved untouched). No backend, contract, or schema change.
+
+New `/institute/academic` console (sidebar "Academic Structure" under
+Administration, breadcrumbed, route-gated `users.read` in workspace layout):
+
+- **Academic Years** — list/create/edit/archive (no delete: backend has none).
+- **Classes** — list/create/edit + **Manage Subjects** dialog (add/remove
+  class-subject offerings); destructive delete confirm states the exact
+  cascade impact (subject offerings + divisions + every placement/
+  enrollment/assignment under them) with live counts.
+- **Divisions** — list/create/edit/delete with year + class filters; delete
+  confirm names the year · class and the cascaded placements/enrollments (FKs
+  are `ON DELETE CASCADE` — enforced language, never diminished).
+
+Authorization stays backend-authoritative: the console renders read-only for
+non-admins and gates every mutation behind the `INSTITUTE_ADMIN` role
+(`canWriteAcademicStructure` mirrors the backend `@RequiredRoles` decision;
+no new permission-catalogue keys were invented — route reuse `users.read`).
+Reads are open to any member (as the backend allows).
+
+Implementation: `apps/web/src/lib/academic.ts` (row types — contracts has no
+schemas for years/classes/divisions — + pure gating/warning/sort/filter
+helpers), `schemas.ts` (zod), `page.tsx` (tabs, 4 parallel fetches +
+per-class offering counts, loading/error/empty states), three
+`*-section.tsx` components. Focused `node --test` suite
+(`lib/academic.test.ts`, 6 cases) via `pnpm test:academic`.
+
+Validation: `tsc --noEmit` clean, 6/6 tests pass, `next build` clean, web
+container rebuilt (`docker compose up -d --build web`, all services healthy)
+and the live route serves HTTP 200 (prerendered, not 404).
+
+**Deferred / backend gaps (unchanged, by design):** class/division hard
+DELETE still cascades placement history (hardening is a backend change and
+remains unscheduled); no aggregate offering-count endpoint (console fetches
+per-class offerings); `/roles*` + role editing remain consumerless (Q.5);
+teacher assignment + student placement/transfer UI remain (Q.3/Q.4). TEXT
+auto-grading, FORM/OMR/OSM, practice scoring, question-set delete/merge,
+academic-export redesign untouched.
+
+**Exact recommended next task:** Phase Q.3 — Teacher → class-subject
+assignment UI on the same console area, optionally preceded by the design-
+gated catalogue expansion (`academic`/`teachers` permission keys) if custom-role
+delegation is desired.
+
 ## Phase Q.1 — Institute Admin Operations Audit (2026-09-23)
 
 **Status: AUDIT COMPLETE — documentation only, no code changed.**
@@ -49,6 +98,8 @@ Unrelated working-tree changes on `main` were preserved untouched.
 (years → classes → class-subject offerings → divisions) under a new
 `/institute/academic` section, after hardening class/division delete to
 refuse (or soft-delete) when placements/assignments exist.
+→ **DONE 2026-09-23** (Phase Q.2 above). Delete hardening not done by design
+(frontend-only phase); console instead warns with exact cascade impact.
 
 ## Phase P.2 — Platform User Lifecycle Implementation (2026-09-23)
 
