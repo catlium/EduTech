@@ -1,5 +1,45 @@
 # Project Status
 
+## Phase P.1 — Platform User Lifecycle Design (2026-09-23)
+
+**Status: DESIGN COMPLETE — documentation only, no implementation.**
+Commit: `docs(platform): design platform user lifecycle`.
+
+Canonical design: `docs/architecture/platform-user-lifecycle.md`. Re-posits
+`security-audit.md` §AUDIT 2026-09-22 (global `users.status` as a platform-side
+user-lifecycle item) and `institute-lifecycle.md` §12.6, and consumes the
+audit-trail extensibility reserved for platform-user events
+(`platform-audit-trail.md` §11 — the schema fits with zero migration).
+
+Design decisions (`IMPLEMENTED`/`PLANNED`/`DEFERRED` marked per section):
+
+- **Identity (IMPLEMENTED, recorded):** a platform user is a `users` row with
+  ≥1 `platform_user_roles` row; the only platform role is `SUPER_ADMIN`.
+  `users.status` has no DB CHECK and no production writer today; enforced at
+  login, refresh, and `AccessTokenGuard` (both planes) — a flip takes effect on
+  the next request.
+- **Suspend/reactivate reuses `users.status`** (`'deactivated'`/`'active'`) —
+  PLANNED; a separate platform lifecycle field is explicitly rejected (§5).
+  `PLANNED` items: role grant/revoke + suspend/reactivate service+API,
+  in-tx session revocation on suspend (§6), self + last-SUPER_ADMIN guards
+  (§9/§10), additive `platform-users: {read,update,manage}` catalogue resource,
+  `platform_user.attach|detach|suspend|reactivate` audit events in the same tx
+  (§11), `/api/v1/platform/users` surface + console section (§12/§13), and a
+  one-line shared gate aligning institute-side user attach with the
+  platform-side non-active rejection (§8).
+- **DEFERRED:** `CHECK` on `users.status` (impl phase), platform-global audit
+  view, invite/provisioning, automated suspension sweep, hard user deletion.
+
+No code, migration, endpoint, frontend, audit, or session change was made in
+this phase.
+
+**Exact recommended next task:** implement Phase P.2 (platform-user lifecycle
+implementation) per the design — grant/revoke + suspend/reactivate service and
+API under `AccessTokenGuard → PlatformGuard`, additive `platform-users`
+catalogue resource, in-tx session revocation on suspend, self +
+last-SUPER_ADMIN guards, in-tx `platform_user.*` audit events, then the
+`/platform/users` console section.
+
 ## Phase O.3 — Platform Audit Read Surface + Console View (2026-09-23)
 
 **Status: IMPLEMENTED + VALIDATED.**

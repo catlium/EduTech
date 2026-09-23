@@ -1,5 +1,47 @@
 # Task Tracker
 
+## Phase P.1 — Platform User Lifecycle Design (2026-09-23, DESIGN COMPLETE)
+
+> Issued task. Design (documentation only, NO implementation): the
+> platform-user lifecycle — who a platform user is, how platform authority is
+> granted/revoked, how platform access is suspended/reactivated, session
+> behavior, interaction with platform permissions + institute memberships,
+> actor protections (self + last-SUPER_ADMIN), audit events, and future API +
+> console boundaries. Canonical design:
+> `docs/architecture/platform-user-lifecycle.md`. Re-posits
+> `security-audit.md` §AUDIT 2026-09-22 + `institute-lifecycle.md` §12.6;
+> consumes `platform-audit-trail.md` §11 (platform_user.* events fit with zero
+> migration). Do NOT modify application code, migrations, API routes, frontend,
+> audit, or session handling.
+
+- [x] Design doc covering: platform-user identity (users row + ≥1
+      `platform_user_roles`; SUPER_ADMIN the only platform role — IMPLEMENTED);
+      current-state audit of `users.status` (no CHECK, no production writer,
+      three enforcement gates);
+      role grant/revoke (narrow — platform plane only);
+      suspend/reactivate reusing `users.status` (`'deactivated'`/`'active'`) with
+      explicit rejection of a separate platform lifecycle field;
+      session behavior (role revoke touches none; suspend revokes all target
+      sessions same-tx);
+      interaction with platform permissions + institute memberships (incl. the
+      one-line shared attach gate);
+      self + last-SUPER_ADMIN guards;
+      `platform_user.attach|detach|suspend|reactivate` audit events (same-tx,
+      no migration);
+      `/api/v1/platform/users` API + `/platform/users` console boundaries;
+      additive `platform-users: {read,update,manage}` catalogue resource;
+      authorization-rules summary + transaction boundaries.
+      Every section marked IMPLEMENTED / PLANNED / DEFERRED. DEFERRED items:
+      `CHECK` on users.status, platform-global audit view, invite/provisioning,
+      automated suspension sweep, hard user deletion.
+- [ ] Next: implementation phase — grant/revoke + suspend/reactivate service and
+      API under AccessTokenGuard → PlatformGuard, `platform-users` catalogue
+      resource, in-tx session revocation on suspend, self + last-SUPER_ADMIN
+      guards, in-tx `platform_user.*` audit events, console section.
+- [x] Docs: project-status.md Phase P.1 + recommended next task; tasks.md this
+      entry.
+- [x] Commit `docs(platform): design platform user lifecycle` (+ push).
+
 ## Phase O.3 — Platform Audit Read Surface + Console View (2026-09-23, IMPLEMENTED)
 
 > Issued task. Add the Phase O.1 §10 read surface to the audit trail:
