@@ -1,5 +1,65 @@
 # Project Status
 
+## Phase Q.3.0 — Academic/Teacher Permission Catalogue Design (2026-09-23)
+
+**Status: DESIGN COMPLETE — documentation only, no code changed.**
+Branch: `feature/academic-teacher-permissions` (from
+`feature/institute-admin-academic`; unrelated working-tree changes preserved
+untouched). Canonical design:
+`docs/architecture/academic-teacher-permissions.md`.
+
+Design/audit of the authorization model for teacher → class-subject assignment
+(the Phase Q.3 prerequisite the Q.2 entry flagged as "design-gated catalogue
+expansion"). No API, schema, catalogue, guard, or frontend change was made.
+
+Key decisions (every decision tagged IMPLEMENTED / PLANNED / DEFERRED in the
+doc's §11 register):
+
+- **Resource `assignments`** — the D5-recorded family resource
+  (`authorization.md` §13), NOT a new `teacher-assignments` key. Q.3 enables
+  the teacher-assignment slice; Q.4 extends the same resource to student
+  placements/enrollments.
+- **Actions `read, create, delete, manage`** — maps the four operations:
+  read→`assignments.read`, assign→`.create`, unassign→`.delete` (soft archive,
+  D1 "archive" semantics), reassign→`.delete`+`.create`. `update`
+  deliberately uncatalogued (no PATCH/reassign endpoint; no speculative keys).
+- **Default grants:** INSTITUTE_ADMIN auto-holds `assignments.manage` (the
+  built-in `.manage`-per-institute-resource mapping — no special-casing);
+  TEACHER/STUDENT keep default-deny (staffing config stays hidden, D5/§17);
+  custom institute roles become grantable `assignments.*` → **staffing
+  delegation without INSTITUTE_ADMIN** (the audit §14.2 capability gap closes).
+- **INSTITUTE_ADMIN remains the effective authority** — delegation is additive
+  grant-only; the backend stays the enforcement point; the admin bypass is
+  untouched.
+- **Scope:** `assignments` is an institute-scope (tenant) administrative
+  config resource, NOT academic-scope-gated (it is the *source* of a teacher's
+  scope, never a consumer). Teacher "my assignments" self-read surface:
+  DEFERRED.
+- **Guard migration (PLANNED, Q.3):** follow the `roles` controller precedent —
+  add `PermissionGuard`, drop `@RequiredRoles('INSTITUTE_ADMIN')`, gate reads
+  `assignments.read` / POST `.create` / DELETE `.delete`; service invariants
+  (TEACHER-target check, offering tenancy, partial-unique 409, soft-unassign)
+  unchanged.
+- **Web (PLANNED, Q.3):** `can()` already resolves real granted keys + manage
+  implication from `GET /memberships` — `can('assignments.read')` etc. gate the
+  console UX-only; backend stays authoritative.
+- **Gaps:** G1 role-only/uncatalogued surface (PLANNED resolution = Q.3
+  catalogue + guard migration); G2 stale `permission-catalogue.ts:25-27`
+  comment (PLANNED refresh in Q.3); G3 additive `assignments.*` widening to
+  Q.4 slices (decided — document, don't fragment); G4 un-joined `get` row
+  (cosmetic); G5 no assignment audit events + G6 class/division delete cascade
+  (both DEFERRED, pre-existing); G7 none — no backend weakening.
+
+Also reconciled: `authorization.md` §13's `assignments` forward-note table row
+updated to the refined Q.3.0 action set with a pointer to the canonical doc.
+
+**Exact recommended next task:** Phase Q.3 — implement the catalogue + guard
+migration (§8 checklist: `assignments` resource in `INSTITUTE_RESOURCES`,
+`PermissionGuard` + per-route `@RequiredPermission` on
+`teacher-assignments.controller.ts`, catalogue-test update, stale-comment
+refresh, integration-test extension), then the teacher-assignment console slice
+on `/institute/academic` gated by `assignments.read`/`.create`/`.delete`.
+
 ## Phase Q.2 — Academic-Structure Console (2026-09-23)
 
 **Status: IMPLEMENTED + VALIDATED (frontend only, on the audited backend).**
@@ -48,6 +108,12 @@ academic-export redesign untouched.
 assignment UI on the same console area, optionally preceded by the design-
 gated catalogue expansion (`academic`/`teachers` permission keys) if custom-role
 delegation is desired.
+→ **Phase Q.3.0 (permission-catalogue design) DONE 2026-09-23** — canonical
+design `docs/architecture/academic-teacher-permissions.md`: `assignments` =
+`{ read, create, delete, manage }`, INSTITUTE_ADMIN auto-manage, custom-role
+delegation enabled, scope = institute (not academic), guard migration + UI
+gating specified for Q.3. Exact next task is now the Q.3 **implementation**
+(see the Phase Q.3.0 entry above).
 
 ## Phase Q.1 — Institute Admin Operations Audit (2026-09-23)
 

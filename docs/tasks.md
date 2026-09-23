@@ -1,5 +1,54 @@
 # Task Tracker
 
+## Phase Q.3.0 — Academic/Teacher Permission Catalogue Design (2026-09-23, DESIGN COMPLETE)
+
+> Issued task. Design/audit the authorization model for teacher → class-subject
+> assignment (Q.3 prerequisite). DESIGN ONLY — no code, migrations, catalogue
+> change, endpoint change, or frontend change. Canonical design:
+> `docs/architecture/academic-teacher-permissions.md`. Reconciles the
+> institute-operations audit (§7/§11/§14.2/§17), D1 §13 + D5 §17, the Q.2
+> console precedent, and `permission-catalogue.ts`. Docs: project-status.md +
+> this tracker + a surgical `authorization.md` §13 reconcile. Commit on
+> `feature/academic-teacher-permissions`; do NOT merge into dev/main.
+
+- [x] Created branch `feature/academic-teacher-permissions` from
+      `feature/institute-admin-academic` (unrelated working-tree changes
+      preserved untouched).
+- [x] Traced current authorization: `teacher-assignments.controller.ts` (role-
+      only `@RequiredRoles('INSTITUTE_ADMIN')`, no PermissionGuard, no keys),
+      service invariants, D5/§17 admin-only reads + soft-unassign contract,
+      `roles` (permission-key delegation) vs `users` (role-bound) precedents.
+- [x] Decision register (§11, all tagged IMPLEMENTED/PLANNED/DEFERRED):
+      D-Q3.1 resource `assignments` (D5 family name, not a new key); D-Q3.2
+      actions `read, create, delete, manage` (update uncatalogued — no endpoint;
+      reassign = delete+create); D-Q3.3 manage implication; D-Q3.4 default
+      grants (ADMIN=manage auto, TEACHER/STUDENT=none); D-Q3.5 INSTITUTE_ADMIN
+      stays the effective authority; D-Q3.6 custom-role delegation safe; D-Q3.7
+      institute-scope (not academic-scope), teacher self "my assignments"
+      DEFERRED; D-Q3.8 guard migration (add PermissionGuard, drop
+      `@RequiredRoles`, per-route keys); D-Q3.9 service invariants unchanged;
+      D-Q3.10 no existing-permission conflicts; D-Q3.11 gaps G1–G7 tagged.
+- [x] Gaps: G1 role-only/uncatalogued surface → PLANNED Q.3 resolution; G2
+      stale `permission-catalogue.ts:25-27` comment → PLANNED refresh; G3
+      additive `assignments.*` widening to Q.4 → decided; G4 un-joined `get`
+      row → PLANNED; G5/G6 pre-existing (audit events, delete cascade) →
+      DEFERRED; G7 none.
+- [x] Exact Q.3 API/guard change checklist (§8): `assignments` into
+      `INSTITUTE_RESOURCES`, PermissionGuard + per-route
+      `@RequiredPermission`, ASSIGNMENT_ADMIN removal, catalogue-test update,
+      stale-comment refresh, integration-test extension; web `can()` already
+      resolves granted keys (no plumbing change).
+- [x] Docs updated: `docs/architecture/academic-teacher-permissions.md` (new
+      canonical doc); project-status.md (Phase Q.3.0 entry + Q.2 next-task
+      pointer); this tracker; `authorization.md` §13 `assignments` row refined.
+- [x] Commit `docs(authz): design teacher assignment permission catalogue`
+      (+ push, no merge).
+
+- [ ] (PLANNED) Phase Q.3 — implementation: catalogue + guard migration +
+      teacher-assignment console UI gated `assignments.read`/`.create`/`.delete`.
+- [ ] (DEFERRED) Phase Q.3 follow-up: teacher-facing "my assignments"
+      self-scoped read surface.
+
 ## Phase Q.2 — Academic-Structure Console (2026-09-23, COMPLETE)
 
 > Issued task: frontend-only implementation of the institute-plan
@@ -98,6 +147,8 @@
       (backend unchanged by design; UI states the exact cascade in the
       destructive confirm).
 - [ ] (PLANNED) Q.3 — Teacher → class-subject assignment UI.
+      Design prerequisite (permission catalogue) DONE 2026-09-23 — Phase Q.3.0
+      above (`assignments` = read/create/delete/manage).
 - [ ] (PLANNED) Q.4 — Student placement/transfer UI.
 - [ ] (PLANNED) Q.5 — User-management completeness + roles console
       (+ design-gated catalogue expansion for structure keys).

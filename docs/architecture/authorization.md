@@ -852,7 +852,7 @@ Phase E–G endpoints exist (built-in role mapping finalized in Phase C):
 | `classes` | read, create, update, delete, manage | class level definitions (D4) |
 | `divisions` | read, create, update, delete, manage | year-bound cohorts (D4) |
 | `offerings` | read, manage | class↔subject offerings (D4/D5) |
-| `assignments` | read, manage | teacher assignments + student placements/enrollments (D5) |
+| `assignments` | read, create, delete, manage | teacher assignments + student placements/enrollments (D5). Action set refined 2026-09-23 by Phase Q.3.0 — `docs/architecture/academic-teacher-permissions.md` §2 (D-Q3.2): `update` deliberately uncatalogued (no reassign endpoint; reassign = delete+create); keys land in Phase Q.3 |
 
 ### Manage implication rule
 
