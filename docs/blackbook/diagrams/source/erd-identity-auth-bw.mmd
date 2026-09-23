@@ -1,0 +1,46 @@
+---
+title: "CatLium EduTech — Database Schema (1a): Identity and Session-bound Authentication"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    users ||--o{ auth_sessions : user_id
+    users ||--o{ password_resets : user_id
+    users ||--o{ memberships : user_id
+    institutes ||--o{ memberships : institute_id
+
+    users {
+        uuid id PK
+        varchar email UK
+        varchar name
+        varchar password_hash
+        varchar status "active | deactivated"
+    }
+    auth_sessions {
+        uuid id PK
+        uuid user_id FK
+        varchar refresh_token_hash "SHA-256"
+        timestamp expires_at
+        timestamp revoked_at
+        uuid rotated_from_sid FK
+        varchar user_agent
+        varchar last_ip
+    }
+    password_resets {
+        uuid id PK
+        uuid user_id FK
+        varchar token_hash "bcrypt of secret"
+        timestamp expires_at
+        timestamp used_at
+    }
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        varchar status "active | deactivated"
+    }
+    memberships {
+        uuid id PK
+        uuid user_id FK
+        uuid institute_id FK
+        varchar status "active | deactivated"
+    }

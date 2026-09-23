@@ -1,0 +1,33 @@
+---
+title: "CatLium EduTech — Database Schema (3e): Practice Sessions"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ practice_sessions : institute_id
+    practice_sessions ||--o{ practice_session_items : session_id
+    practice_session_items ||--o{ practice_session_responses : session_item_id
+
+    institutes {
+        uuid id PK
+        varchar name
+    }
+    practice_sessions {
+        uuid id PK
+        uuid institute_id FK
+        uuid student_id FK "refs memberships/identity"
+        varchar mode "FLASHCARD | QUESTION"
+        varchar status "IN_PROGRESS | COMPLETED"
+    }
+    practice_session_items {
+        uuid id PK
+        uuid session_id FK
+        varchar source_key "fc:ID | q:ID"
+        varchar prompt
+        varchar reveal
+    }
+    practice_session_responses {
+        uuid session_item_id PK,FK
+        jsonb answer
+        varchar rating "AGAIN | GOOD"
+        boolean is_correct
+    }

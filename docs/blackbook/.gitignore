@@ -1,5 +1,6 @@
 # Build artifacts
 out/
+out-diagrams/
 *.aux
 *.log
 *.out

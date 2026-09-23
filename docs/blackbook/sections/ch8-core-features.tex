@@ -1,10 +1,14 @@
 \chapter{Core Features and Workflows}
 \label{ch:features}
 
-\noindent This chapter describes each implemented feature area, its data
-model, workflow, and integration with the authorization model of
-Chapter~\ref{ch:security}.
+\begin{center}
+\textit{This chapter explains each implemented feature area --- its purpose,
+data model, workflow, and integration with the authorization model of
+Chapter~\ref{ch:security}.}
+\end{center}
 
+\vspace*{\fill}
+\clearpage
 \section{Identity and Tenancy}
 
 Users, institutes, memberships, roles, and permissions form the identity core.
@@ -28,7 +32,8 @@ membership to an offering (class--subject) for a term; student placements bind
 a membership to a year--class--division and can be refined by explicit subject
 enrollments. This structure is the input to
 \texttt{\seqsplit{AcademicScopeService}}
-(Figure~\ref{fig:academic-scope}): teachers and students get a subject set
+(Figure~\ref{fig:academic-scope-resolution}): teachers and students get a
+subject set
 from their assignments/placements, from which every content query is scoped.
 Structural administration (structure creation, assignment changes) is admin
 work; content visibility derived from it is enforced per query.
@@ -44,22 +49,39 @@ tracks \texttt{processing\_status} (\texttt{UPLOADED} $\rightarrow$
 Processing is asynchronous and coordinator-owned: the in-API coordinator
 adopts queued \texttt{MATERIAL\_PROCESS} jobs, splits the source into page
 chunks of default size ten, and lets registered OCR workers claim chunks under
-a lease. Figure~\ref{fig:ocr-processing} shows the distributed flow and
-Figure~\ref{fig:ocr-state} the job/chunk state machines.
+a lease. Figure~\ref{fig:ocr-processing} and Figure~\ref{fig:ocr-processing-part2}
+show the distributed flow and Figure~\ref{fig:ocr-state} and Figure~\ref{fig:ocr-state-part2}
+the job/chunk state machines.
 
-\begin{figure}[h]
+\begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/ocr-processing-sequence-bw.png}
-\caption{Distributed OCR material processing (coordinator + OCR workers).}
+\includegraphics[width=711.5pt]{figures/ocr-flow-coordinator-sequence-bw.pdf}
+\caption{Distributed OCR material processing, part 1: upload, job dispatch,
+and the coordinator sweep.}
 \label{fig:ocr-processing}
+\end{sidewaysfigure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=436.5pt]{figures/ocr-flow-worker-sequence-bw.pdf}
+\caption{Distributed OCR material processing, part 2: worker pull, extraction,
+and settlement.}
+\label{fig:ocr-processing-part2}
 \end{figure}
 
-\begin{figure}[h]
+\begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/ocr-chunk-state-bw.png}
-\caption{Job and OCR chunk state lifecycles.}
+\includegraphics[width=544.9pt]{figures/state-job-lifecycle-bw.pdf}
+\caption{Job state lifecycle.}
 \label{fig:ocr-state}
-\end{figure}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=537.6pt]{figures/state-chunk-lifecycle-bw.pdf}
+\caption{OCR chunk state lifecycle.}
+\label{fig:ocr-state-part2}
+\end{sidewaysfigure}
 
 For each page an OCR worker first tries PyMuPDF embedded text; a page with at
 least five usable characters is accepted as-is, otherwise the page is
@@ -114,7 +136,8 @@ a source (\texttt{MANUAL} | \texttt{AI\_GENERATED} |
 store the rendered HTML and AI context. Content availability is scoped by the
 subject chain and the actor's academic scope.
 
-AI generation (Figure~\ref{fig:ai-generation}) is an asynchronous pipeline:
+AI generation (Figure~\ref{fig:ai-generation} and
+Figure~\ref{fig:ai-generation-part2}) is an asynchronous pipeline:
 the API writes a \texttt{jobs} row and publishes to the \texttt{ai\_generation}
 queue; a Python worker with bounded concurrency resolves the eligible READY
 source materials, assembles a bounded context budget, calls the model through
@@ -127,12 +150,20 @@ dependent-resources release the planned children, so a topic's generation
 waits until it has usable sources. Generated content is versioned in place
 (with REGENERATION change types) and never duplicated per topic/type.
 
-\begin{figure}[h]
+\begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/ai-generation-sequence-bw.png}
-\caption{Asynchronous AI generation (job lifecycle).}
+\includegraphics[width=711.5pt]{figures/ai-generation-issue-sequence-bw.pdf}
+\caption{Asynchronous AI generation, part 1: job issue and client polling.}
 \label{fig:ai-generation}
-\end{figure}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=580.4pt]{figures/ai-generation-consume-sequence-bw.pdf}
+\caption{Asynchronous AI generation, part 2: worker consumption, OmniRoute
+calls, and persistence.}
+\label{fig:ai-generation-part2}
+\end{sidewaysfigure}
 
 \section{Question Types and the Question Bank}
 

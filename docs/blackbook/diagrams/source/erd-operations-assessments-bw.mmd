@@ -1,0 +1,85 @@
+---
+title: "CatLium EduTech — Database Schema (3b): Assessments and Attempts"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ assessments : institute_id
+    paper_patterns o|--o{ assessments : blueprint_id
+    assessments ||--o{ assessment_questions : assessment_id
+    questions ||--o{ assessment_questions : question_id
+    assessments ||--o{ attempts : assessment_id
+    attempts ||--o{ attempt_questions : attempt_id
+    questions ||--o{ attempt_questions : question_id
+    attempt_questions ||--o{ attempt_responses : attempt_question_id
+
+    assessments {
+        uuid id PK
+        uuid institute_id FK
+        varchar title
+        int duration_minutes
+        int max_marks
+        varchar status "DRAFT | PUBLISHED | ACTIVE | COMPLETED"
+        uuid blueprint_id FK "set-null"
+        timestamp starts_at
+        timestamp ends_at
+    }
+    assessment_questions {
+        uuid assessment_id FK
+        uuid question_id FK
+        int sort_order
+        int marks
+        varchar section
+    }
+    attempts {
+        uuid id PK
+        uuid institute_id FK
+        uuid assessment_id FK
+        uuid student_id FK
+        varchar status "IN_PROGRESS | SUBMITTED | EXPIRED"
+        timestamp deadline
+        int score
+        int total_marks
+        timestamp submitted_at
+    }
+    attempt_questions {
+        uuid id PK
+        uuid attempt_id FK
+        uuid question_id FK "snapshot at start"
+        int marks
+        text stem
+        jsonb payload
+    }
+    attempt_responses {
+        uuid attempt_question_id PK,FK
+        jsonb answer
+        boolean is_correct
+        int marks_awarded
+    }
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        varchar status "active | deactivated"
+    }
+    paper_patterns {
+        uuid id PK
+        uuid institute_id FK
+        varchar title
+        varchar status "DRAFT | REVIEW | APPROVED"
+        boolean is_locked
+        int version
+        varchar source_type "MANUAL | TEXT | MATERIAL | PREVIOUS_YEAR_PAPER"
+        jsonb structure
+    }
+    questions {
+        uuid id PK
+        uuid institute_id FK
+        text stem
+        varchar question_type
+        varchar answer_format
+        varchar difficulty "EASY | MEDIUM | HARD"
+        text explanation
+        jsonb payload
+        varchar approval_status "PENDING | APPROVED | REJECTED"
+        uuid source_pattern_id FK
+    }

@@ -1,0 +1,91 @@
+---
+title: "CatLium EduTech — Database Schema (3c): Practice and Operations"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ practice_sessions : institute_id
+    practice_sessions ||--o{ practice_session_items : session_id
+    practice_session_items ||--o{ practice_session_responses : session_item_id
+    institutes ||--o{ syllabi : institute_id
+    subjects ||--o{ syllabi : subject_id
+    institutes ||--o{ jobs : institute_id
+    jobs ||--o{ ocr_chunks : job_id
+    institutes ||--o{ ocr_chunks : institute_id
+    workers ||--o{ ocr_chunks : claimed_by
+
+    practice_sessions {
+        uuid id PK
+        uuid institute_id FK
+        uuid student_id FK
+        varchar mode "FLASHCARD | QUESTION"
+        varchar status "IN_PROGRESS | COMPLETED"
+        uuid content_id FK "flashcards"
+        uuid topic_id FK "question mode"
+    }
+    practice_session_items {
+        uuid id PK
+        uuid session_id FK
+        varchar source_key "fc:ID | q:ID"
+        varchar prompt
+        varchar reveal
+        jsonb payload
+    }
+    practice_session_responses {
+        uuid session_item_id PK,FK
+        jsonb answer
+        varchar rating "AGAIN | GOOD"
+        boolean is_correct
+    }
+    syllabi {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK
+        int version
+        varchar processing_status "UPLOADED | QUEUED | PROCESSING | READY | FAILED"
+        varchar analysis_status "PENDING | PROCESSING | READY | FAILED"
+        varchar status "PROPOSED | CONFIRMED | ARCHIVED"
+        jsonb context
+        jsonb structure
+    }
+    jobs {
+        uuid id PK
+        uuid institute_id FK
+        varchar type
+        varchar status "queued | processing | completed | failed | cancelled"
+        jsonb payload
+        uuid created_by FK "NULL = system"
+        timestamp completed_at
+    }
+    workers {
+        uuid id PK
+        varchar name
+        varchar token_hash UK "SHA-256 of owr_ key"
+        boolean enabled
+        timestamp last_heartbeat_at
+        jsonb capabilities
+    }
+    ocr_chunks {
+        uuid id PK
+        uuid job_id FK
+        uuid institute_id FK
+        int chunk_index
+        int start_page
+        int end_page
+        varchar status "pending | claimed | submitted | failed | cancelled"
+        uuid claimed_by FK
+        timestamp lease_expires_at
+        int attempts
+    }
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        varchar status "active | deactivated"
+    }
+    subjects {
+        uuid id PK
+        uuid institute_id FK
+        varchar name
+        varchar slug UK "per institute"
+        timestamp deleted_at "soft delete"
+    }

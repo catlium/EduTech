@@ -1,0 +1,18 @@
+---
+title: "CatLium EduTech — Authorization Decision Chain (guards)"
+---
+flowchart TD
+    REQ["Incoming HTTP request"]
+    AG{"AccessTokenGuard — valid JWT and active sid?"}
+    A401["401 Unauthenticated"]
+    TG{"TenantGuard — x-institute-id present and member active?"}
+    F403["403 Forbidden"]
+
+    REQ --> AG
+    AG -->|no| A401
+    AG -->|yes| TG
+    TG -->|no| F403
+    TG -->|yes| RG
+    RG{"RequiredRoles — OR semantics, optional"}
+    RG -->|fail| F403
+    RG -->|pass| PFG

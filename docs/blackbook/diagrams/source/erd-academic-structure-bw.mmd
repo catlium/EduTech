@@ -1,0 +1,56 @@
+---
+title: "CatLium EduTech — Database Schema (2a): Academic Structure and Offerings"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ subjects : institute_id
+    subjects ||--o{ chapters : subject_id
+    chapters ||--o{ topics : chapter_id
+    institutes ||--o{ academic_years : institute_id
+    institutes ||--o{ classes : institute_id
+    classes ||--o{ class_subjects : class_id
+    subjects ||--o{ class_subjects : subject_id
+    academic_years ||--o{ divisions : academic_year_id
+    classes ||--o{ divisions : class_id
+
+    subjects {
+        uuid id PK
+        uuid institute_id FK
+        varchar name
+        varchar slug UK "per institute"
+        timestamp deleted_at "soft delete"
+    }
+    chapters {
+        uuid id PK
+        uuid subject_id FK
+        varchar name
+        varchar slug UK "per subject"
+    }
+    topics {
+        uuid id PK
+        uuid chapter_id FK
+        varchar name
+        varchar slug UK "per chapter"
+    }
+    academic_years {
+        uuid id PK
+        uuid institute_id FK
+        varchar name UK "per institute"
+    }
+    classes {
+        uuid id PK
+        uuid institute_id FK
+        varchar name UK "per institute"
+    }
+    class_subjects {
+        uuid id PK
+        uuid class_id FK
+        uuid subject_id FK
+    }
+    divisions {
+        uuid id PK
+        uuid institute_id FK
+        uuid academic_year_id FK
+        uuid class_id FK
+        varchar name
+    }

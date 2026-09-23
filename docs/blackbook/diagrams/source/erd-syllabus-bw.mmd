@@ -1,0 +1,30 @@
+---
+title: "CatLium EduTech — Database Schema (2e): Syllabus"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ syllabi : institute_id
+    subjects ||--o{ syllabi : subject_id
+
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+    }
+    subjects {
+        uuid id PK
+        uuid institute_id FK
+        varchar name
+        varchar slug UK "per institute"
+    }
+    syllabi {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK
+        int version
+        varchar processing_status "UPLOADED | QUEUED | PROCESSING | READY | FAILED"
+        varchar analysis_status "PENDING | PROCESSING | READY | FAILED"
+        varchar status "PROPOSED | CONFIRMED | ARCHIVED"
+        jsonb context
+        jsonb structure
+    }

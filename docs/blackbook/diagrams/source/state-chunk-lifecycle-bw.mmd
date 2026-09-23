@@ -1,0 +1,26 @@
+---
+title: "CatLium EduTech — OCR chunk state lifecycle"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'}}}%%
+stateDiagram-v2
+    direction LR
+
+    state "OCR chunk (ocr_chunks row)" as CK {
+        state "pending" as cP
+        state "claimed" as cL
+        state "submitted" as cS
+        state "failed" as cF
+        state "cancelled" as cK
+
+        [*] --> cP : coordinator materializes page range
+        cP --> cL : claim (lease 300 s, FOR UPDATE SKIP LOCKED, attempts+1)
+        cL --> cS : result valid, pages match range
+        cL --> cP : lease expired / worker disabled, sweep reclaims
+        cP --> cF : permanent error
+        cS --> [*]
+        cF --> cP : retryable, attempts < MAX=3, sweep re-queues
+        cF --> [*] : attempts reach MAX=3, terminal
+        cP --> cK : job cancelled
+        cL --> cK : job cancelled
+        cK --> [*]
+    }

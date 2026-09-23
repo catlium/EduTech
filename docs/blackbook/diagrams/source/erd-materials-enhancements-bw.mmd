@@ -1,0 +1,48 @@
+---
+title: "CatLium EduTech — Database Schema (2c): Materials and Enhancements"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ materials : institute_id
+    materials ||--o{ material_enhancements : material_id
+    material_enhancements ||--o{ material_enhancement_segments : enhancement_id
+    material_enhancement_segments ||--o{ material_enhancement_segment_mappings : segment_id
+
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+    }
+    materials {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK "refs academic structure figure"
+        uuid chapter_id FK "refs academic structure figure"
+        uuid topic_id FK "refs academic structure figure"
+        varchar material_type "PDF | IMAGE | DOCUMENT | TEXT"
+        varchar processing_status "UPLOADED | QUEUED | PROCESSING | READY | FAILED"
+        varchar storage_key
+        text text_content
+        int revision
+    }
+    material_enhancements {
+        uuid id PK
+        uuid material_id FK
+        varchar status "enhanced | unchanged"
+        varchar source_fingerprint UK
+        int version
+        jsonb payload
+    }
+    material_enhancement_segments {
+        uuid id PK
+        uuid enhancement_id FK
+        varchar level "chapter | section | other"
+        varchar relevance "relevant | uncertain | irrelevant | unmapped"
+        text content
+    }
+    material_enhancement_segment_mappings {
+        uuid id PK
+        uuid segment_id FK
+        uuid syllabus_topic_id FK "mapped entity"
+        float confidence
+    }

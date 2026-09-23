@@ -1,0 +1,47 @@
+---
+title: CatLium EduTech — Level-0 Data Flow Diagram
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000'}}}%%
+flowchart LR
+    E1["Browser<br/>(students, teachers,<br/>administrators)"]
+    E2["OCR worker<br/>(standalone device)"]
+
+    P1("Web application<br/>Next.js")
+    P2("API application<br/>NestJS modular monolith")
+    P3("Material processing<br/>worker-material")
+    P4("AI generation<br/>worker-ai")
+    P5("OCR service<br/>FastAPI + PaddleOCR")
+    P6("AI gateway<br/>OmniRoute")
+
+    D1[("PostgreSQL 17")]
+    D2[("Redis 7<br/>cache")]
+    D3[("File storage<br/>(local volume)")]
+    D4[("RabbitMQ queues<br/>jobs, ai_generation")]
+
+    E1 -->|"HTTP requests"| P1
+    P1 -->|"responses"| E1
+    P1 -->|"/api/v1/*"| P2
+    P2 -->|"responses"| P1
+    P2 -->|"uploaded materials"| D3
+    P2 <-->|"read / write"| D1
+    P2 <-->|"session / metadata cache"| D2
+    P2 -->|"publish jobs, ai_generation"| D4
+    P2 <-->|"OCR chunk lease &amp; results"| P5
+    E2 <-->|"lease / submit chunks"| P2
+
+    P3 <-->|"consume jobs"| D4
+    P3 -->|"POST /extract (fallback)"| P5
+    P3 -->|"write artefacts"| D3
+    P3 -->|"update status / results"| D1
+
+    P4 <-->|"consume ai_generation"| D4
+    P4 -->|"chat completions"| P6
+    P6 -->|"model responses"| P4
+    P4 -->|"generated content"| D1
+
+    class E1,E2 ext
+    classDef ext fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    class P1,P2,P3,P4,P5,P6 proc
+    classDef proc fill:#ffffff,stroke:#000000,color:#000000
+    class D1,D2,D3,D4 store
+    classDef store fill:#ffffff,stroke:#000000,color:#000000

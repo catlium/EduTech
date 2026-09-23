@@ -1,0 +1,22 @@
+---
+title: "CatLium EduTech — Authorization: Permission Guard and Academic Scope"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','activationBkgColor':'#ffffff','activationBorderColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','labelTextColor':'#000000','loopTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','messageFontColor':'#000000'}}}%%
+sequenceDiagram
+    autonumber
+    participant C as AuthController
+    participant B as Browser (Next.js web)
+    participant PG as PermissionGuard
+    participant AC as AcademicScopeService
+    participant M as Feature Service
+    participant DB as PostgreSQL
+
+    PG->>DB: grantKeysForMembership (permissions DB-fresh, never from JWT)
+    DB-->>PG: granted keys (manage implies action)
+    PG->>AC: resolveScope(membershipId)
+    AC-->>PG: whole-institute (admin) or subject-set
+    C->>M: service call scoped by tenant.instituteId
+    M->>DB: queries filtered by institute_id + academic scope predicate
+    DB-->>M: rows (tenant + scope scoped)
+    M-->>C: response
+    C-->>B: 200 JSON

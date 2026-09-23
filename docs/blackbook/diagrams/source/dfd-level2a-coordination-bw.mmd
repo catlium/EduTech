@@ -1,0 +1,25 @@
+---
+title: "CatLium EduTech — Level-2 DFD (a): API-side coordination of OCR"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000'}}}%%
+flowchart LR
+    P24("OCR &amp; Jobs coordination<br/>(API)")
+    E2["OCR worker<br/>(standalone device)"]
+    D1[("PostgreSQL 17<br/>jobs, chunks")]
+    D3[("File storage<br/>(local volume)")]
+    D4[("RabbitMQ jobs queue")]
+
+    D4 -->|"job"| P24
+    P24 -->|"materialize chunk pages"| D1
+    P24 -->|"lease chunk"| E2
+    E2 -->|"extracted text per page"| P24
+    P24 -->|"write chunk files"| D3
+    P24 -->|"settle job / chunk state"| D1
+    P24 -->|"completed"| D1
+
+    class P24 outer
+    classDef outer fill:#ffffff,stroke:#000000,color:#000000
+    class E2 ext
+    classDef ext fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    class D1,D3,D4 store
+    classDef store fill:#ffffff,stroke:#000000,color:#000000

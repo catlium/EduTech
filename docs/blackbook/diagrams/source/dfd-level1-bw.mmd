@@ -1,0 +1,58 @@
+---
+title: CatLium EduTech — Level-1 Data Flow Diagram (API decomposition)
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000'}}}%%
+flowchart TD
+    E1["Browser user"]
+    P1("Web application<br/>Next.js")
+    P6("AI gateway<br/>OmniRoute")
+
+    subgraph A["API application (NestJS modular monolith)"]
+        P21("Identity, Tenancy<br/>&amp; Authorization")
+        P22("Academic Structure<br/>&amp; Syllabus")
+        P23("Content, Materials<br/>&amp; OCR coordination")
+        P24("Questions, Papers<br/>&amp; Enhancement")
+        P25("Examination, Attempts,<br/>Practice &amp; Export")
+    end
+
+    D1[("PostgreSQL 17")]
+    D2[("Redis 7<br/>cache")]
+    D3[("File storage<br/>(local volume)")]
+    D4[("RabbitMQ queues<br/>jobs, ai_generation")]
+    P5("OCR service")
+    P3("worker-material")
+    P4("worker-ai")
+
+    E1 -->|"HTTP"| P1
+    P1 -.->|"/api/v1/*"| P21
+    P1 -.->|"/api/v1/*"| P23
+    P1 -.->|"/api/v1/*"| P24
+    P21 -->|"academic scope"| P22
+    P22 -->|"structure context"| P23
+    P23 -->|"eligible materials"| P24
+    P24 -->|"question sets"| P25
+
+    P21 <-->|"read / write"| D1
+    P22 <-->|"read / write"| D1
+    P23 <-->|"read / write"| D1
+    P24 <-->|"read / write"| D1
+    P25 <-->|"read / write"| D1
+    P21 <-->|"session cache"| D2
+    P23 -->|"uploaded / chunk files"| D3
+    P23 -->|"publish jobs"| D4
+    P24 -->|"publish ai_generation"| D4
+
+    P23 <-->|"extract / extract-pages"| P5
+    D4 -->|"jobs"| P3
+    D4 -->|"ai_generation"| P4
+    P3 -->|"extraction"| P5
+    P3 -->|"results"| D1
+    P4 -->|"chat completions"| P6
+    P4 -->|"generated content"| D1
+
+    class E1,P1,P6 ext
+    classDef ext fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    class P21,P22,P23,P24,P25 proc
+    classDef proc fill:#ffffff,stroke:#000000,color:#000000
+    class D1,D2,D3,D4 store
+    classDef store fill:#ffffff,stroke:#000000,color:#000000

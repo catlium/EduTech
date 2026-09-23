@@ -1,6 +1,15 @@
 \chapter{Testing and Validation}
 \label{ch:testing}
 
+\begin{center}
+\textit{This chapter presents the testing and validation of the
+implementation: the three-tier testing strategy, the unit and integration
+suites, security validation, manual end-to-end validation, and the accepted
+limitations of testing.}
+\end{center}
+
+\vspace*{\fill}
+\clearpage
 \section{Testing Strategy}
 
 \noindent The project applies a three-tier test strategy:
@@ -36,8 +45,9 @@ non-trivial, security-relevant logic:
   double-submit CSRF decisions, and cookie attributes;
   \item \textbf{OCR.} coordinator utilities, page inspection/aggregation, and
   worker registry validation;
-  \item \textbf{Material intelligence.} the deterministic enhancer (block
-  classification, keep/exclude/review findings, segment mapping);
+  \item \begin{sloppypar}\textbf{Material intelligence.} the deterministic
+  enhancer (block classification, keep/exclude/review findings, segment
+  mapping);\end{sloppypar}
   \item \textbf{Word and worksheet generation.} DOCX and XLSX renderers, PDF
   smoke tests, question/paper document builders;
   \item \textbf{Question planning.} batch bucket building (difficulty

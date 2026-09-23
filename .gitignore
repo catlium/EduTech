@@ -57,6 +57,12 @@ generate/
 # Testing
 coverage/
 
+# Scratch / throwaway study material and sample docs
+test-doc/
+bt.tex
+bt.aux
+bt.out
+
 # Docker
 docker-compose.override.yml
 

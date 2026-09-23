@@ -1,0 +1,25 @@
+---
+title: "CatLium EduTech — Distributed OCR: Upload, Job Dispatch, and Coordinator Sweep"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','activationBkgColor':'#ffffff','activationBorderColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','labelTextColor':'#000000','loopTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','messageFontColor':'#000000'}}}%%
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant MC as MaterialsController
+    participant MS as MaterialsService
+    participant JS as JobsService
+    participant CO as OcrCoordinator<br/>(in-API sweep, 15 s)
+    participant DB as PostgreSQL
+
+    B->>MC: POST /materials/upload
+    MC->>MS: store file (local) → material UPLOADED
+    B->>MC: POST /materials/:id/process
+    MC->>JS: INSERT jobs (MATERIAL_PROCESS)
+    Note over JS: Not published to RabbitMQ — OCR is coordinator-owned.
+    JS-->>B: 202 {jobId}
+
+    loop Coordinator sweep (15 s)
+        CO->>DB: adopt queued MATERIAL_PROCESS jobs
+        CO->>DB: material → PROCESSING, job → processing
+        CO->>DB: materialize chunk 1 (pages 1..CHUNK_SIZE) → pending
+    end

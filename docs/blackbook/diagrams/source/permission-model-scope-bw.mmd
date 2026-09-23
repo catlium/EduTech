@@ -1,0 +1,15 @@
+---
+title: "CatLium EduTech — Authorization Decision Chain (permission + scope)"
+---
+flowchart TD
+    PFG{"PermissionGuard — DB-fresh grant; manage implies action"}
+    SC{"AcademicScopeService — resolve scope, enforce"}
+    F403["403 Forbidden"]
+    A404["404 Not Found"]
+    OK["200 Authorized"]
+
+    PFG -->|fail| F403
+    PFG -->|pass| SC
+    SC -->|out of scope| A404
+    SC -->|reject| F403
+    SC -->|allowed| OK

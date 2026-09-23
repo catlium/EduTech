@@ -1,0 +1,40 @@
+---
+title: "CatLium EduTech — Distributed OCR: Worker Pull, Extraction, and Settlement"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','activationBkgColor':'#ffffff','activationBorderColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','labelTextColor':'#000000','loopTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','messageFontColor':'#000000'}}}%%
+sequenceDiagram
+    autonumber
+    participant OW as /api/v1/ocr/workers/:id/*
+    participant WK as ocr-worker<br/>heartbeat, claim, fetch, extract, submit
+    participant CO as OcrCoordinator<br/>(in-API sweep, 15 s)
+    participant ST as storage volume
+    participant DB as PostgreSQL
+
+    loop ocr-worker pull loop
+        WK->>OW: POST heartbeat (status)
+        WK->>OW: POST claim
+        OW->>CO: oldest pending chunk (or lease-expired), SKIP LOCKED
+        CO->>DB: chunk → claimed, lease 300 s, attempts+1
+        CO-->>WK: {chunk id, page range}
+    end
+
+    WK->>OW: GET source/:chunkId
+    OW->>ST: read source bytes
+    ST-->>WK: file bytes
+    WK->>WK: PyMuPDF text pass → PaddleOCR fallback
+
+    alt success
+        WK->>OW: POST result {pages[], text}
+        CO->>CO: validate page range vs chunk
+        CO->>DB: chunk → submitted
+        alt totalPages > end
+            CO->>DB: materialize remaining chunks (missing indexes)
+        end
+    else failure
+        WK->>OW: POST fail {error, permanent}
+        CO->>CO: attempts < MAX=3 → pending (retry)
+    end
+
+    CO->>DB: chunks contiguous 1..N ⇒ persist text
+    CO->>DB: material READY, job completed
+    Note over DB: Expired leases reclaimed —<br/>terminal failure after 3 attempts.

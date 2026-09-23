@@ -1,0 +1,25 @@
+---
+title: "CatLium EduTech — Async job state lifecycle"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'}}}%%
+stateDiagram-v2
+    direction LR
+
+    state "Async job (jobs row)" as Job {
+        state "queued" as jQ
+        state "processing" as jP
+        state "completed" as jC
+        state "failed" as jF
+        state "cancelled" as jK
+
+        [*] --> jQ
+        jQ --> jP : consumer acks / coordinator adopts
+        jP --> jC : worker persists + settles
+        jP --> jF : terminal provider/parse error
+        jP --> jK : API cancel or sweep settle
+        jQ --> jF : publish failed (never silent orphan)
+        jQ --> jK : API cancel
+        jF --> jQ : retry (jobs/:id/retry)
+        jC --> [*]
+        jK --> [*]
+    }

@@ -1,0 +1,30 @@
+---
+title: "CatLium EduTech — System Architecture: Internal Services"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000'}}}%%
+flowchart LR
+    A["api :3000<br/>NestJS, prefix /api/v1"]
+    PG[("PostgreSQL 17")]
+    RQ["RabbitMQ 3<br/>queues: jobs, ai_generation"]
+    ST[("storage volume")]
+    WM["worker-material<br/>queue: jobs"]
+    WA["worker-ai<br/>queue: ai_generation, concurrency 5"]
+    OM["OmniRoute<br/>internal AI gateway"]
+    OC["ocr :8000<br/>FastAPI, PaddleOCR"]
+
+    OW["ocr-worker<br/>standalone device"]
+
+    A --> PG
+    A --> ST
+    A -->|publish| RQ
+    RQ -->|jobs| WM
+    RQ -->|ai_generation| WA
+    WM -->|"POST /extract (legacy)"| OC
+    WM --> PG
+    WM --> ST
+    WA -->|"POST /v1/chat/completions"| OM
+    WA --> PG
+    OW -->|"HTTPS /api/v1/ocr/workers/*"| A
+
+    classDef grp fill:#ffffff,stroke:#000000,color:#000000,stroke-width:1px
+    class A grp

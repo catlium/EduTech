@@ -1,0 +1,36 @@
+---
+title: CatLium EduTech — Level-3 Data Flow Diagram (AI generation pipeline)
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000'}}}%%
+flowchart TD
+    P6("AI gateway<br/>OmniRoute")
+
+    subgraph W["worker-ai (bounded concurrency)"]
+        P41("Queue consumer<br/>ai_generation")
+        P42("Source assembler<br/>eligible materials")
+        P43("Prompt builder &amp; generator<br/>notes, flashcards, questions")
+        P44("Schema validator<br/>contract validation")
+        P45("Settler<br/>persist + provenance")
+        P41 -->|"dispatch"| P42
+        P42 -->|"source text + prompt type"| P43
+        P43 -->|"candidate content"| P44
+        P44 -->|"validated content"| P45
+        P44 -.->|"invalid / transient → retry with backoff"| P43
+    end
+
+    D1[("PostgreSQL 17<br/>sources, content, jobs")]
+    D4[("RabbitMQ<br/>ai_generation queue")]
+
+    D4 -->|"generation message"| P41
+    P42 -->|"read eligible sources"| D1
+    P43 -->|"chat completions"| P6
+    P6 -->|"model response"| P43
+    P45 -->|"write content + provenance"| D1
+    P45 -->|"settle job status"| D1
+
+    class P6 ext
+    classDef ext fill:#ffffff,stroke:#000000,color:#000000
+    class P41,P42,P43,P44,P45 proc
+    classDef proc fill:#ffffff,stroke:#000000,color:#000000
+    class D1,D4 store
+    classDef store fill:#ffffff,stroke:#000000,color:#000000

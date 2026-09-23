@@ -1,0 +1,23 @@
+---
+title: "CatLium EduTech — AI Generation: Worker Consumption and Persistence"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','activationBkgColor':'#ffffff','activationBorderColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','labelTextColor':'#000000','loopTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','messageFontColor':'#000000'}}}%%
+sequenceDiagram
+    autonumber
+    participant RQ as RabbitMQ (ai_generation)
+    participant W as worker-ai consumer (concurrency 5)
+    participant AI as OmniRoute<br/>POST /v1/chat/completions
+    participant DB as PostgreSQL
+
+    RQ->>W: deliver message (prefetch)
+    W->>DB: jobs → processing
+    W->>DB: resolve READY source materials, build context chunks
+    loop Each context chunk
+        W->>AI: POST /chat/completions (temperature 0.2)
+        AI-->>W: raw JSON response
+    end
+    W->>W: parse + Pydantic schema validate (per type)
+    W->>W: aggregate + deterministic dedup
+    W->>DB: persist content_items / questions (AI_GENERATED + provenance)
+    W->>DB: jobs → completed (completedAt)
+    Note over W,DB: Failure: transient responses/transport errors retried with backoff (max 3),<br/>terminal error → job failed, never left processing.

@@ -1,13 +1,20 @@
 \chapter{The Permission Catalogue}
 \label{app:permissions}
 
+\begin{center}
+\textit{This appendix reproduces the full institute-domain and platform-domain
+permission catalogue implemented by the authorization module.}
+\end{center}
+
+\vspace*{\fill}
+\clearpage
 \noindent The authorization catalogue is a typed map in code, mirrored into
 the \texttt{permissions} table on every API boot and verified for consistency.
 Keys are explicit \texttt{resource.action} strings; \texttt{manage} implies
 every other action of the same resource. Tables~\ref{tab:perm-institute} and
 \ref{tab:perm-platform} reproduce the catalogue.
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \small
 \begin{tabular}{@{}p{3.7cm}p{7.7cm}p{2.3cm}@{}}
@@ -39,7 +46,7 @@ every other action of the same resource. Tables~\ref{tab:perm-institute} and
 \label{tab:perm-institute}
 \end{table}
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \small
 \begin{tabular}{@{}p{3.7cm}p{7.7cm}p{2.3cm}@{}}

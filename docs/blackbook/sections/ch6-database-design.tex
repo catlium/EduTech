@@ -1,6 +1,15 @@
 \chapter{Database Design}
 \label{ch:database-design}
 
+\begin{center}
+\textit{This chapter describes the PostgreSQL database design --- accessed
+exclusively through the Drizzle ORM --- across its identity, academic, content,
+and operational relation families, and the design principles the schema
+applies.}
+\end{center}
+
+\vspace*{\fill}
+\clearpage
 \section{Overview}
 
 \noindent PostgreSQL~17 is the single primary database, accessed exclusively
@@ -14,8 +23,9 @@ sub-systems (jobs, OCR registry).
 
 \section{Family 1: Identity, Tenancy, Authentication, and Authorization}
 
-\noindent Figure~\ref{fig:erd-identity} shows the tenancy and authorization
-core. Key design properties:
+\noindent Figure~\ref{fig:erd-identity}, Figure~\ref{fig:erd-tenancy}, and
+Figure~\ref{fig:erd-rbac} show the tenancy and authorization core. Key design
+properties:
 
 \begin{itemize}
   \item \textbf{Tenant anchor.} \texttt{users} join \texttt{institutes}
@@ -39,17 +49,34 @@ core. Key design properties:
   billing or feature columns.
 \end{itemize}
 
-\begin{figure}[h]
+\begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/database-erd-identity-bw.png}
-\caption{Database schema --- identity, tenancy, authentication, authorization.}
+\includegraphics[width=711.5pt]{figures/erd-identity-auth-bw.pdf}
+\caption{Database schema --- the identity and authentication core: users,
+institute memberships, sessions, and password resets.}
 \label{fig:erd-identity}
-\end{figure}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=689.5pt]{figures/erd-tenancy-bw.pdf}
+\caption{Database schema --- the tenancy core: institutes, memberships, and
+subscription plans.}
+\label{fig:erd-tenancy}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=711.5pt]{figures/erd-rbac-bw.pdf}
+\caption{Database schema --- the roles/permissions (RBAC) core.}
+\label{fig:erd-rbac}
+\end{sidewaysfigure}
 
 \section{Family 2: Academic Structure, Materials, Content, and Intelligence}
 
-\noindent Figure~\ref{fig:erd-academic-content} shows the academic and
-content families. Properties:
+\noindent Figure~\ref{fig:erd-academic-content},
+Figure~\ref{fig:erd-content-versions}, and Figure~\ref{fig:erd-syllabus} show
+the academic and content families. Properties:
 
 \begin{itemize}
   \item \textbf{Scope chain.} \texttt{subjects $\rightarrow$ chapters
@@ -73,18 +100,49 @@ content families. Properties:
   destroying references.
 \end{itemize}
 
-\begin{figure}[h]
+\begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/database-erd-academic-content-bw.png}
-\caption{Database schema --- academic structure, materials, content, and
-material intelligence.}
+\includegraphics[width=494.9pt]{figures/erd-academic-structure-bw.pdf}
+\caption{Database schema --- academic structure: the subject chain
+($\texttt{subjects} \rightarrow \texttt{chapters} \rightarrow \texttt{topics}$),
+class offerings, and academic years.}
+\label{fig:erd-academic-structure}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=555.6pt]{figures/erd-academic-placements-bw.pdf}
+\caption{Database schema --- placements and assignments that derive the
+academic scope for students and teachers.}
+\label{fig:erd-academic-placements}
+\end{sidewaysfigure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=290.6pt]{figures/erd-materials-enhancements-bw.pdf}
+\caption{Database schema --- materials with their deterministic enhancement
+chain.}
 \label{fig:erd-academic-content}
 \end{figure}
 
+\begin{figure}[p]
+\centering
+\includegraphics[width=436.5pt]{figures/erd-content-versions-bw.pdf}
+\caption{Database schema --- versioned content items.}
+\label{fig:erd-content-versions}
+\end{figure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=404.9pt]{figures/erd-syllabus-bw.pdf}
+\caption{Database schema --- per-subject syllabi and their lifecycle.}
+\label{fig:erd-syllabus}
+\end{sidewaysfigure}
+
 \section{Family 3: Questions, Examination, Practice, and Operations}
 
-\noindent Figure~\ref{fig:erd-operations} shows the question, examination,
-practice, and operational families. Properties:
+\noindent Figures~\ref{fig:erd-operations-questions} to~\ref{fig:erd-operations}
+show the question, examination, practice, and operational families. Properties:
 
 \begin{itemize}
   \item \textbf{Question types as data.} \texttt{question\_types} holds 11
@@ -111,12 +169,57 @@ practice, and operational families. Properties:
   attempt counter.
 \end{itemize}
 
-\begin{figure}[h]
+\begin{figure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/database-erd-operations-bw.png}
-\caption{Database schema --- questions, examination, practice, and operations.}
-\label{fig:erd-operations}
+\includegraphics[width=436.5pt]{figures/erd-question-bank-bw.pdf}
+\caption{Database schema --- question bank: question types and the scoped
+\texttt{questions} table.}
+\label{fig:erd-operations-questions}
 \end{figure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=448.6pt]{figures/erd-question-papers-bw.pdf}
+\caption{Database schema --- question papers: the blueprint-driven
+\texttt{question\_papers} snapshot.}
+\label{fig:erd-question-papers}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=409.4pt]{figures/erd-assessments-bw.pdf}
+\caption{Database schema --- examination: assessments and their subject
+binding.}
+\label{fig:erd-operations-assessments}
+\end{sidewaysfigure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=388.3pt]{figures/erd-attempt-responses-bw.pdf}
+\caption{Database schema --- attempt snapshots and response tables.}
+\label{fig:erd-attempt-responses}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=297.7pt]{figures/erd-practice-sessions-bw.pdf}
+\caption{Database schema --- ungraded practice sessions.}
+\label{fig:erd-practice-sessions}
+\end{figure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=465.6pt]{figures/erd-jobs-ocr-bw.pdf}
+\caption{Database schema --- operations: the job/worker/OCR-chunk registry.}
+\label{fig:erd-operations}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=532.2pt]{figures/erd-paper-patterns-bw.pdf}
+\caption{Database schema --- operations: paper-pattern blueprints.}
+\label{fig:erd-paper-patterns}
+\end{sidewaysfigure}
 
 \section{Design Principles Applied}
 

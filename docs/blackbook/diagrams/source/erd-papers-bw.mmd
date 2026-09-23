@@ -1,0 +1,59 @@
+---
+title: "CatLium EduTech — Database Schema (3b): Paper Patterns and Question Papers"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ paper_patterns : institute_id
+    materials ||--o{ paper_patterns : source_material_id
+    paper_patterns ||--o{ paper_pattern_subjects : pattern_id
+    paper_patterns o|--o{ question_papers : blueprint_id "set-null"
+    institutes ||--o{ question_papers : institute_id
+    question_papers ||--o{ question_paper_questions : paper_id
+    questions ||--o{ question_paper_questions : question_id
+
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+    }
+    materials {
+        uuid id PK
+        uuid institute_id FK
+        varchar material_type "PDF | IMAGE | DOCUMENT | TEXT"
+    }
+    paper_patterns {
+        uuid id PK
+        uuid institute_id FK
+        uuid source_material_id FK "previous year paper"
+        varchar title
+        varchar status "DRAFT | REVIEW | APPROVED"
+        boolean is_locked
+        int version
+        varchar source_type "MANUAL | TEXT | MATERIAL | PREVIOUS_YEAR_PAPER"
+        jsonb structure
+    }
+    paper_pattern_subjects {
+        uuid pattern_id FK
+        uuid subject_id FK
+    }
+    question_papers {
+        uuid id PK
+        uuid institute_id FK
+        uuid blueprint_id FK
+        varchar title
+        jsonb instructions
+        int max_marks
+    }
+    question_paper_questions {
+        uuid id PK
+        uuid paper_id FK
+        uuid question_id FK
+        int marks
+        varchar section
+    }
+    questions {
+        uuid id PK
+        uuid institute_id FK
+        text stem
+        varchar question_type
+    }

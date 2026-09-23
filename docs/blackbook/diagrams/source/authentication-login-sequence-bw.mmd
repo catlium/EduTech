@@ -1,0 +1,30 @@
+---
+title: "CatLium EduTech — Cookie Authentication (login and session issue)"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','activationBkgColor':'#ffffff','activationBorderColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','labelTextColor':'#000000','loopTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','messageFontColor':'#000000'}}}%%
+sequenceDiagram
+    autonumber
+    participant B as Browser (Next.js web)
+    participant N as nginx (/api/ → api:3000)
+    participant C as AuthController
+    participant S as AuthService
+    participant DB as PostgreSQL
+
+    B->>N: POST /auth/login {email, password} (Origin checked)
+    N->>C: forward
+    C->>S: login(email, password)
+    S->>DB: SELECT users WHERE email = normalized
+    DB-->>S: user row (status active, passwordHash)
+    S->>S: bcrypt.compare
+    S->>DB: INSERT auth_sessions (refreshTokenHash SHA-256, expiresAt)
+    S-->>C: { user, accessToken {sub,sid}, refreshToken, csrfToken }
+    C-->>B: 200 + Set-Cookie x3 (httpOnly access_token, httpOnly refresh_token path=/api/v1/auth, csrf_token)
+
+    opt Refresh rotation
+        B->>C: POST /auth/refresh (refresh_token + CSRF, repair-only CSRF)
+        C->>S: verify refresh token → session lookup
+        S->>S: strict one-time rotation (no grace window), lineage on reuse
+        S->>DB: UPDATE revoked_at = now() WHERE id = ? AND revoked_at IS NULL
+        S->>DB: INSERT successor session (rotated_from_sid)
+        C-->>B: rotated access + refresh cookies
+    end

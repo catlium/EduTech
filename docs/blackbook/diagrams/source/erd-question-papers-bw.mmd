@@ -1,0 +1,44 @@
+---
+title: "CatLium EduTech — Database Schema (3c): Question Papers"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    paper_patterns o|--o{ question_papers : blueprint_id "set-null"
+    institutes ||--o{ question_papers : institute_id
+    question_papers ||--o{ question_paper_questions : paper_id
+    questions ||--o{ question_paper_questions : question_id
+
+    paper_patterns {
+        uuid id PK
+        uuid institute_id FK "refs paper patterns figure"
+        varchar title
+        varchar status "DRAFT | REVIEW | APPROVED"
+        boolean is_locked
+        int version
+    }
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+    }
+    question_papers {
+        uuid id PK
+        uuid institute_id FK
+        uuid blueprint_id FK
+        varchar title
+        jsonb instructions
+        int max_marks
+    }
+    question_paper_questions {
+        uuid id PK
+        uuid paper_id FK
+        uuid question_id FK
+        int marks
+        varchar section
+    }
+    questions {
+        uuid id PK
+        uuid institute_id FK
+        text stem
+        varchar question_type
+    }

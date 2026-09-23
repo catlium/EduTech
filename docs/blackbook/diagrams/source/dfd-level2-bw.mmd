@@ -1,0 +1,51 @@
+---
+title: CatLium EduTech — Level-2 Data Flow Diagram (OCR and material-processing pipeline)
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000'}}}%%
+flowchart LR
+    P24("OCR &amp; Jobs coordination<br/>(API)")
+
+    subgraph W["worker-material"]
+        P31("Queue consumer<br/>jobs")
+        P32("OCR requestor<br/>POST /extract, /extract/pages")
+    end
+
+    subgraph S["OCR service (FastAPI)"]
+        P51("HTTP facade<br/>x-internal-api-key")
+        P52("Embedded-text pass<br/>PyMuPDF")
+        P53("OCR fallback<br/>PaddleOCR (page-level)")
+        P54("Normalizer<br/>normalize_text")
+    end
+
+    E2["OCR worker<br/>(standalone device)"]
+    D1[("PostgreSQL 17<br/>jobs, chunks")]
+    D3[("File storage<br/>(local volume)")]
+    D4[("RabbitMQ jobs queue")]
+
+    D4 -->|"job"| P31
+    P31 -->|"fetch source file"| D3
+    P31 -->|"chunking request"| P24
+    P24 -->|"lease chunk"| E2
+    E2 -->|"extracted text per page"| P24
+    P24 -->|"write chunk files"| D3
+    P24 -->|"extract / extract/pages"| P32
+    P32 -->|"file + page range"| P51
+    P51 -->|"PDF"| P52
+    P52 -->|"pages without selectable text"| P53
+    P51 -->|"image / handwriting"| P53
+    P52 --> P54
+    P53 --> P54
+    P54 -->|"normalized text"| P51
+    P51 -->|"text + page metadata"| P24
+    P24 <-->|"job / chunk state"| D1
+    P31 -->|"material completed"| D1
+    P24 -->|"completed"| D1
+
+    class P24 outer
+    classDef outer fill:#ffffff,stroke:#000000,color:#000000
+    class E2 ext
+    classDef ext fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    class P31,P32,P51,P52,P53,P54 proc
+    classDef proc fill:#ffffff,stroke:#000000,color:#000000
+    class D1,D3,D4 store
+    classDef store fill:#ffffff,stroke:#000000,color:#000000

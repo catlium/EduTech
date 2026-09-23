@@ -1,0 +1,15 @@
+---
+title: CatLium EduTech — Academic Scope Resolution and Enforcement
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'}}}%%
+flowchart TD
+    M["resolveScope(membershipId)<br/>DB-fresh, never from JWT"]
+
+    M --> A{"Membership holds<br/>INSTITUTE_ADMIN?"}
+    A -->|yes| WI["whole-institute<br/>scope (sole bypass; platform still locked)"]
+    A -->|no| SU["subject-set =<br/>teacher scope ∪ student scope"]
+    SU --> TMS["Teacher: subject of each active<br/>teacher_assignment → class_subjects"]
+    SU --> STS["Student: placement division → class<br/>class_subjects − EXCLUDED ∪ ENROLLED"]
+
+    style WI fill:#ffffff,stroke:#000000
+    style SU fill:#ffffff,stroke:#000000

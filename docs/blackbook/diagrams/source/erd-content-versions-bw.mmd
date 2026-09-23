@@ -1,0 +1,32 @@
+---
+title: "CatLium EduTech — Database Schema (2d): Content Items and Versions"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ content_items : institute_id
+    content_items ||--o{ content_versions : content_id
+
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+    }
+    content_items {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK "see academic structure"
+        uuid chapter_id FK
+        uuid topic_id FK
+        varchar type "NOTE | FLASHCARD_SET | CORNELL_NOTE | SUMMARY | IMPORTANT_CONCEPTS"
+        varchar status "DRAFT | ACTIVE | ARCHIVED"
+        varchar source "MANUAL | AI_GENERATED | OCR_EXTRACTED | IMPORTED"
+        int current_version
+    }
+    content_versions {
+        uuid id PK
+        uuid content_id FK
+        int version
+        jsonb payload
+        text rendered_html
+        jsonb ai_context
+    }

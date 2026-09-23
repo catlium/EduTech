@@ -1,0 +1,41 @@
+---
+title: "CatLium EduTech — Database Schema (3e): Jobs, Workers, and OCR Chunks"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ jobs : institute_id
+    institutes ||--o{ ocr_chunks : institute_id
+    jobs ||--o{ ocr_chunks : job_id
+    workers ||--o{ ocr_chunks : claimed_by
+
+    institutes {
+        uuid id PK
+        varchar name
+    }
+    jobs {
+        uuid id PK
+        uuid institute_id FK
+        varchar type
+        varchar status "queued | processing | completed | failed | cancelled"
+        jsonb payload
+        timestamp completed_at
+    }
+    workers {
+        uuid id PK
+        varchar name
+        varchar token_hash UK
+        boolean enabled
+        timestamp last_heartbeat_at
+    }
+    ocr_chunks {
+        uuid id PK
+        uuid job_id FK
+        uuid institute_id FK
+        int chunk_index
+        int start_page
+        int end_page
+        varchar status "pending | claimed | submitted | failed | cancelled"
+        uuid claimed_by FK
+        timestamp lease_expires_at
+        int attempts
+    }

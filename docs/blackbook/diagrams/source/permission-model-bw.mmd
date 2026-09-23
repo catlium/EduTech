@@ -1,41 +1,22 @@
 ---
 title: CatLium EduTech — Authorization Decision Chain (per request)
 ---
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'}}}%%
 flowchart TD
-    REQ["Incoming request"]
-    AG{"AccessTokenGuard<br/>cookie JWT valid?"}
+    REQ["Incoming HTTP request"]
+    AG{"AccessTokenGuard — valid JWT and active sid?"}
     A401["401 Unauthenticated"]
-    S1["request.user = { userId }"]
-    TG{"TenantGuard<br/>x-institute-id present,<br/>membership + institute active?"}
+    TG{"TenantGuard — x-institute-id present and member active?"}
     F403["403 Forbidden"]
-    S2["request.tenant = { instituteId, membershipId, roles }"]
-    RG{"@RequiredRoles?<br/>(OR, optional)"}
-    PFG{"PermissionGuard<br/>@RequiredPermission<br/>DB-fresh grants,<br/>manage implies action?"}
-    ASC{"AcademicScopeService<br/>resolveScope(membershipId)"}
-    A2{"Whole-institute?<br/>(INSTITUTE_ADMIN only)"}
-    SS["subject-set from<br/>teacher_assignments ∪<br/>student placements"]
-    EMPTY{"Member of any<br/>scope-effective bond?"}
-    GATE{"Per-module gate<br/>(gateContent, gateAssessment,<br/>gatePaper, gatePatternAccess,<br/>gateCandidateJob …)"}
-    D404["Read outside scope<br/>→ 404 (no existence leak)"]
-    D403["Write outside scope<br/>→ 403 before mutation"]
-    QRY["Tenant-scoped,<br/>scope-filtered SQL<br/>WHERE institute_id = tenant"]
-    OK["Allow"]
+    RG{"RequiredRoles — OR semantics, optional"}
+    PFG{"PermissionGuard — DB-fresh grant; manage implies action"}
+    SC{"AcademicScopeService — resolve scope, enforce: Allow/404/403"}
 
     REQ --> AG
     AG -->|no| A401
-    AG -->|yes| S1 --> TG
+    AG -->|yes| TG
     TG -->|no| F403
-    TG -->|yes| S2 --> RG
+    TG -->|yes| RG
     RG -->|fail| F403
-    RG -->|pass / optional| PFG
+    RG -->|pass| PFG
     PFG -->|fail| F403
-    PFG -->|pass / optional| ASC
-    ASC --> A2
-    A2 -->|yes| GATE
-    A2 -->|no| SS --> EMPTY
-    EMPTY -->|no bonds| F403
-    EMPTY -->|yes| GATE
-    GATE -->|read mismatch| D404
-    GATE -->|write mismatch| D403
-    GATE -->|match| QRY --> OK
+    PFG -->|pass| SC

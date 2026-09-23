@@ -1,0 +1,39 @@
+---
+title: "CatLium EduTech — Database Schema (1b): Tenancy"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ institute_subscriptions : institute_id
+    plans ||--o{ institute_subscriptions : plan_id
+    institutes ||--o{ memberships : institute_id
+
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        varchar status "active | deactivated"
+    }
+    plans {
+        uuid id PK
+        varchar plan_name
+        varchar slug UK
+        text description
+        boolean is_active
+        jsonb limitations
+    }
+    institute_subscriptions {
+        uuid id PK
+        uuid institute_id FK
+        uuid plan_id FK
+        varchar status "trialing | active | past_due | cancelled"
+        timestamp started_at
+        timestamp expires_at
+    }
+    memberships {
+        uuid id PK
+        uuid institute_id FK
+        uuid user_id FK "see RBAC figure"
+        varchar kind "STUDENT | TEACHER | STAFF | ADMIN"
+        varchar state "ACTIVE | SUSPENDED | ARCHIVED"
+        boolean internal
+    }

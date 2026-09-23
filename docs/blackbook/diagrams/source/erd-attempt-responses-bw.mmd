@@ -1,0 +1,32 @@
+---
+title: "CatLium EduTech — Database Schema (3d): Attempt Responses"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    attempts ||--o{ attempt_questions : attempt_id
+    attempt_questions ||--o{ attempt_responses : attempt_question_id
+
+    attempts {
+        uuid id PK
+        uuid assessment_id FK "refs assessments figure"
+        uuid student_id FK "refs memberships/identity"
+        varchar status "IN_PROGRESS | SUBMITTED | EXPIRED"
+        timestamp deadline
+        int score
+        int total_marks
+        timestamp submitted_at
+    }
+    attempt_questions {
+        uuid id PK
+        uuid attempt_id FK
+        uuid question_id FK "snapshot at start"
+        int marks
+        text stem
+        jsonb payload
+    }
+    attempt_responses {
+        uuid attempt_question_id PK,FK
+        jsonb answer
+        boolean is_correct
+        int marks_awarded
+    }

@@ -1,6 +1,15 @@
 \chapter{System Architecture}
 \label{ch:architecture}
 
+\begin{center}
+\textit{This chapter describes the system architecture: the modular-monolith
+API, the asynchronous workers, the separately deployable OCR service, the
+single-public-boundary deployment topology, the request flow, and the AI
+gateway.}
+\end{center}
+
+\vspace*{\fill}
+\clearpage
 \section{Architectural Style}
 
 \noindent The system uses three cooperating kinds of components as prescribed
@@ -34,18 +43,105 @@ Next.js web application on its internal port 3001. Postgres, Redis,
 RabbitMQ, the OCR service, the workers, and the AI gateway are all internal
 services that sit on the private Docker network and expose no host port.
 
-\begin{figure}[h]
+\begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/system-architecture-bw.png}
-\caption{System architecture and deployment topology.}
+\includegraphics[width=711.5pt]{figures/system-architecture-ingress-bw.pdf}
+\par\vspace{1.5ex}
+\includegraphics[width=711.5pt]{figures/system-architecture-services-bw.pdf}
+\caption{System architecture and deployment topology: (left) the single public
+ingress through the Cloudflare Tunnel and the internal nginx routing; (right)
+the internal services on the private Docker network and their data flows.}
 \label{fig:architecture}
-\end{figure}
+\end{sidewaysfigure}
 
 The web application sends its requests to the same origin path
 \texttt{/api/v1/\ldots}, which nginx forwards to the API, so browsers never
 address internal hosts directly. This single-boundary design means the browser
 perceives one same-origin API, and no internal service needs to be publicly
 reachable for any user-visible behaviour.
+
+\section{Data Flow Overview}
+
+\noindent Figure~\ref{fig:dfd} presents a level-0 data flow diagram of the
+implemented system. Browser users interact only with the web application,
+which delegates every operation to the API application over the internal
+\texttt{/api/v1} boundary. The API is the sole writer to the relational and
+cache stores; it persists uploaded materials to file storage and emits work to
+the RabbitMQ \texttt{jobs} and \texttt{ai\_generation} queues. Material
+processing and AI generation workers consume those queues, write their results
+back to PostgreSQL and file storage, and reach the OCR service and the OmniRoute
+AI gateway respectively. All OCR activities are coordinated through the API:
+the in-API coordinator hands page-range chunks to the OCR service, aggregates
+extracted results, and leases chunks to standalone OCR worker devices for
+external hardware.
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=649pt]{figures/dfd-bw.pdf}
+\caption{Level-0 data flow diagram of the system.}
+\label{fig:dfd}
+\end{sidewaysfigure}
+
+The diagram distinguishes external entities (users and standalone OCR devices)
+from internal processes and data stores. RabbitMQ is modelled as a data store
+because the queues hold transient work until a consumer retrieves it; the
+store symbols for PostgreSQL, Redis, RabbitMQ, and file storage correspond to
+the deployment components shown in Figure~\ref{fig:architecture}. The
+processes of this level-0 model are decomposed further in
+Figures~\ref{fig:dfd-l1} to~\ref{fig:dfd-l3}.
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=407pt]{figures/dfd-level1-bw.pdf}
+\caption{Level-1 data flow diagram: decomposition of the API application into
+its principal functional areas.}
+\label{fig:dfd-l1}
+\end{sidewaysfigure}
+
+Figure~\ref{fig:dfd-l1} dissolves the level-0 API process into the five
+functional areas implemented in the modular monolith---identity and tenancy,
+academic structure, content and materials, question and paper authoring, and
+assessment---together with the data flows that cross the module boundaries and
+the shared stores and queues they use.
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=711.5pt]{figures/dfd-level2a-coordination-bw.pdf}
+\caption{Level-2 data flow diagram --- OCR and material-processing pipeline,
+part 1: API-side coordination of chunk leasing, aggregation, and job
+settlement.}
+\label{fig:dfd-l2}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=711.5pt]{figures/dfd-level2b-ocrservice-bw.pdf}
+\caption{Level-2 data flow diagram --- OCR and material-processing pipeline,
+part 2: the OCR service extraction pipeline (embedded text, PaddleOCR
+fallback, normalization).}
+\label{fig:dfd-l2b}
+\end{sidewaysfigure}
+
+Figure~\ref{fig:dfd-l2} and Figure~\ref{fig:dfd-l2b} decompose the
+material-processing branch. Jobs are consumed by \texttt{worker-material},
+chunking is coordinated by the in-API OCR coordinator (which also leases
+chunks to external OCR devices), and the OCR service extracts text through the
+PyMuPDF embedded-text pass with a per-page PaddleOCR fallback, followed by
+deterministic normalization.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=425pt]{figures/dfd-level3-bw.pdf}
+\caption{Level-3 data flow diagram: the AI generation pipeline inside
+\texttt{worker-ai}.}
+\label{fig:dfd-l3}
+\end{figure}
+
+Figure~\ref{fig:dfd-l3} decomposes the AI branch down to its internal stages:
+queue consumption, source assembly from eligible materials, prompt building
+and generation through the OmniRoute gateway, contract validation with retry
+on invalid or transient responses, and final persistence of content and
+provenance with job settlement.
 
 \section{Request Flow and Global Guards}
 
@@ -65,7 +161,7 @@ application root before any controller logic runs:
 \texttt{AccessTokenGuard $\rightarrow$ TenantGuard $\rightarrow$
 RolesGuard $\rightarrow$ PermissionGuard $\rightarrow$ AcademicScope/evaluation
 service}, detailed in Chapter~\ref{ch:security} and summarized in
-Figure~\ref{fig:permission-model}.
+Figure~\ref{fig:permission-model} and Figure~\ref{fig:permission-model-part2}.
 
 \section{Asynchronous Processing}
 
@@ -88,8 +184,9 @@ enhancement types, so a caller cannot forge a request that produces AI output
 under another identity. The OCR pipeline is \emph{coordinator-owned}: the
 in-API coordinator materialises page-range chunks, hands them to registered
 OCR workers under a lease, and aggregates results (Chapter~\ref{ch:features}).
-Figure~\ref{fig:ocr-processing} and Figure~\ref{fig:ocr-state} illustrate the
-OCR flow and all job/chunk state transitions.
+Figure~\ref{fig:ocr-processing}, Figure~\ref{fig:ocr-processing-part2},
+Figure~\ref{fig:ocr-state}, and Figure~\ref{fig:ocr-state-part2} illustrate
+the OCR flow and all job/chunk state transitions.
 
 \section{AI Gateway}
 

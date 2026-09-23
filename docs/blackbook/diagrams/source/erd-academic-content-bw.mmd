@@ -1,0 +1,92 @@
+---
+title: "CatLium EduTech — Database Schema (2c): Materials, Content, and Intelligence"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ materials : institute_id
+    subjects ||--o{ materials : subject_id
+    chapters ||--o{ materials : chapter_id
+    topics ||--o{ materials : topic_id
+    materials ||--o{ material_enhancements : material_id
+    material_enhancements ||--o{ material_enhancement_segments : enhancement_id
+    material_enhancement_segments ||--o{ material_enhancement_segment_mappings : segment_id
+    institutes ||--o{ content_items : institute_id
+    subjects ||--o{ content_items : subject_id
+    chapters ||--o{ content_items : chapter_id
+    topics ||--o{ content_items : topic_id
+    content_items ||--o{ content_versions : content_id
+
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        varchar status "active | deactivated"
+    }
+    subjects {
+        uuid id PK
+        uuid institute_id FK
+        varchar name
+        varchar slug UK "per institute"
+        timestamp deleted_at "soft delete"
+    }
+    chapters {
+        uuid id PK
+        uuid subject_id FK
+        varchar name
+        varchar slug UK "per subject"
+    }
+    topics {
+        uuid id PK
+        uuid chapter_id FK
+        varchar name
+        varchar slug UK "per chapter"
+    }
+    materials {
+        uuid id PK
+        uuid institute_id FK
+        uuid subject_id FK
+        uuid chapter_id FK
+        uuid topic_id FK
+        varchar material_type "PDF | IMAGE | DOCUMENT | TEXT"
+        varchar processing_status "UPLOADED | QUEUED | PROCESSING | READY | FAILED"
+        varchar storage_key
+        text text_content
+        int revision
+    }
+    material_enhancements {
+        uuid id PK
+        uuid material_id FK
+        varchar status "enhanced | unchanged"
+        varchar source_fingerprint UK
+        int version
+        jsonb payload
+    }
+    material_enhancement_segments {
+        uuid id PK
+        uuid enhancement_id FK
+        varchar level "chapter | section | other"
+        varchar relevance "relevant | uncertain | irrelevant | unmapped"
+        text content
+    }
+    material_enhancement_segment_mappings {
+        uuid id PK
+        uuid segment_id FK
+        uuid syllabus_topic_id FK "mapped entity"
+        float confidence
+    }
+    content_items {
+        uuid id PK
+        uuid institute_id FK
+        uuid type "NOTE | FLASHCARD_SET | CORNELL_NOTE | SUMMARY | IMPORTANT_CONCEPTS"
+        varchar status "DRAFT | ACTIVE | ARCHIVED"
+        varchar source "MANUAL | AI_GENERATED | OCR_EXTRACTED | IMPORTED"
+        int current_version
+    }
+    content_versions {
+        uuid id PK
+        uuid content_id FK
+        int version
+        jsonb payload
+        text rendered_html
+        jsonb ai_context
+    }

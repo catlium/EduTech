@@ -1,0 +1,71 @@
+---
+title: "CatLium EduTech — Database Schema (2b): Placements and Assignments"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    academic_years ||--o{ divisions : academic_year_id
+    classes ||--o{ divisions : class_id
+    divisions ||--o{ student_placements : division_id
+    memberships ||--o{ student_placements : membership_id
+    academic_years ||--o{ student_placements : academic_year_id
+    student_placements ||--o{ student_subject_enrollments : placement_id
+    subjects ||--o{ student_subject_enrollments : subject_id
+    class_subjects ||--o{ teacher_assignments : class_subject_id
+    memberships ||--o{ teacher_assignments : membership_id
+
+    divisions {
+        uuid id PK
+        uuid institute_id FK
+        uuid academic_year_id FK
+        uuid class_id FK
+        varchar name
+    }
+    student_placements {
+        uuid id PK
+        uuid institute_id FK
+        uuid membership_id FK
+        uuid academic_year_id FK
+        uuid division_id FK
+        varchar status "active | ..."
+    }
+    student_subject_enrollments {
+        uuid id PK
+        uuid placement_id FK
+        uuid subject_id FK
+        varchar kind "ENROLLED | EXCLUDED"
+    }
+    teacher_assignments {
+        uuid id PK
+        uuid institute_id FK
+        uuid class_subject_id FK
+        uuid membership_id FK
+        varchar status
+    }
+    memberships {
+        uuid id PK
+        uuid user_id FK
+        uuid institute_id FK
+        varchar status "active | deactivated"
+    }
+    academic_years {
+        uuid id PK
+        uuid institute_id FK
+        varchar name UK "per institute"
+    }
+    classes {
+        uuid id PK
+        uuid institute_id FK
+        varchar name UK "per institute"
+    }
+    class_subjects {
+        uuid id PK
+        uuid class_id FK
+        uuid subject_id FK
+    }
+    subjects {
+        uuid id PK
+        uuid institute_id FK
+        varchar name
+        varchar slug UK "per institute"
+        timestamp deleted_at "soft delete"
+    }

@@ -1,0 +1,24 @@
+---
+title: "CatLium EduTech — System Architecture: Public Ingress and Routing"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000'}}}%%
+flowchart LR
+    B["Browser<br/>(Next.js client)"]
+    E["Cloudflare Edge<br/>TLS, public DNS"]
+
+    subgraph P["Private Docker network (no host ports exposed)"]
+        T["cloudflared<br/>only public ingress"]
+        N["nginx :80<br/>/ → web, /api/ → api"]
+        W["web :3001<br/>Next.js"]
+        A["api :3000<br/>NestJS, prefix /api/v1"]
+    end
+
+    B -->|HTTPS| E
+    E -->|tunnel| T
+    T -->|HTTP| N
+    N -->|"/"| W
+    N -->|"/api/"| A
+    W -.->|"/api/v1/* (relative)"| N
+
+    classDef grp fill:#ffffff,stroke:#000000,color:#000000,stroke-width:1px
+    class T,N,W,A grp

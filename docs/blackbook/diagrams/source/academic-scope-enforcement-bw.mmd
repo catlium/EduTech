@@ -1,0 +1,17 @@
+---
+title: CatLium EduTech — Academic Scope Enforcement on Requests
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'}}}%%
+flowchart TD
+    ENF["Enforcement on resources<br/>with subject chain"]
+    ENF --> R{"Operation type"}
+    R -->|read/list| R1["WHERE subject_id IN scope<br/>in the SQL itself"]
+    R -->|single read| R2["Out of scope → 404<br/>(no existence leak)"]
+    R -->|write on resource| R3["Pre-mutation check → 403"]
+    R -->|create| R4["Created within actor scope<br/>only; admin bypass OK"]
+    R1 --> RI["Authorized rows returned"]
+    R2 --> RD["404 Not Found"]
+    R3 --> RW["403 Forbidden"]
+    R4 --> RC["Resource created in scope"]
+
+    style ENF fill:#ffffff,stroke:#000000,stroke-width:2px

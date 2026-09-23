@@ -1,0 +1,36 @@
+---
+title: "CatLium EduTech — Database Schema (3a): Question Bank"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    institutes ||--o{ question_types : institute_id
+    institutes ||--o{ questions : institute_id
+    question_types ||--o{ questions : question_type
+
+    institutes {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        varchar status "active | deactivated"
+    }
+    question_types {
+        uuid id PK
+        uuid institute_id FK "null = global starter"
+        varchar code UK "per track"
+        varchar answer_format "MCQ | TRUE_FALSE | FILL_IN_BLANK | TEXT | MATCHING | NUMERICAL"
+        varchar kind "OBJECTIVE | SUBJECTIVE"
+        int default_marks
+        jsonb evaluation_config
+    }
+    questions {
+        uuid id PK
+        uuid institute_id FK
+        text stem
+        varchar question_type "refs question_types.code"
+        varchar answer_format
+        varchar difficulty "EASY | MEDIUM | HARD"
+        text explanation
+        jsonb payload
+        varchar approval_status "PENDING | APPROVED | REJECTED"
+        uuid source_pattern_id FK "refs papers figure"
+    }

@@ -1,6 +1,15 @@
 \chapter{Security and Authorization Architecture}
 \label{ch:security}
 
+\begin{center}
+\textit{This chapter details the security and authorization architecture:
+cookie-based authentication and session hardening, CSRF protection, the
+permission catalogue, the guard chain, academic-scope enforcement, and
+internal service authentication.}
+\end{center}
+
+\vspace*{\fill}
+\clearpage
 \section{Security Goals}
 
 \noindent The security goals of the platform are: (i) tenant isolation that
@@ -13,15 +22,17 @@ nothing user-facing depends on a publicly reachable internal service.
 
 \sectionmark{Authentication}
 \noindent Authentication is cookie-based, following the OWASP guidance for
-session management~\cite{owaspsession}. The flow is shown in
-Figure~\ref{fig:auth-sequence}.
+session management~\cite{owaspsession}. The login and refresh flow is shown in
+Figure~\ref{fig:auth-sequence}; the per-request guard chain is shown in
+Figure~\ref{fig:auth-request} and Figure~\ref{fig:auth-request-part2}.
 
-\begin{figure}[h]
+\begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/authentication-sequence-bw.png}
-\caption{Cookie authentication and the tenant-scoped request flow.}
+\includegraphics[width=711.5pt]{figures/authentication-login-sequence-bw.pdf}
+\caption{Cookie authentication: login, cookie issue, and strict one-time
+refresh rotation.}
 \label{fig:auth-sequence}
-\end{figure}
+\end{sidewaysfigure}
 
 \subsection{Cookies and tokens}
 
@@ -46,7 +57,7 @@ at boot or the service refuses to start.
 \subsection{Access token validation}
 
 \noindent The \texttt{AccessTokenGuard} verifies the JWT, requires a
-\texttt{sid}, loads the referenced \texttt{auth\_sessions} row, and checks that
+\texttt{sid}, loads the referenced \texttt{\seqsplit{auth\_sessions}} row, and checks that
 the session is live (not revoked, not expired, owned by \texttt{sub}) and that
 the user's status is still \texttt{active}. Revocation or deactivation
 therefore takes effect on the very next request; there is no residual window.
@@ -98,22 +109,58 @@ never logged.
 \section{Authorization}
 
 \noindent Authorization is evaluated per request and in layers. The complete
-decision chain is rendered in Figure~\ref{fig:permission-model};
-the academic-scope engine is detailed in Figure~\ref{fig:academic-scope}.
+decision chain is rendered in Figure~\ref{fig:permission-model} and
+Figure~\ref{fig:permission-model-part2};
+the academic-scope engine is detailed in Figures~\ref{fig:academic-scope-resolution}
+and~\ref{fig:academic-scope-enforcement}. The per-request guard chain is shown
+in Figure~\ref{fig:auth-request} and Figure~\ref{fig:auth-request-part2}.
 
-\begin{figure}[h]
+\begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/permission-model-bw.png}
-\caption{Authorization decision chain for a tenant-scoped request.}
+\includegraphics[width=711.5pt]{figures/authentication-guardchain-sequence-bw.pdf}
+\caption{Tenant-scoped request flow, part 1: the access-token, tenant, and
+roles guards.}
+\label{fig:auth-request}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=711.5pt]{figures/authentication-authorization-sequence-bw.pdf}
+\caption{Tenant-scoped request flow, part 2: permission-guard evaluation and
+academic-scope enforcement in the feature service.}
+\label{fig:auth-request-part2}
+\end{sidewaysfigure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=327pt]{figures/permission-model-guards-bw.pdf}
+\caption{Authorization decision chain for a tenant-scoped request, part 1:
+the guard-stage decisions.}
 \label{fig:permission-model}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[p]
 \centering
-\includegraphics[width=\textwidth]{figures/academic-scope-bw.png}
-\caption{Academic scope resolution and enforcement (reads 404, writes 403).}
-\label{fig:academic-scope}
+\includegraphics[width=436.5pt]{figures/permission-model-scope-bw.pdf}
+\caption{Authorization decision chain for a tenant-scoped request, part 2:
+permission evaluation and academic-scope enforcement outcomes.}
+\label{fig:permission-model-part2}
 \end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=436.5pt]{figures/academic-scope-resolution-bw.pdf}
+\caption{Academic scope --- resolution of the actor's subject set from
+database state.}
+\label{fig:academic-scope-resolution}
+\end{figure}
+
+\begin{sidewaysfigure}[p]
+\centering
+\includegraphics[width=711.5pt]{figures/academic-scope-enforcement-bw.pdf}
+\caption{Academic scope --- enforcement outcomes (reads 404, writes 403).}
+\label{fig:academic-scope-enforcement}
+\end{sidewaysfigure}
 
 \subsection{The guard chain}
 

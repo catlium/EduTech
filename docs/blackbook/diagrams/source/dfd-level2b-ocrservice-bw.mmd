@@ -1,0 +1,34 @@
+---
+title: "CatLium EduTech — Level-2 DFD (b): OCR service extraction pipeline"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000'}}}%%
+flowchart LR
+    P31("OCR requestor<br/>worker-material")
+    P32("Chunk request<br/>API")
+
+    subgraph S["OCR service (FastAPI)"]
+        P51("HTTP facade<br/>x-internal-api-key")
+        P52("Embedded-text pass<br/>PyMuPDF")
+        P53("OCR fallback<br/>PaddleOCR (page-level)")
+        P54("Normalizer<br/>normalize_text")
+    end
+
+    D3[("File storage<br/>(local volume)")]
+
+    P32 -->|"extract / extract/pages"| P31
+    P31 -->|"file + page range"| P51
+    P51 -->|"PDF"| P52
+    P52 -->|"pages without selectable text"| P53
+    P51 -->|"image / handwriting"| P53
+    P52 --> P54
+    P53 --> P54
+    P54 -->|"normalized text"| P51
+    P51 -->|"text + page metadata"| P32
+    P31 -.->|"fetch source file"| D3
+
+    class P31,P32 outer
+    classDef outer fill:#ffffff,stroke:#000000,color:#000000
+    class P51,P52,P53,P54 proc
+    classDef proc fill:#ffffff,stroke:#000000,color:#000000
+    class D3 store
+    classDef store fill:#ffffff,stroke:#000000,color:#000000

@@ -1,0 +1,46 @@
+---
+title: "CatLium EduTech — Database Schema (1c): Roles and Permissions (RBAC)"
+---
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'serif','primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff'},'htmlLabels':false,'er':{'useMaxWidth':false}}}%%
+erDiagram
+    memberships ||--o{ membership_roles : membership_id
+    roles ||--o{ membership_roles : role_id
+    roles ||--o{ role_permissions : role_id
+    permissions ||--o{ role_permissions : permission_id
+    roles ||--o{ platform_user_roles : role_id
+    memberships {
+        uuid id PK
+        uuid institute_id FK
+        uuid user_id FK
+        varchar kind "STUDENT | TEACHER | STAFF | ADMIN"
+        varchar state "ACTIVE | SUSPENDED | ARCHIVED"
+        boolean internal
+    }
+    membership_roles {
+        uuid id PK
+        uuid membership_id FK
+        uuid role_id FK
+        uuid granted_by FK
+    }
+    roles {
+        uuid id PK
+        varchar name
+        varchar slug UK
+        text description
+        boolean is_system
+        uuid institute_id FK "null = platform-level role"
+    }
+    role_permissions {
+        uuid role_id FK
+        uuid permission_id FK
+        uuid granted_by FK
+    }
+    permissions {
+        uuid id PK
+        varchar slug UK "action or action:entity"
+    }
+    platform_user_roles {
+        uuid user_id FK
+        uuid role_id FK
+        uuid granted_by FK
+    }
