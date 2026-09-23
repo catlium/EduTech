@@ -1,5 +1,80 @@
 # Project Status
 
+## Phase O.2 — Platform Audit Trail Implementation (2026-09-23)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Commit: `feat(platform): add platform audit trail`.
+
+The Phase O.1 audit-trail design is now built: append-only
+`platform_audit_events` schema (migration `0048_spooky_martin_li`, journal
+index 48) + `PlatformAuditService.record(tx, event)` called inside the
+mutation transactions of `PlatformInstitutesService` — one event per committed
+mutation, same-tx atomicity (an event exists iff the mutation committed).
+Canonical design: `docs/architecture/platform-audit-trail.md` (schema + write
+path now marked IMPLEMENTED; read surface still DEFERRED).
+
+- **Schema (IMPLEMENTED):** `packages/database/src/schema/platform-audit.ts`,
+  exported via `schema/index.ts` — `id` uuid PK; `actor_user_id` uuid nullable
+  → users (reserved automated/system actor); `action varchar(64)` (catalogue-
+  checked, no DB CHECK, mirrors `permissions.key`); `resource_type
+  varchar(32)`; `resource_id` uuid; `institute_id` uuid nullable → institutes
+  (= resource_id on every current institute event); `metadata` jsonb default
+  `'{}'`; `created_at` timestamptz = commit time. Indexes
+  `platform_audit_events_resource_idx` (resource_type, resource_id, created_at)
+  + `platform_audit_events_institute_idx` (institute_id, created_at).
+- **Service (IMPLEMENTED):** `apps/api/src/platform/platform-audit.service.ts`
+  — `PLATFORM_AUDIT_ACTIONS` typed catalogue + `PlatformAuditEventInput`
+  (nullable actorUserId); `record(tx, event)` is the only API. Registered in
+  `platform.module.ts`.
+- **Six audited mutations (IMPLEMENTED), each gains a trailing `actorUserId`
+  from `@CurrentUser()` in the controller:**
+  - `create` → `institute.create` `{name, slug, planCode}` in-tx, then
+    `institute.primary_admin.attach` `{email, provisionedUser, userId,
+    membershipId, role}` in-tx when `primaryAdmin` supplied
+    (`attachPrimaryAdmin` now returns the disposition details);
+  - `update` → pre-image read + tx wrap, `institute.update`
+    `{changes:{before,after}}` with only the changed fields (no-op PATCH →
+    empty changes);
+  - `deactivate` / `reactivate` → same-tx event only on the 1-row success path
+    (0-row update → 404/409, tx rolls back, no event);
+  - `updateSubscription` → current planCode read in-tx before the upsert,
+    `institute.plan.change` `{fromPlanCode, toPlanCode}`.
+- **Not audited (DEFERRED/never):** any `institute_plane` mutation, OCR fleet
+  registry, reads, 401/403/400/404/409 paths, request instrumentation, and the
+  read surface (`GET /platform/institutes/:id/audit-events` + console view).
+- **Testing (IMPLEMENTED):** new `apps/api/src/platform/platform-audit.integration.ts`
+  (`test:platform-audit`, `TEST_DATABASE_URL`-gated, skips cleanly unset) — 9
+  cases: exact event per action with documented metadata shapes, actor/
+  resource/institute ids, validated `before`/`after` on successive updates,
+  from/to on successive plan changes, rolled-back mutations leave NO event
+  (duplicate slug + deactivated-primary-admin failures after the in-tx
+  insert), denial/failure paths write nothing, repeated updates are separate
+  append-only rows. Existing CRUD/lifecycle/plan/subscription suites updated
+  for the new signatures + `platformAuditEvents` cleanup.
+- **Migration journal note:** 0048's journal `when` was fixed to stay
+  monotonic (> 0047's canned timestamp) so drizzle-kit migrate applies it
+  (drizzle-kit skips entries whose `when` is ≤ the last applied). Applied to
+  `catlium_dev` (49/49) by the container migrate one-shot; scratch DBs rebuilt
+  from the patched journal.
+- **Validation:** api `tsc --noEmit` clean; api `nest build` pass;
+  `node --test` unit suite 226/226; 5 DB-gated platform suites vs a fresh
+  scratch `catlium_audit` (49/49 migrations) — institute-crud, institute-
+  lifecycle, plan-subscription, platform-plans, platform-audit — **44/44
+  green**. API container rebuilt from source, `catlium-api` healthy,
+  `/api/v1/health` 200, `/api/v1/platform/permissions` 401 unauthenticated;
+  `platform_audit_events` live in `catlium_dev`. (Repo `eslint` config is
+  absent as a pre-existing condition — no lint target to satisfy.)
+- **Docs updated:** platform-audit-trail.md (statuses → IMPLEMENTED where
+  built), project-status.md (this entry), tasks.md (Phase O.2).
+
+### Next task
+
+The audit write path is complete and validated. Deferred follow-ons (none
+scheduled): the read surface (`GET /platform/institutes/:id/audit-events` gated
+`institutes.manage` + a read-only Super Admin console audit view), 
+institute-plane audit, OCR-fleet-registry events, platform-user suspend/
+reactivate events, and automated deactivation (`actor_user_id NULL`).
+
 ## Phase O.1 — Platform Audit Trail Design (2026-09-23)
 
 **Status: DESIGN COMPLETE — documentation only, no code written.** Canonical

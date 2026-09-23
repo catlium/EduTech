@@ -35,6 +35,7 @@
     "test:plan-subscription": "tsx --test src/platform/plan-subscription.integration.ts",
     "test:institute-crud": "tsx --test src/platform/institute-crud.integration.ts",
     "test:platform-plans": "tsx --test src/platform/platform-plans.integration.ts",
+    "test:platform-audit": "tsx --test src/platform/platform-audit.integration.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

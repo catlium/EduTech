@@ -31,6 +31,7 @@ import { PermissionCheckService } from '../authorization/permission-check.servic
 import { PermissionSyncService } from '../authorization/permission-sync.service.ts';
 import { RoleAssignmentService } from '../authorization/role-assignment.service.ts';
 import { PlatformInstitutesService } from './platform-institutes.service.ts';
+import { PlatformAuditService } from './platform-audit.service.ts';
 import { PlatformAdminController } from './platform-admin.controller.ts';
 
 // Phase N.5 regression matrix for the Super Admin console prerequisites
@@ -128,7 +129,11 @@ test('platform plans catalog + permissions probe', { skip: testDbUrl ? false : '
   const sidAdmin = await liveSession(instAdmin!.id);
   const sidTeacher = await liveSession(teacher!.id);
 
-  const service = new PlatformInstitutesService(db as unknown as Database, new RoleAssignmentService(db as unknown as Database));
+  const service = new PlatformInstitutesService(
+    db as unknown as Database,
+    new RoleAssignmentService(db as unknown as Database),
+    new PlatformAuditService(),
+  );
   const permissionCheck = new PermissionCheckService(db as unknown as Database);
   const controller = new PlatformAdminController(service, permissionCheck);
 

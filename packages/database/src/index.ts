@@ -16,6 +16,7 @@ export { schema };
 // Re-export all schema tables and types for convenience
 export { users } from './schema/users.js';
 export { plans, instituteSubscriptions } from './schema/plans.js';
+export { platformAuditEvents } from './schema/platform-audit.js';
 export { authSessions, passwordResets } from './schema/auth.js';
 export { institutes } from './schema/institutes.js';
 export { memberships, membershipRoles } from './schema/memberships.js';

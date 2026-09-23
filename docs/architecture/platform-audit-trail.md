@@ -1,10 +1,13 @@
 # Platform Audit Trail
 
-**Status: DESIGN IMPLEMENTED (this document, Phase O.1, 2026-09-23); schema +
-mutation integration PLANNED; read surface DEFERRED.** This is the canonical
-design for the platform administrative audit trail. The platform admin surface
-that produces the audited mutations is live (`institute-lifecycle.md`, Phases
-N → N.5); the audit log itself is not built.
+**Status: IMPLEMENTED (schema + six-mutation write path, Phase O.2,
+2026-09-23); read surface DEFERRED.** This is the canonical design for the
+platform administrative audit trail. The platform admin surface that produces
+the audited mutations is live (`institute-lifecycle.md`, Phases N → N.5); the
+audit trail is now schema `platform_audit_events` (migration
+`0048_spooky_martin_li`) with `PlatformAuditService.record` writes inside the
+mutation transactions of `PlatformInstitutesService` (create, update,
+deactivate, reactivate, primary-admin attach, plan change).
 
 Every section marks its state: **IMPLEMENTED** (live in the repo),
 **PLANNED** (design agreed here; not built), or **DEFERRED** (out of scope,
@@ -66,10 +69,10 @@ guards and available to controllers via `@CurrentUser()`.
 
 ## 3. Event schema
 
-**PLANNED.** New Drizzle table `packages/database/src/schema/platform-audit.ts`,
-exported from `schema/index.ts` (mirrors `schema/plans.ts` and the package
-re-export pattern); migration **`0048_platform_audit_events.sql`** (next
-journal index after 0047).
+**IMPLEMENTED.** Drizzle table `packages/database/src/schema/platform-audit.ts`
+(exported from `schema/index.ts` via the package re-export pattern, mirroring
+`schema/plans.ts`); migration **`0048_spooky_martin_li.sql`** (journal index
+48, after 0047).
 
 | Column | Type | Meaning |
 | --- | --- | --- |
@@ -121,10 +124,12 @@ demands it (`ponytail:` note).
 
 ## 4. Action naming
 
-**PLANNED.** Events use `resource.action` dot notation — the same visual
+**IMPLEMENTED.** Events use `resource.action` dot notation — the same visual
 grammar as permission keys but a **distinct vocabulary**: a permission key
 names an *authority* (many keys can gate one mutation), an audit action names
-the *event* produced by a mutation (exactly one per committed mutation).
+the *event* produced by a mutation (exactly one per committed mutation). The
+typed catalogue is `PLATFORM_AUDIT_ACTIONS` in
+`apps/api/src/platform/platform-audit.service.ts`.
 
 Live vocabulary (the platform administrative events of §7):
 
@@ -151,8 +156,8 @@ action, so an unknown action cannot be emitted by accident.
 
 ## 5. Metadata shapes
 
-**PLANNED.** `metadata` is a JSONB object whose shape is fixed per action and
-written by the action-specific record helper. Shapes carry the minimum needed
+**IMPLEMENTED.** `metadata` is a JSONB object whose shape is fixed per action and
+written by the action-specific writer. Shapes carry the minimum needed
 to reconstruct an action's consequences; **no sensitive material ever** (no
 password hashes, tokens, or credentials — primary-admin provisioning's random
 password hash is never logged).
@@ -170,7 +175,7 @@ password hash is never logged).
 
 ## 6. Write path and transaction boundaries
 
-**PLANNED.** The core semantic: **an event row exists iff the mutation
+**IMPLEMENTED.** The core semantic: **an event row exists iff the mutation
 committed.** The event INSERT is executed in the **same database transaction**
 as the mutation, appended after the mutation's writes inside the tx. A failed
 or rolled-back mutation writes no event — success/failure falls out of
@@ -212,7 +217,8 @@ when".
 
 ## 7. What is audited now
 
-**PLANNED (this list is the implementation scope of the next slice).** One
+**IMPLEMENTED (migration 0048 + `PlatformAuditService`; covered by
+`test:platform-audit`).** One
 event per committed mutation, exactly matching the live platform routes
 (`apps/api/src/platform/`):
 
@@ -256,7 +262,7 @@ institute GETs mutate nothing and are never audited.
 
 ## 9. Retention
 
-**PLANNED.** Administrative events are rare and small (single-digit per
+**IMPLEMENTED.** Administrative events are rare and small (single-digit per
 institute per day worst-case), so the table is **append-only and retained
 indefinitely** — aligned with the established repo precedent ("add a scheduler
 only if the table grows under load", security-audit.md §AUDIT 2026-09-22 for
@@ -319,7 +325,11 @@ churn:
   permission model (`PermissionCatalogue`), guard chain (`AccessTokenGuard →
   PlatformGuard`).
 - `apps/api/src/platform/` — `platform-institutes.service.ts` (+ controller):
-  the mutation methods that will carry the writes.
+  the mutation methods that carry the writes; `platform-audit.service.ts` (the
+  `record` writer + `PLATFORM_AUDIT_ACTIONS` catalogue).
+- `apps/api/src/platform/platform-audit.integration.ts` — DB-gated suite
+  (`test:platform-audit`) proving event-per-committed-mutation, metadata
+  shapes, actor/resource/institute ids, and rollback atomicity.
 - `docs/architecture/security-audit.md` §AUDIT 2026-09-22 — "no audit trail
   exists" finding; global `users.status` re-posited to the platform-user track.
 - `apps/api/src/authorization/permission-catalogue.ts` — vocabulary style and

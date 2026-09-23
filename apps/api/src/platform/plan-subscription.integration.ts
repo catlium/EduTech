@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import * as bcryptjs from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, or } from 'drizzle-orm';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -27,6 +27,7 @@ import {
   institutes,
   plans,
   instituteSubscriptions,
+  platformAuditEvents,
 } from '@catlium/database';
 
 import { AccessTokenGuard } from '../common/guards/access-token.guard.ts';
@@ -38,6 +39,7 @@ import { PermissionSyncService } from '../authorization/permission-sync.service.
 import { RoleAssignmentService } from '../authorization/role-assignment.service.ts';
 import { PlatformInstitutesController } from './platform-institutes.controller.ts';
 import { PlatformInstitutesService } from './platform-institutes.service.ts';
+import { PlatformAuditService } from './platform-audit.service.ts';
 
 // Phase N.3 regression matrix for the platform-plane subscription management
 // API (institute-lifecycle §9/§11): GET/PUT /platform/institutes/:id/
@@ -143,8 +145,13 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
   const sidAdmin = await liveSession(instAdmin!.id);
   const sidTeacher = await liveSession(teacher!.id);
 
-  const service = new PlatformInstitutesService(db as unknown as Database, new RoleAssignmentService(db as unknown as Database));
+  const service = new PlatformInstitutesService(
+    db as unknown as Database,
+    new RoleAssignmentService(db as unknown as Database),
+    new PlatformAuditService(),
+  );
   const controller = new PlatformInstitutesController(service);
+  const actor = { userId: superUser!.id };
 
   const planRows = await db!.select().from(plans);
   const planCodes = planRows.map((p) => p.code);
@@ -165,6 +172,7 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
     const membershipIds = (
       await db.select({ id: memberships.id }).from(memberships).where(inArray(memberships.userId, userIds))
     ).map((r) => r.id!);
+    await db.delete(platformAuditEvents).where(or(inArray(platformAuditEvents.actorUserId, userIds)));
     await db.delete(membershipRoles).where(inArray(membershipRoles.membershipId, membershipIds));
     await db.delete(memberships).where(inArray(memberships.userId, userIds));
     await db.delete(platformUserRoles).where(inArray(platformUserRoles.userId, userIds));
@@ -172,6 +180,12 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
     await db.delete(users).where(inArray(users.email, emails));
     await db.delete(subjects).where(inArray(subjects.instituteId, [instA!.id, instB!.id]));
     await db.delete(instituteSubscriptions).where(inArray(instituteSubscriptions.instituteId, [instA!.id, instB!.id]));
+    await db.delete(platformAuditEvents).where(
+      or(
+        inArray(platformAuditEvents.actorUserId, userIds),
+        inArray(platformAuditEvents.resourceId, [instA!.id, instB!.id]),
+      ),
+    );
     await db.delete(institutes).where(inArray(institutes.slug, [slug, slugB]));
     void superMembership;
     void adminMembership;
@@ -180,7 +194,7 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
   });
 
   await t.test('1. SUPER_ADMIN reads the subscription', async () => {
-    await service.updateSubscription(instA!.id, { planCode: 'growth' });
+    await service.updateSubscription(instA!.id, { planCode: 'growth' }, superUser!.id);
     await platformPass(subscriptionHandler, noInstituteHeader(await superToken()));
     const result = await controller.subscription(instA!.id);
     assert.equal(result.instituteId, instA!.id);
@@ -191,7 +205,7 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
 
   await t.test('2. SUPER_ADMIN updates the subscription (switch plan)', async () => {
     await platformPass(updateSubscriptionHandler, noInstituteHeader(await superToken()), 'PUT');
-    const result = await controller.updateSubscription(instA!.id, { planCode: 'institute' });
+    const result = await controller.updateSubscription(actor, instA!.id, { planCode: 'institute' });
     assert.equal(result.planCode, 'institute');
     const [row] = await db!.select().from(instituteSubscriptions).where(eq(instituteSubscriptions.instituteId, instA!.id));
     assert.equal(row!.planId, planRows.find((p) => p.code === 'institute')!.id);
@@ -224,7 +238,7 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
   await t.test('4. nonexistent institute and invalid id fail safely', async () => {
     const missing = randomUUID();
     await assert.rejects(service.getSubscription(missing), NotFoundException);
-    await assert.rejects(service.updateSubscription(missing, { planCode: 'starter' }), NotFoundException);
+    await assert.rejects(service.updateSubscription(missing, { planCode: 'starter' }, superUser!.id), NotFoundException);
     await assert.rejects(
       new ParseUUIDPipe().transform('not-a-uuid', { type: 'param', metatype: String, data: 'id' }),
       BadRequestException,
@@ -232,7 +246,7 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
   });
 
   await t.test('5. invalid and inactive plans are rejected', async () => {
-    await assert.rejects(service.updateSubscription(instA!.id, { planCode: 'vault' }), (err: Error) => {
+    await assert.rejects(service.updateSubscription(instA!.id, { planCode: 'vault' }, superUser!.id), (err: Error) => {
       assert.equal(err.constructor, BadRequestException);
       assert.match(err.message, /'vault' is unknown or not active/);
       return true;
@@ -240,7 +254,7 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
     // Deactivate a seeded plan in the DB → it must become unassignable.
     const target = planRows.find((p) => p.code === 'growth')!;
     await db!.update(plans).set({ isActive: false, updatedAt: new Date() }).where(eq(plans.id, target.id));
-    await assert.rejects(service.updateSubscription(instA!.id, { planCode: 'growth' }), (err: Error) => {
+    await assert.rejects(service.updateSubscription(instA!.id, { planCode: 'growth' }, superUser!.id), (err: Error) => {
       assert.equal(err.constructor, BadRequestException);
       assert.match(err.message, /'growth' is unknown or not active/);
       return true;
@@ -251,14 +265,14 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
   await t.test('6. valid plan transitions round-trip', async () => {
     for (const code of ['starter', 'growth', 'institute', 'starter']) {
       await platformPass(updateSubscriptionHandler, noInstituteHeader(await superToken()), 'PUT');
-      const result = await controller.updateSubscription(instA!.id, { planCode: code });
+      const result = await controller.updateSubscription(actor, instA!.id, { planCode: code });
       assert.equal(result.planCode, code);
     }
   });
 
   await t.test('7. one subscription row per institute (upsert invariant)', async () => {
     for (let i = 0; i < 5; i++) {
-      await service.updateSubscription(instA!.id, { planCode: i % 2 ? 'growth' : 'starter' });
+      await service.updateSubscription(instA!.id, { planCode: i % 2 ? 'growth' : 'starter' }, superUser!.id);
     }
     const rows = await db!.select().from(instituteSubscriptions).where(eq(instituteSubscriptions.instituteId, instA!.id));
     assert.equal(rows.length, 1, 'repeated upserts never create a second row');
@@ -269,8 +283,8 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
 
   await t.test('8. subscription changes do not bypass or alter institute lifecycle access', async () => {
     // Move A to 'growth', then deactivate A via the real lifecycle mutation.
-    await service.updateSubscription(instA!.id, { planCode: 'growth' });
-    await service.deactivate(instA!.id);
+    await service.updateSubscription(instA!.id, { planCode: 'growth' }, superUser!.id);
+    await service.deactivate(instA!.id, superUser!.id);
 
     // Tenant plane: deactivated institute → TenantGuard 403 next request.
     const ctx = reqContext(subscriptionHandler, withInstitute(await adminToken()), 'GET');
@@ -287,13 +301,13 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
     const readBack = await controller.subscription(instA!.id);
     assert.equal(readBack.planCode, 'growth');
     await platformPass(updateSubscriptionHandler, noInstituteHeader(await superToken()), 'PUT');
-    await controller.updateSubscription(instA!.id, { planCode: 'institute' });
+    await controller.updateSubscription(actor, instA!.id, { planCode: 'institute' });
     const [stillDeactivated] = await db!.select().from(institutes).where(eq(institutes.id, instA!.id));
     assert.equal(stillDeactivated!.status, 'deactivated', 'plan switch on deactivated institute leaves it deactivated');
     assert.ok(stillDeactivated!.deactivatedAt instanceof Date, 'deactivated_at preserved');
 
     // Reactivation (lifecycle mutation) changes only institute status.
-    await service.reactivate(instA!.id);
+    await service.reactivate(instA!.id, superUser!.id);
     const [reactivated] = await db!.select().from(institutes).where(eq(institutes.id, instA!.id));
     assert.equal(reactivated!.status, 'active');
     const [afterReact] = await db!.select().from(instituteSubscriptions).where(eq(instituteSubscriptions.instituteId, instA!.id));
@@ -308,8 +322,8 @@ test('platform subscription management', { skip: testDbUrl ? false : 'TEST_DATAB
   });
 
   await t.test('9. no cross-tenant data exposure', async () => {
-    await service.updateSubscription(instA!.id, { planCode: 'starter' });
-    await service.updateSubscription(instB!.id, { planCode: 'institute' });
+    await service.updateSubscription(instA!.id, { planCode: 'starter' }, superUser!.id);
+    await service.updateSubscription(instB!.id, { planCode: 'institute' }, superUser!.id);
     const a = await controller.subscription(instA!.id);
     const b = await controller.subscription(instB!.id);
     assert.equal(a.instituteId, instA!.id);

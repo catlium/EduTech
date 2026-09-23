@@ -30,20 +30,38 @@
       Every section marked IMPLEMENTED / PLANNED / DEFERRED.
 - [x] Commit `docs(platform): design platform audit trail` (+ push).
 
-### Next task (implementation slice — PLANNED, not scheduled)
+## Phase O.2 — Platform Audit Trail Implementation (2026-09-23, IMPLEMENTED)
 
-- [ ] Migration `0048_platform_audit_events.sql` + `packages/database/src/
-      schema/platform-audit.ts` (exported from schema/index) with the §3
-      columns and §3 indexes.
-- [ ] `PlatformAuditService.record(tx, …)` helper + `PLATFORM_AUDIT_ACTIONS`
+> Issued task. Implement the Phase O.1 audit-trail design: schema + migration,
+> `PlatformAuditService.record`, `actorUserId` threading into the six platform
+> mutations, DB-gated integration suite. Commit
+> `feat(platform): add platform audit trail`.
+
+- [x] Migration `0048_spooky_martin_li.sql` + `packages/database/src/
+      schema/platform-audit.ts` (exported from schema/index + package root)
+      with the §3 columns and §3 indexes. Journal `when` patched to stay
+      monotonic (> 0047) so drizzle-kit migrate applies the entry.
+- [x] `PlatformAuditService.record(tx, …)` helper + `PLATFORM_AUDIT_ACTIONS`
       catalogue; `actorUserId` threading and same-tx event inserts in
       `platform-institutes.service.ts` (`create`, `update`, `deactivate`,
-      `reactivate`, `updateSubscription`), actor from `@CurrentUser()` in
-      `platform-institutes.controller.ts`.
-- [ ] DB-gated integration suite `test:platform-audit`: one event per committed
-      mutation; NO event on rollback / 409 / 404 / 401 / 403; event is
-      atomic-with-mutation; metadata shapes incl. primary-admin
-      `provisionedUser` and plan-change from/to; immutable rows.
+      `reactivate`, `updateSubscription` + in-tx primary-admin attach), actor
+      from `@CurrentUser()` in `platform-institutes.controller.ts`.
+- [x] DB-gated integration suite `test:platform-audit` (9 cases): one event per
+      committed mutation; NO event on rollback / 409 / 404 / 401 / 403; event
+      is atomic-with-mutation; metadata shapes incl. primary-admin
+      `provisionedUser` and plan-change from/to; repeated updates are separate
+      append-only rows. Existing platform suites updated for signatures +
+      `platformAuditEvents` cleanup.
+- [x] Validation: api tsc + `nest build` pass; unit 226/226; 5 DB-gated
+      platform suites 44/44 vs fresh scratch `catlium_audit` (49/49
+      migrations); API container rebuilt + healthy, audit table live in
+      `catlium_dev`.
+- [x] Docs: platform-audit-trail.md statuses → IMPLEMENTED, project-status.md
+      Phase O.2, tasks.md this entry.
+- [x] Commit `feat(platform): add platform audit trail` (+ push).
+
+### Deferred (unchanged from O.1)
+
 - [ ] (DEFERRED) Read endpoint `GET /platform/institutes/:id/audit-events`
       (gate `institutes.manage`) + Super Admin console audit view.
 - [ ] (DEFERRED) OCR-worker fleet registry events; platform-user lifecycle

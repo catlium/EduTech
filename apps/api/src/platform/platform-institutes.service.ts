@@ -19,6 +19,10 @@ import { DATABASE_TOKEN } from '../database/database.module.js';
 import { RoleAssignmentService } from '../authorization/role-assignment.service.js';
 import { INSTITUTE_ADMIN } from '../authorization/permission-catalogue.js';
 import { isUniqueViolation } from '../common/utils/db-errors.util.js';
+import {
+  PlatformAuditService,
+  PLATFORM_AUDIT_ACTIONS,
+} from './platform-audit.service.js';
 import type { CreateInstituteDto, PrimaryAdminDto, UpdateInstituteDto } from './platform-institutes.dto.js';
 
 export interface InstituteLifecycleResult {
@@ -80,34 +84,69 @@ export class PlatformInstitutesService {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
     private readonly roleAssignment: RoleAssignmentService,
+    private readonly audit: PlatformAuditService,
   ) {}
 
   // ── Lifecycle mutations (§7) ─────────────────────────────────────────
 
-  async deactivate(id: string): Promise<InstituteLifecycleResult> {
-    const [updated] = await this.db
-      .update(institutes)
-      .set({ status: 'deactivated', deactivatedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(institutes.id, id), eq(institutes.status, 'active')))
-      .returning({
-        id: institutes.id,
-        status: institutes.status,
-        deactivatedAt: institutes.deactivatedAt,
+  /**
+   * Deactivate an institute. The conditional UPDATE doubles as the
+   * state-transition guard; the `institute.deactivate` audit event is written
+   * in the same transaction, ONLY on the changed-row success path — a 0-row
+   * update (invalid transition) throws 409/404 and no event survives.
+   */
+  async deactivate(id: string, actorUserId: string): Promise<InstituteLifecycleResult> {
+    const updated = await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(institutes)
+        .set({ status: 'deactivated', deactivatedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(institutes.id, id), eq(institutes.status, 'active')))
+        .returning({
+          id: institutes.id,
+          status: institutes.status,
+          deactivatedAt: institutes.deactivatedAt,
+        });
+      if (!row) return undefined;
+      await this.audit.record(tx, {
+        actorUserId,
+        action: PLATFORM_AUDIT_ACTIONS.INSTITUTE_DEACTIVATE,
+        resourceType: 'institute',
+        resourceId: id,
+        instituteId: id,
+        metadata: { status: 'deactivated' },
       });
+      return row;
+    });
     if (updated) return updated;
     return this.rejectTransition(id, 'already deactivated');
   }
 
-  async reactivate(id: string): Promise<InstituteLifecycleResult> {
-    const [updated] = await this.db
-      .update(institutes)
-      .set({ status: 'active', deactivatedAt: null, updatedAt: new Date() })
-      .where(and(eq(institutes.id, id), eq(institutes.status, 'deactivated')))
-      .returning({
-        id: institutes.id,
-        status: institutes.status,
-        deactivatedAt: institutes.deactivatedAt,
+  /**
+   * Reactivate an institute — mirror of `deactivate` (event only on the
+   * changed-row success path).
+   */
+  async reactivate(id: string, actorUserId: string): Promise<InstituteLifecycleResult> {
+    const updated = await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(institutes)
+        .set({ status: 'active', deactivatedAt: null, updatedAt: new Date() })
+        .where(and(eq(institutes.id, id), eq(institutes.status, 'deactivated')))
+        .returning({
+          id: institutes.id,
+          status: institutes.status,
+          deactivatedAt: institutes.deactivatedAt,
+        });
+      if (!row) return undefined;
+      await this.audit.record(tx, {
+        actorUserId,
+        action: PLATFORM_AUDIT_ACTIONS.INSTITUTE_REACTIVATE,
+        resourceType: 'institute',
+        resourceId: id,
+        instituteId: id,
+        metadata: { status: 'active' },
       });
+      return row;
+    });
     if (updated) return updated;
     return this.rejectTransition(id, 'already active');
   }
@@ -182,9 +221,10 @@ export class PlatformInstitutesService {
    * documented creation flow). No public/self-registration — platform plane
    * only. Duplicate slug → 409 (schema-unique).
    */
-  async create(dto: CreateInstituteDto): Promise<InstituteDetail> {
+  async create(dto: CreateInstituteDto, actorUserId: string): Promise<InstituteDetail> {
     const slug = dto.slug ?? this.slugify(dto.name);
-    const plan = await this.resolveActivePlanId(dto.planCode ?? 'starter');
+    const effectivePlanCode = dto.planCode ?? 'starter';
+    const plan = await this.resolveActivePlanId(effectivePlanCode);
 
     let instituteId: string;
     try {
@@ -194,8 +234,30 @@ export class PlatformInstitutesService {
           .values({ name: dto.name, slug })
           .returning({ id: institutes.id });
         await tx.insert(instituteSubscriptions).values({ instituteId: inst.id, planId: plan.id });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: PLATFORM_AUDIT_ACTIONS.INSTITUTE_CREATE,
+          resourceType: 'institute',
+          resourceId: inst.id,
+          instituteId: inst.id,
+          metadata: { name: dto.name, slug, planCode: effectivePlanCode },
+        });
         if (dto.primaryAdmin) {
-          await this.attachPrimaryAdmin(tx, inst.id, dto.primaryAdmin);
+          const attached = await this.attachPrimaryAdmin(tx, inst.id, dto.primaryAdmin);
+          await this.audit.record(tx, {
+            actorUserId,
+            action: PLATFORM_AUDIT_ACTIONS.INSTITUTE_PRIMARY_ADMIN_ATTACH,
+            resourceType: 'institute',
+            resourceId: inst.id,
+            instituteId: inst.id,
+            metadata: {
+              email: attached.email,
+              provisionedUser: attached.provisionedUser,
+              userId: attached.userId,
+              membershipId: attached.membershipId,
+              role: INSTITUTE_ADMIN,
+            },
+          });
         }
         return inst.id;
       });
@@ -218,27 +280,57 @@ export class PlatformInstitutesService {
   }
 
   /** Rename / metadata update only — status transitions belong to deactivate/reactivate. */
-  async update(id: string, dto: UpdateInstituteDto): Promise<InstituteSummary> {
+  async update(id: string, dto: UpdateInstituteDto, actorUserId: string): Promise<InstituteSummary> {
     const patch: Partial<typeof institutes.$inferInsert> = { updatedAt: new Date() };
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.slug !== undefined) patch.slug = dto.slug;
 
     try {
-      const [row] = await this.db
-        .update(institutes)
-        .set(patch)
-        .where(eq(institutes.id, id))
-        .returning({
-          id: institutes.id,
-          name: institutes.name,
-          slug: institutes.slug,
-          status: institutes.status,
-          deactivatedAt: institutes.deactivatedAt,
-          createdAt: institutes.createdAt,
-          updatedAt: institutes.updatedAt,
+      const row = await this.db.transaction(async (tx) => {
+        const [before] = await tx
+          .select({ name: institutes.name, slug: institutes.slug })
+          .from(institutes)
+          .where(eq(institutes.id, id))
+          .limit(1);
+        if (!before) throw new NotFoundException('Institute not found');
+
+        const [updated] = await tx
+          .update(institutes)
+          .set(patch)
+          .where(eq(institutes.id, id))
+          .returning({
+            id: institutes.id,
+            name: institutes.name,
+            slug: institutes.slug,
+            status: institutes.status,
+            deactivatedAt: institutes.deactivatedAt,
+            createdAt: institutes.createdAt,
+            updatedAt: institutes.updatedAt,
+          });
+
+        // Only the fields that changed end up in `before`/`after`; an empty
+        // PATCH is a no-op event.
+        const beforeChanges: Record<string, string> = {};
+        const afterChanges: Record<string, string> = {};
+        if (dto.name !== undefined) {
+          beforeChanges.name = before.name;
+          afterChanges.name = patch.name!;
+        }
+        if (dto.slug !== undefined) {
+          beforeChanges.slug = before.slug;
+          afterChanges.slug = patch.slug!;
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: PLATFORM_AUDIT_ACTIONS.INSTITUTE_UPDATE,
+          resourceType: 'institute',
+          resourceId: id,
+          instituteId: id,
+          metadata: { changes: { before: beforeChanges, after: afterChanges } },
         });
-      if (!row) throw new NotFoundException('Institute not found');
-      return row;
+        return updated;
+      });
+      return row!;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('An institute with this slug already exists');
@@ -312,7 +404,7 @@ export class PlatformInstitutesService {
    * tenant-access gate), and it works regardless of subscription state because
    * the ledger is untied to institute status.
    */
-  async updateSubscription(id: string, input: { planCode: string }): Promise<InstituteSubscriptionResult> {
+  async updateSubscription(id: string, input: { planCode: string }, actorUserId: string): Promise<InstituteSubscriptionResult> {
     if (typeof input?.planCode !== 'string' || input.planCode.length === 0) {
       throw new BadRequestException('planCode is required');
     }
@@ -325,7 +417,16 @@ export class PlatformInstitutesService {
     if (!existing) throw new NotFoundException('Institute not found');
 
     // Upsert keeps exactly one subscription row per institute (PK invariant).
+    // The previous plan is read inside the tx (before the upsert) so the audit
+    // `fromPlanCode` is exactly what this mutation replaced; null only in the
+    // exotic no-ledger first-assignment case (create always seeds the ledger).
     await this.db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({ planCode: plans.code })
+        .from(instituteSubscriptions)
+        .innerJoin(plans, eq(instituteSubscriptions.planId, plans.id))
+        .where(eq(instituteSubscriptions.instituteId, id))
+        .limit(1);
       await tx
         .insert(instituteSubscriptions)
         .values({ instituteId: id, planId: plan.id })
@@ -333,6 +434,14 @@ export class PlatformInstitutesService {
           target: instituteSubscriptions.instituteId,
           set: { planId: plan.id, updatedAt: new Date() },
         });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: PLATFORM_AUDIT_ACTIONS.INSTITUTE_PLAN_CHANGE,
+        resourceType: 'institute',
+        resourceId: id,
+        instituteId: id,
+        metadata: { fromPlanCode: current?.planCode ?? null, toPlanCode: input.planCode },
+      });
     });
 
     return this.getSubscription(id);
@@ -374,13 +483,18 @@ export class PlatformInstitutesService {
    * the existing password-reset seam (Phase K F5), so this API never hands out
    * credentials. Either way the INSTITUTE_ADMIN role is granted through
    * RoleAssignmentService (built-in-first, no platform role ever a membership
-   * role).
+   * role). Returns the disposition details needed by the audit attach event.
    */
-  private async attachPrimaryAdmin(tx: Tx, instituteId: string, admin: PrimaryAdminDto): Promise<void> {
+  private async attachPrimaryAdmin(
+    tx: Tx,
+    instituteId: string,
+    admin: PrimaryAdminDto,
+  ): Promise<{ email: string; provisionedUser: boolean; userId: string; membershipId: string; role: string }> {
     const email = normalizeEmail(admin.email);
     const [existing] = await tx.select().from(users).where(eq(users.email, email)).limit(1);
 
     let userId: string;
+    let provisionedUser = false;
     if (existing) {
       if (existing.status !== 'active') {
         throw new BadRequestException('Primary admin user is not active');
@@ -403,12 +517,14 @@ export class PlatformInstitutesService {
         .returning();
       if (!created) throw new Error('failed to create primary admin user');
       userId = created.id;
+      provisionedUser = true;
     }
 
     const [membership] = await tx.insert(memberships).values({ userId, instituteId }).returning();
     if (!membership) throw new Error('failed to create membership');
     const roleId = await this.roleAssignment.resolveRoleId(instituteId, INSTITUTE_ADMIN);
     await tx.insert(membershipRoles).values({ membershipId: membership.id, roleId });
+    return { email, provisionedUser, userId: membership.userId, membershipId: membership.id, role: INSTITUTE_ADMIN };
   }
 
   private slugify(name: string): string {

@@ -16,6 +16,8 @@ import {
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { PlatformGuard } from '../authorization/platform.guard.js';
 import { RequiredPermission } from '../authorization/permissions.decorator.js';
+import { CurrentUser } from '../common/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import {
   PlatformInstitutesService,
   type InstituteAdmin,
@@ -45,8 +47,8 @@ export class PlatformInstitutesController {
 
   @Post()
   @RequiredPermission('institutes.create')
-  create(@Body() dto: CreateInstituteDto): Promise<InstituteDetail> {
-    return this.institutes.create(dto);
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateInstituteDto): Promise<InstituteDetail> {
+    return this.institutes.create(dto, user.userId);
   }
 
   @Get(':id')
@@ -57,8 +59,12 @@ export class PlatformInstitutesController {
 
   @Patch(':id')
   @RequiredPermission('institutes.update')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateInstituteDto): Promise<InstituteSummary> {
-    return this.institutes.update(id, dto);
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateInstituteDto,
+  ): Promise<InstituteSummary> {
+    return this.institutes.update(id, dto, user.userId);
   }
 
   @Get(':id/admins')
@@ -70,15 +76,21 @@ export class PlatformInstitutesController {
   @Post(':id/deactivate')
   @HttpCode(HttpStatus.OK)
   @RequiredPermission('institutes.update')
-  deactivate(@Param('id', ParseUUIDPipe) id: string): Promise<{ id: string; status: string; deactivatedAt: Date | null }> {
-    return this.institutes.deactivate(id);
+  deactivate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ id: string; status: string; deactivatedAt: Date | null }> {
+    return this.institutes.deactivate(id, user.userId);
   }
 
   @Post(':id/reactivate')
   @HttpCode(HttpStatus.OK)
   @RequiredPermission('institutes.update')
-  reactivate(@Param('id', ParseUUIDPipe) id: string): Promise<{ id: string; status: string; deactivatedAt: Date | null }> {
-    return this.institutes.reactivate(id);
+  reactivate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ id: string; status: string; deactivatedAt: Date | null }> {
+    return this.institutes.reactivate(id, user.userId);
   }
 
   @Get(':id/subscription')
@@ -90,9 +102,10 @@ export class PlatformInstitutesController {
   @Put(':id/subscription')
   @RequiredPermission('institutes.manage')
   updateSubscription(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { planCode: string },
   ): Promise<InstituteSubscriptionResult> {
-    return this.institutes.updateSubscription(id, body);
+    return this.institutes.updateSubscription(id, body, user.userId);
   }
 }

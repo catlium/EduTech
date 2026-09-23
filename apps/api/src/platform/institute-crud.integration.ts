@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import * as bcryptjs from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, or } from 'drizzle-orm';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -27,6 +27,7 @@ import {
   roles,
   institutes,
   instituteSubscriptions,
+  platformAuditEvents,
 } from '@catlium/database';
 
 import { AccessTokenGuard } from '../common/guards/access-token.guard.ts';
@@ -38,6 +39,7 @@ import { PermissionSyncService } from '../authorization/permission-sync.service.
 import { RoleAssignmentService } from '../authorization/role-assignment.service.ts';
 import { PlatformInstitutesController } from './platform-institutes.controller.ts';
 import { PlatformInstitutesService } from './platform-institutes.service.ts';
+import { PlatformAuditService } from './platform-audit.service.ts';
 import { CreateInstituteDto, UpdateInstituteDto } from './platform-institutes.dto.ts';
 
 // Phase N.4 regression matrix for the platform-plane institute management API
@@ -185,8 +187,13 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
   const sidAdmin = await liveSession(instAdmin!.id);
   const sidTeacher = await liveSession(teacher!.id);
 
-  const service = new PlatformInstitutesService(db as unknown as Database, new RoleAssignmentService(db as unknown as Database));
+  const service = new PlatformInstitutesService(
+    db as unknown as Database,
+    new RoleAssignmentService(db as unknown as Database),
+    new PlatformAuditService(),
+  );
   const controller = new PlatformInstitutesController(service);
+  const actor = { userId: superUser!.id };
 
   const noInstituteHeader = (token: string) => ({ cookies: { access_token: token } });
   const withInstitute = (token: string) => ({ headers: { 'x-institute-id': seedInst!.id }, cookies: { access_token: token } });
@@ -206,6 +213,9 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
       await db.delete(memberships).where(inArray(memberships.userId, userIds));
       await db.delete(platformUserRoles).where(inArray(platformUserRoles.userId, userIds));
       await db.delete(authSessions).where(inArray(authSessions.userId, userIds));
+      await db
+        .delete(platformAuditEvents)
+        .where(or(inArray(platformAuditEvents.actorUserId, userIds), inArray(platformAuditEvents.resourceId, [seedInst!.id])));
       await db.delete(users).where(inArray(users.email, emails));
     }
     await db.delete(instituteSubscriptions).where(inArray(instituteSubscriptions.instituteId, [seedInst!.id]));
@@ -215,7 +225,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
 
   await t.test('1. SUPER_ADMIN creates, lists, gets and updates institutes (platform plane)', async () => {
     await platformPass(createHandler, noInstituteHeader(await superToken()), 'POST');
-    const created = await controller.create({ name: `Crud Institute A ${suffix}`, slug: slugA });
+    const created = await controller.create(actor, { name: `Crud Institute A ${suffix}`, slug: slugA });
     assert.equal(created.slug, slugA);
     assert.equal(created.status, 'active');
     assert.equal(created.memberCount, 0, 'no members yet');
@@ -227,7 +237,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
     assert.ok(subRow, 'subscription ledger row attached at provision');
 
     // Slug auto-generation when omitted.
-    const auto = await controller.create({ name: 'Crud B Institute' });
+    const auto = await controller.create(actor, { name: 'Crud B Institute' });
     assert.equal(auto.slug, 'crud-b-institute', 'slug derived from name');
 
     // List + detail.
@@ -248,7 +258,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
 
     // Update name + slug.
     await platformPass(updateHandler, noInstituteHeader(await superToken()), 'PATCH');
-    const updated = await controller.update(created.id, { name: `Renamed ${suffix}`, slug: slugB });
+    const updated = await controller.update(actor, created.id, { name: `Renamed ${suffix}`, slug: slugB });
     assert.equal(updated.name, `Renamed ${suffix}`);
     assert.equal(updated.slug, slugB);
     const [renamed] = await db!.select().from(institutes).where(eq(institutes.id, created.id));
@@ -290,7 +300,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
   });
 
   await t.test('3. duplicate slug conflicts (create + rename)', async () => {
-    await assert.rejects(controller.create({ name: `Dup ${suffix}`, slug: slugB }), (err: Error) => {
+    await assert.rejects(controller.create(actor, { name: `Dup ${suffix}`, slug: slugB }), (err: Error) => {
       assert.equal(err.constructor, ConflictException);
       assert.match(err.message, /slug already exists/);
       return true;
@@ -299,7 +309,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
     assert.equal(dupRows.length, 1, 'transaction rolled back — no second institute row');
 
     // Renaming onto an existing slug conflicts too.
-    await assert.rejects(controller.update((await controller.get(seedInst!.id)).id, { slug: slugB }), (err: Error) => {
+    await assert.rejects(controller.update(actor, (await controller.get(seedInst!.id)).id, { slug: slugB }), (err: Error) => {
       assert.equal(err.constructor, ConflictException);
       assert.match(err.message, /slug already exists/);
       return true;
@@ -309,7 +319,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
   await t.test('4. invalid / nonexistent institutes fail safely', async () => {
     const missing = randomUUID();
     await assert.rejects(controller.get(missing), NotFoundException);
-    await assert.rejects(controller.update(missing, { name: 'x' }), NotFoundException);
+    await assert.rejects(controller.update(actor, missing, { name: 'x' }), NotFoundException);
     await assert.rejects(controller.admins(missing), NotFoundException);
     await assert.rejects(
       new ParseUUIDPipe().transform('not-a-uuid', { type: 'param', metatype: String, data: 'id' }),
@@ -323,7 +333,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
       pipe.transform({ name: 'x', status: 'deactivated' } as CreateInstituteDto, { type: 'body', metatype: UpdateInstituteDto }),
       BadRequestException,
     );
-    const patchWithStatus = await controller.update((await controller.get(seedInst!.id)).id, {
+    const patchWithStatus = await controller.update(actor, (await controller.get(seedInst!.id)).id, {
       slug: `crud-seed-${suffix}`,
       status: 'deactivated',
     } as unknown as UpdateInstituteDto);
@@ -333,7 +343,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
   await t.test('5. primary-admin provisioning (new user) and attachment (existing user)', async () => {
     // Provision a brand-new primary admin via the documented creation flow.
     await platformPass(createHandler, noInstituteHeader(await superToken()), 'POST');
-    const provisioned = await controller.create({
+    const provisioned = await controller.create(actor, {
       name: `Prov Inst ${suffix}`,
       slug: slugC,
       primaryAdmin: { email: provAdminEmail, name: `Prov Admin ${suffix}` },
@@ -346,7 +356,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
     assert.notEqual(provUser!.passwordHash, 'wrong horse battery staple', 'password is a fresh unknown hash');
 
     // Attach the SAME user to a second institute (create/upsert path).
-    const attached = await controller.create({
+    const attached = await controller.create(actor, {
       name: `Attach Inst ${suffix}`,
       slug: slugD,
       primaryAdmin: { email: provAdminEmail },
@@ -357,7 +367,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
 
     // Invalid identity: new email without a name cannot be provisioned.
     await assert.rejects(
-      controller.create({ name: `NoName ${suffix}`, slug: slugE, primaryAdmin: { email: noNameEmail } }),
+      controller.create(actor, { name: `NoName ${suffix}`, slug: slugE, primaryAdmin: { email: noNameEmail } }),
       (err: Error) => {
         assert.equal(err.constructor, BadRequestException);
         assert.match(err.message, /name is required/);
@@ -371,7 +381,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
 
     // Invalid identity: a deactivated user cannot become primary admin.
     await assert.rejects(
-      controller.create({
+      controller.create(actor, {
         name: `Deact ${suffix}`,
         slug: slugF,
         primaryAdmin: { email: deactivatedAdmin!.email },
@@ -425,7 +435,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
   await t.test('7. tenant isolation — per-institute membership + admin scoping', async () => {
     // A second institute with a distinct admin.
     await platformPass(createHandler, noInstituteHeader(await superToken()), 'POST');
-    await controller.create({ name: `Isolate B ${suffix}`, slug: slugG, primaryAdmin: { email: attachEmail, name: 'B Admin' } });
+    await controller.create(actor, { name: `Isolate B ${suffix}`, slug: slugG, primaryAdmin: { email: attachEmail, name: 'B Admin' } });
 
     const adminsProv = await controller.admins((await db!.select().from(institutes).where(eq(institutes.slug, slugC)))[0]!.id);
     const adminsB = await controller.admins((await db!.select().from(institutes).where(eq(institutes.slug, slugG)))[0]!.id);
@@ -450,7 +460,7 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
   await t.test('8. deactivated institutes stay visible + manageable on the platform plane', async () => {
     const [instC] = await db!.select().from(institutes).where(eq(institutes.slug, slugC));
     await platformPass(deactivateHandler, noInstituteHeader(await superToken()), 'POST');
-    await controller.deactivate(instC!.id);
+    await controller.deactivate(actor, instC!.id);
 
     const all = await controller.list(undefined);
     const item = all.find((i) => i.id === instC!.id)!;
@@ -470,25 +480,25 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
     assert.deepEqual(admins.map((a) => a.email), [provAdminEmail], 'admins still readable while deactivated');
 
     await platformPass(updateHandler, noInstituteHeader(await superToken()), 'PATCH');
-    const renamed = await controller.update(instC!.id, { name: `Deactivated Renamed ${suffix}` });
+    const renamed = await controller.update(actor, instC!.id, { name: `Deactivated Renamed ${suffix}` });
     assert.equal(renamed.status, 'deactivated', 'PATCH on a deactivated institute leaves the lifecycle state untouched');
   });
 
   await t.test('9. deactivate/reactivate behavior remains unchanged', async () => {
     await platformPass(createHandler, noInstituteHeader(await superToken()), 'POST');
-    const instD = await controller.create({ name: `Lifecycle D ${suffix}`, slug: slugE });
+    const instD = await controller.create(actor, { name: `Lifecycle D ${suffix}`, slug: slugE });
 
     await platformPass(deactivateHandler, noInstituteHeader(await superToken()), 'POST');
-    const deactivated = await controller.deactivate(instD.id);
+    const deactivated = await controller.deactivate(actor, instD.id);
     assert.equal(deactivated.status, 'deactivated');
     assert.ok(deactivated.deactivatedAt instanceof Date);
-    await assert.rejects(controller.deactivate(instD.id), ConflictException, 'repeat deactivate conflicts');
+    await assert.rejects(controller.deactivate(actor, instD.id), ConflictException, 'repeat deactivate conflicts');
 
     await platformPass(reactivateHandler, noInstituteHeader(await superToken()), 'POST');
-    const reactivated = await controller.reactivate(instD.id);
+    const reactivated = await controller.reactivate(actor, instD.id);
     assert.equal(reactivated.status, 'active');
     assert.equal(reactivated.deactivatedAt, null, 'stamp cleared');
-    await assert.rejects(controller.reactivate(instD.id), ConflictException, 'repeat reactivate conflicts');
+    await assert.rejects(controller.reactivate(actor, instD.id), ConflictException, 'repeat reactivate conflicts');
 
     const [row] = await db!.select().from(institutes).where(eq(institutes.id, instD.id));
     assert.equal(row!.status, 'active');
@@ -496,27 +506,27 @@ test('platform institute management', { skip: testDbUrl ? false : 'TEST_DATABASE
 
   await t.test('10. subscription remains independent from institute lifecycle', async () => {
     await platformPass(createHandler, noInstituteHeader(await superToken()), 'POST');
-    const instE = await controller.create({ name: `Sub Lifecycle E ${suffix}`, slug: slugF });
+    const instE = await controller.create(actor, { name: `Sub Lifecycle E ${suffix}`, slug: slugF });
 
     await platformPass(subscriptionHandler, noInstituteHeader(await superToken()), 'GET');
     const initial = await controller.subscription(instE.id);
     assert.equal(initial.planCode, 'starter', 'provision attached the default plan');
 
     await platformPass(deactivateHandler, noInstituteHeader(await superToken()), 'POST');
-    await controller.deactivate(instE.id);
+    await controller.deactivate(actor, instE.id);
 
     const stillReadable = await controller.subscription(instE.id);
     assert.equal(stillReadable.planCode, 'starter', 'subscription readable on a deactivated institute');
 
     await platformPass(updateSubscriptionHandler, noInstituteHeader(await superToken()), 'PUT');
-    const switched = await controller.updateSubscription(instE.id, { planCode: 'growth' });
+    const switched = await controller.updateSubscription(actor, instE.id, { planCode: 'growth' });
     assert.equal(switched.planCode, 'growth');
     const [stillDeactivated] = await db!.select().from(institutes).where(eq(institutes.id, instE.id));
     assert.equal(stillDeactivated!.status, 'deactivated', 'plan switch does NOT reactivate');
     assert.ok(stillDeactivated!.deactivatedAt instanceof Date, 'deactivated_at preserved through plan switch');
 
     await platformPass(reactivateHandler, noInstituteHeader(await superToken()), 'POST');
-    await controller.reactivate(instE.id);
+    await controller.reactivate(actor, instE.id);
     const [reactivated] = await db!.select().from(institutes).where(eq(institutes.id, instE.id));
     assert.equal(reactivated!.status, 'active');
     const after = await controller.subscription(instE.id);

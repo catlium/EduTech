@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import * as bcryptjs from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, or } from 'drizzle-orm';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -26,6 +26,7 @@ import {
   platformUserRoles,
   roles,
   institutes,
+  platformAuditEvents,
 } from '@catlium/database';
 
 import { AccessTokenGuard } from '../common/guards/access-token.guard.ts';
@@ -37,6 +38,7 @@ import { PermissionSyncService } from '../authorization/permission-sync.service.
 import { RoleAssignmentService } from '../authorization/role-assignment.service.ts';
 import { PlatformInstitutesController } from './platform-institutes.controller.ts';
 import { PlatformInstitutesService } from './platform-institutes.service.ts';
+import { PlatformAuditService } from './platform-audit.service.ts';
 
 // Phase N.2 regression matrix for the platform-plane institute lifecycle
 // mutations (institute-lifecycle §7). Runs the REAL guard chain
@@ -138,8 +140,13 @@ test('institute lifecycle mutations', { skip: testDbUrl ? false : 'TEST_DATABASE
   const sidAdmin = await liveSession(instAdmin!.id);
   const sidTeacher = await liveSession(teacher!.id);
 
-  const service = new PlatformInstitutesService(db as unknown as Database, new RoleAssignmentService(db as unknown as Database));
+  const service = new PlatformInstitutesService(
+    db as unknown as Database,
+    new RoleAssignmentService(db as unknown as Database),
+    new PlatformAuditService(),
+  );
   const controller = new PlatformInstitutesController(service);
+  const actor = { userId: superUser!.id };
   const noInstituteHeader = (token: string) => ({ cookies: { access_token: token } });
   const withInstitute = (token: string) => ({ headers: { 'x-institute-id': inst!.id }, cookies: { access_token: token } });
 
@@ -151,6 +158,7 @@ test('institute lifecycle mutations', { skip: testDbUrl ? false : 'TEST_DATABASE
     const membershipIds = (
       await db.select({ id: memberships.id }).from(memberships).where(inArray(memberships.userId, userIds))
     ).map((r) => r.id!);
+    await db.delete(platformAuditEvents).where(or(inArray(platformAuditEvents.actorUserId, userIds)));
     await db.delete(membershipRoles).where(inArray(membershipRoles.membershipId, membershipIds));
     await db.delete(memberships).where(inArray(memberships.userId, userIds));
     await db.delete(platformUserRoles).where(inArray(platformUserRoles.userId, userIds));
@@ -166,7 +174,7 @@ test('institute lifecycle mutations', { skip: testDbUrl ? false : 'TEST_DATABASE
 
   await t.test('1. SUPER_ADMIN deactivates via the platform plane', async () => {
     await platformPass(deactivateHandler, noInstituteHeader(await sign(superUser!.id, await liveSession(superUser!.id))));
-    const result = await controller.deactivate(inst!.id);
+    const result = await controller.deactivate(actor, inst!.id);
     assert.equal(result.id, inst!.id);
     assert.equal(result.status, 'deactivated');
     assert.ok(result.deactivatedAt instanceof Date, 'deactivated_at stamped');
@@ -202,7 +210,7 @@ test('institute lifecycle mutations', { skip: testDbUrl ? false : 'TEST_DATABASE
 
   await t.test('4. reactivate → tenant access restored on the next request', async () => {
     await platformPass(reactivateHandler, noInstituteHeader(await sign(superUser!.id, await liveSession(superUser!.id))));
-    const result = await controller.reactivate(inst!.id);
+    const result = await controller.reactivate(actor, inst!.id);
     assert.equal(result.status, 'active');
     assert.equal(result.deactivatedAt, null, 'deactivated_at cleared');
 
@@ -215,20 +223,20 @@ test('institute lifecycle mutations', { skip: testDbUrl ? false : 'TEST_DATABASE
 
   await t.test('5. repeated invalid state transitions conflict', async () => {
     // Deactivate → deactivate again conflicts.
-    await service.deactivate(inst!.id);
-    await assert.rejects(service.deactivate(inst!.id), (err: Error) => {
+    await service.deactivate(inst!.id, superUser!.id);
+    await assert.rejects(service.deactivate(inst!.id, superUser!.id), (err: Error) => {
       assert.equal(err.constructor, ConflictException);
       return true;
     });
     // Reactivate → reactivate again conflicts (doubles back to active).
-    await service.reactivate(inst!.id);
-    await assert.rejects(service.reactivate(inst!.id), ConflictException);
+    await service.reactivate(inst!.id, superUser!.id);
+    await assert.rejects(service.reactivate(inst!.id, superUser!.id), ConflictException);
   });
 
   await t.test('6. invalid and nonexistent institutes fail safely', async () => {
     // Nonexistent id → 404.
-    await assert.rejects(service.deactivate(randomUUID()), NotFoundException);
-    await assert.rejects(service.reactivate(randomUUID()), NotFoundException);
+    await assert.rejects(service.deactivate(randomUUID(), superUser!.id), NotFoundException);
+    await assert.rejects(service.reactivate(randomUUID(), superUser!.id), NotFoundException);
     // Non-UUID id → 400 (ParseUUIDPipe, the routing boundary).
     await assert.rejects(new ParseUUIDPipe().transform('not-a-uuid', { type: 'param', metatype: String, data: 'id' }), BadRequestException);
   });
