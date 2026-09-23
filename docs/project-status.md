@@ -1,5 +1,64 @@
 # Project Status
 
+## Phase O.1 — Platform Audit Trail Design (2026-09-23)
+
+**Status: DESIGN COMPLETE — documentation only, no code written.** Canonical
+design: `docs/architecture/platform-audit-trail.md` (marked IMPLEMENTED as a
+document; schema + mutation integration PLANNED; read surface DEFERRED).
+
+A focused platform administrative audit trail — **not** a universal app audit
+system. Records platform-plane administrative mutations only (institute
+lifecycle, primary-admin provisioning, plan changes, future platform-user
+lifecycle) in a new append-only PostgreSQL table
+(`platform_audit_events`, migration 0048, PLANNED): one event per committed
+mutation, written in the SAME transaction as the mutation, so an event exists
+iff the mutation committed (atomic success-only semantics).
+
+- **Schema (PLANNED):** `id` uuid PK; `actor_user_id` uuid → users (nullable =
+  reserved automated/system actor for scheduled deactivation); `action`
+  varchar (dot-notation vocabulary, app-catalogue checked); `resource_type` +
+  `resource_id` (uuid); `institute_id` uuid nullable (affected tenant, NULL for
+  future non-tenant-scoped platform-user events); `metadata` jsonb (per-action
+  fixed shape, no credentials); `created_at` = mutation commit time. No CHECK
+  on the open vocabulary (mirrors `permissions.key`). Indexes `(resource_type,
+  resource_id, created_at)` + `(institute_id, created_at)`.
+- **Actions (PLANNED):** `institute.create`, `institute.update`,
+  `institute.deactivate`, `institute.reactivate`,
+  `institute.primary_admin.attach`, `institute.plan.change` — mapped 1:1 to the
+  live `apps/api/src/platform/` routes (create incl. its optional primary-admin
+  attach in the create tx, PATCH, deactivate/reactivate, PUT subscription).
+- **Write path (PLANNED):** a tiny injected `PlatformAuditService.record(tx,
+  …)` called by each `PlatformInstitutesService` mutation method inside its
+  existing transaction; methods gain `actorUserId` from `@CurrentUser()`.
+  Rejected interceptor (2nd tx → orphan/omitted events) and DB trigger
+  (hidden logic) alternatives documented.
+- **Explicitly out of scope:** institute-plane mutations (INSTITUTE_ADMIN
+  tenant actions → separate institute-plane audit, DEFERRED), OCR-worker fleet
+  registry mutations (DEFERRED), plan-catalog edits (no user surface), reads,
+  failed/denied requests (401/403/400/409/404), IP/UA/correlation
+  instrumentation.
+- **Retention:** append-only, retained indefinitely; no purge job (consistent
+  with the session-purge "add a scheduler only if it grows" precedent).
+- **Read surface (DEFERRED):** future `GET /platform/institutes/:id/
+  audit-events` gated `institutes.manage` + console view.
+- **Extensibility:** platform-user suspend/reactivate and scheduled
+  deactivation (actor NULL) fit the schema with no migration.
+- **Docs updated:** platform-audit-trail.md (new), project-status.md (this
+  entry), tasks.md (Phase O.1). Refs: `institute-lifecycle.md`,
+  `authorization.md` §2/§13–15, `security-audit.md` §AUDIT 2026-09-22.
+- Commit `docs(platform): design platform audit trail`.
+
+### Next task
+
+The audit trail **design** is done; the audit **implementation** slice is
+PLANNED but not scheduled:
+1. Migration `0048_platform_audit_events.sql` + `schema/platform-audit.ts`;
+2. `PlatformAuditService.record` helper + per-method `actorUserId` threading and
+   same-tx event inserts in `platform-institutes.service.ts`;
+3. DB-gated integration suite (one event per committed mutation, no event on
+   rollback/409/404/401/403, metadata shapes, plan-change from/to);
+4. Read endpoint + console view (DEFERRED).
+
 ## Phase N.5 — Super Admin Institute Console (2026-09-22)
 
 **Status: IMPLEMENTED + VALIDATED.**

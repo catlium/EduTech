@@ -1,5 +1,54 @@
 # Task Tracker
 
+## Phase O.1 — Platform Audit Trail (2026-09-23, DESIGN COMPLETE / code PLANNED)
+
+> Issued task. Design (documentation only, NO implementation): a focused
+> platform audit-log architecture for administrative platform mutations.
+> Canonical design: `docs/architecture/platform-audit-trail.md`. Scope is
+> platform administrative mutations ONLY (institute create/update/deactivate/
+> reactivate, primary-admin provisioning/attach, subscription/plan change,
+> future platform-user lifecycle) — explicitly NOT a universal app audit
+> system. Do NOT modify application code, migrations, API routes, or frontend.
+
+- [x] Design doc `docs/architecture/platform-audit-trail.md` covering: event
+      schema (`platform_audit_events`, migration 0048), actor identity
+      (`actor_user_id` from `@CurrentUser()`, NULL reserved for automated
+      actors), action naming (`institute.create|update|deactivate|reactivate|
+      primary_admin.attach|plan.change`), resource/resource id + nullable
+      `institute_id`, timestamp (= mutation commit time), jsonb metadata
+      shapes (fixed per action, no credentials), success/failure semantics
+      (event exists iff the mutation committed), transaction boundaries
+      (same-tx insert via a `PlatformAuditService.record(tx, …)` helper;
+      interceptor/trigger alternatives rejected with reasons), what is audited
+      now (1:1 to the live `apps/api/src/platform/` routes), what is explicitly
+      out of scope (institute-plane mutations, OCR-fleet registry, plan
+      catalog edits, reads/denied requests, request instrumentation),
+      retention (append-only, indefinite, no scheduler), future extensibility
+      (platform-user lifecycle + scheduled deactivation fit with no schema
+      change).
+- [x] Docs: project-status.md Phase O.1 + next task; tasks.md this entry.
+      Every section marked IMPLEMENTED / PLANNED / DEFERRED.
+- [x] Commit `docs(platform): design platform audit trail` (+ push).
+
+### Next task (implementation slice — PLANNED, not scheduled)
+
+- [ ] Migration `0048_platform_audit_events.sql` + `packages/database/src/
+      schema/platform-audit.ts` (exported from schema/index) with the §3
+      columns and §3 indexes.
+- [ ] `PlatformAuditService.record(tx, …)` helper + `PLATFORM_AUDIT_ACTIONS`
+      catalogue; `actorUserId` threading and same-tx event inserts in
+      `platform-institutes.service.ts` (`create`, `update`, `deactivate`,
+      `reactivate`, `updateSubscription`), actor from `@CurrentUser()` in
+      `platform-institutes.controller.ts`.
+- [ ] DB-gated integration suite `test:platform-audit`: one event per committed
+      mutation; NO event on rollback / 409 / 404 / 401 / 403; event is
+      atomic-with-mutation; metadata shapes incl. primary-admin
+      `provisionedUser` and plan-change from/to; immutable rows.
+- [ ] (DEFERRED) Read endpoint `GET /platform/institutes/:id/audit-events`
+      (gate `institutes.manage`) + Super Admin console audit view.
+- [ ] (DEFERRED) OCR-worker fleet registry events; platform-user lifecycle
+      events; institute-plane audit trail (separate concern).
+
 ## Black Book — Academic Project Documentation (2026-09-22, COMPLETE)
 
 > Issued task (final-year project deliverable). Produce a fresh, complete,
