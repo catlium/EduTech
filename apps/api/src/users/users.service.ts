@@ -81,6 +81,12 @@ export class UsersService {
 
       let userId: string;
       if (existing) {
+        // platform-user-lifecycle §8 — shared attach gate, kept byte-identical
+        // to PlatformInstitutesService.attachPrimaryAdmin. A suspended account
+        // must not be re-seated into an organization through any route.
+        if (existing.status !== 'active') {
+          throw new BadRequestException('Primary admin user is not active');
+        }
         const [already] = await tx
           .select({ id: memberships.id })
           .from(memberships)

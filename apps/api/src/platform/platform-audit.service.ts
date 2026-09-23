@@ -18,6 +18,12 @@ export const PLATFORM_AUDIT_ACTIONS = {
   INSTITUTE_REACTIVATE: 'institute.reactivate',
   INSTITUTE_PRIMARY_ADMIN_ATTACH: 'institute.primary_admin.attach',
   INSTITUTE_PLAN_CHANGE: 'institute.plan.change',
+  // platform-user lifecycle (platform-user-lifecycle §11) — account-scoped
+  // events, institute_id NULL, same-tx semantics as every other action.
+  PLATFORM_USER_ATTACH: 'platform_user.attach',
+  PLATFORM_USER_DETACH: 'platform_user.detach',
+  PLATFORM_USER_SUSPEND: 'platform_user.suspend',
+  PLATFORM_USER_REACTIVATE: 'platform_user.reactivate',
 } as const;
 
 export type PlatformAuditAction = (typeof PLATFORM_AUDIT_ACTIONS)[keyof typeof PLATFORM_AUDIT_ACTIONS];

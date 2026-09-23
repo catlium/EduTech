@@ -51,6 +51,10 @@ export const PLATFORM_RESOURCES = {
   institutes: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   'ocr-workers': { actions: ['read', 'create', 'update', 'manage'] },
   plans: { actions: ['read'] },
+  // Platform-user lifecycle (platform-user-lifecycle §12): no `create` (users
+  // are seeded or granted a role on an existing account) and no `delete` (hard
+  // teardown is out of scope platform-wide).
+  'platform-users': { actions: ['read', 'update', 'manage'] },
 } as const satisfies ResourceMap;
 
 type ResourceKeys<T extends ResourceMap> = {

@@ -37,6 +37,7 @@
     "test:platform-plans": "tsx --test src/platform/platform-plans.integration.ts",
     "test:platform-audit": "tsx --test src/platform/platform-audit.integration.ts",
     "test:platform-audit-read": "tsx --test src/platform/platform-audit-read.integration.ts",
+    "test:platform-user-lifecycle": "tsx --test src/platform/platform-user-lifecycle.integration.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

@@ -1,5 +1,104 @@
 # Project Status
 
+## Phase P.2 — Platform User Lifecycle Implementation (2026-09-23)
+
+**Status: IMPLEMENTED + VALIDATED (backend only — console still DEFERRED).**
+Commit: `feat(platform): implement platform user lifecycle`.
+
+The Phase P.1 design (`docs/architecture/platform-user-lifecycle.md`) is now
+built on the platform plane: role grant/revoke + suspend/reactivate under
+`AccessTokenGuard → PlatformGuard` (never TenantGuard / `x-institute-id`),
+additive `platform-users` catalogue resource, same-tx session revocation on
+suspend, self + last-SUPER_ADMIN guards, in-tx `platform_user.*` audit events,
+and a shared attach gate. **Backend only**: the `/platform/users` console
+section (§13) remains DEFERRED per user decision — the API is authoritative.
+
+- **Catalogue (IMPLEMENTED):** `permission-catalogue.ts` gains
+  `platform-users: { read, update, manage }` (no `create` — users are
+  provisioned on existing accounts; no `delete` — hard teardown out of scope).
+  Auto-seeded by `PermissionSyncService` on boot; `permission-catalogue.test.ts`
+  updated. Grant surface resolves via `details.platformPermissions` =
+  `resolveGrantedKeys(platformGrantKeysForUser(userId), 'platform')`.
+- **Service (`platform-users.service.ts`, IMPLEMENTED):** reads `list(status?)`
+  (platform users = `platform_user_roles` holders, `active|deactivated` filter
+  else 400, createdAt DESC) and `get(userId)` (404 if missing). Mutations all
+  transactional with the audit event appended LAST so an event exists iff the
+  mutation committed:
+  - `grantRole(userId, roleKey, actorUserId)` — role resolved by key,
+    `isPlatformRoleGrantableToUser` gate (unknown/institute/custom role → 400),
+    target must exist (404), `ON CONFLICT DO NOTHING` idempotent insert, event
+    only when a row was actually added; granting to a suspended user allowed.
+  - `revokeRole(userId, roleId, actorUserId)` — narrow (deletes the
+    `platform_user_roles` row only, sessions untouched, next platform request
+    403 via DB-fresh grants); self-revoke of SUPER_ADMIN → 400 (§9); 0-row
+    delete → 404 no event; post-delete count of active SUPER_ADMIN holders → 0
+    → 400 rolls back (mutation-then-count ordering closes the READ COMMITTED
+    race better than the design's count-first pseudo-code; `ponytail:` comment
+    names the residual window + FOR UPDATE/serializable upgrade path);
+    detach event carries `activeSuperAdminsAfter`.
+  - `suspend(userId, actorUserId)` — self-guard 400 (§9); one-row conditional
+    `UPDATE users SET status='deactivated'` doubles as the transition guard;
+    last-guard inside the tx; ALL live `auth_sessions` revoked same-tx
+    (`sessionsRevoked` in response + event metadata, defense-in-depth —
+    AccessTokenGuard 401s anyway on the next request); memberships and
+    `platform_user_roles` untouched (planes stay independent).
+  - `reactivate(userId, actorUserId)` — conditional flip to `'active'`; sessions
+    intentionally NOT restored (what suspend revoked stays revoked — fresh sign-in).
+  - `rejectTransition` mirrors the institute pattern: missing user → 404,
+    invalid transition (suspend on suspended / reactivate on active) → 409.
+- **API (`platform-users.controller.ts`, IMPLEMENTED):**
+  `@Controller('platform/users')` under the global `api/v1` prefix →
+  `/api/v1/platform/users` — `GET /` + `GET /:userId` (`platform-users.read`),
+  `POST /:userId/roles` (`{ roleKey }`), `DELETE /:userId/roles/:roleId`
+  (`platform-users.update`), `POST /:userId/suspend` + `POST /:userId/reactivate`
+  (`platform-users.update`, HTTP 200). Actor from `@CurrentUser()`. Registered in
+  `platform.module.ts`; DTO `GrantPlatformRoleDto` in `platform-users.dto.ts`
+  (global ValidationPipe: whitelist + forbidNonWhitelisted + transform).
+- **Audit actions (IMPLEMENTED):** `PLATFORM_AUDIT_ACTIONS` adds
+  `platform_user.attach|detach|suspend|reactivate`; all events
+  `resourceType='platform_user'`, `instituteId NULL`, metadata verbatim
+  (`{userId, roleKey, roleId}` / `{…, activeSuperAdminsAfter}` /
+  `{userId, status, sessionsRevoked}` / `{userId, status}`).
+- **Shared gate (§8, IMPLEMENTED):** `UsersService.createInstituteUser` now
+  rejects attaching a user whose `users.status !== 'active'` with 400
+  `'Primary admin user is not active'` — byte-identical to
+  `PlatformInstitutesService.attachPrimaryAdmin`, so no attach route re-seats a
+  suspended account.
+- **Testing (IMPLEMENTED):** new DB-gated
+  `apps/api/src/platform/platform-user-lifecycle.integration.ts`
+  (`test:platform-user-lifecycle`, `TEST_DATABASE_URL`-gated, skips cleanly
+  unset) — 10 cases over the REAL guard chain + REAL controller handlers
+  (harness mirrors institute-lifecycle): list/get + filter with a genuinely
+  suspended PLATFORM user; grant attach + idempotent no-op + structural rejects;
+  revoke (detach event, immediate 403 on the real chain for the revoked user,
+  non-held 404, self-revoke 400, last-guard rollback with actor who contributes
+  no holder count); suspend (last-guard rollback, both live sessions revoked
+  same-tx + `sessionsRevoked`, subsequent 401 at AccessTokenGuard, self 400,
+  repeat 409, membership/role preservation, filter correctness); reactivate
+  (sessions stay revoked, fresh login works, conflict on active, 404);
+  plane independence (institute-plane 403 with/without `x-institute-id`,
+  anonymous 401, membership-free SUPER_ADMIN fully authorized, narrow revoke
+  leaves the institute guard chain intact); §8 shared attach gate; audit
+  events exist iff the mutation committed (rolled-back AND invalid-transition
+  mutations leave no row, `institute_id` NULL on every platform-user event).
+- **Validation:** api `tsc --noEmit` clean (independently up-streamed too);
+  repo `pnpm typecheck` 10/10; `pnpm lint` (turbo) 9/9; api `nest build` pass;
+  permission-catalogue unit suite 34/34; `test:platform-user-lifecycle` **10/10
+  green** vs a fresh scratch `catlium_scratch` PG17 (49/49 migrations via
+  drizzle-kit migrate; throwaway container on 127.0.0.1:5433, running stack
+  untouched). No migration needed — `users.status`, `platform_user_roles`,
+  `platform_audit_events` all fit the design as-is.
+- **Docs updated:** project-status.md (this entry), tasks.md (Phase P.2).
+- **Deferred (explicitly NOT in this slice):** `/platform/users` console
+  section (§13), `CHECK (status IN ('active','deactivated'))` on `users.status`
+  (design marks it impl-phase), platform-global audit view, invite/provisioning,
+  automated suspension sweep, hard user deletion.
+
+**Exact recommended next task:** the backend P.2 slice is complete; the natural
+follow-on is the deferred `/platform/users` Super Admin console section (§13) —
+institute-plane user list + roles + suspend/reactivate, gated by
+`platform-users.*`, reusing the `usePlatform()` authz pattern.
+
 ## Phase P.1 — Platform User Lifecycle Design (2026-09-23)
 
 **Status: DESIGN COMPLETE — documentation only, no implementation.**
@@ -33,12 +132,14 @@ Design decisions (`IMPLEMENTED`/`PLANNED`/`DEFERRED` marked per section):
 No code, migration, endpoint, frontend, audit, or session change was made in
 this phase.
 
-**Exact recommended next task:** implement Phase P.2 (platform-user lifecycle
+**Exact recommended next task:** Phase P.2 (platform-user lifecycle
 implementation) per the design — grant/revoke + suspend/reactivate service and
 API under `AccessTokenGuard → PlatformGuard`, additive `platform-users`
 catalogue resource, in-tx session revocation on suspend, self +
 last-SUPER_ADMIN guards, in-tx `platform_user.*` audit events, then the
-`/platform/users` console section.
+`/platform/users` console section. **DONE 2026-09-23 — Phase P.2 backend
+implemented + validated (see the entry above); `/platform/users` console
+section remains deferred.**
 
 ## Phase O.3 — Platform Audit Read Surface + Console View (2026-09-23)
 

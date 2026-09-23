@@ -74,7 +74,7 @@ test('catalogue resources are exactly the §13 V1 vocabulary (+ Phase C roles)',
     'topics',
     'users',
   ]);
-  assert.deepEqual(Object.keys(PLATFORM_RESOURCES).sort(), ['institutes', 'ocr-workers', 'plans']);
+  assert.deepEqual(Object.keys(PLATFORM_RESOURCES).sort(), ['institutes', 'ocr-workers', 'plans', 'platform-users']);
   // No speculative keys for features whose endpoints do not exist yet.
   assert.equal(isSupportedPermission('students.read'), false);
   assert.equal(isSupportedPermission('teachers.create'), false);
@@ -383,10 +383,10 @@ function allPlatformKeys(): string[] {
   return out;
 }
 
-test('Phase D: platform vocabulary — institutes.*, ocr-workers.*, plans.* are platform-domain', () => {
+test('Phase D: platform vocabulary — institutes.*, ocr-workers.*, plans.*, platform-users.* are platform-domain', () => {
   assert.deepEqual(
     Object.keys(PLATFORM_RESOURCES).sort(),
-    ['institutes', 'ocr-workers', 'plans'].sort(),
+    ['institutes', 'ocr-workers', 'plans', 'platform-users'].sort(),
   );
   for (const key of allPlatformKeys()) {
     assert.equal(isSupportedPermission(key), true, key);

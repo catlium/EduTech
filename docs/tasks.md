@@ -1,5 +1,55 @@
 # Task Tracker
 
+## Phase P.2 — Platform User Lifecycle Implementation (2026-09-23, IMPLEMENTED)
+
+> Issued task (backend only — user-confirmed; console deferred). Implement the
+> Phase P.1 design: platform-user role grant/revoke + suspend/reactivate service
+> and API under AccessTokenGuard → PlatformGuard, additive `platform-users`
+> catalogue resource, in-tx session revocation on suspend, self +
+> last-SUPER_ADMIN guards, in-tx `platform_user.*` audit events, §8 shared
+> attach gate, full integration/security test matrix, docs, commit
+> `feat(platform): implement platform user lifecycle`. Do NOT build the
+> `/platform/users` frontend console (§13).
+
+- [x] Catalogue: `platform-users: { read, update, manage }` in
+      `permission-catalogue.ts` + `permission-catalogue.test.ts` hardcoded
+      platform-keys assertions updated; `PermissionSyncService` auto-seeds on
+      boot.
+- [x] Audit actions: `platform_user.attach|detach|suspend|reactivate` added to
+      `PLATFORM_AUDIT_ACTIONS` (all `instituteId: null`,
+      `resourceType: 'platform_user'`, same-tx, event iff mutation committed).
+- [x] `PlatformUsersService` (grant/revoke/suspend/reactivate/list/get +
+      `countActiveSuperAdmins` + `rejectTransition`): narrow role mutations
+      (self-guard, last-guard, 404 no-event, idempotent grant via
+      `ON CONFLICT DO NOTHING`), broad suspend (one-row conditional UPDATE
+      transition guard + last-guard + ALL live sessions revoked same-tx +
+      `sessionsRevoked`), reactivate (sessions NOT restored), `get` resolves
+      target's own platform permissions.
+- [x] `PlatformUsersController` (`/api/v1/platform/users`, AccessTokenGuard →
+      PlatformGuard, never TenantGuard): GET /, GET /:userId (`read`),
+      POST /:userId/roles + DELETE /:userId/roles/:roleId + suspend/reactivate
+      (`update`). DTO `GrantPlatformRoleDto { roleKey }`; registered in
+      `platform.module.ts`.
+- [x] §8 shared gate: `UsersService.createInstituteUser` rejects a user whose
+      `users.status !== 'active'` with 400 'Primary admin user is not active'
+      (byte-identical to `attachPrimaryAdmin`).
+- [x] Integration suite `platform-user-lifecycle.integration.ts`
+      (`test:platform-user-lifecycle`, `TEST_DATABASE_URL`-gated): 10 cases —
+      list/get + genuine suspended-platform-user filter; grant attach +
+      idempotent no-op + structural rejects; revoke (detach event + immediate
+      403 + non-held 404 + self-guard 400 + last-guard rollback); suspend
+      (last-guard rollback, bulk session revocation, 401, self 400, repeat 409,
+      plane preservation); reactivate (sessions stay revoked, fresh login,
+      conflicts); plane independence (403/401, narrow revoke leaves institute
+      chain intact); §8 gate; audit-only-on-commit.
+- [x] Validation: api `tsc --noEmit` clean, repo typecheck 10/10, lint 9/9,
+      nest build pass, catalogue unit 34/34, integration 10/10 vs fresh scratch
+      `catlium_scratch` PG17 (49/49 migrations).
+- [x] Docs: project-status.md Phase P.2; tasks.md this entry.
+- [ ] Deferred: `/platform/users` Super Admin console section (§13) — the exact
+      recommended next task.
+- [x] Commit `feat(platform): implement platform user lifecycle` (+ push).
+
 ## Phase P.1 — Platform User Lifecycle Design (2026-09-23, DESIGN COMPLETE)
 
 > Issued task. Design (documentation only, NO implementation): the
