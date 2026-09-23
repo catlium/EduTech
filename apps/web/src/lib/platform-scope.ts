@@ -37,6 +37,24 @@ export interface InstituteAdmin {
   createdAt: string;
 }
 
+export interface PlatformAuditEventView {
+  id: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  instituteId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  actor: { userId: string; email: string; name: string } | null;
+}
+
+export interface PlatformAuditEventPage {
+  events: PlatformAuditEventView[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export type InstituteStatusFilter = 'all' | 'active' | 'deactivated';
 
 /** Client-side status + name/slug search over a loaded institute list. The API
@@ -75,4 +93,45 @@ export function formatDate(value: string | Date | null | undefined): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+export function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  'institute.create': 'Institute created',
+  'institute.update': 'Institute updated',
+  'institute.deactivate': 'Institute deactivated',
+  'institute.reactivate': 'Institute reactivated',
+  'institute.primary_admin.attach': 'Primary admin attached',
+  'institute.plan.change': 'Plan changed',
+};
+
+export function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+
+/** Human detail line per documented action metadata (platform-audit-trail §5).
+ *  Unknown/future actions fall back to a compact JSON dump only until the
+ *  console learns them — uuids/internal ids are never surfaced. */
+export function auditEventSummary(event: PlatformAuditEventView): string {
+  const m = event.metadata;
+  switch (event.action) {
+    case 'institute.create':
+      return m.planCode ? `on the ${String(m.planCode)} plan` : '';
+    case 'institute.primary_admin.attach':
+      return m.email ? `for ${String(m.email)}` : '';
+    case 'institute.plan.change':
+      return `from ${String(m.fromPlanCode ?? '—')} to ${String(m.toPlanCode ?? '—')}`;
+    default:
+      return Object.keys(m).length > 0 ? JSON.stringify(m) : '';
+  }
 }

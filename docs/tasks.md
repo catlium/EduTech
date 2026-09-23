@@ -1,5 +1,41 @@
 # Task Tracker
 
+## Phase O.3 — Platform Audit Read Surface + Console View (2026-09-23, IMPLEMENTED)
+
+> Issued task. Add the Phase O.1 §10 read surface to the audit trail:
+> `GET /api/v1/platform/institutes/:id/audit-events` (institutes.manage,
+> institute-scoped, newest-first, paginated per API conventions, read-only) +
+> an audit-events section on the existing Super Admin institute detail page.
+> Do NOT build: action filters (canonical design defines none), institute-plane/
+> OCR/platform-user events, audit mutations, universal request logging,
+> retention jobs, billing/quota. Commit `feat(platform): add audit read surface`.
+
+- [x] Backend `PlatformInstitutesService.listAuditEvents(id, limit, offset)`:
+      strict `institute_id` scoping, newest-first (`created_at DESC, id DESC`),
+      `actor` joined to `users` (null for system actors), verbatim metadata,
+      404 for a missing institute. Controller route
+      `GET :id/audit-events` under AccessTokenGuard → PlatformGuard,
+      `institutes.manage`, no TenantGuard, no x-institute-id; limit clamped
+      1..100 (default 50) / offset floored 0 per list conventions.
+- [x] DB-gated integration suite `test:platform-audit-read` (8 cases): newest
+      first + resolved actor; strict cross-institute isolation; pagination
+      count/ordering/bounds; empty history; 404; deactivated actor + null
+      system actor + metadata passthrough; 401/403 denial (every platform role
+      is SUPER_ADMIN, so insufficient-permission = the 403 non-platform case).
+- [x] Frontend Audit trail card on `/platform/institutes/[id]` gated by
+      `can('institutes.manage')` (inline "Admin access required" state
+      otherwise; backend remains authoritative), newest-first rows
+      (actor/action/resource/timestamp + per-action metadata summary),
+      loading/empty/error states, Previous/Next pagination (20/page). Pure
+      helpers `auditActionLabel` / `auditEventSummary` / `formatDateTime` in
+      `platform-scope.ts` with tests.
+- [x] Validation: api + web tsc clean; api `nest build` + web `next build`;
+      api unit 226/226; web platform-scope 7/7; 6 DB-gated platform suites
+      52/52 vs fresh scratch `catlium_audit`; api + web containers rebuilt
+      healthy (base posture); live health 200 + audit route 401 unauth;
+      docs updated (`platform-audit-trail.md` §10 → IMPLEMENTED,
+      project-status, this tracker).
+
 ## Phase O.1 — Platform Audit Trail (2026-09-23, DESIGN COMPLETE / code PLANNED)
 
 > Issued task. Design (documentation only, NO implementation): a focused

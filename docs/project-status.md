@@ -1,5 +1,52 @@
 # Project Status
 
+## Phase O.3 — Platform Audit Read Surface + Console View (2026-09-23)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Commit: `feat(platform): add audit read surface`.
+
+The Phase O.2 write path now has its read surface (canonical design marked
+IMPLEMENTED, `platform-audit-trail.md` §10): the six audited mutations are
+readable per-institute by a Super Admin, and the Super Admin console shows the
+trail on the institute detail page.
+
+- **Backend (IMPLEMENTED):** `PlatformInstitutesService.listAuditEvents(id,
+  limit, offset)` → `{ events, total, limit, offset }`, strict institute
+  scoping only, newest-first (`created_at DESC, id DESC`), `actor` joined to
+  `users` at render (`{ userId, email, name }`, `null` for system actors),
+  `metadata` passed through verbatim, 404 `Institute not found` for a missing
+  institute. Exposed in `PlatformInstitutesController` as
+  `GET /api/v1/platform/institutes/:id/audit-events` gated `institutes.manage`
+  (AccessTokenGuard → PlatformGuard; no TenantGuard, no x-institute-id), with
+  `?limit=` clamped 1..100 (default 50) and `?offset=` floored 0 per the API
+  list conventions. No action filter — the canonical design defines none.
+- **Frontend (IMPLEMENTED):** Audit trail card on
+  `apps/web/src/app/platform/institutes/[id]/page.tsx` — gated UX-side by
+  `can('institutes.manage')` (inline "Admin access required" state otherwise,
+  backend stays authoritative), newest-first rows with
+  actor/action/resource/timestamp + per-action metadata summary, loading/
+  empty/error/forbidden states, Previous/Next pagination (20/page). Pure
+  helpers `auditActionLabel` / `auditEventSummary` / `formatDateTime` added to
+  `platform-scope.ts` with tests.
+- **Testing (IMPLEMENTED):** new `apps/api/src/platform/platform-audit-read.integration.ts`
+  (`test:platform-audit-read`, `TEST_DATABASE_URL`-gated) — 8 cases vs fresh
+  scratch `catlium_audit`: newest-first with resolved actor, strict
+  cross-institute isolation, pagination count/ordering/bounds (limit 0→50
+  default, 1000→100 clamp, negative offset→0, full coverage across pages),
+  empty history, 404, deactivated actor still resolves + system actor null +
+  verbatim metadata, 401/403 denial. Note: every platform role is
+  `SUPER_ADMIN` (`roles_platform_kind_check` forbids non-system platform
+  roles), so a platform user without `institutes.manage` cannot be constructed
+  — insufficient-permission denial is the 403 non-platform case.
+- **Validation:** api `tsc --noEmit` clean; web `tsc --noEmit` clean; api
+  `nest build` pass; web `next build` pass; api `node --test` unit 226/226;
+  web `node --test` platform-scope 7/7; 6 DB-gated platform suites 52/52 vs
+  fresh scratch `catlium_audit`; api + web containers rebuilt and healthy
+  (base posture); nginx→api `/api/v1/health` 200, nginx→web 200, audit route
+  401 unauthenticated live; dev DB `platform_audit_events` live (0 events —
+  only real platform mutations write); base posture restored; graphify graph
+  updated.
+
 ## Phase O.2 — Platform Audit Trail Implementation (2026-09-23)
 
 **Status: IMPLEMENTED + VALIDATED.**

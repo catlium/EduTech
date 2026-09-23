@@ -2,11 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  auditActionLabel,
+  auditEventSummary,
   defaultPlanCode,
   filterInstitutes,
   formatDate,
+  formatDateTime,
   planName,
   type InstituteSummary,
+  type PlatformAuditEventView,
   type PlatformPlan,
 } from './platform-scope.ts';
 
@@ -93,4 +97,47 @@ test('formatDate renders dates and dashes for missing values', () => {
   assert.match(formatDate('2026-09-01T12:00:00.000Z'), /Sep 1, 2026/);
   const d = new Date('2026-09-01T12:00:00.000Z');
   assert.match(formatDate(d), /Sep 1, 2026/);
+});
+
+test('formatDateTime includes the time of day', () => {
+  assert.equal(formatDateTime(null), '—');
+  const rendered = formatDateTime('2026-09-01T12:05:00.000Z');
+  assert.match(rendered, /Sep 1, 2026/);
+  assert.match(rendered, /\d{1,2}:\d{2}/, 'renders a clock time regardless of locale TZ');
+});
+
+const baseEvent: PlatformAuditEventView = {
+  id: 'e1',
+  action: 'institute.create',
+  resourceType: 'institute',
+  resourceId: 'r1',
+  instituteId: 'i1',
+  metadata: {},
+  createdAt: '2026-09-01T12:00:00.000Z',
+  actor: null,
+};
+
+test('auditActionLabel maps the catalog vocabulary and passes unknown through', () => {
+  assert.equal(auditActionLabel('institute.create'), 'Institute created');
+  assert.equal(auditActionLabel('institute.plan.change'), 'Plan changed');
+  assert.equal(auditActionLabel('institute.future.thing'), 'institute.future.thing');
+});
+
+test('auditEventSummary renders the documented per-action detail only', () => {
+  assert.equal(auditEventSummary({ ...baseEvent, metadata: { planCode: 'growth' } }), 'on the growth plan');
+  assert.equal(
+    auditEventSummary({ ...baseEvent, action: 'institute.primary_admin.attach', metadata: { email: 'a@b.test' } }),
+    'for a@b.test',
+  );
+  assert.equal(
+    auditEventSummary({ ...baseEvent, action: 'institute.plan.change', metadata: { fromPlanCode: 'starter', toPlanCode: 'institute' } }),
+    'from starter to institute',
+  );
+  assert.equal(auditEventSummary({ ...baseEvent, action: 'institute.plan.change', metadata: {} }), 'from — to —');
+  assert.equal(auditEventSummary(baseEvent), '', 'known action with empty metadata → empty line');
+  assert.equal(
+    auditEventSummary({ ...baseEvent, action: 'institute.future.thing', metadata: { a: 1 } }),
+    '{"a":1}',
+    'unknown action → compact JSON fallback only',
+  );
 });

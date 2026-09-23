@@ -12,6 +12,7 @@ import {
   roles,
   plans,
   instituteSubscriptions,
+  platformAuditEvents,
 } from '@catlium/database';
 import type { Database } from '@catlium/database';
 import { normalizeEmail } from '@catlium/shared';
@@ -36,6 +37,24 @@ export interface InstituteSubscriptionResult {
   planCode: string;
   planName: string;
   updatedAt: Date;
+}
+
+export interface PlatformAuditEventView {
+  id: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  instituteId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+  actor: { userId: string; email: string; name: string } | null;
+}
+
+export interface PlatformAuditEventPage {
+  events: PlatformAuditEventView[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface InstituteSummary {
@@ -362,6 +381,75 @@ export class PlatformInstitutesService {
       .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
       .where(and(eq(memberships.instituteId, id), eq(roles.key, INSTITUTE_ADMIN)))
       .orderBy(desc(users.createdAt));
+  }
+
+  // ── Audit trail read surface (platform-audit-trail §10) ─────────────
+
+  /**
+   * Audit events for a platform institute (audit-trail §10). Strictly scoped
+   * to the requested institute; newest-first; limit/offset pagination following
+   * the API list conventions. Actors are joined to users — user rows are never
+   * deleted, so a deactivated/renamed operator still resolves; null rows are
+   * automated/system actors. Metadata is rendered verbatim by clients: it
+   * carries the documented per-action payload (§5), never DB internals.
+   */
+  async listAuditEvents(
+    id: string,
+    limit: number,
+    offset: number,
+  ): Promise<PlatformAuditEventPage> {
+    const [exists] = await this.db
+      .select({ id: institutes.id })
+      .from(institutes)
+      .where(eq(institutes.id, id))
+      .limit(1);
+    if (!exists) throw new NotFoundException('Institute not found');
+
+    const [totalRow, rows] = await Promise.all([
+      this.db
+        .select({ n: count() })
+        .from(platformAuditEvents)
+        .where(eq(platformAuditEvents.instituteId, id)),
+      this.db
+        .select({
+          id: platformAuditEvents.id,
+          action: platformAuditEvents.action,
+          resourceType: platformAuditEvents.resourceType,
+          resourceId: platformAuditEvents.resourceId,
+          instituteId: platformAuditEvents.instituteId,
+          metadata: platformAuditEvents.metadata,
+          createdAt: platformAuditEvents.createdAt,
+          actorUserId: users.id,
+          actorEmail: users.email,
+          actorName: users.name,
+        })
+        .from(platformAuditEvents)
+        .leftJoin(users, eq(users.id, platformAuditEvents.actorUserId))
+        .where(eq(platformAuditEvents.instituteId, id))
+        // createdAt is effectively monotonic, but a batch mutation commits one
+        // tx/one now(); id desc keeps same-timestamp rows deterministic.
+        .orderBy(desc(platformAuditEvents.createdAt), desc(platformAuditEvents.id))
+        .limit(limit)
+        .offset(offset),
+    ]);
+
+    return {
+      events: rows.map((row) => ({
+        id: row.id,
+        action: row.action,
+        resourceType: row.resourceType,
+        resourceId: row.resourceId,
+        instituteId: row.instituteId,
+        metadata: row.metadata,
+        createdAt: row.createdAt,
+        actor: row.actorUserId
+          ? { userId: row.actorUserId, email: row.actorEmail ?? '', name: row.actorName ?? '' }
+          : null,
+      })),
+      total: Number(totalRow[0]?.n ?? 0),
+      limit,
+      offset,
+    };
   }
 
   // ── Subscription (§9) ────────────────────────────────────────────────

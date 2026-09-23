@@ -1,13 +1,16 @@
 # Platform Audit Trail
 
 **Status: IMPLEMENTED (schema + six-mutation write path, Phase O.2,
-2026-09-23); read surface DEFERRED.** This is the canonical design for the
-platform administrative audit trail. The platform admin surface that produces
-the audited mutations is live (`institute-lifecycle.md`, Phases N → N.5); the
-audit trail is now schema `platform_audit_events` (migration
-`0048_spooky_martin_li`) with `PlatformAuditService.record` writes inside the
-mutation transactions of `PlatformInstitutesService` (create, update,
-deactivate, reactivate, primary-admin attach, plan change).
+2026-09-23) + live read surface (Phase O.3, 2026-09-23).** This is the
+canonical design for the platform administrative audit trail. The platform
+admin surface that produces the audited mutations is live
+(`institute-lifecycle.md`, Phases N → N.5); the audit trail is schema
+`platform_audit_events` (migration `0048_spooky_martin_li`) with
+`PlatformAuditService.record` writes inside the mutation transactions of
+`PlatformInstitutesService` (create, update, deactivate, reactivate,
+primary-admin attach, plan change), and a read surface in
+`PlatformInstitutesService.listAuditEvents` exposed as
+`GET /api/v1/platform/institutes/:id/audit-events` (§10).
 
 Every section marks its state: **IMPLEMENTED** (live in the repo),
 **PLANNED** (design agreed here; not built), or **DEFERRED** (out of scope,
@@ -276,22 +279,48 @@ session purge). No TTL/partition/archive job is planned now.
 
 ---
 
-## 10. Read surface (DEFERRED)
+## 10. Read surface (IMPLEMENTED, Phase O.3, 2026-09-23)
 
-The schema and write path are the deliverable of this design; reading the trail
-is not built and not scheduled:
+`GET /api/v1/platform/institutes/:id/audit-events` (`institutes.manage`,
+Authentication → PlatformGuard; no TenantGuard, no x-institute-id) returns the
+recorded events for one institute.
 
-- A platform-plane read is the natural future surface, e.g.
-  `GET /platform/institutes/:id/audit-events` (and/or a platform-global events
-  view) gated by `institutes.manage` — reading the sensitive admin history of
-  an institute is a stronger act than `institutes.read`, and reusing the
-  existing key avoids catalogue churn. Decide the key when the endpoint is
-  built.
-- A read-only audit view in the Super Admin console (`/platform/...`, Phase N.5)
-  is the companion UI surface — QUEUED behind the API.
-- Integrity note for that future work: events are `actor_user_id`-joined to
-  `users` at render time; a deactivated/renamed actor still resolves (user rows
-  are never deleted).
+- **Strict scoping:** results are filtered to the requested `institute_id`
+  only — no cross-institute leakage, no platform-global view. A nonexistent
+  institute → 404 `Institute not found`.
+- **Pagination (API list conventions):** `?limit=` clamped to `1..100`
+  (default `50`), `?offset=` floored at `0` (default `0`). Response is
+  `{ events, total, limit, offset }` with `events` newest-first
+  (`created_at DESC, id DESC` — the id tiebreak keeps same-transaction rows
+  deterministic).
+- **Event shape:** `id, action, resourceType, resourceId, instituteId,
+  metadata (JSON, verbatim as stored), createdAt`, plus `actor` — the
+  `actor_user_id` joined to `users` at render time as
+  `{ userId, email, name }`, or `null` for automated/system events. User rows
+  are never deleted, so a deactivated/renamed operator still resolves.
+- **No action filter.** The canonical design does not define one; `action` is
+  an open catalog string and the read surface deliberately does not invent an
+  endpoint filter.
+- **Companion UI:** the Super Admin institute detail page
+  (`/platform/institutes/[id]`) gained an Audit trail card gated by
+  `institutes.manage` (UX mirror; the backend re-checks every call), with
+  newest-first rows, actor/action/resource/timestamp presentation, verbatim
+  documented metadata rendered per-action, and Previous/Next pagination
+  (20/page). A console user without `institutes.manage` sees an inline "Admin
+  access required" state, never the event data.
+- **Tests:** `test:platform-audit-read` (DB-gated `TEST_DATABASE_URL`): newest
+  first, actor resolution incl. deactivated actors and `null` system actors,
+  strict institute scoping, pagination count/ordering/bounds, empty history,
+  404, 401 anonymous, 403 non-platform. Insufficient-permission denial is the
+  403 case — every platform role is `SUPER_ADMIN` (`roles` restricts platform
+  roles to `kind='system'`), so a "platform user without `institutes.manage`"
+  cannot exist in the DB.
+
+> **Not built (PLANNED/DEFERRED):** a platform-global events view, actor-list /
+> action filters, and archive/purge remain future; only the schema, write path,
+> and this read surface are live. The platform-user lifecycle events
+> (`resource_type='platform_user'`, `institute_id` NULL, §11) would populate
+> only a future global view — this endpoint stays institute-scoped.
 
 ---
 

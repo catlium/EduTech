@@ -24,6 +24,7 @@ import {
   type InstituteDetail,
   type InstituteSubscriptionResult,
   type InstituteSummary,
+  type PlatformAuditEventPage,
 } from './platform-institutes.service.js';
 import type { CreateInstituteDto, UpdateInstituteDto } from './platform-institutes.dto.js';
 
@@ -97,6 +98,18 @@ export class PlatformInstitutesController {
   @RequiredPermission('institutes.read')
   subscription(@Param('id', ParseUUIDPipe) id: string): Promise<InstituteSubscriptionResult> {
     return this.institutes.getSubscription(id);
+  }
+
+  @Get(':id/audit-events')
+  @RequiredPermission('institutes.manage')
+  auditEvents(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') rawLimit?: string,
+    @Query('offset') rawOffset?: string,
+  ): Promise<PlatformAuditEventPage> {
+    const limit = Math.min(Math.max(Number(rawLimit ?? 50) || 50, 1), 100);
+    const offset = Math.max(Number(rawOffset ?? 0) || 0, 0);
+    return this.institutes.listAuditEvents(id, limit, offset);
   }
 
   @Put(':id/subscription')
