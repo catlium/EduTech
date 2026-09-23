@@ -99,10 +99,12 @@ These are the planned logical modules for the API. Do NOT implement them now:
   network — never a host port, never public. See
   `docs/architecture/cloudflare-tunnel.md`.
 - **Nothing publishes a host port in the single compose file.** Postgres,
-  Redis, RabbitMQ, the OCR service, the async workers, OmniRoute, nginx, the
+  Redis, RabbitMQ, the OCR service, the async workers, nginx, the
   API and the web app are all INTERNAL, reachable only over the private Docker
-  network. The only exception is the development-only
-  `docker-compose.dev.yml` override (127.0.0.1 loopback for local tooling).
+  network. Two loopback-only exceptions: the development `docker-compose.dev.yml`
+  override (127.0.0.1 for local tooling) and **OmniRoute** (always bound to
+  127.0.0.1:20128 so its dashboard is reachable from localhost in both prod and
+  dev — never change it to 0.0.0.0).
 - **AI goes only through OmniRoute** (internal OpenAI-compatible gateway).
   No local LLM / Ollama; no direct cloud-provider SDK calls from the API or
   workers. `WORKER_AI_PROVIDER_URL`/`WORKER_AI_API_KEY` configure it.

@@ -17,9 +17,12 @@
 #   nginx is the only application-facing reverse proxy and routes:
 #     /        -> web:3001   (Next.js app)
 #     /api/    -> api:3000   (NestJS API, /api/v1 prefix preserved)
-#   Postgres, Redis, RabbitMQ, OCR, workers, OmniRoute, nginx and the
-#   API/web containers are INTERNAL, reachable only over the private
-#   Docker network. Never add host ports for them in production.
+#   Postgres, Redis, RabbitMQ, OCR, workers, nginx and the API/web
+  #   containers are INTERNAL, reachable only over the private Docker
+  #   network. Never add host ports for them in production. The ONE
+  #   exception: OmniRoute binds 127.0.0.1:20128 (loopback only) so the
+  #   operator's gateway dashboard is reachable from localhost in every
+  #   environment — never expose it off-loopback.
 #
 #   For LOCAL DEVELOPMENT, `docker-compose.dev.yml` (an explicit
 #   opt-in override) publishes the internal services plus api/web
@@ -253,7 +256,12 @@ services:
   omniroute:
     image: diegosouzapw/omniroute:latest
     container_name: catlium-omniroute
-    # No host port mapping: reachable only via the Docker network.
+    # ALWAYS bound to loopback so the dashboard is reachable at
+    # http://localhost:20128 from the host in BOTH prod and dev (single
+    # definition — the dev override no longer re-publishes it). Loopback
+    # only; never change to 0.0.0.0 or a wildcard.
+    ports:
+      - '127.0.0.1:20128:20128'
     restart: unless-stopped
     mem_limit: 1g
     cpus: 1.0

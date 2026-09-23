@@ -7,9 +7,10 @@
 # ingress). For local work this override re-publishes ONLY:
 #   - nginx on 127.0.0.1:8080 — the single app entry you browse
 #     (http://localhost:8080); nginx routes / -> web:3001 and /api/* -> api:3000
-#   - the INTERNAL services (postgres, redis, rabbitmq, ocr, omniroute) on
-#     127.0.0.1 for host-based tooling (drizzle studio, psql, redis-cli, OCR/AI
-#     workers run outside Docker, E2E suites).
+#   - the INTERNAL services (postgres, redis, rabbitmq, ocr) on
+#     127.0.0.1 for host-based tooling (drizzle studio, psql, redis-cli, OCR
+#     workers run outside Docker, E2E suites). OmniRoute is excluded: the base
+#     file already binds it to 127.0.0.1:20128 always.
 #
 # The web app and API are NOT published separately — nginx is their only
 # entry, and the client calls relative /api/v1 (same origin), so a single
@@ -59,9 +60,9 @@ services:
       - '127.0.0.1:8000:8000'
     restart: 'no'
 
+  # OmniRoute host port is now defined in the BASE file (always loopback-
+  # reachable at http://localhost:20128 in both prod and dev) — no override.
   omniroute:
-    ports:
-      - '127.0.0.1:20128:20128'
     restart: 'no'
     environment:
       # Dev defaults bound to loopback only; real .env values win.
