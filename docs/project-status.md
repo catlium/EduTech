@@ -1,5 +1,55 @@
 # Project Status
 
+## Phase Q.1 — Institute Admin Operations Audit (2026-09-23)
+
+**Status: AUDIT COMPLETE — documentation only, no code changed.**
+Branch: `feature/institute-admin-operations-audit`. Canonical audit document:
+`docs/architecture/institute-operations-audit.md`.
+
+Factual inventory of the **institute-plane** admin-operations experience,
+traced end-to-end (frontend route → API client → controller → service →
+authorization → database model). Findings:
+
+- **End-to-end IMPLEMENTED:** syllabus lifecycle (`/syllabus*`), subject tree
+  (`/subjects*`), user list/create/activate/deactivate (`/users`).
+- **Backend IMPLEMENTED, frontend MISSING** (7 workflows, zero UI, no sidebar
+  entry, no API-client call): academic-year CRUD, class CRUD, class-subject
+  offerings, division/batch CRUD, teacher→class-subject assignment, student
+  placement/transfer, student enrollments. All consumed by no `apps/web`
+  page (`rg` cross-check).
+- **Backend IMPLEMENTED, frontend MISSING** — additionally: `/roles*` +
+  `PUT /roles/:roleId/permissions` (custom role management) and
+  `PUT /users/:userId/roles` (role editing).
+- **PARTIAL UI:** `/institute` is a read-only stats page; `/users` cannot edit
+  roles post-creation, grant `INSTITUTE_ADMIN` (create role select offers only
+  TEACHER/STUDENT), reset passwords, or remove users.
+- **Authz layering inconsistent:** only `users` and `roles` controllers
+  register `PermissionGuard`; all academic-structure/placement/assignment/
+  enrollment endpoints are `@RequiredRoles('INSTITUTE_ADMIN')` only, and
+  `permission-catalogue.ts` has **no keys** for academic-years/classes/
+  divisions/students/teachers — custom roles cannot be delegated
+  staffing/placement authority (`INSTITUTE_ADMIN` is all-or-nothing there).
+- **Backend gaps:** class/division `DELETE` are unguarded hard deletes that
+  cascade away placement history (FKs `ON DELETE CASCADE`, contradicts the
+  soft-history D4/D5 posture); no roster/aggregate queries for a class/
+  division's members; placement is per-student only (no batch promote);
+  open institute-wide reads on the `academic` subject tree for every member
+  (syllabus sibling is academic-scope-gated).
+- **Recommended phases (dependencies, not scheduled):** Q.2 academic-structure
+  console (years/classes/offerings/divisions + delete hardening) → Q.3 teacher
+  assignment UI → Q.4 student placement UI → Q.5 user-management completeness
+  + roles console; a design-gated catalogue expansion
+  (`academic`/`students`/`teachers` keys + `PermissionGuard` migration) is a
+  prerequisite if custom-role delegation is desired for Q.3/Q.4.
+
+No code, migration, endpoint, or frontend change was made in this phase.
+Unrelated working-tree changes on `main` were preserved untouched.
+
+**Exact recommended next task:** Phase Q.2 — the academic-structure console
+(years → classes → class-subject offerings → divisions) under a new
+`/institute/academic` section, after hardening class/division delete to
+refuse (or soft-delete) when placements/assignments exist.
+
 ## Phase P.2 — Platform User Lifecycle Implementation (2026-09-23)
 
 **Status: IMPLEMENTED + VALIDATED (backend + P.2-FE console).**

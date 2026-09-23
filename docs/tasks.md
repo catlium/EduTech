@@ -1,6 +1,59 @@
 # Task Tracker
 
-## Phase P.2 — Platform User Lifecycle Implementation (2026-09-23, IMPLEMENTED)
+## Phase Q.1 — Institute Admin Operations Audit (2026-09-23, AUDIT COMPLETE)
+
+> Issued task. Audit the Institute Admin / institute-plane experience and
+> produce a factual inventory of what is already implemented (frontend routes/
+> pages, institute-plane APIs, academic year/class/division/offering CRUD,
+> teacher assignments, student placements, syllabus, user management,
+> permission gates, backend-without-UI, incomplete UI, backend gaps). Trace
+> each workflow frontend → API client → controller → service → authz → DB.
+> AUDIT ONLY — no implementation, no migrations, no new endpoints, no
+> redesign, no unrelated code. Docs: new architecture audit doc +
+> project-status.md + this tracker. Commit on a feature branch; do NOT merge
+> into dev/main.
+
+- [x] Branch `feature/institute-admin-operations-audit` created from `main`
+      (unrelated working-tree changes preserved untouched).
+- [x] Backend trace (parallel research): academic/academic-structure/
+      teacher-assignments/student-placements/student-enrollments/syllabus/
+      users/memberships/roles controllers — routes, guards, role/permission
+      gates, service scope checks, models, permission-catalogue resources.
+- [x] Frontend inventory: workspace sidebar gates, layout `ADMIN_RESOURCE_ROUTES`,
+      api client, per-page consumed endpoints, grep cross-check for
+      structure/placement/assignment/enrollment/roles consumers.
+- [x] Relevant architecture doc `docs/architecture/institute-operations-audit.md`
+      — 17 sections: inventory, per-area IMPLEMENTED/PARTIAL/MISSING/DEFERRED,
+      gate matrix, APIs-with-no-UI, incomplete UI, backend gaps, workflow trace
+      matrix, findings summary, dependency-ordered recommended phases.
+- [x] Docs updated: project-status.md (Phase Q.1 entry + next task), this
+      tracker.
+- [x] Validation: all claims verified by direct grep + schema FK inspection
+      (class/division DELETE cascade → placements). No code changed.
+
+### Key findings (detail in the audit doc)
+
+- 7 admin workflows are backend-only with zero frontend UI: academic years,
+  classes, class-subject offerings, divisions, teacher assignments, student
+  placements/transfers, student enrollments. Plus `/roles*` (role management)
+  and `PUT /users/:userId/roles` have no consumer.
+- PARTIAL UI: `/institute` (read-only stats), `/users` (no role edit / no
+  INSTITUTE_ADMIN grant / no password reset).
+- Authz: only users + roles routes are permission-keyed; structure/staffing/
+  placement routes are `INSTITUTE_ADMIN` role-only and uncatalogued.
+- Class/division hard DELETE cascades placement history (FK cascade) — gap.
+
+### Recommended next (not scheduled)
+
+- [ ] (PLANNED) Q.2 — Academic-structure console (years/classes/offerings/
+      divisions) + class/division delete hardening.
+- [ ] (PLANNED) Q.3 — Teacher → class-subject assignment UI.
+- [ ] (PLANNED) Q.4 — Student placement/transfer UI.
+- [ ] (PLANNED) Q.5 — User-management completeness + roles console
+      (+ design-gated catalogue expansion for structure keys).
+
+- [ ] Commit `docs(audit): inventory institute admin operations` on
+      `feature/institute-admin-operations-audit` (+ push, no merge).
 
 > Issued task (backend only — user-confirmed; console deferred). Implement the
 > Phase P.1 design: platform-user role grant/revoke + suspend/reactivate service
