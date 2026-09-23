@@ -19,12 +19,21 @@ import {
   PLATFORM_AUDIT_ACTIONS,
 } from './platform-audit.service.js';
 
+export interface PlatformUserRoleView {
+  id: string;
+  key: string;
+}
+
 export interface PlatformUserSummary {
   id: string;
   email: string;
   name: string;
   status: string;
   roles: string[];
+  /** Roles with their ids — the console's revoke surface (DELETE
+   *  /:userId/roles/:roleId) needs the UUID, and the reads previously only
+   *  exposed keys (P.2-FE contract fix, additive). */
+  platformRoles: PlatformUserRoleView[];
   createdAt: Date;
 }
 
@@ -84,6 +93,7 @@ export class PlatformUsersService {
         name: users.name,
         status: users.status,
         createdAt: users.createdAt,
+        roleId: roles.id,
         roleKey: roles.key,
       })
       .from(platformUserRoles)
@@ -100,8 +110,10 @@ export class PlatformUsersService {
         status: row.status,
         createdAt: row.createdAt,
         roles: [],
+        platformRoles: [],
       };
       summary.roles.push(row.roleKey);
+      summary.platformRoles.push({ id: row.roleId, key: row.roleKey });
       byUser.set(row.id, summary);
     }
     const out = [...byUser.values()];
@@ -119,13 +131,14 @@ export class PlatformUsersService {
     if (!user) throw new NotFoundException('User not found');
 
     const roleRows = await this.db
-      .select({ key: roles.key })
+      .select({ id: roles.id, key: roles.key })
       .from(platformUserRoles)
       .innerJoin(roles, eq(roles.id, platformUserRoles.roleId))
       .where(eq(platformUserRoles.userId, userId));
 
+    const platformRoles = roleRows.sort((a, b) => a.key.localeCompare(b.key));
     const platformPermissions = [...resolveGrantedKeys(await this.permissionCheck.platformGrantKeysForUser(userId), 'platform')].sort();
-    return { ...user, roles: roleRows.map((r) => r.key).sort(), platformPermissions };
+    return { ...user, roles: platformRoles.map((r) => r.key), platformRoles, platformPermissions };
   }
 
   // ── Role grant / revoke (§4) — narrow, platform_user_roles only ────────

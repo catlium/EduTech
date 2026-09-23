@@ -46,8 +46,23 @@
       nest build pass, catalogue unit 34/34, integration 10/10 vs fresh scratch
       `catlium_scratch` PG17 (49/49 migrations).
 - [x] Docs: project-status.md Phase P.2; tasks.md this entry.
-- [ ] Deferred: `/platform/users` Super Admin console section (§13) — the exact
-      recommended next task.
+- [x] Deferred-then-built (P.2-FE, 2026-09-23): `/platform/users` Super Admin
+      console (§13) — page (status Tabs + local search + Table), grant direct
+      button, revoke/suspend/reactivate via `ConfirmDialog`, actions gated by
+      `can('platform-users.update')`, page gated by `.read`, loading/error/
+      empty/forbidden states, sidebar entry + breadcrumb, focused tests
+      (`filterPlatformUsers`, `platformUserActions`, `platform-users` key
+      implications).
+- [x] P.2-FE contract fix (additive): revoke needs a role UUID but reads only
+      returned keys → summary/detail now carry `platformRoles: { id, key }[]`
+      (keys kept in back-compatible `roles: string[]`); integration test #1
+      asserts the new field.
+- [x] P.2-FE validation: web/api `tsc --noEmit` clean, repo typecheck 10/10,
+      lint 9/9, api nest build + unit 226/226, integration 10/10 vs fresh
+      loopback PG17, web unit 10/10, `next build` pass emitting
+      `/platform/users`; live containers rebuilt + probed (api dist carries
+      `platformRoles`, web serves the page).
+- [x] P.2-FE commit `feat(platform): add platform users console` (+ push).
 - [x] Commit `feat(platform): implement platform user lifecycle` (+ push).
 
 ## Phase P.1 — Platform User Lifecycle Design (2026-09-23, DESIGN COMPLETE)

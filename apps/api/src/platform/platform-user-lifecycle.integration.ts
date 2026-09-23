@@ -206,10 +206,14 @@ test('platform user lifecycle mutations', { skip: testDbUrl ? false : 'TEST_DATA
     );
     const s1Entry = list.find((u) => u.id === s1!.id)!;
     assert.deepEqual(s1Entry!.roles, ['SUPER_ADMIN']);
+    assert.equal(s1Entry!.platformRoles.length, 1);
+    assert.equal(s1Entry!.platformRoles[0]!.key, 'SUPER_ADMIN');
+    assert.equal(s1Entry!.platformRoles[0]!.id, roleIds.SUPER_ADMIN, 'read surface carries the revoke-able role id');
     assert.deepEqual(list.filter((u) => [tTarget!.id, tt!.id].includes(u.id)), [], 'institute-plane users never list');
 
     const detail = await controller.get(s1!.id);
     assert.deepEqual(detail.roles, ['SUPER_ADMIN']);
+    assert.deepEqual(detail.platformRoles, [{ id: roleIds.SUPER_ADMIN, key: 'SUPER_ADMIN' }]);
     assert.ok(detail.platformPermissions!.includes('platform-users.read'));
     assert.ok(detail.platformPermissions!.includes('platform-users.update'));
 

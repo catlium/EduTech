@@ -2,16 +2,17 @@
 
 ## Phase P.2 — Platform User Lifecycle Implementation (2026-09-23)
 
-**Status: IMPLEMENTED + VALIDATED (backend only — console still DEFERRED).**
-Commit: `feat(platform): implement platform user lifecycle`.
+**Status: IMPLEMENTED + VALIDATED (backend + P.2-FE console).**
+Commits: `feat(platform): implement platform user lifecycle`,
+`feat(platform): add platform users console`.
 
 The Phase P.1 design (`docs/architecture/platform-user-lifecycle.md`) is now
 built on the platform plane: role grant/revoke + suspend/reactivate under
 `AccessTokenGuard → PlatformGuard` (never TenantGuard / `x-institute-id`),
 additive `platform-users` catalogue resource, same-tx session revocation on
 suspend, self + last-SUPER_ADMIN guards, in-tx `platform_user.*` audit events,
-and a shared attach gate. **Backend only**: the `/platform/users` console
-section (§13) remains DEFERRED per user decision — the API is authoritative.
+and a shared attach gate. The `/platform/users` console (§13) is IMPLEMENTED
+(P.2-FE — see below); the API remains authoritative for every guard.
 
 - **Catalogue (IMPLEMENTED):** `permission-catalogue.ts` gains
   `platform-users: { read, update, manage }` (no `create` — users are
@@ -89,15 +90,43 @@ section (§13) remains DEFERRED per user decision — the API is authoritative.
   untouched). No migration needed — `users.status`, `platform_user_roles`,
   `platform_audit_events` all fit the design as-is.
 - **Docs updated:** project-status.md (this entry), tasks.md (Phase P.2).
-- **Deferred (explicitly NOT in this slice):** `/platform/users` console
-  section (§13), `CHECK (status IN ('active','deactivated'))` on `users.status`
-  (design marks it impl-phase), platform-global audit view, invite/provisioning,
-  automated suspension sweep, hard user deletion.
+- **P.2-FE — `/platform/users` console (IMPLEMENTED, 2026-09-23):**
+  `apps/web/src/app/platform/users/page.tsx` inside the existing platform
+  console layout: status Tabs (All/Active/Deactivated) + local name/email
+  search over `GET /api/v1/platform/users`; Table (name, email, status,
+  platform-role badges, created); grant `SUPER_ADMIN` direct button; revoke/
+  suspend/reactivate through a single `ConfirmDialog` (destructive for
+  revoke/suspend). Actions only render under `can('platform-users.update')`,
+  page access under `.read` (inline "Admin access required" empty state);
+  loading/error/empty states follow house pattern; backend 4xx (self/last-guard)
+  surfaces via toast — no duplicate authz on the client. Sidebar entry
+  (`platform-sidebar.tsx`) + breadcrumb added.
+  - **Contract fix (additive):** revoke needs a role UUID but reads returned
+    only keys → `PlatformUsersService` now adds `platformRoles: { id, key }[]`
+    to summaries/detail, keys kept back-compatible in `roles: string[]`.
+  - **Helpers + tests:** `platform-scope.ts` adds `PlatformUserSummary`,
+    `filterPlatformUsers`, `platformUserActions`, `SUPER_ADMIN_ROLE`; gating
+    tests cover permission→bool (no grant / read-only → no update) and the
+    role∩status action matrix.
+  - **Validation (P.2-FE):** web+api `tsc --noEmit` clean; repo typecheck
+    10/10; lint 9/9; api nest build + unit 226/226; integration
+    `test:platform-user-lifecycle` 10/10 vs a fresh loopback PG17 (49/49
+    migrations, stack untouched); web unit 10/10; `next build` emits
+    `/platform/users`. Live containers rebuilt and probed: api dist carries
+    `platformRoles`, health 200, users route 401 unauth; web serves the page
+    (grant/revoke strings in the emitted chunk).
+- **Deferred (still out of scope):** platform-global audit view,
+  invite/provisioning, automated suspension sweep, hard user deletion,
+  `CHECK (status IN ('active','deactivated'))` on `users.status` (design marks
+  it impl-phase).
+- **Known issue:** container rule satisfied — images rebuilt from source;
+  session-cleanup and OCR-fleet modules untouched.
 
-**Exact recommended next task:** the backend P.2 slice is complete; the natural
-follow-on is the deferred `/platform/users` Super Admin console section (§13) —
-institute-plane user list + roles + suspend/reactivate, gated by
-`platform-users.*`, reusing the `usePlatform()` authz pattern.
+**Exact recommended next task:** the platform console slice is complete. The
+next natural unit is the deferred platform-global **audit view** (§13) — reuse
+the implemented `platform-audit` read surface to list `platform_user.*` /
+platform events with the institute-side audit-card rendering, gated by
+`platform-audit.*`. Otherwise continue the roadmap (see Phase listings below).
 
 ## Phase P.1 — Platform User Lifecycle Design (2026-09-23)
 

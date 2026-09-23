@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, LogOut, ShieldCheck } from 'lucide-react';
+import { Building2, LayoutDashboard, LogOut, ShieldCheck, UsersRound } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -21,7 +21,10 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 
-const platformNav = [{ href: '/platform/institutes', label: 'Institutes', icon: Building2 }];
+const platformNav = [
+  { href: '/platform/institutes', label: 'Institutes', icon: Building2 },
+  { href: '/platform/users', label: 'Users', icon: UsersRound },
+];
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href + '/');
@@ -106,6 +109,9 @@ export function PlatformSidebar() {
 export function platformCrumb(pathname: string): { label: string; href: string } | null {
   if (pathname === '/platform/institutes' || pathname.startsWith('/platform/institutes/')) {
     return { label: 'Institutes', href: '/platform/institutes' };
+  }
+  if (pathname === '/platform/users' || pathname.startsWith('/platform/users/')) {
+    return { label: 'Users', href: '/platform/users' };
   }
   return null;
 }

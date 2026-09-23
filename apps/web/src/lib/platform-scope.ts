@@ -74,6 +74,66 @@ export function filterInstitutes(
   });
 }
 
+// ── Platform users (Phase P.2-FE, platform-user-lifecycle §12/§13) ──────────
+
+export interface PlatformUserRoleView {
+  id: string;
+  key: string;
+}
+
+export interface PlatformUserSummary {
+  id: string;
+  email: string;
+  name: string;
+  status: 'active' | 'deactivated';
+  roles: string[];
+  /** Roles with their ids — the revoke surface (DELETE .../roles/:roleId) needs
+   *  the UUID the P.2 read responses now carry. */
+  platformRoles: PlatformUserRoleView[];
+  createdAt: string;
+}
+
+export type PlatformUserStatusFilter = 'all' | 'active' | 'deactivated';
+
+/** The only platform role today (platform-user-lifecycle §2.1/§4.1). */
+export const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
+
+/** Client-side name/email search over a loaded platform-user list. Status
+ *  filtering is the API's surface (GET /platform/users?status=); the list is
+ *  small, so search stays local. */
+export function filterPlatformUsers(
+  users: PlatformUserSummary[],
+  status: PlatformUserStatusFilter,
+  query: string,
+): PlatformUserSummary[] {
+  const q = query.trim().toLowerCase();
+  return users.filter((user) => {
+    if (status !== 'all' && user.status !== status) return false;
+    if (q && !user.name.toLowerCase().includes(q) && !user.email.toLowerCase().includes(q))
+      return false;
+    return true;
+  });
+}
+
+/** The per-row lifecycle actions a platform console renders. UX-only —
+ *  `canMutate` comes from the DB-fresh `can('platform-users.update')` probe and
+ *  the backend re-checks every call. Self/last-SUPER_ADMIN denials are NOT
+ *  duplicated here; they surface from the backend 4xx as §13 prescribes. */
+export type PlatformUserAction = 'grant-super-admin' | 'revoke-super-admin' | 'suspend' | 'reactivate';
+
+export function platformUserActions(
+  canMutate: boolean,
+  user: Pick<PlatformUserSummary, 'status' | 'platformRoles'>,
+  subjectRole: string = SUPER_ADMIN_ROLE,
+): PlatformUserAction[] {
+  if (!canMutate) return [];
+  const holdsSubjectRole = user.platformRoles.some((r) => r.key === subjectRole);
+  return [
+    holdsSubjectRole ? 'revoke-super-admin' : 'grant-super-admin',
+    user.status === 'active' ? 'suspend' : 'reactivate',
+  ];
+}
+
 /** Plan selector default: the configured default (starter), else the first
  *  catalog plan, else null (no plans assignable). */
 export function defaultPlanCode(plans: PlatformPlan[], fallback = 'starter'): string | null {

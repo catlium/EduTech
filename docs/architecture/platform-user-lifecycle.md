@@ -494,6 +494,11 @@ platform-users: { actions: ['read', 'update', 'manage'] }
 - Response shapes follow the platform style (`PlatformUserSummary`, detail with
   `roles: string[]` + `platformPermissions: string[]` — the latter straight
   from the existing probe resolver, as the console uses).
+- **Applied addition (P.2-FE):** because `DELETE :userId/roles/:roleId` needs a
+  role **id** but reads only carried role **keys**, every summary/detail now
+  carries an additive `platformRoles: { id, key }[]` alongside the
+  back-compatible `roles: string[]` (keys only). The console revokes via
+  `platformRoles[].id`; the backend stays authoritative for all guards.
 
 ---
 
@@ -516,6 +521,11 @@ platform console layout (`app/platform/layout.tsx` — no tenant provider, no
 - **Guard rails**: the console never renders an action its user cannot perform
   (`can('platform-users.update')`), and self/last-guard denials surface the
   backend's message — no dead buttons for the last super admin.
+- **Implemented (2026-09-23, P.2-FE):** the `/platform/users` console.
+  Page represents `get list` (`?status=active|deactivated`) plus a local
+  search; per-row grant (direct button — additive) and revoke/suspend/
+  reactivate (single `ConfirmDialog`); loading/error/empty/forbidden states
+  per house pattern; sidebar entry + breadcrumb added.
 - **Not built (DEFERRED)**: platform-global audit view, invite/provisioning
   wizard, QR/device sessions management (sessions stay self-service via the
   existing `GET /auth/sessions` owner-scoped surface).

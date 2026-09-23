@@ -6,13 +6,18 @@ import {
   auditEventSummary,
   defaultPlanCode,
   filterInstitutes,
+  filterPlatformUsers,
   formatDate,
   formatDateTime,
   planName,
+  platformUserActions,
+  SUPER_ADMIN_ROLE,
   type InstituteSummary,
   type PlatformAuditEventView,
   type PlatformPlan,
+  type PlatformUserSummary,
 } from './platform-scope.ts';
+import { canUse } from './permissions.ts';
 
 const plans: PlatformPlan[] = [
   { id: 'p1', code: 'starter', name: 'Starter', description: 'Entry plan' },
@@ -97,6 +102,106 @@ test('formatDate renders dates and dashes for missing values', () => {
   assert.match(formatDate('2026-09-01T12:00:00.000Z'), /Sep 1, 2026/);
   const d = new Date('2026-09-01T12:00:00.000Z');
   assert.match(formatDate(d), /Sep 1, 2026/);
+});
+
+const platformUsers: PlatformUserSummary[] = [
+  {
+    id: 'u1',
+    email: 'alice@example.test',
+    name: 'Alice Admin',
+    status: 'active',
+    roles: ['SUPER_ADMIN'],
+    platformRoles: [{ id: 'r-sa', key: 'SUPER_ADMIN' }],
+    createdAt: '2026-09-01T12:00:00.000Z',
+  },
+  {
+    id: 'u2',
+    email: 'bob@example.test',
+    name: 'Bob Builder',
+    status: 'deactivated',
+    roles: [],
+    platformRoles: [],
+    createdAt: '2026-08-01T12:00:00.000Z',
+  },
+];
+
+test('filterPlatformUsers applies status and name/email search', () => {
+  assert.deepEqual(
+    filterPlatformUsers(platformUsers, 'all', '').map((u) => u.id),
+    ['u1', 'u2'],
+  );
+  assert.deepEqual(
+    filterPlatformUsers(platformUsers, 'active', '').map((u) => u.id),
+    ['u1'],
+  );
+  assert.deepEqual(
+    filterPlatformUsers(platformUsers, 'deactivated', '').map((u) => u.id),
+    ['u2'],
+  );
+  assert.deepEqual(
+    filterPlatformUsers(platformUsers, 'all', 'alice').map((u) => u.id),
+    ['u1'],
+  );
+  assert.deepEqual(
+    filterPlatformUsers(platformUsers, 'all', 'bob@example.test').map((u) => u.id),
+    ['u2'],
+  );
+  assert.deepEqual(
+    filterPlatformUsers(platformUsers, 'active', 'bob').map((u) => u.id),
+    [],
+  );
+  assert.deepEqual(filterPlatformUsers(platformUsers, 'all', 'missing').map((u) => u.id), []);
+  assert.deepEqual(filterPlatformUsers(platformUsers, 'all', '  alice  ').map((u) => u.id), ['u1']);
+});
+
+test('platformUserActions gates permissions then role/status availability', () => {
+  const active = platformUsers[0]!;
+  const deactivated = platformUsers[1]!;
+
+  // Permission gate: without platform-users.update no action renders.
+  assert.deepEqual(platformUserActions(false, active), []);
+  assert.deepEqual(platformUserActions(false, deactivated), []);
+
+  // Role availability: a holder can revoke, a non-holder can grant.
+  assert.deepEqual(platformUserActions(true, active), ['revoke-super-admin', 'suspend']);
+  assert.deepEqual(platformUserActions(true, deactivated), [
+    'grant-super-admin',
+    'reactivate',
+  ]);
+
+  // Status drives suspend vs reactivate regardless of role hold.
+  assert.deepEqual(platformUserActions(true, { ...active, status: 'deactivated' }), [
+    'revoke-super-admin',
+    'reactivate',
+  ]);
+  assert.deepEqual(
+    platformUserActions(true, { ...deactivated, status: 'active', platformRoles: [{ id: 'r', key: 'SUPER_ADMIN' }] }),
+    ['revoke-super-admin', 'suspend'],
+  );
+
+  // Custom subject role: today only SUPER_ADMIN, but the helper is role-agnostic.
+  assert.deepEqual(
+    platformUserActions(true, { ...deactivated, status: 'active' }, SUPER_ADMIN_ROLE),
+    ['grant-super-admin', 'suspend'],
+  );
+});
+
+test('platform-users permission gating mirrors the backend *.manage implication', () => {
+  assert.equal(canUse([], 'platform-users.read'), false, 'no grants → denied');
+  assert.equal(canUse(['platform-users.read'], 'platform-users.read'), true);
+  assert.equal(
+    canUse(['platform-users.read'], 'platform-users.update'),
+    false,
+    'read never implies update',
+  );
+  assert.equal(canUse(['platform-users.update'], 'platform-users.update'), true);
+  assert.equal(
+    canUse(['platform-users.manage'], 'platform-users.update'),
+    true,
+    'manage implies update',
+  );
+  assert.equal(canUse(['platform-users.manage'], 'platform-users.read'), true, 'manage implies read');
+  assert.equal(platformUserActions(canUse(['platform-users.manage'], 'platform-users.update'), platformUsers[0]!).length > 0, true);
 });
 
 test('formatDateTime includes the time of day', () => {
