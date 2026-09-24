@@ -158,6 +158,8 @@ export default function AcademicConsolePage() {
               classes={[...classes].sort(bySortOrder)}
               divisions={divisions}
               years={[...years].sort(bySortOrder)}
+              subjects={subjects}
+              offeredByClass={offeredByClass}
               canCreate={canCreateAssignments}
               canDelete={canDeleteAssignments}
               canTransfer={canTransferPlacements}

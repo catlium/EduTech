@@ -168,11 +168,16 @@
         subject 404, remove deletes the row, STUDENT 403). 6/6 green on a fresh
         scratch PG17 (49/49 migrations).
       - Validation: lint 9/9, api unit 228/228, nest build, api typecheck, and
-        the relevant authorization suites green (student-enrollments-authz 6/6,
+      the relevant authorization suites green (student-enrollments-authz 6/6,
         student-placements-authz 7/7, academic-scope, teacher-assignments-authz
         5/5, authz-regression 8/8, resource-scope, student-placements &
         teacher-assignments integrations). E.2 (frontend gating on the
         academic console) remains for the web slice.
+- [x] Phase Q.4/E.2 — Student enrollment-override console (frontend). **IMPLEMENTED 2026-09-24** (commit `feat(student-enrollments): add enrollment override console`, pushed, no merge):
+      - Web helpers (`apps/web/src/lib/academic.ts`): `EnrollmentKind`, `StudentSubjectEnrollment`, `EnrollmentState`, `canEnroll`, `offeredSubjectIdsForDivision`, `enrollmentState`, `canCreateEnrollmentOverride` (EXCLUDED only if offered, ENROLLED only if not offered), `canRemoveEnrollmentOverride` (only when overridden).
+      - UI: `apps/web/src/app/(workspace)/institute/academic/enrollments-dialog.tsx` — per-placement dialog listing all institute subjects with current state (ENROLLED/EXCLUDED/DEFAULT), actions gated by `assignments.create`/`delete` via `canEnroll`; elective picker to create ENROLLED for non-offered subjects (filtered to active); revert removes the override. 403 from GET mapped to "Enrollments unavailable" state. Mutations toast on success/error and reload overrides + parent list.
+      - Wiring: `placements-section.tsx` adds `BookOpenCheck` action per active placement, `overrideTarget` state, passes `canCreate/canDelete` (from `canEnroll` permissions in page), always shows Actions column; `page.tsx` passes `subjects` and `offeredByClass` into placements. Reuses existing shadcn/ui (Dialog/Table/Select/Badge/SkeletonRows/EmptyState/ErrorState).
+      - Tests: `academic.test.ts` +5 tests (24/24 total) for the new helpers. Validation: web `tsc --noEmit` clean, web `node --test src/lib/academic.test.ts` 24/24, root `pnpm lint` 9/9, root `pnpm typecheck` 10/10, `next build` clean.
 
 ## Phase Q.3.0 — Academic/Teacher Permission Catalogue (2026-09-23, IMPLEMENTED)
 

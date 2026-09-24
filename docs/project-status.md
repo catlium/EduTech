@@ -109,17 +109,10 @@ deferred sibling of the Q.4.1 placement migration and is now migrated.
   student-placements-authz 7/7, academic-scope, teacher-assignments-authz 5/5,
   authz-regression 8/8, resource-scope, student-placements & teacher-
   assignments integrations.
-- **Docs:** this entry; tasks.md (E.1 item IMPLEMENTED in the Phase Q.4.0
-  tracker); `academic-student-placement.md` D-Q4.10 + G6 flipped from
-  DEFERRED to IMPLEMENTED.
-- **Browser-visible behavior unchanged:** no route semantics, endpoint, or
-  schema change; no frontend work shipped (E.2 pending).
+- **Docs:** this entry; tasks.md (E.1 and E.2 items IMPLEMENTED in the Phase Q.4.0 tracker); `academic-student-placement.md` D-Q4.10 + G6 flipped from DEFERRED to IMPLEMENTED.
+- **Browser-visible behavior:** enrollment overrides console added to `/institute/academic` Student Placements (view on `assignments.read`, create on `.create`, delete on `.delete`).
 
-**Exact recommended next task:** Phase E.2 — frontend slice. Gate the
-enrollment-override UI on the `/institute/academic` console behind
-`assignments.read`/`.create`/`.delete` via the established Q.3/Q.4 pattern
-(`canAssign`-style per-action gating, degraded roster picker), mirroring the
-placement section.
+**Exact recommended next task:** Verify the console against live API behavior in the running dev stack (manual smoke) or add lightweight E.2 UI tests if desired. No backend changes planned.
 
 ## Phase Q.4.2 — Student Placement/Transfer Backend Contract + End-to-End Authorization Coverage (2026-09-24)
 

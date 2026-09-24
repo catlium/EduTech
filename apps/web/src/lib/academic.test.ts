@@ -21,12 +21,19 @@ import {
   filterPlacements,
   placementHistory,
   placeableStudents,
+  canEnroll,
+  offeredSubjectIdsForDivision,
+  enrollmentState,
+  canCreateEnrollmentOverride,
+  canRemoveEnrollmentOverride,
   type AcademicYear,
   type CarryForwardDecision,
   type CarryForwardProposal,
   type ClassRow,
   type DivisionRow,
+  type Offering,
   type StudentPlacement,
+  type StudentSubjectEnrollment,
   type TeacherAssignment,
 } from './academic.ts';
 
@@ -348,4 +355,50 @@ test('placeableStudents = active STUDENT roster not already active in the divisi
   assert.deepEqual(available.map((u) => u.name), ['Bob', 'Dean']);
   assert.equal(placeableStudents([ann, bob], [], null, divisions).length, 2);
   assert.equal(placeableStudents([ann], [placed], 'd1', divisions).length, 0);
+});
+
+// ── E.2 — student subject-enrollment override helpers ──────────────────
+
+test('canEnroll mirrors assignments.* with manage implication', () => {
+  assert.equal(canEnroll(['assignments.read'], 'read'), true);
+  assert.equal(canEnroll(['assignments.read'], 'create'), false);
+  assert.equal(canEnroll(['assignments.manage'], 'delete'), true);
+});
+
+test('offeredSubjectIdsForDivision maps division -> offered subject IDs', () => {
+  const divs = [
+    { ...division, id: 'd1', classId: 'c1' },
+    { ...division, id: 'd2', classId: 'c2' },
+  ];
+  const offering = (id: string): Offering => ({
+    id, instituteId: 'i1', name: id, slug: id, description: null, sortOrder: 0, status: 'active', createdAt: '', updatedAt: '', classSubjectId: `cs-${id}`,
+  });
+  const offeredByClass: Record<string, Offering[]> = { c1: [offering('s1'), offering('s2')], c2: [offering('s3')] };
+  const set = offeredSubjectIdsForDivision('d1', divs, offeredByClass);
+  assert.equal(set.has('s1'), true);
+  assert.equal(set.has('s2'), true);
+  assert.equal(set.has('s3'), false);
+});
+
+test('enrollmentState returns DEFAULT/ENROLLED/EXCLUDED', () => {
+  const enrollments: StudentSubjectEnrollment[] = [
+    { id: 'e1', instituteId: 'i1', placementId: 'p1', subjectId: 's2', kind: 'ENROLLED', createdAt: '' },
+  ];
+  assert.equal(enrollmentState(enrollments, 'p1', 's1'), 'DEFAULT');
+  assert.equal(enrollmentState(enrollments, 'p1', 's2'), 'ENROLLED');
+  assert.equal(enrollmentState(enrollments, 'p99', 's2'), 'DEFAULT');
+});
+
+test('canCreateEnrollmentOverride enforces EXCLUDED must be offered, ENROLLED not offered', () => {
+  const offered = new Set(['s1']);
+  assert.equal(canCreateEnrollmentOverride('EXCLUDED', offered, 's1'), true);
+  assert.equal(canCreateEnrollmentOverride('EXCLUDED', offered, 's2'), false);
+  assert.equal(canCreateEnrollmentOverride('ENROLLED', offered, 's2'), true);
+  assert.equal(canCreateEnrollmentOverride('ENROLLED', offered, 's1'), false);
+});
+
+test('canRemoveEnrollmentOverride only when overridden', () => {
+  assert.equal(canRemoveEnrollmentOverride('DEFAULT'), false);
+  assert.equal(canRemoveEnrollmentOverride('ENROLLED'), true);
+  assert.equal(canRemoveEnrollmentOverride('EXCLUDED'), true);
 });

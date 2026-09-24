@@ -223,6 +223,72 @@ export interface CarryForwardCommitResult {
   skipPlacementIds: string[];
 }
 
+// ── E.2 — student subject-enrollment overrides ─────────────────────────────
+// Mirrors the backend: overrides are ENROLLED/EXCLUDED per placement+subject
+// (admin-invoked). Client-side helpers are UX-only and never replace API
+// validation. Permission gating uses the `assignments.*` key family (E.1).
+export type EnrollmentKind = 'ENROLLED' | 'EXCLUDED';
+
+export interface StudentSubjectEnrollment {
+  id: string;
+  instituteId: string;
+  placementId: string;
+  subjectId: string;
+  kind: EnrollmentKind;
+  createdAt: string;
+}
+
+export type EnrollmentState = EnrollmentKind | 'DEFAULT';
+
+/** Enrollment permission gate: mirrors E.1 backend keys (assignments.*). */
+export function canEnroll(permissions: readonly string[], action: 'read' | 'create' | 'delete'): boolean {
+  return canUse(permissions, `assignments.${action}`);
+}
+
+/** Map offeredByClass (classId -> Offering[]) to offered subject IDs for a division. */
+export function offeredSubjectIdsForDivision(
+  divisionId: string | null,
+  divisions: DivisionRow[],
+  offeredByClass: Record<string, Offering[]>,
+): Set<string> {
+  if (!divisionId) return new Set();
+  const div = divisions.find((d) => d.id === divisionId);
+  if (!div) return new Set();
+  const offered = offeredByClass[div.classId] ?? [];
+  return new Set(offered.map((o) => o.id));
+}
+
+/** Get enrollment state for a given subject on a placement. */
+export function enrollmentState(
+  enrollments: StudentSubjectEnrollment[],
+  placementId: string,
+  subjectId: string,
+): EnrollmentState {
+  const e = enrollments.find((en) => en.placementId === placementId && en.subjectId === subjectId);
+  if (!e) return 'DEFAULT';
+  return e.kind;
+}
+
+/** Client-side pre-check for creating an override (UX only; backend authoritative). */
+export function canCreateEnrollmentOverride(
+  kind: EnrollmentKind,
+  offered: Set<string>,
+  subjectId: string,
+): boolean {
+  if (kind === 'EXCLUDED') {
+    return offered.has(subjectId);
+  }
+  if (kind === 'ENROLLED') {
+    return !offered.has(subjectId);
+  }
+  return false;
+}
+
+/** Client-side pre-check for removing an override (UX only; backend authoritative). */
+export function canRemoveEnrollmentOverride(state: EnrollmentState): boolean {
+  return state === 'ENROLLED' || state === 'EXCLUDED';
+}
+
 export const CARRY_FORWARD_FLAGS = {
   MEMBERSHIP_NOT_ACTIVE: 'membership-not-active',
   ALREADY_ACTIVE_IN_DESTINATION_YEAR: 'already-active-in-destination-year',

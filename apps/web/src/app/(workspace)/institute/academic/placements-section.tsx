@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import {
   Archive,
   ArrowLeftRight,
+  BookOpenCheck,
   ChevronDown,
   ChevronRight,
   GraduationCap,
@@ -24,9 +25,10 @@ import {
   type AcademicYear,
   type ClassRow,
   type DivisionRow,
+  type Offering,
   type StudentPlacement,
 } from '@/lib/academic';
-import type { InstituteUser } from '@catlium/contracts';
+import type { InstituteUser, SubjectResponse } from '@catlium/contracts';
 import { EmptyState } from '@/components/app/empty-state';
 import { PageHeader } from '@/components/app/page-header';
 import { SkeletonRows } from '@/components/app/loading';
@@ -61,6 +63,7 @@ import {
 } from '@/components/ui/table';
 
 import { CarryForwardWizard } from './carry-forward-wizard';
+import { EnrollmentOverridesDialog } from './enrollments-dialog';
 
 // Phase Q.4.4 — student placement console (design §9). Which STUDENT membership
 // is placed into which division of an academic year. The roster + history render
@@ -88,6 +91,8 @@ export function StudentPlacementsSection({
   classes,
   divisions,
   years,
+  subjects,
+  offeredByClass,
   canCreate,
   canDelete,
   canTransfer,
@@ -96,6 +101,8 @@ export function StudentPlacementsSection({
   classes: ClassRow[];
   divisions: DivisionRow[];
   years: AcademicYear[];
+  subjects: SubjectResponse[];
+  offeredByClass: Record<string, Offering[]>;
   canCreate: boolean;
   canDelete: boolean;
   canTransfer: boolean;
@@ -126,6 +133,7 @@ export function StudentPlacementsSection({
     divisionId: '',
   });
   const [deactivateTarget, setDeactivateTarget] = useState<StudentPlacement | null>(null);
+  const [overrideTarget, setOverrideTarget] = useState<StudentPlacement | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -371,7 +379,7 @@ export function StudentPlacementsSection({
                 <TableHead>Academic year</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Placed</TableHead>
-                {(canDelete || canTransfer) && <TableHead className="text-right">Actions</TableHead>}
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -394,6 +402,7 @@ export function StudentPlacementsSection({
                       setTransferTarget(placement);
                     }}
                     onDeactivate={() => setDeactivateTarget(placement)}
+                    onOverrides={() => setOverrideTarget(placement)}
                   />
                 );
               })}
@@ -665,6 +674,20 @@ export function StudentPlacementsSection({
         />
       )}
 
+      {overrideTarget && (
+        <EnrollmentOverridesDialog
+          placement={overrideTarget}
+          subjects={subjects}
+          divisions={divisions}
+          offeredByClass={offeredByClass}
+          canCreate={canCreate}
+          canDelete={canDelete}
+          open={overrideTarget !== null}
+          onOpenChange={(o) => !o && setOverrideTarget(null)}
+          onChanged={onChange}
+        />
+      )}
+
       <CarryForwardWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}
@@ -694,6 +717,7 @@ function PlacementRows({
   onToggle,
   onTransfer,
   onDeactivate,
+  onOverrides,
 }: {
   placement: StudentPlacement;
   history: StudentPlacement[];
@@ -704,6 +728,7 @@ function PlacementRows({
   onToggle: () => void;
   onTransfer: () => void;
   onDeactivate: () => void;
+  onOverrides: () => void;
 }) {
   return (
     <>
@@ -728,39 +753,45 @@ function PlacementRows({
           <StatusBadge status={placement.status} />
         </TableCell>
         <TableCell className="text-muted-foreground">{formatDate(placement.createdAt)}</TableCell>
-        {(canDelete || canTransfer) && (
-          <TableCell className="text-right">
-            {canAct && (
-              <div className="flex items-center justify-end gap-2">
-                {canTransfer && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onTransfer}
-                    title="Transfer to another division or year"
-                  >
-                    <ArrowLeftRight className="size-3.5" />
-                  </Button>
-                )}
-                {canDelete && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onDeactivate}
-                    title="Deactivate this placement"
-                  >
-                    <Archive className="size-3.5" />
-                  </Button>
-                )}
-              </div>
-            )}
-          </TableCell>
-        )}
+        <TableCell className="text-right">
+          {canAct && (
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOverrides}
+                title="View or edit this student's subject enrollment overrides"
+              >
+                <BookOpenCheck className="size-3.5" />
+              </Button>
+              {canTransfer && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onTransfer}
+                  title="Transfer to another division or year"
+                >
+                  <ArrowLeftRight className="size-3.5" />
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onDeactivate}
+                  title="Deactivate this placement"
+                >
+                  <Archive className="size-3.5" />
+                </Button>
+              )}
+            </div>
+          )}
+        </TableCell>
       </TableRow>
       {isOpen && (
         <TableRow className="bg-muted/30">
           <TableCell />
-          <TableCell colSpan={canDelete || canTransfer ? 7 : 6}>
+          <TableCell colSpan={7}>
             {history.length === 0 ? (
               <span className="text-sm text-muted-foreground">
                 No earlier placements for this student.
