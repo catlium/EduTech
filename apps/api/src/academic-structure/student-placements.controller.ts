@@ -13,7 +13,12 @@ import {
 } from '@nestjs/common';
 
 import { StudentPlacementsService } from './student-placements.service.js';
-import { CreateStudentPlacementDto, TransferStudentPlacementDto } from './dto/student-placements.dto.js';
+import {
+  CreateStudentPlacementDto,
+  TransferStudentPlacementDto,
+  CarryForwardPreviewDto,
+  CarryForwardCommitDto,
+} from './dto/student-placements.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -96,6 +101,26 @@ export class StudentPlacementsController {
       dto,
     );
     return { placement };
+  }
+
+  @Post('carry-forward/preview')
+  @RequiredPermission('assignments.read')
+  async previewCarryForward(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: CarryForwardPreviewDto,
+  ) {
+    const preview = await this.studentPlacementsService.previewCarryForward(tenant.instituteId, dto);
+    return { preview };
+  }
+
+  @Post('carry-forward/commit')
+  @RequiredPermissions('assignments.create', 'assignments.delete')
+  async commitCarryForward(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: CarryForwardCommitDto,
+  ) {
+    const result = await this.studentPlacementsService.commitCarryForward(tenant.instituteId, dto);
+    return { result };
   }
 
   @Delete(':placementId')

@@ -1,4 +1,5 @@
-import { IsUUID } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsOptional, IsUUID, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateStudentPlacementDto {
   // The STUDENT membership being placed (student = institute member).
@@ -14,4 +15,48 @@ export class CreateStudentPlacementDto {
 export class TransferStudentPlacementDto {
   @IsUUID()
   divisionId!: string;
+}
+
+// Q.4.2 — carry-forward (bulk promotion). Preview is a read-only proposal and
+// takes an optional class filter; commit is the confirmed plan. The destination
+// year is authoritative on commit (never inferred); every item pairs a source
+// placement with the exact destination division chosen by the admin after
+// reviewing the preview.
+
+export class CarryForwardPreviewDto {
+  @IsUUID()
+  sourceAcademicYearId!: string;
+
+  @IsUUID()
+  destinationAcademicYearId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  classId?: string;
+}
+
+export class CarryForwardItemDto {
+  @IsUUID()
+  placementId!: string;
+
+  @IsUUID()
+  destinationDivisionId!: string;
+}
+
+export class CarryForwardCommitDto {
+  @IsUUID()
+  destinationAcademicYearId!: string;
+
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => CarryForwardItemDto)
+  items!: CarryForwardItemDto[];
+
+  // Placements intentionally left ACTIVE in the source year (repeat class /
+  // student leaving): they are never archived, never carried; returned as-is.
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  skipPlacementIds?: string[];
 }

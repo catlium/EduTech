@@ -1,8 +1,9 @@
 # Student Placement, Transfer & Academic-Year Carry-Forward Design
 
-**Status: DESIGN COMPLETE (2026-09-24) — audit + permission + workflow design.
-Q.4.1 guard migration IMPLEMENTED (2026-09-24).**
-Branch: `feature/student-placement` (Phase Q.4.0 design / Q.4.1 guard migration).
+**Status: Q.4.1 guard migration IMPLEMENTED (2026-09-24) + Q.4.2 carry-forward
+backend IMPLEMENTED (2026-09-24). Frontend console remains PLANNED (Q.4.4).**
+Branch: `feature/student-placement` (Phase Q.4.0 design / Q.4.1 guard migration /
+Q.4.2 carry-forward backend).
 
 This is the canonical design for **student placement, transfer, and academic-
 year carry-forward (promotion)** — Phase Q.4.0 of the
@@ -15,9 +16,9 @@ catalogue precedent (`academic-teacher-permissions.md`), and
 `permission-catalogue.ts`.
 
 It is a **design + migration record**: the current placement/transfer/deactivate
-backend is live (the Q.4.1 permission-guard migration now IMPLEMENTED); the
-carry-forward (bulk promotion) surface and the console remain **PLANNED** and
-out of scope of the guard-migration commit. Like the Q.3.0 doc, it ships as the
+backend is live (the Q.4.1 permission-guard migration and the Q.4.2 carry-forward
+backend are now IMPLEMENTED); the console (Q.4.4) remains **PLANNED** and
+out of scope of those commits. Like the Q.3.0 doc, it ships as the
 recorded design + audit before any implementation branch is cut.
 
 State markers, matching the audit / Q.3 docs:
@@ -235,7 +236,7 @@ archive+insert transfer. Audit result (MISSING → resolution):
 | Placement mutation audit events | Admin-facing audit trail is a platform-wide deferred item (see Q.3 G5) | DEFERRED |
 | Class/division DELETE cascades placement history | Pre-existing platform-wide hardening gap (Q.2/Q.3 G6) | DEFERRED, unchanged |
 
-## 7. API surface — reuse before new (PLANNED)
+## 7. API surface — reuse before new (IMPLEMENTED Q.4.2)
 
 Existing endpoints, reused without change (only the guard swap applies):
 
@@ -250,30 +251,33 @@ Existing endpoints, reused without change (only the guard swap applies):
 
 Genuinely missing (audit §14.4 "bulk promote"), added as new:
 
-- **`POST /academic/student-placements/carry-forward/preview`** (PLANNED).
+- **`POST /academic/student-placements/carry-forward/preview`** (IMPLEMENTED Q.4.2).
   Body: `{ sourceAcademicYearId, destinationAcademicYearId, classId? }`.
-  Read-only. Returns, per active source placement: student (name, membership),
-  current (class, division), proposed destination division (auto-matched by
-  same class + same division name in the destination year; when the class name
-  changed or no same-name destination exists, `proposedDivisionId` is null),
-  human-readable flags (no-destination, class-name-changed, already-active-in-
-  destination-year, membership-not-active), and per-destination division
-  occupancy (current count + projected after this run, capacity flag when
-  `divisions.capacity` is set). **Never mutates.**
-- **`POST /academic/student-placements/carry-forward/commit`** (PLANNED).
+  Gated `assignments.read`. Read-only. Returns, per active source placement:
+  student (name, membership), current (class, division), proposed destination
+  division (auto-matched by same class + same division name in the destination
+  year; when the class name changed or no same-name destination exists,
+  `proposedDivisionId` is null), human-readable flags (no-destination,
+  class-name-changed, already-active-in-destination-year,
+  membership-not-active), and per-destination division occupancy (current count
+  + projected after this run, capacity flag when `divisions.capacity` is set).
+  **Never mutates.**
+- **`POST /academic/student-placements/carry-forward/commit`** (IMPLEMENTED Q.4.2).
   Body: the confirmed plan —
   `{ destinationAcademicYearId, items: [{ placementId, destinationDivisionId }] }`
   plus optional `skipPlacementIds` (students intentionally left in the source
-  year / repeated the class). Executes in **one DB transaction**: for each item,
+  year / repeated the class). Gated `assignments.create` AND
+  `assignments.delete`. Executes in **one DB transaction**: for each item,
   archive the source placement (`status='inactive'`) and insert a fresh ACTIVE
   placement at the destination division's year. **All-or-nothing**: any
   violation (destination division not found / not in destination year+class /
-  cross-institute, membership no longer an active STUDENT, existing ACTIVE
-  placement in the destination year → unique 23505) rolls back the entire
-  transaction → 400/404/409 with a per-student-cause payload. Partial promotion
-  is impossible.
+  cross-institute, not strictly-forward via `sort_order`, membership no longer
+  an active STUDENT, existing ACTIVE placement in the destination year → unique
+  23505) rolls back the entire transaction → 400/404/409 with a
+  per-student-cause payload. Partial promotion is impossible. Skipped source
+  placements stay ACTIVE and are returned unchanged.
 
-## 8. Carry-forward workflow (PLANNED, design)
+## 8. Carry-forward workflow (IMPLEMENTED Q.4.2 — backend; wizard in §9 is Q.4.4)
 
 1. **Select** source academic year (and optional class) + destination academic
    year. Directed **forward via `sort_order`**, not name inference — source
@@ -336,7 +340,7 @@ Console-level gating stays `users.read` at the workspace route layer (Q.2
 precedent); the section adds `assignments.read`/`.create`/`.delete` gating
 exactly like the teacher-assignment tab.
 
-## 10. Security rules (PLANNED, carry-over + new)
+## 10. Security rules (IMPLEMENTED Q.4.1/Q.4.2 for the backend)
 
 - No new privilege: INSTITUTE_ADMIN authority is unchanged (manage implies
   all); delegates receive exactly the granted keys.
@@ -358,17 +362,17 @@ exactly like the teacher-assignment tab.
 
 | # | Decision | Tag |
 | - | -------- | --- |
-| D-Q4.1 | Reuse `assignments` family; no new catalogue key; add AND-combinator for combined endpoints | PLANNED |
-| D-Q4.2 | Exact keys: read list/get=`read`; place=`create`; deactivate=`delete`; transfer=`create`+`delete` (AND); preview=`read`; commit=`create`+`delete` (AND) | PLANNED |
-| D-Q4.3 | Institute-scoped; NOT academic-scope; student self-view stays on `/memberships/scope` | PLANNED |
-| D-Q4.4 | INSTITUTE_ADMIN auto-`assignments.manage`; TEACHER/STUDENT default-deny; custom roles grantable (Placements Officer, roster viewer) | PLANNED |
-| D-Q4.5 | Carry-forward = bulk preview/commit; single promotion reuses `transfer` | PLANNED |
-| D-Q4.6 | Core carry-forward needs **no migration**; optional `divisions.capacity` (nullable, NULL=uncapped); no `prior_placement_id` (reconstructable); no `isCurrent` | PLANNED/DEFERRED |
-| D-Q4.7 | History = existing list `?membershipId` ordering; no new history endpoint | PLANNED (reuse) |
-| D-Q4.8 | Commit is all-or-nothing, single tx, partial unique index as concurrency guard, strict forward via `sort_order` | PLANNED |
-| D-Q4.9 | Roster/occupancy = count ACTIVE placements per division (derived, no table change) | PLANNED (reuse) |
+| D-Q4.1 | Reuse `assignments` family; no new catalogue key; add AND-combinator for combined endpoints | IMPLEMENTED (Q.4.1) |
+| D-Q4.2 | Exact keys: read list/get=`read`; place=`create`; deactivate=`delete`; transfer=`create`+`delete` (AND); preview=`read`; commit=`create`+`delete` (AND) | IMPLEMENTED (Q.4.1/Q.4.2) |
+| D-Q4.3 | Institute-scoped; NOT academic-scope; student self-view stays on `/memberships/scope` | IMPLEMENTED (Q.4.1/Q.4.2) |
+| D-Q4.4 | INSTITUTE_ADMIN auto-`assignments.manage`; TEACHER/STUDENT default-deny; custom roles grantable (Placements Officer, roster viewer) | IMPLEMENTED (Q.4.1) |
+| D-Q4.5 | Carry-forward = bulk preview/commit; single promotion reuses `transfer` | IMPLEMENTED (Q.4.2) |
+| D-Q4.6 | Core carry-forward needs **no migration**; optional `divisions.capacity` (nullable, NULL=uncapped); no `prior_placement_id` (reconstructable); no `isCurrent` | IMPLEMENTED (core) / DEFERRED (capacity) |
+| D-Q4.7 | History = existing list `?membershipId` ordering; no new history endpoint | IMPLEMENTED (reuse) |
+| D-Q4.8 | Commit is all-or-nothing, single tx, partial unique index as concurrency guard, strict forward via `sort_order` | IMPLEMENTED (Q.4.2) |
+| D-Q4.9 | Roster/occupancy = count ACTIVE placements per division (derived, no table change) | IMPLEMENTED (Q.4.2 preview) |
 | D-Q4.10 | Enrollment *override* surface (subject ENROLLED/EXCLUDED admin) = same resource/keys, DEFERRED out of Q.4.0 | DEFERRED |
-| D-Q4.11 | Frontend section + carry-forward wizard on `/institute/academic`, gates + pure-helper patterns from Q.2/Q.3 | PLANNED |
+| D-Q4.11 | Frontend section + carry-forward wizard on `/institute/academic`, gates + pure-helper patterns from Q.2/Q.3 | PLANNED (Q.4.4) |
 
 ## 12. Gaps summary
 
@@ -376,8 +380,8 @@ exactly like the teacher-assignment tab.
 | --- | ------ |
 | G1 role-only/uncatalogued placement surface (no PermissionGuard, audit §11) | IMPLEMENTED — Q.4.1 guard migration (2026-09-24) |
 | G2 combined-endpoint authorization must be AND, guard currently ORs | IMPLEMENTED — `@RequiredPermissions` extension (Q.4.1, 2026-09-24) |
-| G3 bulk promote endpoint absent (audit §14.4) | PLANNED — Q.4.2 preview + commit |
-| G4 division occupancy/capacity not modeled | PLANNED — derived counts + optional `divisions.capacity` |
+| G3 bulk promote endpoint absent (audit §14.4) | IMPLEMENTED — Q.4.2 preview + commit (2026-09-24) |
+| G4 division occupancy/capacity not modeled | IMPLEMENTED — derived occupancy in preview (Q.4.2); optional `divisions.capacity` still PLANNED (Q.4.3) |
 | G5 history/lineage surface | REUSE existing filters; lineage pointer DEFERRED |
 | G6 enrollment-override authorization shape unresolved | DEFERRED (Q.4.0 focuses on placement/promotion) |
 | G7 placement audit events | DEFERRED — platform-wide audit item (cf. Q.3 G5) |
@@ -395,8 +399,14 @@ exactly like the teacher-assignment tab.
   **IMPLEMENTED 2026-09-24 (`feat(authz): migrate student placements to permission guard`).**
 - **Q.4.2 — Carry-forward backend**: preview + commit endpoints, all-or-nothing
   transaction reusing service primitives; integration suite (atomic success,
-  per-student-cause rollback, over-capacity block when set, strict-forward
-  rejection, concurrent-commit unique race).
+  per-student-cause rollback, strict-forward rejection, cross-institute
+  isolation, concurrent-commit unique race, skip semantics, multi-year jump).
+  **IMPLEMENTED 2026-09-24 (carry-forward commit committed from
+  `feature/student-placement`).** Coverage: `student-placements-carry-forward.
+  integration.ts` (service-level) + `student-placements-authz.integration.ts`
+  (real controller + guard chain e2e for preview/commit and the AND rule).
+  `divisions.capacity` over-capacity block deliberately not applied until Q.4.3
+  (no column yet); everything else per §7/§8/§10.
 - **Q.4.3 — Schema (optional, additive)**: `divisions.capacity` nullable column
   + migration, if capacity enforcement is wanted before the UI lands.
 - **Q.4.4 — Console**: Student Placement section + carry-forward wizard per §9.

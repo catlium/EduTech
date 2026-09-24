@@ -8,6 +8,75 @@ placement backend contract and end-to-end coverage`, pushed, no merge). Canonica
 design: `docs/architecture/academic-student-placement.md` (§1/§7 invariant
 contract + §5 guard surface + §13).
 
+## Phase Q.4.2 (carry-forward) — Carry-Forward Backend (preview + atomic commit) (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Branch: `feature/student-placement` (commit `feat(student-placements): implement
+carry-forward preview and atomic commit`, pushed, no merge). Canonical design:
+`docs/architecture/academic-student-placement.md` §7/§8/§10/§13 (now marked
+IMPLEMENTED for the backend).
+
+Ships the bulk-promotion (carry-forward) backend exactly per the design. The
+console/wizard (Q.4.4) and optional `divisions.capacity` (Q.4.3) remain PLANNED.
+
+- **Routes (Q.4.2 gate mapping — D-Q4.2):**
+  - `POST /academic/student-placements/carry-forward/preview` — gated
+    `assignments.read`; **non-mutating**. Body
+    `{sourceAcademicYearId, destinationAcademicYearId, classId?}`. For every
+    ACTIVE source placement proposes a destination division auto-matched by same
+    `classId` + same division name in the destination year (null when the class
+    name changed or no same-name division exists), with per-placement flags
+    (`membership-not-active`, `already-active-in-destination-year`,
+    `no-destination`, `class-name-changed`) and per-destination division
+    occupancy (`current` ACTIVE count, `projected` = current + promotable).
+  - `POST /academic/student-placements/carry-forward/commit` — gated
+    `assignments.create` AND `assignments.delete` (`@RequiredPermissions`);
+    single DB transaction, all-or-nothing. Body
+    `{destinationAcademicYearId, items:[{placementId, destinationDivisionId}],
+    skipPlacementIds?}`. Per-item revalidation inside the tx (first failure wins,
+    full rollback): placement must exist (404) + be ACTIVE (409) + institute-
+    scoped; destination division must exist (404), belong to the destination year
+    (400) and the same class (400); strict-forward `sort_order` (400); membership
+    must be an ACTIVE STUDENT (400); no existing ACTIVE placement in the
+    destination year (partial-unique → 409, 23505 caught). On success each item
+    archives its source (`status='inactive'`) and inserts a fresh ACTIVE row at
+    the destination division's year; skipped placements stay ACTIVE and are
+    returned. No migration (existing partial unique index is the concurrency
+    guard).
+- **Service additions** (`student-placements.service.ts`): `previewCarryForward`,
+  `commitCarryForward`, `assertStrictForward` (source sort < destination sort),
+  empty-preview helper, `requireActiveStudentMembership` extended with a
+  transaction-capable `q?: Pick<Database,'select'>`.
+- **Coverage:** new `student-placements-carry-forward.integration.ts` via new
+  script `test:student-placements-carry-forward` (strict-forward reject, same-
+  year reject, institute isolation 404, preview non-mutating + flags per case,
+  classId filter, occupancy current/projected, valid commit, skip semantics,
+  history retention + exactly-one-ACTIVE, atomic rollback on mixed plan,
+  cross-class 400, inactive source 409, non-STUDENT/deactivated 400, duplicate
+  and skip-overlap 400, FY→TY multi-year jump) and `student-placements-authz.
+  integration.ts` extended 6/6 → 7/7 to drive the REAL controller + guard chain:
+  admin preview non-mutating + proposes the same-class division, commit 403 for
+  create-only and cross-institute delegates (AND rule), admin commit succeeds
+  (source archived, fresh ACTIVE), mixed plan (valid + already-occupied) →
+  ConflictException with full rollback verified.
+- **Validation:** repo `pnpm typecheck` **10/10**; `pnpm lint` (api) clean; api
+  unit `node --test` **228/228**; `nest build` clean; all four placement/
+  assignment integration suites **14/14** green on the scratch loopback PG17
+  (127.0.0.1:5433, `catlium-cf-test-pg`, migrations applied); api image rebuilt
+  (`docker compose build api` — cleared the registry-timeout retry) + container
+  Up (healthy); running `dist/` verified to contain the new carry-forward
+  controller/service/DTO modules, `GET /api/v1/health` → 200.
+- **Docs:** this entry; tasks.md (Q.4.2 carry-forward item moved to IMPLEMENTED,
+  details recorded); `academic-student-placement.md` header/§7/§8/§10/§11/§12/
+  §13 updated to IMPLEMENTED (backend), Q.4.4 + Q.4.3 still PLANNED. Graphify
+  still to re-run after commit.
+
+**Exact recommended next task:** Q.4.3 optional `divisions.capacity` (nullable,
+additive) if over-capacity hard-blocks are wanted before the UI; otherwise Q.4.4
+— Student Placement console section + carry-forward wizard on
+`/institute/academic` per design §9 (pure helpers `lib/academic.ts` +
+`academic.test.ts`, gates assignments.read / create AND delete).
+
 Completes the Q.4.2 backend slice for this session's scope: the
 place/deactivate/transfer backend is verified complete against the design's
 contract, and the Q.4.1 guard matrix is bridged to **real behavior** — an

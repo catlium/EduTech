@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, inArray, sql } from 'drizzle-orm';
 
 import {
   studentPlacements,
@@ -43,6 +43,31 @@ export interface StudentPlacementListOptions {
   divisionId?: string;
   membershipId?: string;
 }
+
+export interface CarryForwardPreviewOptions {
+  sourceAcademicYearId: string;
+  destinationAcademicYearId: string;
+  classId?: string;
+}
+
+export interface CarryForwardItem {
+  placementId: string;
+  destinationDivisionId: string;
+}
+
+export interface CarryForwardCommitInput {
+  destinationAcademicYearId: string;
+  items: CarryForwardItem[];
+  skipPlacementIds?: string[];
+}
+
+// Human-readable flags on a carry-forward preview proposal (design §7).
+const CF_FLAGS = {
+  MEMBERSHIP_NOT_ACTIVE: 'membership-not-active',
+  ALREADY_ACTIVE_IN_DESTINATION_YEAR: 'already-active-in-destination-year',
+  NO_DESTINATION: 'no-destination',
+  CLASS_NAME_CHANGED: 'class-name-changed',
+} as const;
 
 // Phase G — student academic placements (D5/§17): a STUDENT membership is
 // placed into ONE division per academic year. The placement's academic year is
@@ -145,6 +170,422 @@ export class StudentPlacementsService {
     });
   }
 
+  // ── Q.4.2 — carry-forward (bulk promotion) ────────────────────────────
+  //
+  // A year-level operation: every ACTIVE placement in a source academic year
+  // (optionally a single class) is proposed onward into a destination year.
+  // PREVIEW is strictly read-only — it reports the proposal set, per-student
+  // flags, and destination-division occupancy so an admin can review/adjust
+  // before any mutation. COMMIT revalidates ALL relevant state inside its own
+  // transaction (never trusting the preview) and applies archive+insert
+  // atomically: any violation rolls the whole plan back. Chronology is decided
+  // by academic-year `sort_order`, never name inference — a destination year
+  // must sort strictly after the source year of EVERY carried placement
+  // (§8.1/§10), so backward or same-year progression is impossible.
+
+  async previewCarryForward(instituteId: string, input: CarryForwardPreviewOptions) {
+    const sourceYear = await this.getAcademicYear(instituteId, input.sourceAcademicYearId);
+    const destinationYear = await this.getAcademicYear(instituteId, input.destinationAcademicYearId);
+    if (input.classId) await this.getAcademicClass(instituteId, input.classId);
+    this.assertStrictForward(sourceYear.sortOrder, destinationYear.sortOrder);
+
+    const placements = await this.db
+      .select({
+        id: studentPlacements.id,
+        membershipId: studentPlacements.membershipId,
+        divisionId: studentPlacements.divisionId,
+        studentName: users.name,
+        classId: classes.id,
+        className: classes.name,
+        divisionName: divisions.name,
+      })
+      .from(studentPlacements)
+      .innerJoin(divisions, eq(studentPlacements.divisionId, divisions.id))
+      .innerJoin(classes, eq(divisions.classId, classes.id))
+      .innerJoin(memberships, eq(studentPlacements.membershipId, memberships.id))
+      .innerJoin(users, eq(memberships.userId, users.id))
+      .where(
+        and(
+          eq(studentPlacements.instituteId, instituteId),
+          eq(studentPlacements.academicYearId, sourceYear.id),
+          eq(studentPlacements.status, 'active'),
+          ...(input.classId ? [eq(classes.id, input.classId)] : []),
+        ),
+      )
+      .orderBy(asc(users.name));
+
+    if (placements.length === 0) {
+      return this.emptyPreview(input, sourceYear, destinationYear);
+    }
+
+    const membershipIds = [...new Set(placements.map((p) => p.membershipId))];
+    const [memberStates, destActiveMembers, destDivisions, occupancyByDivision] = await Promise.all([
+      this.membershipStudentStates(instituteId, membershipIds),
+      this.activeMembersInYear(instituteId, destinationYear.id, membershipIds),
+      this.destinationDivisions(instituteId, destinationYear.id),
+      this.occupancyByDivision(instituteId, destinationYear.id),
+    ]);
+
+    // Auto-match: same class + same division name in the destination year. When
+    // the class/division mapping changed, proposedDivisionId stays null and the
+    // admin must pick (proposing a wrong-level class is never done silently).
+    const destByClass = new Map<string, typeof destDivisions>();
+    for (const d of destDivisions) {
+      const list = destByClass.get(d.classId) ?? [];
+      list.push(d);
+      destByClass.set(d.classId, list);
+    }
+
+    const occupancy = new Map<
+      string,
+      { divisionName: string; className: string; current: number; projected: number }
+    >();
+    const summary = {
+      total: placements.length,
+      promotable: 0,
+      noDestination: 0,
+      alreadyActiveInDestinationYear: 0,
+      membershipNotActive: 0,
+    };
+
+    const proposals = placements.map((placement) => {
+      const state = memberStates.get(placement.membershipId);
+      const membershipNotActive = !state?.active || !state.isStudent;
+      const alreadyActive = destActiveMembers.has(placement.membershipId);
+      const matched = destByClass.get(placement.classId)?.find((d) => d.name === placement.divisionName);
+
+      const flags: string[] = [];
+      if (membershipNotActive) flags.push(CF_FLAGS.MEMBERSHIP_NOT_ACTIVE);
+      if (alreadyActive) flags.push(CF_FLAGS.ALREADY_ACTIVE_IN_DESTINATION_YEAR);
+      if (!matched) {
+        flags.push(CF_FLAGS.NO_DESTINATION);
+        // Advisory: the class itself has no divisions in the destination year —
+        // a rename/restructure signal, distinct from a plain section rename.
+        if ((destByClass.get(placement.classId)?.length ?? 0) === 0) {
+          flags.push(CF_FLAGS.CLASS_NAME_CHANGED);
+        }
+      }
+
+      const promotable = Boolean(matched) && !membershipNotActive && !alreadyActive;
+      if (promotable) summary.promotable += 1;
+      if (!matched) summary.noDestination += 1;
+      if (alreadyActive) summary.alreadyActiveInDestinationYear += 1;
+      if (membershipNotActive) summary.membershipNotActive += 1;
+
+      if (matched) {
+        const target = occupancy.get(matched!.id) ?? {
+          divisionName: matched!.name,
+          className: matched!.className,
+          current: occupancyByDivision.get(matched!.id) ?? 0,
+          projected: occupancyByDivision.get(matched!.id) ?? 0,
+        };
+        if (promotable) target.projected += 1;
+        occupancy.set(matched!.id, target);
+      }
+
+      return {
+        placementId: placement.id,
+        membershipId: placement.membershipId,
+        studentName: placement.studentName,
+        currentClassId: placement.classId,
+        currentClassName: placement.className,
+        currentDivisionId: placement.divisionId,
+        currentDivisionName: placement.divisionName,
+        proposedDivisionId: matched?.id ?? null,
+        proposedClassName: matched?.className ?? null,
+        proposedDivisionName: matched?.name ?? null,
+        flags,
+      };
+    });
+
+    return {
+      sourceAcademicYearId: sourceYear.id,
+      destinationAcademicYearId: destinationYear.id,
+      classId: input.classId ?? null,
+      proposals,
+      occupancy: [...occupancy.entries()]
+        .map(([divisionId, o]) => ({ divisionId, ...o }))
+        .sort((a, b) => a.className.localeCompare(b.className) || a.divisionName.localeCompare(b.divisionName)),
+      summary,
+    };
+  }
+
+  /** Bulk promotion — all-or-nothing. Revalidates every item inside the
+   *  transaction: source placement exists+ACTIVE+institute-scoped; destination
+   *  division exists+institute-scoped+in the destination year+same class; the
+   *  destination year sorts strictly after the source placement's year;
+   *  membership still an active STUDENT; no existing ACTIVE placement in the
+   *  destination year (also guarded by the partial unique index). The first
+   *  violation throws → the whole plan rolls back; partial promotion is
+   *  impossible. */
+  async commitCarryForward(instituteId: string, input: CarryForwardCommitInput) {
+    const itemPlacementIds = input.items.map((i) => i.placementId);
+    if (new Set(itemPlacementIds).size !== itemPlacementIds.length) {
+      throw new BadRequestException('A placement cannot appear twice in the carry-forward plan');
+    }
+    const skipSet = new Set(input.skipPlacementIds ?? []);
+    for (const item of input.items) {
+      if (skipSet.has(item.placementId)) {
+        throw new BadRequestException('A placement cannot be both carried forward and skipped');
+      }
+    }
+
+    return this.db.transaction(async (tx) => {
+      const [destinationYear] = await tx
+        .select()
+        .from(academicYears)
+        .where(
+          and(
+            eq(academicYears.id, input.destinationAcademicYearId),
+            eq(academicYears.instituteId, instituteId),
+          ),
+        )
+        .limit(1);
+      if (!destinationYear) throw new NotFoundException('Destination academic year not found');
+
+      const allPlacementIds = [...itemPlacementIds, ...(input.skipPlacementIds ?? [])];
+      const sourceRows = allPlacementIds.length
+        ? await tx
+            .select({
+              id: studentPlacements.id,
+              membershipId: studentPlacements.membershipId,
+              status: studentPlacements.status,
+              studentName: users.name,
+              classId: classes.id,
+              sourceSortOrder: academicYears.sortOrder,
+            })
+            .from(studentPlacements)
+            .innerJoin(divisions, eq(studentPlacements.divisionId, divisions.id))
+            .innerJoin(academicYears, eq(studentPlacements.academicYearId, academicYears.id))
+            .innerJoin(classes, eq(divisions.classId, classes.id))
+            .innerJoin(memberships, eq(studentPlacements.membershipId, memberships.id))
+            .innerJoin(users, eq(memberships.userId, users.id))
+            .where(
+              and(
+                eq(studentPlacements.instituteId, instituteId),
+                inArray(studentPlacements.id, allPlacementIds),
+              ),
+            )
+        : [];
+      const sourceById = new Map(sourceRows.map((r) => [r!.id, r]));
+
+      const destDivisionIds = [...new Set(input.items.map((i) => i.destinationDivisionId))];
+      const destDivisions = await tx
+        .select()
+        .from(divisions)
+        .where(
+          and(eq(divisions.instituteId, instituteId), inArray(divisions.id, destDivisionIds)),
+        );
+      const destById = new Map(destDivisions.map((d) => [d!.id, d]));
+
+      for (const skipId of input.skipPlacementIds ?? []) {
+        if (!sourceById.has(skipId)) {
+          throw new NotFoundException(`Carry-forward rejected: skip placement ${skipId} not found`);
+        }
+      }
+
+      const placements: Array<{
+        id: string;
+        instituteId: string;
+        membershipId: string;
+        academicYearId: string;
+        divisionId: string;
+        status: string;
+      }> = [];
+      for (const item of input.items) {
+        const source = sourceById.get(item.placementId);
+        if (!source) {
+          throw new NotFoundException(`Carry-forward rejected: source placement ${item.placementId} not found`);
+        }
+        if (source.status !== 'active') {
+          throw new ConflictException(
+            `Carry-forward rejected: ${source.studentName}'s source placement is no longer active (already carried over or deactivated)`,
+          );
+        }
+
+        const dest = destById.get(item.destinationDivisionId);
+        if (!dest) {
+          throw new NotFoundException(
+            `Carry-forward rejected: destination division ${item.destinationDivisionId} not found`,
+          );
+        }
+        if (dest.academicYearId !== destinationYear.id) {
+          throw new BadRequestException(
+            `Carry-forward rejected: ${source.studentName}'s destination division is not in the destination academic year`,
+          );
+        }
+        if (dest.classId !== source.classId) {
+          throw new BadRequestException(
+            `Carry-forward rejected: ${source.studentName}'s destination division is in a different class — cross-class moves use the single transfer endpoint`,
+          );
+        }
+        this.assertStrictForward(source.sourceSortOrder, destinationYear.sortOrder);
+
+        await this.requireActiveStudentMembership(instituteId, source.membershipId, tx);
+
+        const [occupied] = await tx
+          .select({ id: studentPlacements.id })
+          .from(studentPlacements)
+          .where(
+            and(
+              eq(studentPlacements.instituteId, instituteId),
+              eq(studentPlacements.academicYearId, destinationYear.id),
+              eq(studentPlacements.membershipId, source.membershipId),
+              eq(studentPlacements.status, 'active'),
+            ),
+          )
+          .limit(1);
+        if (occupied) {
+          throw new ConflictException(
+            `Carry-forward rejected: ${source.studentName} already has an active placement in the destination academic year`,
+          );
+        }
+
+        await tx
+          .update(studentPlacements)
+          .set({ status: 'inactive', updatedAt: new Date() })
+          .where(eq(studentPlacements.id, source.id));
+
+        try {
+          const [row] = await tx
+            .insert(studentPlacements)
+            .values({
+              instituteId,
+              membershipId: source.membershipId,
+              academicYearId: destinationYear.id,
+              divisionId: dest.id,
+            })
+            .returning();
+          placements.push(row!);
+        } catch (error) {
+          this.throwIfUniqueViolation(
+            error,
+            `Carry-forward rejected: ${source.studentName} already has an active placement in the destination academic year`,
+          );
+          throw error;
+        }
+      }
+
+      return { placements, skipPlacementIds: input.skipPlacementIds ?? [] };
+    });
+  }
+
+  private assertStrictForward(sourceSortOrder: number, destinationSortOrder: number): void {
+    if (sourceSortOrder >= destinationSortOrder) {
+      throw new BadRequestException(
+        'Destination academic year must be strictly after the source academic year',
+      );
+    }
+  }
+
+  private emptyPreview(input: CarryForwardPreviewOptions, sourceYear: { id: string }, destinationYear: { id: string }) {
+    return {
+      sourceAcademicYearId: sourceYear.id,
+      destinationAcademicYearId: destinationYear.id,
+      classId: input.classId ?? null,
+      proposals: [],
+      occupancy: [],
+      summary: {
+        total: 0,
+        promotable: 0,
+        noDestination: 0,
+        alreadyActiveInDestinationYear: 0,
+        membershipNotActive: 0,
+      },
+    };
+  }
+
+  private async membershipStudentStates(instituteId: string, membershipIds: string[]) {
+    const rows = await this.db
+      .select({
+        membershipId: memberships.id,
+        status: memberships.status,
+        roleKey: roles.key,
+      })
+      .from(memberships)
+      .innerJoin(membershipRoles, eq(membershipRoles.membershipId, memberships.id))
+      .innerJoin(roles, eq(membershipRoles.roleId, roles.id))
+      .where(
+        and(eq(memberships.instituteId, instituteId), inArray(memberships.id, membershipIds)),
+      );
+    const map = new Map<string, { active: boolean; isStudent: boolean }>();
+    for (const row of rows) {
+      const entry = map.get(row.membershipId) ?? { active: false, isStudent: false };
+      if (row.status === 'active') entry.active = true;
+      if (row.roleKey === STUDENT) entry.isStudent = true;
+      map.set(row.membershipId, entry);
+    }
+    return map;
+  }
+
+  private async activeMembersInYear(instituteId: string, academicYearId: string, membershipIds: string[]) {
+    const rows = await this.db
+      .select({ membershipId: studentPlacements.membershipId })
+      .from(studentPlacements)
+      .where(
+        and(
+          eq(studentPlacements.instituteId, instituteId),
+          eq(studentPlacements.academicYearId, academicYearId),
+          eq(studentPlacements.status, 'active'),
+          inArray(studentPlacements.membershipId, membershipIds),
+        ),
+      );
+    return new Set(rows.map((r) => r.membershipId));
+  }
+
+  private async destinationDivisions(instituteId: string, academicYearId: string) {
+    return this.db
+      .select({
+        id: divisions.id,
+        classId: divisions.classId,
+        name: divisions.name,
+        className: classes.name,
+      })
+      .from(divisions)
+      .innerJoin(classes, eq(divisions.classId, classes.id))
+      .where(
+        and(eq(divisions.instituteId, instituteId), eq(divisions.academicYearId, academicYearId)),
+      );
+  }
+
+  private async occupancyByDivision(instituteId: string, academicYearId: string) {
+    const rows = await this.db
+      .select({
+        divisionId: studentPlacements.divisionId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(studentPlacements)
+      .where(
+        and(
+          eq(studentPlacements.instituteId, instituteId),
+          eq(studentPlacements.academicYearId, academicYearId),
+          eq(studentPlacements.status, 'active'),
+        ),
+      )
+      .groupBy(studentPlacements.divisionId);
+    return new Map(rows.map((r) => [r.divisionId, r.count]));
+  }
+
+  private async getAcademicYear(instituteId: string, academicYearId: string) {
+    const [row] = await this.db
+      .select()
+      .from(academicYears)
+      .where(and(eq(academicYears.id, academicYearId), eq(academicYears.instituteId, instituteId)))
+      .limit(1);
+    if (!row) throw new NotFoundException('Academic year not found');
+    return row;
+  }
+
+  private async getAcademicClass(instituteId: string, classId: string) {
+    const [row] = await this.db
+      .select()
+      .from(classes)
+      .where(and(eq(classes.id, classId), eq(classes.instituteId, instituteId)))
+      .limit(1);
+    if (!row) throw new NotFoundException('Class not found');
+    return row;
+  }
+
   private placementQuery() {
     return this.db
       .select(placementSelect)
@@ -176,8 +617,13 @@ export class StudentPlacementsService {
     return row;
   }
 
-  private async requireActiveStudentMembership(instituteId: string, membershipId: string) {
-    const [membership] = await this.db
+  private async requireActiveStudentMembership(
+    instituteId: string,
+    membershipId: string,
+    q?: Pick<Database, 'select'>,
+  ) {
+    const db = q ?? this.db;
+    const [membership] = await db
       .select({ id: memberships.id })
       .from(memberships)
       .innerJoin(membershipRoles, eq(membershipRoles.membershipId, memberships.id))

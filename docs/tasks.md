@@ -79,9 +79,39 @@
         retention (exactly one ACTIVE per student+year, nothing deleted).
       - Validation: typecheck 10/10, api lint clean, api unit 228/228, nest
         build, focused integration suites green, api container rebuilt.
-- [ ] (PLANNED, design §13) Carry-forward backend — preview + commit endpoints,
-      all-or-nothing tx, integration suite (bulk promote; explicitly out of this
-      Q.4.2 scope).
+- [x] Phase Q.4.2 carry-forward backend — preview + commit endpoints,
+      all-or-nothing tx, service + authz integration suites.
+      **IMPLEMENTED 2026-09-24** (commit `feat(student-placements): implement
+      carry-forward preview and atomic commit`, pushed, no merge):
+      - DTOs: `CarryForwardPreviewDto {sourceAcademicYearId,
+        destinationAcademicYearId, classId?}`, `CarryForwardItemDto`,
+        `CarryForwardCommitDto {destinationAcademicYearId, items[],
+        skipPlacementIds?}` (ValidateNested + @Type).
+      - Routes: `POST /carry-forward/preview` (`assignments.read`, non-mutating:
+        per-placement proposals auto-matched by same class + same division name,
+        flags membership-not-active / already-active-in-destination-year /
+        no-destination / class-name-changed, per-destination occupancy current +
+        projected) and `POST /carry-forward/commit` (`assignments.create` AND
+        `assignments.delete`; single tx, per-item revalidation → archive + insert
+        fresh ACTIVE, first-failure-wins full rollback, 23505 caught, skipped
+        sources stay ACTIVE and returned).
+      - Service additions in `student-placements.service.ts`: `previewCarryForward`,
+        `commitCarryForward`, `assertStrictForward` (source sort < destination
+        sort), empty preview, `requireActiveStudentMembership` gained a
+        transaction-capable `q?: Pick<Database,'select'>` param.
+      - Coverage: `student-placements-carry-forward.integration.ts` (1 suite;
+        strict-forward reject, institute isolation, non-mutating preview, flags,
+        occupancy projected, valid commit, skip, history retention, exactly-one-
+        active, atomic rollback, cross-class, inactive source, non-STUDENT /
+        deactivated, duplicate/overlap, FY→TY multi-year jump) +
+        `student-placements-authz.integration.ts` (7/7, now covers the real
+        controller preview/commit through the guard chain incl. AND-rule 403s
+        and conflict rollback). New pkg script
+        `test:student-placements-carry-forward`.
+      - Validation: repo typecheck 10/10, lint 9/9, api unit 228/228, nest build,
+        all four placement/assignment integration suites 14/14 green on the
+        scratch PG17, api image rebuilt + container healthy with new routes
+        verified in the running dist.
 - [ ] (PLANNED) Phase Q.4.3 — optional additive `divisions.capacity` migration.
 - [ ] (PLANNED) Phase Q.4.4 — Student Placement console section + carry-forward
       wizard + pure-helper tests.
