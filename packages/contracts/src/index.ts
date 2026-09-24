@@ -77,6 +77,9 @@ export const InstituteUserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
   name: z.string(),
+  // The institute-local membership id — Q.3 teacher-assignment console targets
+  // teacher-assignment rows by membershipId (the roster for the assign dialog).
+  membershipId: z.string().uuid(),
   roles: z.array(RoleEnum),
   status: z.enum(['active', 'deactivated']),
   createdAt: z.string().datetime(),

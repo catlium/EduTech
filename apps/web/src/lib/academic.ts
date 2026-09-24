@@ -6,7 +6,8 @@
 // academic structure — see docs/architecture/institute-operations-audit.md
 // §11), so the UI mirrors that decision and never invents grant keys.
 
-import type { MembershipListItem } from '@catlium/contracts';
+import type { InstituteUser, MembershipListItem, SubjectResponse } from '@catlium/contracts';
+import { canUse } from './permissions.ts';
 
 export interface AcademicYear {
   id: string;
@@ -42,6 +43,56 @@ export interface DivisionRow {
 export interface DeleteWarning {
   title: string;
   description: string;
+}
+
+/** A class-subject offering row: the subject plus the class_subjects id a
+ *  teacher-assignment create targets (Q.3). */
+export interface Offering extends SubjectResponse {
+  classSubjectId: string;
+}
+
+/** A teacher-assignment row as returned by GET /academic/teacher-assignments. */
+export interface TeacherAssignment {
+  id: string;
+  instituteId: string;
+  classSubjectId: string;
+  membershipId: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+  className: string;
+  subjectName: string;
+  teacherName: string;
+}
+
+/** UI mirror of the backend's staffing gate (Q.3.0): the assignments console
+ *  renders for `assignments.read` and mutations for `.create`/`.delete`,
+ *  exactly as the API's RequiredPermission declares. UX visibility only —
+ *  never an enforcement boundary, and never weaker than the API allows. */
+export function canAssign(permissions: readonly string[], action: 'read' | 'create' | 'delete'): boolean {
+  return canUse(permissions, `assignments.${action}`);
+}
+
+/** Active TEACHER-role members that are not already active-assigned to the
+ *  given offering — the roster the assign dialog offers. */
+export function assignableTeachers(
+  teachers: InstituteUser[],
+  assignments: TeacherAssignment[],
+  classSubjectId: string,
+): InstituteUser[] {
+  const taken = new Set(
+    assignments
+      .filter((a) => a.classSubjectId === classSubjectId && a.status === 'active')
+      .map((a) => a.membershipId),
+  );
+  return teachers.filter(
+    (t) => t.status === 'active' && t.roles.includes('TEACHER') && !taken.has(t.membershipId),
+  );
+}
+
+/** Assignment table ordering: by class, then subject. */
+export function byClassSubjectName(a: TeacherAssignment, b: TeacherAssignment): number {
+  return a.className.localeCompare(b.className) || a.subjectName.localeCompare(b.subjectName);
 }
 
 /** UI mirror of the backend write gate: academic-structure mutations are

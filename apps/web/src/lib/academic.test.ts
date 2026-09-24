@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { MembershipListItem, Role } from '@catlium/contracts';
+import type { InstituteUser, MembershipListItem, Role } from '@catlium/contracts';
 
 import {
   canWriteAcademicStructure,
@@ -8,9 +8,13 @@ import {
   divisionDeleteWarning,
   bySortOrder,
   filterDivisions,
+  assignableTeachers,
+  byClassSubjectName,
+  canAssign,
   type AcademicYear,
   type ClassRow,
   type DivisionRow,
+  type TeacherAssignment,
 } from './academic.ts';
 
 const baseMembership = {
@@ -112,4 +116,72 @@ test('filterDivisions narrows by year, class, both, or neither', () => {
   assert.deepEqual(filterDivisions(all, 'y2', 'c1').map((d) => d.id), ['d3']);
   assert.equal(filterDivisions(all, null, null).length, 3);
   assert.equal(filterDivisions(all, 'y1', 'c9').length, 0);
+});
+
+// ── Q.3 — teacher-assignment console helpers ────────────────────
+
+const teacher = (id: string, name: string, status = 'active', roles: Role[] = ['TEACHER']): InstituteUser => ({
+  id: `u-${id}`,
+  email: `${id}@t.test`,
+  name,
+  membershipId: `m-${id}`,
+  roles,
+  status: status as InstituteUser['status'],
+  createdAt: '2026-01-01T00:00:00.000Z',
+});
+
+const assignment = (
+  id: string,
+  classSubjectId: string,
+  membershipId: string,
+  status: TeacherAssignment['status'] = 'active',
+): TeacherAssignment => ({
+  id,
+  instituteId: 'i1',
+  classSubjectId,
+  membershipId,
+  status,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  className: `Class ${classSubjectId[0]}`,
+  subjectName: `Subject ${classSubjectId.slice(-1)}`,
+  teacherName: 'Any',
+});
+
+test('assignableTeachers = active TEACHer teachers not already active-assigned to the offering', () => {
+  const ann = teacher('a', 'Ann');
+  const bob = teacher('b', 'Bob');
+  const carol = teacher('c', 'Carol', 'deactivated');
+  const dean = teacher('d', 'Dean', 'active', ['STUDENT']);
+
+  const took = assignment('x1', 'cs1', 'm-a');
+  const inactiveOnCs1 = assignment('x2', 'cs1', 'm-b', 'inactive');
+
+  const available = assignableTeachers([ann, bob, carol, dean], [took, inactiveOnCs1], 'cs1');
+  assert.deepEqual(available.map((u) => u.name), ['Bob']);
+  // bob's inactive assignment on cs1 does not clear the offering for another class subject.
+  assert.equal(assignableTeachers([bob], [inactiveOnCs1], 'cs2').length, 1);
+  assert.deepEqual(assignableTeachers([ann, bob], [], 'cs9').map((u) => u.name), ['Ann', 'Bob']);
+});
+
+test('byClassSubjectName orders by class then subject', () => {
+  const rows = [
+    { ...assignment('1', 'cs-b', 'm-1'), className: 'Beta', subjectName: 'Bio' },
+    { ...assignment('2', 'cs-a', 'm-2'), className: 'Alpha', subjectName: 'Chem' },
+    { ...assignment('3', 'cs-a', 'm-3'), className: 'Alpha', subjectName: 'Math' },
+  ];
+  assert.deepEqual(
+    [...rows].sort(byClassSubjectName).map((r) => `${r.className}:${r.subjectName}`),
+    ['Alpha:Chem', 'Alpha:Math', 'Beta:Bio'],
+  );
+});
+
+test('canAssign mirrors the assignments.* permission gate with manage implication', () => {
+  assert.equal(canAssign(['assignments.read'], 'read'), true);
+  assert.equal(canAssign(['assignments.read'], 'create'), false);
+  assert.equal(canAssign(['assignments.manage'], 'create'), true);
+  assert.equal(canAssign(['assignments.manage'], 'delete'), true);
+  assert.equal(canAssign(['assignments.create'], 'delete'), false);
+  assert.equal(canAssign([], 'read'), false);
+  assert.equal(canAssign(['subjects.read'], 'read'), false);
 });

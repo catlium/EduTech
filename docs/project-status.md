@@ -1,19 +1,20 @@
 # Project Status
 
-## Phase Q.3.0 — Academic/Teacher Permission Catalogue Design (2026-09-23)
+## Phase Q.3.0 — Academic/Teacher Permission Catalogue + Console (2026-09-23)
 
-**Status: DESIGN COMPLETE — documentation only, no code changed.**
-Branch: `feature/academic-teacher-permissions` (from
-`feature/institute-admin-academic`; unrelated working-tree changes preserved
-untouched). Canonical design:
+**Status: IMPLEMENTED + VALIDATED.**
+Branches: `feature/academic-teacher-permissions` (design) →
+`feature/teacher-assignment` (implementation; unrelated working-tree changes
+preserved untouched). Canonical design:
 `docs/architecture/academic-teacher-permissions.md`.
 
 Design/audit of the authorization model for teacher → class-subject assignment
 (the Phase Q.3 prerequisite the Q.2 entry flagged as "design-gated catalogue
-expansion"). No API, schema, catalogue, guard, or frontend change was made.
+expansion"), then its full implementation: catalogue resource, guard
+migration, and the gated assignment console.
 
-Key decisions (every decision tagged IMPLEMENTED / PLANNED / DEFERRED in the
-doc's §11 register):
+Key decisions (every decision tagged IMPLEMENTED / DEFERRED in the doc's §11
+register — the Q.3.0 PLANNED items are now implemented):
 
 - **Resource `assignments`** — the D5-recorded family resource
   (`authorization.md` §13), NOT a new `teacher-assignments` key. Q.3 enables
@@ -28,37 +29,38 @@ doc's §11 register):
   TEACHER/STUDENT keep default-deny (staffing config stays hidden, D5/§17);
   custom institute roles become grantable `assignments.*` → **staffing
   delegation without INSTITUTE_ADMIN** (the audit §14.2 capability gap closes).
-- **INSTITUTE_ADMIN remains the effective authority** — delegation is additive
-  grant-only; the backend stays the enforcement point; the admin bypass is
-  untouched.
-- **Scope:** `assignments` is an institute-scope (tenant) administrative
-  config resource, NOT academic-scope-gated (it is the *source* of a teacher's
-  scope, never a consumer). Teacher "my assignments" self-read surface:
-  DEFERRED.
-- **Guard migration (PLANNED, Q.3):** follow the `roles` controller precedent —
-  add `PermissionGuard`, drop `@RequiredRoles('INSTITUTE_ADMIN')`, gate reads
-  `assignments.read` / POST `.create` / DELETE `.delete`; service invariants
-  (TEACHER-target check, offering tenancy, partial-unique 409, soft-unassign)
-  unchanged.
-- **Web (PLANNED, Q.3):** `can()` already resolves real granted keys + manage
-  implication from `GET /memberships` — `can('assignments.read')` etc. gate the
-  console UX-only; backend stays authoritative.
-- **Gaps:** G1 role-only/uncatalogued surface (PLANNED resolution = Q.3
-  catalogue + guard migration); G2 stale `permission-catalogue.ts:25-27`
-  comment (PLANNED refresh in Q.3); G3 additive `assignments.*` widening to
-  Q.4 slices (decided — document, don't fragment); G4 un-joined `get` row
-  (cosmetic); G5 no assignment audit events + G6 class/division delete cascade
-  (both DEFERRED, pre-existing); G7 none — no backend weakening.
+- **Guard migration (DONE):** `teacher-assignments.controller.ts` now runs
+  `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` with
+  `@RequiredPermission('assignments.read')` (GET list/get),
+  `'assignments.create'` (POST), `'assignments.delete'` (DELETE);
+  `ASSIGNMENT_ADMIN` removed. Service invariants (TEACHER-target check,
+  offering tenancy, partial-unique 409, soft-unassign) unchanged.
+- **Console (DONE):** teacher-assignment tab on `/institute/academic` gated by
+  `assignments.read` with assign/unassign controls by `.create`/`.delete`;
+  roster from `GET /users` degrades gracefully when the caller lacks
+  INSTITUTE_ADMIN (that endpoint stays role-gated). Pure helpers
+  (`canAssign`, `assignableTeachers`, `byClassSubjectName`, `Offering`)
+  tested in `lib/academic.test.ts`.
+- **Contract (Q.3-enabling, reported):** `GET /users` now exposes
+  `membershipId` (assign-dialog roster key) and
+  `GET /academic/classes/:classId/subjects` returns each offering's
+  `classSubjectId` (additive, read-only).
+- **Gaps:** G1 (role-only/uncatalogued surface) and G2 (stale catalogue
+  comment) RESOLVED; G4 (un-joined `get` row) superseded — the console uses
+  the joined `list`; G3 decided (document, don't fragment); G5 no assignment
+  audit events + G6 class/division delete cascade (both DEFERRED, pre-existing);
+  G7 none — no backend weakening.
 
-Also reconciled: `authorization.md` §13's `assignments` forward-note table row
-updated to the refined Q.3.0 action set with a pointer to the canonical doc.
+**Roster note for delegates:** `GET /users` remains `INSTITUTE_ADMIN`-role
+gated (unchanged by Q.3 — a user management surface, out of Q.3 scope). A
+custom-role delegate holding `assignments.*` can read/manage assignments but
+cannot enumerate the teacher roster; the console shows an inline note in that
+case. Revisit only if staffing-roster read (`users.read` scope) is requested.
 
-**Exact recommended next task:** Phase Q.3 — implement the catalogue + guard
-migration (§8 checklist: `assignments` resource in `INSTITUTE_RESOURCES`,
-`PermissionGuard` + per-route `@RequiredPermission` on
-`teacher-assignments.controller.ts`, catalogue-test update, stale-comment
-refresh, integration-test extension), then the teacher-assignment console slice
-on `/institute/academic` gated by `assignments.read`/`.create`/`.delete`.
+**Exact recommended next task:** Phase Q.3 follow-up — teacher-facing "my
+assignments" self-scoped read surface (DEFERRED), or land Q.4 (student
+placements/enrollments on the same `assignments` resource) when the directive
+is scheduled.
 
 ## Phase Q.2 — Academic-Structure Console (2026-09-23)
 

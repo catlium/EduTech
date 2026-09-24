@@ -165,7 +165,7 @@ export class AcademicStructureService {
     await this.getClass(instituteId, classId);
 
     const rows = await this.db
-      .select({ subject: subjects })
+      .select({ subject: subjects, classSubjectId: classSubjects.id })
       .from(classSubjects)
       .innerJoin(subjects, eq(classSubjects.subjectId, subjects.id))
       .where(
@@ -177,7 +177,9 @@ export class AcademicStructureService {
       )
       .orderBy(asc(subjects.sortOrder), asc(subjects.name));
 
-    return rows.map((r) => r.subject);
+    // Q.3: expose the offering id so the teacher-assignment console can target
+    // an assignment at the exact class-subject offering it renders.
+    return rows.map((r) => ({ ...r.subject, classSubjectId: r.classSubjectId }));
   }
 
   async addClassSubject(instituteId: string, classId: string, subjectId: string) {

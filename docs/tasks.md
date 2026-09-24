@@ -1,6 +1,6 @@
 # Task Tracker
 
-## Phase Q.3.0 — Academic/Teacher Permission Catalogue Design (2026-09-23, DESIGN COMPLETE)
+## Phase Q.3.0 — Academic/Teacher Permission Catalogue (2026-09-23, IMPLEMENTED)
 
 > Issued task. Design/audit the authorization model for teacher → class-subject
 > assignment (Q.3 prerequisite). DESIGN ONLY — no code, migrations, catalogue
@@ -9,7 +9,12 @@
 > institute-operations audit (§7/§11/§14.2/§17), D1 §13 + D5 §17, the Q.2
 > console precedent, and `permission-catalogue.ts`. Docs: project-status.md +
 > this tracker + a surgical `authorization.md` §13 reconcile. Commit on
-> `feature/academic-teacher-permissions`; do NOT merge into dev/main.
+> `feature/teacher-assignment`; do NOT merge into dev/main.
+>
+> **IMPLEMENTED 2026-09-23** — the design phase shipped on
+> `feature/academic-teacher-permissions`; the catalogue + guard migration +
+> console + tests shipped on `feature/teacher-assignment` (see Q.3.0 tasks
+> below).
 
 - [x] Created branch `feature/academic-teacher-permissions` from
       `feature/institute-admin-academic` (unrelated working-tree changes
@@ -44,8 +49,46 @@
 - [x] Commit `docs(authz): design teacher assignment permission catalogue`
       (+ push, no merge).
 
-- [ ] (PLANNED) Phase Q.3 — implementation: catalogue + guard migration +
-      teacher-assignment console UI gated `assignments.read`/`.create`/`.delete`.
+## Phase Q.3.0 — implementation (2026-09-23, COMPLETE)
+
+> Implementation of the designed Q.3.0 permission surface. Backend = catalogue
+> resource + guard migration; frontend = teacher-assignment console gated by
+> `assignments.read`/`.create`/`.delete`. Branch `feature/teacher-assignment`,
+> no merge into dev/main.
+
+- [x] `permission-catalogue.ts`: `assignments: { actions: ['read','create',
+      'delete','manage'] }` added to `INSTITUTE_RESOURCES`; stale header
+      comment refreshed (G2).
+- [x] `teacher-assignments.controller.ts`: guard stack
+      `AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard` with
+      `@RequiredPermission('assignments.read')` (GET list/get),
+      `'assignments.create'` (POST), `'assignments.delete'` (DELETE);
+      `ASSIGNMENT_ADMIN` constant removed (G1/G4). Service/service
+      invariants unchanged.
+- [x] `permission-catalogue.test.ts`: resource-set + key assertions updated;
+      new Q.3 test covers the action set, `update` invalid, manage
+      implication, built-in role grants, custom-role resolution. 35/35.
+- [x] Contract: `packages/contracts` `InstituteUserSchema` + api local
+      `InstituteUser` (users.service.ts) now expose `membershipId`; `GET
+      /users` returns it (assign-dialog roster).
+- [x] Contract: `listClassSubjects` (`GET /academic/classes/:classId/subjects`)
+      returns each offering's `classSubjectId` (additive, read-only).
+- [x] New `teacher-assignments-authz.integration.ts` (guard-matrix, REAL
+      controller handlers + REAL guards) + `test:teacher-assignments-authz`
+      script: ADMIN via manage, TEACHER/STUDENT/zero deny, custom-role exact
+      sub-actions, cross-institute isolation. 5/5 on `catlium_q3_test`.
+- [x] Frontend: `lib/academic.ts` pure helpers `Offering` type, `canAssign`,
+      `assignableTeachers`, `byClassSubjectName` + `academic.test.ts` (9/9).
+- [x] Frontend: `assignments-section.tsx` (assign/unassign dialogs, roster
+      degrade on `/users` 403, per-action gating) + assignment tab in
+      `academic/page.tsx` gated by `assignments.read`.
+- [x] Docs: academic-teacher-permissions.md → IMPLEMENTED; authorization.md
+      §13 row updated; project-status.md; this tracker.
+- [x] Validation: typecheck (10 pkgs), eslint, api unit 227/227,
+      teacher-assignments + authz integration, web `test:academic`,
+      `next build`, graphify update.
+- [x] Commit + push on `feature/teacher-assignment` (no merge).
+
 - [ ] (DEFERRED) Phase Q.3 follow-up: teacher-facing "my assignments"
       self-scoped read surface.
 

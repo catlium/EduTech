@@ -1,7 +1,7 @@
 # Academic/Teacher Permission Catalogue — Teacher → Class-Subject Assignment
 
-**Status: DESIGN COMPLETE (2026-09-23) — documentation only, no code changed.**
-Branch: `feature/academic-teacher-permissions` (Phase Q.3.0).
+**Status: IMPLEMENTED (2026-09-23) — catalogue + guard migration + console shipped.**
+Branch: `feature/teacher-assignment` (Phase Q.3.0).
 
 This is the canonical design for the authorization model behind **teacher →
 class-subject assignment** management (Phase Q.3 of the
@@ -11,10 +11,12 @@ class-subject assignment** management (Phase Q.3 of the
 (project-status.md Phase Q.2), and the existing role/permission machinery
 (`permission-catalogue.ts`).
 
-It **designs** the Q.3 permission surface. It does **not** implement it, does
-**not** change the code catalogue (`permission-catalogue.ts` is untouched in
-this phase), does **not** build assignment UI, and does **not** add student
-placement/enrollment keys (Q.4).
+It **designs** the Q.3 permission surface and, from 2026-09-23, the catalogue
+expansion, guard migration, and the gated teacher-assignment console are
+**implemented** on `feature/teacher-assignment`. Contract notes: `GET /users`
+now exposes `membershipId` (assign-dialog roster key) and
+`GET /academic/classes/:classId/subjects` returns each offering's
+`classSubjectId`. Student placement/enrollment keys remain out of scope (Q.4).
 
 State markers, matching the audit doc:
 
@@ -210,11 +212,11 @@ touched — see §8.
 No existing permission's semantics conflict with or are weakened by the
 `assignments` resource.
 
-## 8. Exact API/guard changes required by Q.3 (PLANNED checklist)
+## 8. Exact API/guard changes required by Q.3 (IMPLEMENTED 2026-09-23)
 
 Backend (`apps/api/src/academic-structure/teacher-assignments.controller.ts`):
 
-1. Import `PermissionGuard` + `RequiredPermission` from the authorization
+1. `PermissionGuard` + `RequiredPermission` imported from the authorization
    module (identical imports already used by `users`/`roles` controllers).
 2. Register `PermissionGuard` in the controller guard stack.
 3. Annotate GET list/get with `@RequiredPermission('assignments.read')`,
@@ -276,8 +278,10 @@ Tests (`apps/api`, PLANNED):
 ## 10. Out of scope (explicit non-goals)
 
 - **No catalogue change in this phase** (`permission-catalogue.ts` untouched);
-  Q.3.0 is design/audit only.
-- **No Q.3 teacher-assignment UI** (that is Phase Q.3 implementation).
+  Q.3.0 is design/audit only. — *superseded 2026-09-23: catalogue + guard
+  migration + console are now implemented.*
+- **No Q.3 teacher-assignment UI** (that is Phase Q.3 implementation). —
+  *superseded 2026-09-23: the assignment console ships in the Q.3.0 commit.*
 - **No student placement/enrollment keys** (Q.4) — `assignments` remains
   teacher-assignment-slice-only until then.
 - **No structure keys** (`academic-years`/`classes`/`divisions`/offerings);
@@ -290,17 +294,17 @@ Tests (`apps/api`, PLANNED):
 
 | # | Decision | Status |
 | - | -------- | ------ |
-| D-Q3.1 | Resource = `assignments` (D5/§13 reserved name; teacher-assignment slice now, placements/enrollments in Q.4) | **PLANNED** (catalogue) |
-| D-Q3.2 | Actions = `read, create, delete, manage`; `update` NOT added (no endpoint; reassign = delete+create) | **PLANNED** |
-| D-Q3.3 | `assignments.manage` covers everything on the surface via the existing implication rule; ADMIN auto-holds it | **PLANNED** (auto via built-in mapping) |
-| D-Q3.4 | Default grants: INSTITUTE_ADMIN=manage; TEACHER/STUDENT=none (unchanged deny) | **PLANNED** |
-| D-Q3.5 | INSTITUTE_ADMIN remains the effective authority; delegation is additive | **PLANNED** |
-| D-Q3.6 | Custom institute roles may safely receive `assignments.*` (institute-domain keys, existing grant pipeline) | **PLANNED** |
-| D-Q3.7 | `assignments` is institute-scope, NOT academic-scope; tenant scoping unchanged; teacher self "my assignments" surface DEFERRED | **PLANNED** / DEFERRED |
-| D-Q3.8 | Guard migration: PermissionGuard added, `@RequiredRoles` dropped, permission keys per route (roles precedent) | **PLANNED** |
+| D-Q3.1 | Resource = `assignments` (D5/§13 reserved name; teacher-assignment slice now, placements/enrollments in Q.4) | **IMPLEMENTED** (catalogue) |
+| D-Q3.2 | Actions = `read, create, delete, manage`; `update` NOT added (no endpoint; reassign = delete+create) | **IMPLEMENTED** |
+| D-Q3.3 | `assignments.manage` covers everything on the surface via the existing implication rule; ADMIN auto-holds it | **IMPLEMENTED** (auto via built-in mapping) |
+| D-Q3.4 | Default grants: INSTITUTE_ADMIN=manage; TEACHER/STUDENT=none (unchanged deny) | **IMPLEMENTED** |
+| D-Q3.5 | INSTITUTE_ADMIN remains the effective authority; delegation is additive | **IMPLEMENTED** |
+| D-Q3.6 | Custom institute roles may safely receive `assignments.*` (institute-domain keys, existing grant pipeline) | **IMPLEMENTED** |
+| D-Q3.7 | `assignments` is institute-scope, NOT academic-scope; tenant scoping unchanged; teacher self "my assignments" surface DEFERRED | **IMPLEMENTED** / DEFERRED |
+| D-Q3.8 | Guard migration: PermissionGuard added, `@RequiredRoles` dropped, permission keys per route (roles precedent) | **IMPLEMENTED** |
 | D-Q3.9 | Service invariants (TEACHER target, offering tenancy, partial-unique 409, soft-unassign) unchanged | **IMPLEMENTED** (stays) |
 | D-Q3.10 | Existing permission interactions: none conflict, none weakened | **IMPLEMENTED** (verified) |
-| D-Q3.11 | G1–G7 disposition as tagged | G1/G2/G4 **PLANNED**; G3 decided; G5/G6 **DEFERRED**; G7 n/a |
+| D-Q3.11 | G1–G7 disposition as tagged | G1/G2/G4 **RESOLVED 2026-09-23**; G3 decided; G5/G6 **DEFERRED**; G7 n/a |
 
 **Elapsed-requirement trace (Q.3.0 task map):** read→`assignments.read`;
 create/assign→`assignments.create`; update/reassign→`delete`+`create`;

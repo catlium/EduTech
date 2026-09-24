@@ -19,6 +19,9 @@ export interface InstituteUser {
   id: string;
   email: string;
   name: string;
+  // Institute-local membership id — exposed (Q.3) so the teacher-assignment
+  // console's roster can target assign/create by membershipId.
+  membershipId: string;
   roles: string[];
   status: string;
   createdAt: Date;
@@ -66,6 +69,7 @@ export class UsersService {
         id: r.id,
         email: r.email,
         name: r.name,
+        membershipId: r.membershipId,
         roles: perMembership.get(r.membershipId) ?? [],
         status: r.membershipStatus,
         createdAt: r.createdAt,
@@ -118,6 +122,7 @@ export class UsersService {
         id: userId,
         email,
         name: existing?.name ?? dto.name,
+        membershipId: membership.id,
         roles: [dto.role],
         status: membership.status,
         createdAt: existing?.createdAt ?? new Date(),
@@ -160,6 +165,7 @@ export class UsersService {
       id: userId,
       email: user!.email,
       name: user!.name,
+      membershipId: membership[0]!.id,
       roles: roleRows.map((r) => r.roleKey),
       status: dto.status,
       createdAt: user!.createdAt,
@@ -203,6 +209,7 @@ export class UsersService {
       id: userId,
       email: user!.email,
       name: user!.name,
+      membershipId: membership[0]!.id,
       roles: roleRows.map((r) => r.roleKey),
       status: membership[0]!.status,
       createdAt: user!.createdAt,

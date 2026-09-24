@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, GraduationCap, Layers, School } from 'lucide-react';
+import { CalendarDays, GraduationCap, Layers, School, UserRoundCheck } from 'lucide-react';
 
 import { api } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,25 +12,32 @@ import { ErrorState } from '@/components/app/error-state';
 import {
   canWriteAcademicStructure,
   bySortOrder,
+  canAssign as canAssignPermission,
   type AcademicYear,
   type ClassRow,
   type DivisionRow,
+  type Offering,
 } from '@/lib/academic';
 import type { SubjectResponse } from '@catlium/contracts';
 
 import { AcademicYearsSection } from './academic-years-section';
 import { ClassesSection } from './classes-section';
 import { DivisionsSection } from './divisions-section';
+import { TeacherAssignmentsSection } from './assignments-section';
 
 export default function AcademicConsolePage() {
   const { institute } = useTenant();
   const admin = canWriteAcademicStructure(institute);
+  const grants = institute?.permissions ?? [];
+  const canReadAssignments = canAssignPermission(grants, 'read');
+  const canCreateAssignments = canAssignPermission(grants, 'create');
+  const canDeleteAssignments = canAssignPermission(grants, 'delete');
 
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
   const [divisions, setDivisions] = useState<DivisionRow[]>([]);
-  const [offeredByClass, setOfferedByClass] = useState<Record<string, SubjectResponse[]>>({});
+  const [offeredByClass, setOfferedByClass] = useState<Record<string, Offering[]>>({});
   const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -54,7 +61,7 @@ export default function AcademicConsolePage() {
       try {
         const offerings = await Promise.all(
           nextClasses.map(async (klass) => {
-            const { subjects: offered } = await api<{ subjects: SubjectResponse[] }>(
+            const { subjects: offered } = await api<{ subjects: Offering[] }>(
               `/academic/classes/${klass.id}/subjects`,
               { signal },
             );
@@ -101,6 +108,11 @@ export default function AcademicConsolePage() {
             <TabsTrigger value="divisions">
               <Layers /> Divisions
             </TabsTrigger>
+            {canReadAssignments && (
+              <TabsTrigger value="assignments">
+                <UserRoundCheck /> Teacher Assignments
+              </TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="years" className="pt-4">
             <AcademicYearsSection years={years} admin={admin} onChange={() => void load()} />
@@ -124,12 +136,22 @@ export default function AcademicConsolePage() {
               onChange={() => void load()}
             />
           </TabsContent>
+        <TabsContent value="assignments" className="pt-4">
+            <TeacherAssignmentsSection
+              classes={[...classes].sort(bySortOrder)}
+              offeredByClass={offeredByClass}
+              canCreate={canCreateAssignments}
+              canDelete={canDeleteAssignments}
+              onChange={() => void load()}
+            />
+          </TabsContent>
         </Tabs>
       )}
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <School className="size-3.5" />
         Reads are available to every institute member; management actions are
-        reserved for institute admins (the backend authorizes every write).
+        reserved for institute admins or explicitly granted permissions (the
+        backend authorizes every write).
       </p>
     </div>
   );

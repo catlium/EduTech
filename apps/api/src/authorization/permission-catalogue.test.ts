@@ -54,9 +54,10 @@ test('every resource.action in the resource maps is catalogued', () => {
   }
 });
 
-test('catalogue resources are exactly the §13 V1 vocabulary (+ Phase C roles)', () => {
+test('catalogue resources are exactly the §13 V1 vocabulary (+ Phase C roles, Phase Q.3 assignments)', () => {
   assert.deepEqual(Object.keys(INSTITUTE_RESOURCES).sort(), [
     'assessments',
+    'assignments',
     'attempts',
     'chapters',
     'content',
@@ -79,6 +80,42 @@ test('catalogue resources are exactly the §13 V1 vocabulary (+ Phase C roles)',
   assert.equal(isSupportedPermission('students.read'), false);
   assert.equal(isSupportedPermission('teachers.create'), false);
   assert.equal(isSupportedPermission('classes.manage'), false);
+});
+
+test('Q.3: assignments.* is the staffing vocabulary — read/create/delete/manage, deliberately no update', () => {
+  // The four sanctioned actions (Q.3.0 design D-Q3.1/D-Q3.3): reassignment =
+  // delete + create, so `assignments.update` is an unsupported, uncatalogued key.
+  for (const key of ['assignments.read', 'assignments.create', 'assignments.delete', 'assignments.manage'] as const) {
+    assert.equal(isSupportedPermission(key), true, key);
+    assert.equal(permissionDomain(key), 'institute', key);
+  }
+  assert.equal(isSupportedPermission('assignments.update'), false);
+  assert.equal(permissionDomain('assignments.update'), null);
+  assert.deepEqual(invalidInstitutePermissionKeys(['assignments.update']), ['assignments.update']);
+  // manage implies read/create/delete (§13 rule), and only for its resource.
+  assert.equal(hasPermission(['assignments.manage'], 'assignments.read'), true);
+  assert.equal(hasPermission(['assignments.manage'], 'assignments.create'), true);
+  assert.equal(hasPermission(['assignments.manage'], 'assignments.delete'), true);
+  assert.equal(hasPermission(['assignments.manage'], 'subjects.read'), false);
+  // A bare sub-action never implies manage or its siblings.
+  assert.equal(hasPermission(['assignments.create'], 'assignments.manage'), false);
+  assert.equal(hasPermission(['assignments.create'], 'assignments.delete'), false);
+  // INSTITUTE_ADMIN auto-holds assignments.manage via the built-in mapping.
+  const admin = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN], 'institute');
+  assert.equal(hasPermission(admin, 'assignments.manage'), true);
+  assert.equal(hasPermission(admin, 'assignments.read'), true);
+  // TEACHER/STUDENT default-deny: staffing config never reaches class users.
+  for (const key of [TEACHER, STUDENT] as const) {
+    const granted = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[key], 'institute');
+    assert.equal(hasPermission(granted, 'assignments.read'), false, `${key}.assignments.read`);
+    assert.equal(hasPermission(granted, 'assignments.create'), false, key);
+    assert.equal(hasPermission(granted, 'assignments.delete'), false, key);
+  }
+  // A custom role the institute grants assignments.create resolves exactly it.
+  const delegate = resolveGrantedKeys(['assignments.create'], 'institute');
+  assert.equal(hasPermission(delegate, 'assignments.create'), true);
+  assert.equal(hasPermission(delegate, 'assignments.read'), false);
+  assert.equal(hasPermission(delegate, 'assignments.delete'), false);
 });
 
 // ── Known / unknown permissions ─────────────────────────────────

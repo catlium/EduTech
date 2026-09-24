@@ -23,9 +23,12 @@ interface ResourceDefinition {
 type ResourceMap = Record<string, ResourceDefinition>;
 
 // Institute-domain resources (§13 catalogue). No speculative keys: nothing is
-// catalogued before an endpoint exists (no students/teachers/classes yet;
-// their administration maps to `users.*`).
+// catalogued before an endpoint exists. Academic structure administration maps
+// to `users.*`/`roles.*`; staffing configuration (D5 family) lives on
+// `assignments.*` — the teacher-assignment slice now, student placements/
+// enrollments in Q.4 (see docs/architecture/academic-teacher-permissions.md).
 export const INSTITUTE_RESOURCES = {
+  assignments: { actions: ['read', 'create', 'delete', 'manage'] },
   subjects: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   chapters: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   topics: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
