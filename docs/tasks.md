@@ -1,5 +1,47 @@
 # Task Tracker
 
+## Phase Q.4.0 — Student Placement, Transfer & Carry-Forward Design (2026-09-24, DESIGN COMPLETE)
+
+> Issued task. Design/audit the authorization model + workflow for student
+> placement, transfer, and academic-year carry-forward (promotion). DESIGN ONLY
+> — no code, migrations, catalogue/guard/endpoint/frontend change. Canonical
+> design: `docs/architecture/academic-student-placement.md`. Reconciles audit
+> §11/§14.3/§14.4, D5 §13/§17, Phase G placement impl, Phase H enrollments +
+> academic scope, and Q.3's `assignments.*` precedent. Docs: project-status.md +
+> this tracker. Commit on `feature/student-placement`; do NOT merge into
+> dev/main.
+
+- [x] Created branch `feature/student-placement` from
+      `feature/teacher-assignment` (unrelated working-tree changes preserved
+      untouched).
+- [x] Traced current authorization: `student-placements.controller.ts`
+      (role-only `@RequiredRoles(...PLACEMENT_ADMIN)`, no PermissionGuard, no
+      keys), service invariants (`student-placements.service.ts` L81-146
+      create/transfer/deactivate + L179-195 active-STUDENT check), schema
+      partial-unique index, `permission-catalogue.ts:25-31` Q.4 reservation.
+- [x] Decision register (§11, all tagged IMPLEMENTED/PLANNED/DEFERRED/MISSING):
+      D-Q4.1 reuse `assignments` family (no new key); D-Q4.2 exact per-endpoint
+      keys incl. AND combinator for transfer + carry-forward commit; D-Q4.3
+      institute-scope (not academic-scope); D-Q4.4 default grants + custom-role
+      delegation; D-Q4.5 bulk preview/commit + single promotion via existing
+      transfer; D-Q4.6 no core migration, optional `divisions.capacity`; D-Q4.7
+      history reuses list; D-Q4.8 all-or-nothing commit, strict-forward;
+      D-Q4.9 derived occupancy; D-Q4.10 enrollment overrides DEFERRED;
+      D-Q4.11 console design.
+- [x] Docs updated: `docs/architecture/academic-student-placement.md` (new
+      canonical doc, §1-§15); project-status.md (Phase Q.4.0 entry); this
+      tracker.
+- [x] Commit `docs(authz): design student placement, transfer and carry-forward
+      surface` (+ push, no merge).
+- [ ] (PLANNED) Phase Q.4.1 — guard migration: AND-capable `@RequiredPermissions`
+      decorator/rules + catalogued student-placements controller (drop
+      `PLACEMENT_ADMIN`) + `student-placements-authz.integration.ts`.
+- [ ] (PLANNED) Phase Q.4.2 — carry-forward preview + commit endpoints,
+      all-or-nothing tx, integration suite.
+- [ ] (PLANNED) Phase Q.4.3 — optional additive `divisions.capacity` migration.
+- [ ] (PLANNED) Phase Q.4.4 — Student Placement console section + carry-forward
+      wizard + pure-helper tests.
+
 ## Phase Q.3.0 — Academic/Teacher Permission Catalogue (2026-09-23, IMPLEMENTED)
 
 > Issued task. Design/audit the authorization model for teacher → class-subject

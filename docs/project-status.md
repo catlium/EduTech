@@ -1,5 +1,60 @@
 # Project Status
 
+## Phase Q.4.0 — Student Placement, Transfer & Academic-Year Carry-Forward Design (2026-09-24)
+
+**Status: DESIGN COMPLETE (audit + permission + workflow design only).**
+Branches: `feature/student-placement` (design, from
+`feature/teacher-assignment`; unrelated working-tree changes preserved
+untouched). Canonical design:
+`docs/architecture/academic-student-placement.md`.
+
+Design/audit of the authorization model and workflow for student placement,
+transfer, and academic-year carry-forward (promotion) — the Phase Q.4 slice the
+Q.3 entry reserves for the `assignments` family. No code, catalogue, guard,
+schema, endpoint, or frontend change in this phase (the current
+placement/transfer/deactivate backend is live and unchanged).
+
+Key decisions (every decision tagged in the doc's §11 register):
+
+- **Resource `assignments`** (D-Q4.1) — reuse the D5 family
+  (`permission-catalogue.ts:31`), no new `placements` key, `update` stays
+  uncatalogued. Not blindly reusing Q.3: per-endpoint mapping is
+  placement-specific, and combined endpoints need a new AND-combinator.
+- **Exact keys (D-Q4.2):** read list/get=`assignments.read`; place=`create`;
+  deactivate=`delete`; transfer=`create`+`delete` (AND); carry-forward
+  preview=`read`; carry-forward commit=`create`+`delete` (AND). Requires a
+  small guard addition: the current `PermissionGuard` ORs multiple keys
+  (`permissions.guard.ts:46`) — an AND-capable `@RequiredPermissions`
+  decorator is **PLANNED** for transfer + commit.
+- **Scope (D-Q4.3):** institute-scoped, NOT academic-scope; the student's own
+  placement stays on the existing `GET /memberships/scope` (D6), unchanged.
+- **Grants (D-Q4.4):** INSTITUTE_ADMIN auto-`assignments.manage` (unchanged);
+  TEACHER/STUDENT default-deny (as today); custom institute roles become
+  grantable `assignments.*` (e.g. a "Placements Officer" / roster viewer) — the
+  audit §14.2-class gap for the placement slice closes.
+- **Carry-forward model (D-Q4.5):** bulk preview + confirm + atomic commit
+  (new `POST .../carry-forward/preview` + `.../commit`), plus single-student
+  promotion by reusing the existing transfer endpoint. All-or-nothing single
+  transaction; partial-unique index is the concurrency guard; strict-forward
+  via `sort_order`.
+- **Schema (D-Q4.6):** the core carry-forward needs **no migration** —
+  `student_placements` already holds per-year one-active + retained history +
+  atomic archive+insert. Optional additive `divisions.capacity` (nullable,
+  NULL=uncapped) deferred to Q.4.3. No `prior_placement_id` (reconstructable),
+  no `isCurrent` (explicit year selection by design).
+- **History (D-Q4.7):** reuse existing `GET ?membershipId=` (already
+  chronological); no new history endpoint.
+- **Enrollment overrides (D-Q4.10):** same resource/keys but **DEFERRED** out
+  of Q.4.0 to keep the phase focused on placement/promotion.
+- **Gaps G1–G8** all tagged (guard migration, AND combinator, bulk promote,
+  occupancy/capacity, history lineage, enrollment authz, audit events, DELETE
+  cascade) — PLANNED or DEFERRED as in the doc's §12.
+
+**Exact recommended next task:** Phase Q.4.1 — guard migration: AND-capable
+decorator + guard branch, catalogued student-placements controller (D-Q4.2
+keys, drop `PLACEMENT_ADMIN`), and a `student-placements-authz.integration.ts`
+mirroring `teacher-assignments-authz.integration.ts`.
+
 ## Phase Q.3.0 — Academic/Teacher Permission Catalogue + Console (2026-09-23)
 
 **Status: IMPLEMENTED + VALIDATED.**
