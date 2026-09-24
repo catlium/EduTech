@@ -380,7 +380,7 @@ exactly like the teacher-assignment tab.
 | D-Q4.8 | Commit is all-or-nothing, single tx, partial unique index as concurrency guard, strict forward via `sort_order` | IMPLEMENTED (Q.4.2) |
 | D-Q4.9 | Roster/occupancy = count ACTIVE placements per division (derived, no table change) | IMPLEMENTED (Q.4.2 preview) |
 | D-Q4.10 | Enrollment *override* surface (subject ENROLLED/EXCLUDED admin) = same resource/keys, DEFERRED out of Q.4.0 | DEFERRED |
-| D-Q4.11 | Frontend section + carry-forward wizard on `/institute/academic`, gates + pure-helper patterns from Q.2/Q.3 | PLANNED (Q.4.4) |
+| D-Q4.11 | Frontend section + carry-forward wizard on `/institute/academic`, gates + pure-helper patterns from Q.2/Q.3 | IMPLEMENTED (Q.4.4) |
 
 ## 12. Gaps summary
 
