@@ -151,7 +151,7 @@ def test_syllabus_aggregation_merges_chapters_and_dedupes_topics() -> None:
             "structure": {
                 "chapters": [
                     {"name": "Ch1", "description": "d", "topics": [{"name": "T2"}, {"name": "T3"}]},
-                    {"name": "Ch2", "description": "e", "topics": []},
+                    {"name": "Ch2", "description": "e", "topics": [{"name": "T4"}]},
                 ]
             },
         },

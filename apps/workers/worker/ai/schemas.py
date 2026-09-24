@@ -355,7 +355,9 @@ class SyllabusTopic(BaseModel):
 class SyllabusChapter(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=1000)
-    topics: list[SyllabusTopic] = Field(default_factory=list, max_length=200)
+    # Every chapter must carry at least one topic: derived-content generation is
+    # topic-based, so a valid chapter as extracted (or aggregated) is never empty.
+    topics: list[SyllabusTopic] = Field(min_length=1, max_length=200)
 
 
 class SyllabusStructure(BaseModel):

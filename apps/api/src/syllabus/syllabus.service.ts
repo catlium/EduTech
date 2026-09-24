@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -11,39 +10,17 @@ import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import type { Database } from '@catlium/database';
 import { chapters, syllabi, subjects, topics } from '@catlium/database';
-import {
-  SyllabusContextSchema,
-  SyllabusStructureSchema,
-  type SyllabusContext,
-  type SyllabusStructure,
-} from '@catlium/contracts';
+import type { SyllabusContext, SyllabusStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import { STORAGE_PROVIDER } from '../materials/storage/storage-provider.interface.js';
 import type { StorageProvider } from '../materials/storage/storage-provider.interface.js';
 import { AcademicScopeService } from '../authorization/academic-scope.service.js';
+import { SyllabusValidator } from './syllabus.validation.js';
 
 type DbTx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 const OPERATION = 'AI_ANALYZE_SYLLABUS';
-
-export const SyllabusValidator = {
-  parseStructure(structure: unknown): SyllabusStructure {
-    try {
-      return SyllabusStructureSchema.parse(structure);
-    } catch {
-      throw new BadRequestException('Invalid syllabus structure');
-    }
-  },
-
-  parseContext(context: unknown): SyllabusContext {
-    try {
-      return SyllabusContextSchema.parse(context);
-    } catch {
-      throw new BadRequestException('Invalid syllabus context');
-    }
-  },
-};
 
 @Injectable()
 export class SyllabusService {

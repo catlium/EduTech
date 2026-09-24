@@ -1,5 +1,70 @@
 # Project Status
 
+## Phase F4 — Syllabus Chapter → Topic Invariant (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Branch: `feature/fix-syllabus-topics` (commit
+`fix(syllabus): require at least one topic per chapter`, pushed, no merge).
+
+Enforces the `Subject → Chapter → Topic(s)` invariant — every syllabus chapter
+must carry at least one topic because derived-content generation is
+topic-based (`GenerateQuestionsDto` requires `topicId`; starter-material
+generation rejects chapter-only sources).
+
+- **Worker prompt** (`apps/workers/worker/ai/generation/syllabus.py`): the
+  instruction now reads "must contain at least one topic (an empty topics list
+  is invalid)"; when a document states no explicit subtopic headings, the model
+  derives meaningful first-level topics from the chapter's own content, never
+  inventing topics the document does not support. Module docstring states the
+  same rule.
+- **Worker schema** (`worker/ai/schemas.py`): `SyllabusChapter.topics` is
+  `Field(min_length=1, max_length=200)` — an empty or absent topics list fails
+  Pydantic validation of `SyllabusAnalysisPayload`.
+- **Shared contract** (`packages/contracts/src/index.ts`):
+  `SyllabusChapterSchema.topics` is `z.array(SyllabusTopicSchema).min(1).max(200)`.
+- **API validation** (`apps/api/src/syllabus/syllabus.validation.ts`): the
+  existing `SyllabusValidator` moved to a pure module (the established
+  `paper-patterns.validation.ts` pattern) and is the exact gate confirm and
+  PATCH-update already run. Chapter-only structures now surface the existing
+  400 `Invalid syllabus structure` — zero duplicated validation logic:
+  confirm `parseStructure(locked.structure)` (`syllabus.service.ts`) and
+  update-structure both reject `topics: []`.
+- **Retry behaviour** (no new code): a chapter-only model response fails
+  `SyllabusAnalysisPayload` validation in the existing `_complete_validated`
+  loop, retrying `ai_validation_retries` times; after exhaustion the job
+  honestly fails (`fail_syllabus_analysis` + `job:failed`) and nothing reaches
+  the teacher-confirm path.
+- **Tests:**
+  - Worker `tests/test_syllabus.py` → new
+    `test_chapter_only_output_fails_validation_and_never_confirms`: real
+    retry loop drives 3 provider calls on `topics: []` output, then honest
+    failure; `complete_syllabus_analysis` never called. Valid
+    Chapter → Topic behavior preserved by the existing happy-path test.
+  - New `apps/api/src/syllabus/syllabus-validator.test.ts` (4 cases): valid
+    structure parses; `topics: []` → 400-style `BadRequestException` via
+    `SyllabusValidator`; `SyllabusStructureSchema.safeParse` rejects
+    `topics: []`; accepts a chapter with ≥1 topic.
+  - `tests/test_aggregation.py` + `scripts/e2e/mock_ai_provider.py` updated so
+    no worker/e2e fixture carries an empty chapter.
+- **Legacy data** — not silently mutated, no migration: already-CONFIRMED
+  syllabi are untouched (read paths never parse structure, so no read
+  regression). Legacy chapter-only structures remain valid for the UI to edit,
+  but re-confirming one as-is now 400s — such rows require explicit
+  re-analysis/backfill (fresh analysis producing topics, then confirm).
+- **Validation:** worker `pytest` 84/84; api unit tests **232/232** (228 + 4
+  new); repo `pnpm typecheck` **10/10**; repo `pnpm lint` 9/9; repo `pnpm
+  build` 7/7; `ruff` and source `mypy` clean (test-file mypy strict noise is
+  pre-existing). Containers rebuilt per the container rule; running images
+  verified to carry the change — worker-ai/worker-material schema reports
+  `MinLen(min_length=1)` and carry the new prompt text, api `dist`
+  `syllabus.validation.js` serves the validator and the bundled contracts dist
+  has `topics:z.array(SyllabusTopicSchema).min(1).max(200)`.
+- **Docs:** this entry; tasks.md (Phase F4). Graphify graph re-run.
+- **Commits:** `fix(syllabus): require at least one topic per chapter` on
+  `feature/fix-syllabus-topics` (+ push, no merge).
+
+**Exact recommended next task:** none scheduled for F4 — do not start F1 or F3.
+
 ## Phase Q.4.4 — Institute Admin Student Placement Console + Carry-Forward Wizard (2026-09-24)
 
 **Status: IMPLEMENTED + VALIDATED.**

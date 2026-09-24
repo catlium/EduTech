@@ -1918,7 +1918,7 @@ export type SyllabusTopic = z.infer<typeof SyllabusTopicSchema>;
 export const SyllabusChapterSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(1000).nullable().optional(),
-  topics: z.array(SyllabusTopicSchema).max(200),
+  topics: z.array(SyllabusTopicSchema).min(1).max(200),
 });
 export type SyllabusChapter = z.infer<typeof SyllabusChapterSchema>;
 
