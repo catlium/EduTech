@@ -178,6 +178,21 @@
       - UI: `apps/web/src/app/(workspace)/institute/academic/enrollments-dialog.tsx` — per-placement dialog listing all institute subjects with current state (ENROLLED/EXCLUDED/DEFAULT), actions gated by `assignments.create`/`delete` via `canEnroll`; elective picker to create ENROLLED for non-offered subjects (filtered to active); revert removes the override. 403 from GET mapped to "Enrollments unavailable" state. Mutations toast on success/error and reload overrides + parent list.
       - Wiring: `placements-section.tsx` adds `BookOpenCheck` action per active placement, `overrideTarget` state, passes `canCreate/canDelete` (from `canEnroll` permissions in page), always shows Actions column; `page.tsx` passes `subjects` and `offeredByClass` into placements. Reuses existing shadcn/ui (Dialog/Table/Select/Badge/SkeletonRows/EmptyState/ErrorState).
       - Tests: `academic.test.ts` +5 tests (24/24 total) for the new helpers. Validation: web `tsc --noEmit` clean, web `node --test src/lib/academic.test.ts` 24/24, root `pnpm lint` 9/9, root `pnpm typecheck` 10/10, `next build` clean.
+- [x] Phase Q.4/E — **final E-track audit (2026-09-24, CLEAN).** Reviewed E.1
+      backend migration, E.2 console, architecture docs, live behavior and API
+      contracts, `assignments.*` consistency with Q3/Q4, tenant isolation,
+      placement/institute invariants, ENROLLED/EXCLUDED/DEFAULT semantics,
+      duplicate/revert behavior, frontend gating and 403 handling, and
+      regression risk to placements/teacher assignments. **No defects.**
+      Validation re-run on a fresh scratch PG17 (49/49 migrations):
+      student-enrollments-authz 6/6, student-placements-authz 7/7,
+      teacher-assignments-authz 5/5, authz-regression 8/8, academic-scope 1/1,
+      resource-scope 1/1, student-placements 1/1, carry-forward 1/1,
+      teacher-assignments 1/1 (31/31); api unit 228/228; web academic 24/24;
+      typecheck 10/10; lint 9/9. Live smoke 54 PASS / 0 FAIL; running
+      api/web containers verified to carry the E-track code; live probes
+      healthy 200 / enrollment route 401 unauth. Docs: project-status.md Phase
+      E entry + this tracker. E-track COMPLETE.
 
 ## Phase Q.3.0 — Academic/Teacher Permission Catalogue (2026-09-23, IMPLEMENTED)
 

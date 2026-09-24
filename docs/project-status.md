@@ -72,14 +72,27 @@ wizard, both gated exactly as the backend declares them. Q.4.3
 commit if over-capacity hard-blocks are wanted; otherwise the platform line is
 complete — no remaining scheduled Q.4 work.
 
-## Phase E.1 — Student Enrollment-Override Permission-Guard Migration (2026-09-24)
+## Phase E — Student Enrollment-Override Permission-Guard Migration + Console (2026-09-24)
 
-**Status: IMPLEMENTED + VALIDATED** (backend slice).
-Branch: `feature/student-enrollment-overrides` (commit
-`feat(authz): migrate student enrollment overrides to permissions`, pushed, no
+**Status: IMPLEMENTED + VALIDATED — E-track COMPLETE (final audit clean,
+2026-09-24).**
+Branch: `feature/student-enrollment-overrides` (commits
+`feat(authz): migrate student enrollment overrides to permissions` (E.1) +
+`feat(student-enrollments): add enrollment override console` (E.2), pushed, no
 merge). Design: `docs/architecture/academic-student-placement.md` D-Q4.10 / G6
 — the enrollment-override surface (subject ENROLLED/EXCLUDED admin) was the
 deferred sibling of the Q.4.1 placement migration and is now migrated.
+
+**Slices:**
+- **E.1 — backend permission migration:** controller drops `ENROLLMENT_ADMIN` +
+  `@RequiredRoles`, runs the standard stack → catalogued `assignments.*` keys.
+- **E.2 — frontend console:** enrollment-override dialog on
+  `/institute/academic` Student Placements (view `assignments.read`,
+  create `.create`, delete `.delete`, backend-authoritative).
+- **Final E-track audit (2026-09-24, clean):** no defects found. Live smoke
+  **54 PASS / 0 FAIL**; all suites green; running api/web containers verified
+  to carry the E-track code; live API contract probed (health 200, enrollment
+  route 401 unauthenticated). See the E-track details below.
 
 - **Controller** (`student-enrollments.controller.ts`): dropped the role-only
   `ENROLLMENT_ADMIN` constant + `@RequiredRoles(...)`, runs the standard
@@ -104,15 +117,27 @@ deferred sibling of the Q.4.1 placement migration and is now migrated.
   cross-institute isolation (A-owned role never granted through a B
   membership), plus the end-to-end service-invariant phase. **6/6 green** on a
   fresh scratch PG17 (49/49 migrations).
-- **Validation:** api lint clean, repo lint 9/9, api unit 228/228, `nest
-  build`, api `tsc --noEmit` clean; relevant suites green vs the scratch DB —
-  student-placements-authz 7/7, academic-scope, teacher-assignments-authz 5/5,
-  authz-regression 8/8, resource-scope, student-placements & teacher-
-  assignments integrations.
-- **Docs:** this entry; tasks.md (E.1 and E.2 items IMPLEMENTED in the Phase Q.4.0 tracker); `academic-student-placement.md` D-Q4.10 + G6 flipped from DEFERRED to IMPLEMENTED.
-- **Browser-visible behavior:** enrollment overrides console added to `/institute/academic` Student Placements (view on `assignments.read`, create on `.create`, delete on `.delete`).
+- **Validation (E.1 AND final E-track audit):** repo `pnpm typecheck` 10/10;
+  repo lint 9/9; api unit `node --test` **228/228**; web
+  `node --test src/lib/academic.test.ts` **24/24**; focused integration suites
+  re-run clean on a fresh scratch PG17 (49/49 migrations, throwaway container on
+  127.0.0.1:5433, running stack untouched) — **student-enrollments-authz 6/6,
+  student-placements-authz 7/7, teacher-assignments-authz 5/5, authz-regression
+  8/8, academic-scope 1/1, resource-scope 1/1, student-placements 1/1,
+  student-placements-carry-forward 1/1, teacher-assignments 1/1** (31/31).
+  Live smoke **54 PASS / 0 FAIL**; running containers verified to carry the
+  E-track code (api `dist/` exposes the permission-guarded
+  `student-enrollments.controller.js`, web `.next` chunk ships the
+  enrollment-override dialog); live API probes —
+  `GET /api/v1/health` 200, `GET /api/v1/academic/student-enrollments` 401
+  unauthenticated (AccessTokenGuard first, as expected).
+- **Docs:** this entry; tasks.md (E.1 and E.2 items IMPLEMENTED in the Phase Q.4.0 tracker, final audit recorded); `academic-student-placement.md` D-Q4.10 + G6 flipped from DEFERRED to IMPLEMENTED.
+- **Browser-visible behavior:** enrollment overrides console added to `/institute/academic` Student Placements (view on `assignments.read`, create on `.create`, delete on `.delete`); GET 403 degrades to an inline "Enrollments unavailable" state; every mutation depends on the backend.
 
-**Exact recommended next task:** Verify the console against live API behavior in the running dev stack (manual smoke) or add lightweight E.2 UI tests if desired. No backend changes planned.
+**Exact recommended next task:** E-track is complete — no remaining E work
+(the console was verified against live API behavior in the running dev stack,
+smoke 54/54). Next: land Q.4.3 (`divisions.capacity`, optional additive) or
+continue the platform roadmap — no scheduled enrollment-override work.
 
 ## Phase Q.4.2 — Student Placement/Transfer Backend Contract + End-to-End Authorization Coverage (2026-09-24)
 
