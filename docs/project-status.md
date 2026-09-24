@@ -1,5 +1,64 @@
 # Project Status
 
+## Phase Q.4.2 — Student Placement/Transfer Backend Contract + End-to-End Authorization Coverage (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Branch: `feature/student-placement` (commit `feat(student-placements): complete
+placement backend contract and end-to-end coverage`, pushed, no merge). Canonical
+design: `docs/architecture/academic-student-placement.md` (§1/§7 invariant
+contract + §5 guard surface + §13).
+
+Completes the Q.4.2 backend slice for this session's scope: the
+place/deactivate/transfer backend is verified complete against the design's
+contract, and the Q.4.1 guard matrix is bridged to **real behavior** — an
+authorized grant must actually place/deactivate/transfer against real rows, not
+merely pass the guard. Carry-forward preview/commit is NOT in this slice
+(still PLANNED, design §13).
+
+- **API contracts (verified — no change required):**
+  `CreateStudentPlacementDto {membershipId, divisionId}` /
+  `TransferStudentPlacementDto {divisionId}` (class-validator, global
+  ValidationPipe `whitelist + forbidNonWhitelisted + transform`); routes
+  map exactly per D-Q4.2: list/get `= assignments.read`, place `=
+  assignments.create`, deactivate `= assignments.delete`, transfer `=
+  assignments.create` AND `assignments.delete` (`@RequiredPermissions`).
+  No DTO, route, or contract gap exists against the design.
+- **Service invariants (verified — no change required):** institute-scoped on
+  every query; division is the institute's tenant anchor and its year is
+  authoritative (never client-supplied); target must be an ACTIVE same-institute
+  STUDENT membership (else 400); partial-unique `(academic_year_id,
+  membership_id) WHERE active` → 409; transfer = single transaction
+  archive+insert with full rollback on 23505; deactivate = soft `status`
+  flip, rows never deleted (history inherent). No schema gap → **no migration**
+  (capacity/carry-forward remain PLANNED).
+- **End-to-end coverage (extension to `student-placements-authz.integration.ts`,
+  5/5 → 6/6):** the guard-matrix file now also drives the REAL controller
+  handlers through the REAL guard chain against real DB rows, asserting:
+  successful placement; duplicate active placement → 409; inactive (deactivated)
+  student membership → 400; default-deny STUDENT caller → 403; delete-only
+  delegate create → 403; cross-institute (B-only) delegate → 403; deactivation
+  by delete-only delegate (soft flip, row retained); re-placement after
+  deactivation; create-only delegate places but transfer → 403 (AND rule, before
+  any service work); transfer into an occupied year → 409 with archive+insert
+  rollback (source stays active); transfer by create+delete delegate (source
+  archived, fresh ACTIVE at target year); history retention — exactly one ACTIVE
+  placement per (student, year), nothing deleted.
+- **Validation:** repo `pnpm typecheck` **10/10**; `pnpm lint` (api) clean; api
+  unit `node --test` **228/228**; `nest build` clean; focused integration vs
+  loopback PG17 on 127.0.0.1:5432 (dev-override postgres) —
+  `test:student-placements-authz` **6/6**, `test:student-placements` 1/1,
+  `test:teacher-assignments-authz` 5/5 regression; api container rebuilt +
+  healthy; graphify graph updated.
+- **Docs:** this entry; tasks.md; `academic-student-placement.md` unchanged
+  (design remains authoritative; carry-forward statuses untouched).
+
+**Exact recommended next task:** carry-forward backend (bulk
+`POST /academic/student-placements/carry-forward/preview` + `/commit` per §7/§8,
+all-or-nothing single transaction, strict-forward via `sort_order`,
+`@RequiredPermissions` AND rule on commit) — the design's §13 Q.4.2 item, still
+PLANNED. Then Q.4.3 (`divisions.capacity`) and Q.4.4 (placement console +
+carry-forward wizard) if wanted.
+
 ## Phase Q.4.1 — Student-Placement Permission-Guard Migration (2026-09-24)
 
 **Status: IMPLEMENTED + VALIDATED.**
@@ -51,7 +110,9 @@ deferred to Q.4.2/Q.4.3/Q.4.4 per design).
 - **Docs:** `academic-student-placement.md` statuses/§5/§12/§13 → IMPLEMENTED
   for the guard migration (carry-forward stays PLANNED); this entry; tasks.md.
 
-**Exact recommended next task:** Phase Q.4.2 — carry-forward backend
+**Exact recommended next task:** Phase Q.4.2 — **DONE 2026-09-24**
+(see the Phase Q.4.2 entry above: placement/transfer/deactivate backend contract
+verified + end-to-end authorization coverage). Next: carry-forward backend
 (preview + commit endpoints, all-or-nothing single tx, strict-forward via
 `sort_order`, per-student-cause rollback payload, `@RequiredPermissions` on
 commit), then the integration suite per the design's §13 Q.4.2 item.

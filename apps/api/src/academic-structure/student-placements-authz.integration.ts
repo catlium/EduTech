@@ -4,11 +4,22 @@ import { randomUUID } from 'node:crypto';
 import { eq, inArray } from 'drizzle-orm';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import { ExecutionContext, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
 
 import { createDatabase } from '@catlium/database';
 import type { Database } from '@catlium/database';
-import { users, authSessions, memberships, membershipRoles, roles, institutes } from '@catlium/database';
+import {
+  users,
+  authSessions,
+  memberships,
+  membershipRoles,
+  roles,
+  institutes,
+  academicYears,
+  classes,
+  divisions,
+  studentPlacements,
+} from '@catlium/database';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.ts';
 import { TenantGuard } from '../common/guards/tenant.guard.ts';
 import { RolesGuard } from '../common/guards/roles.guard.ts';
@@ -19,12 +30,13 @@ import { PermissionSyncService } from '../authorization/permission-sync.service.
 import { RolesService } from '../authorization/roles.service.ts';
 import { RoleAssignmentService } from '../authorization/role-assignment.service.ts';
 import { StudentPlacementsController } from './student-placements.controller.ts';
+import { StudentPlacementsService } from './student-placements.service.ts';
 
-// Phase Q.4.1 — student-placement guard matrix (D-Q4.2, academic-student-
-// placement.md §5). Runs the REAL guard chain against the REAL
-// StudentPlacementsController handlers (their metadata), proving the
+// Phase Q.4.1 + Q.4.2 — student-placement guard matrix AND end-to-end behavior
+// (D-Q4.2, academic-student-placement.md §5/§13). Runs the REAL guard chain
+// against the REAL StudentPlacementsController handlers, proving the
 // catalogued `assignments.*` permission declares exactly what the routes
-// enforce:
+// enforce and that an authorized caller's request actually reaches the DB:
 //   - INSTITUTE_ADMIN passes via the built-in assignments.manage grant
 //   - delegated custom roles obey exactly their granted sub-actions
 //   - transfer (archive + insert, one call) requires BOTH assignments.create
@@ -32,6 +44,8 @@ import { StudentPlacementsController } from './student-placements.controller.ts'
 //   - TEACHER/STUDENT default-deny (placement data never reaches class users)
 //   - no stale @RequiredRoles('INSTITUTE_ADMIN') metadata remains
 //   - cross-institute isolation of custom-role grants
+//   - real handler execution: place / conflict / inactive-student / deactivate /
+//     transfer / history retention through the guard chain (Q.4.2)
 // Requires a live database: TEST_DATABASE_URL (see .env). Skips cleanly when
 // unset. Permission/role seeds come from PermissionSyncService (idempotent).
 
@@ -67,6 +81,7 @@ async function runChain(handler: unknown, request: { headers?: Record<string, st
   await tenantGuard().canActivate(ctx);
   rolesGuard().canActivate(ctx); // stale-role check: must be a no-op now
   await permGuard().canActivate(ctx);
+  return ctx.switchToHttp().getRequest() as Record<string, unknown>;
 }
 
 test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_DATABASE_URL not set' }, async (t) => {
@@ -136,6 +151,7 @@ test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_D
       `sp_admin-${suffix}`, `sp_teacher-${suffix}`, `sp_student-${suffix}`, `sp_zerorole-${suffix}`,
       `sp_delegate_read-${suffix}`, `sp_delegate_create-${suffix}`, `sp_delegate_delete-${suffix}`,
       `sp_delegate_both-${suffix}`, `sp_delegate_manage-${suffix}`, `sp_cross_delegate-${suffix}`,
+      `sp_beh_studentA-${suffix}`, `sp_beh_studentB-${suffix}`, `sp_beh_studentX-${suffix}`,
     ].map((e) => `${e}@example.test`);
     const userIds = (await db.select({ id: users.id }).from(users).where(inArray(users.email, emails))).map((r) => r.id!);
     if (userIds.length === 0) return;
@@ -167,6 +183,22 @@ test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_D
     headers: { 'x-institute-id': instA!.id },
     cookies: { access_token: await sign(await userIdFor(who), sid[who]) },
   });
+
+  // Academic structure + STUDENT memberships in instA for the end-to-end
+  // behavior phase (Q.4.2): placement rows land in real divisions/years.
+  const [yr1] = await db!.insert(academicYears).values({ instituteId: instA!.id, name: `Q4 Year 1 ${suffix}` }).returning();
+  const [yr2] = await db!.insert(academicYears).values({ instituteId: instA!.id, name: `Q4 Year 2 ${suffix}` }).returning();
+  const [cls] = await db!.insert(classes).values({ instituteId: instA!.id, name: `Q4 Class ${suffix}` }).returning();
+  const [dvA] = await db!.insert(divisions).values({ instituteId: instA!.id, academicYearId: yr1!.id, classId: cls!.id, name: 'A' }).returning();
+  const [dvY2] = await db!.insert(divisions).values({ instituteId: instA!.id, academicYearId: yr2!.id, classId: cls!.id, name: 'A' }).returning();
+
+  const studentA = await makeUser('sp_beh_studentA');
+  const studentB = await makeUser('sp_beh_studentB');
+  const inactiveStudent = await makeUser('sp_beh_studentX');
+  await grantMembership(instA!.id, studentA!.id, ['STUDENT']);
+  await grantMembership(instA!.id, studentB!.id, ['STUDENT']);
+  const [inactiveMembership] = await db!.insert(memberships).values({ userId: inactiveStudent!.id, instituteId: instA!.id, status: 'deactivated' }).returning();
+  await db!.insert(membershipRoles).values({ membershipId: inactiveMembership!.id, roleId: roleIds.STUDENT! });
 
   await t.test('built-in INSTITUTE_ADMIN passes read/get/create/delete/transfer via assignments.manage', async () => {
     for (const handler of [LIST, GET, CREATE, DELETE, TRANSFER]) {
@@ -258,5 +290,127 @@ test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_D
       runChain(TRANSFER, { headers: { 'x-institute-id': instA!.id }, cookies: { access_token: await sign(crossDelegate!.id, sid.crossDelegate) } }),
       ForbiddenException,
     );
+  });
+
+  await t.test('Q.4.2 end-to-end: real handlers place/deactivate/transfer through the guard chain, with conflicts and history retention', async () => {
+    const ctl = new StudentPlacementsController(new StudentPlacementsService(db as unknown as Database));
+    const membershipOf = async (userId: string) =>
+      (await db!.select().from(memberships).where(eq(memberships.userId, userId)).limit(1))[0]!.id;
+
+    // Grant the delegates their catalogued keys via fresh custom roles
+    // (distinct keys from the guard-matrix roles above).
+    const svc = new RolesService(db as unknown as Database);
+    const assigner = new RoleAssignmentService(db as unknown as Database);
+    const behaviorRole = async (key: string, permissionKeys: string[]) =>
+      (await svc.createRole(instA!.id, { key, name: key, description: undefined, permissionKeys })).id;
+    const roleCreate = await behaviorRole(`q4b_${suffix}_co`, ['assignments.create']);
+    const roleDelete = await behaviorRole(`q4b_${suffix}_do`, ['assignments.delete']);
+    const roleBoth = await behaviorRole(`q4b_${suffix}_bo`, ['assignments.create', 'assignments.delete']);
+    await assigner.assign(await membershipOf(delegateCreate!.id), roleCreate);
+    await assigner.assign(await membershipOf(delegateDelete!.id), roleDelete);
+    await assigner.assign(await membershipOf(delegateBoth!.id), roleBoth);
+
+    const studentAM = await membershipOf(studentA!.id);
+    const studentBM = await membershipOf(studentB!.id);
+    const inactiveM = await membershipOf(inactiveStudent!.id);
+
+    const invoke = async (who: keyof typeof sid, handler: unknown, ...args: unknown[]) => {
+      const request = { headers: { 'x-institute-id': instA!.id }, cookies: { access_token: await sign(await userIdFor(who), sid[who]) } };
+      const req = await runChain(handler, request);
+      return (handler as (...h: unknown[]) => unknown).apply(ctl, [req.tenant, ...args]);
+    };
+
+    // successful placement (INSTITUTE_ADMIN via assignments.manage); year derived server-side
+    const placed = (await invoke('admin', CREATE, { membershipId: studentAM, divisionId: dvA!.id })) as {
+      placement: { id: string; status: string; academicYearId: string };
+    };
+    assert.equal(placed.placement.status, 'active');
+    assert.equal(placed.placement.academicYearId, yr1!.id);
+
+    // duplicate active placement in the same year → 409
+    await assert.rejects(
+      invoke('admin', CREATE, { membershipId: studentAM, divisionId: dvA!.id }),
+      ConflictException,
+    );
+
+    // inactive (deactivated) student membership → 400
+    await assert.rejects(
+      invoke('admin', CREATE, { membershipId: inactiveM, divisionId: dvA!.id }),
+      BadRequestException,
+    );
+
+    // default-deny STUDENT caller → 403
+    await assert.rejects(
+      invoke('student', CREATE, { membershipId: studentBM, divisionId: dvA!.id }),
+      ForbiddenException,
+    );
+
+    // delete-only delegate cannot create → 403
+    await assert.rejects(
+      invoke('delegateDelete', CREATE, { membershipId: studentBM, divisionId: dvA!.id }),
+      ForbiddenException,
+    );
+
+    // cross-institute: B-only delegate cannot operate on A → 403
+    await assert.rejects(
+      invoke('crossDelegate', CREATE, { membershipId: studentBM, divisionId: dvA!.id }),
+      ForbiddenException,
+    );
+
+    // deactivation by delete-only delegate → soft flip, row retained as history
+    await invoke('delegateDelete', DELETE, placed.placement.id);
+    const afterDeactivate = (await db!.select({ status: studentPlacements.status }).from(studentPlacements).where(eq(studentPlacements.id, placed.placement.id)))[0];
+    assert.equal(afterDeactivate!.status, 'inactive');
+
+    // re-placement after deactivation → fresh ACTIVE row next to the retained history
+    const replaced = (await invoke('admin', CREATE, { membershipId: studentAM, divisionId: dvA!.id })) as {
+      placement: { id: string; status: string };
+    };
+    assert.equal(replaced.placement.status, 'active');
+
+    // create-only delegate can place…
+    const pB = (await invoke('delegateCreate', CREATE, { membershipId: studentBM, divisionId: dvA!.id })) as {
+      placement: { id: string; status: string };
+    };
+    assert.equal(pB.placement.status, 'active');
+
+    // …but cannot transfer (AND rule: lacks assignments.delete) → 403, before any service work
+    await assert.rejects(
+      invoke('delegateCreate', TRANSFER, pB.placement.id, { divisionId: dvY2!.id }),
+      ForbiddenException,
+    );
+
+    // transfer into a year where the student already holds an ACTIVE placement → 409,
+    // and the source placement stays active (archive+insert transaction rolled back)
+    const pB2 = (await invoke('admin', CREATE, { membershipId: studentBM, divisionId: dvY2!.id })) as {
+      placement: { id: string; academicYearId: string };
+    };
+    assert.equal(pB2.placement.academicYearId, yr2!.id);
+    await assert.rejects(
+      invoke('delegateBoth', TRANSFER, pB.placement.id, { divisionId: dvY2!.id }),
+      ConflictException,
+    );
+    assert.equal(
+      (await db!.select({ status: studentPlacements.status }).from(studentPlacements).where(eq(studentPlacements.id, pB.placement.id)))[0]!.status,
+      'active',
+    );
+
+    // transfer by a create+delete delegate → source archived, fresh ACTIVE row at the target year
+    const moved = (await invoke('delegateBoth', TRANSFER, replaced.placement.id, { divisionId: dvY2!.id })) as {
+      placement: { id: string; status: string; academicYearId: string; divisionId: string };
+    };
+    assert.equal(moved.placement.status, 'active');
+    assert.equal(moved.placement.academicYearId, yr2!.id);
+    assert.equal(moved.placement.divisionId, dvY2!.id);
+
+    // history retention: nothing deleted; exactly one ACTIVE placement per (student, year)
+    const rows = await db!
+      .select({ status: studentPlacements.status, membershipId: studentPlacements.membershipId })
+      .from(studentPlacements)
+      .where(inArray(studentPlacements.membershipId, [studentAM, studentBM]));
+    const rowsFor = (membershipId: string) => rows.filter((r) => r.membershipId === membershipId);
+    assert.equal(rowsFor(studentAM).filter((r) => r.status === 'active').length, 1);
+    assert.equal(rowsFor(studentAM).filter((r) => r.status === 'inactive').length, 2);
+    assert.equal(rowsFor(studentBM).filter((r) => r.status === 'active').length, 2); // yr1 + yr2
   });
 });

@@ -59,8 +59,29 @@
       - Validation: repo typecheck 10/10, lint 9/9, api unit 228/228, nest
         build, integration suites (student-placements, teacher-assignments-
         authz, student-placements-authz) green, api container rebuilt.
-- [ ] (PLANNED) Phase Q.4.2 — carry-forward preview + commit endpoints,
-      all-or-nothing tx, integration suite.
+- [x] Phase Q.4.2 (this session's scope) — placement/transfer/deactivate
+      backend contract completion + end-to-end authorization coverage.
+      **IMPLEMENTED 2026-09-24** (commit `feat(student-placements): complete
+      placement backend contract and end-to-end coverage`, pushed, no merge):
+      - Verified the API contracts + service invariants match the design
+        (§1/§7): DTOs (`CreateStudentPlacementDto`, `TransferStudentPlacementDto`),
+        routes (list/get=`read`, place=`create`, deactivate=`delete`, transfer=
+        `create`+`delete` AND), institute-scope, derived year from division,
+        active same-institute STUDENT check (else 400), partial-unique 409,
+        single-tx archive+insert transfer, soft deactivate with history
+        retention. No contract or schema gap → no migration.
+      - Extended `student-placements-authz.integration.ts` (5/5 → 6/6) to now
+        also drive the REAL controller handlers through the REAL guard chain
+        against real DB rows: successful placement/deactivation/transfer,
+        duplicate 409, inactive-student 400, insufficient-permission 403
+        (default-deny; delete-only create; create-only transfer), cross-institute
+        403, transfer rollback on an occupied destination year, and history
+        retention (exactly one ACTIVE per student+year, nothing deleted).
+      - Validation: typecheck 10/10, api lint clean, api unit 228/228, nest
+        build, focused integration suites green, api container rebuilt.
+- [ ] (PLANNED, design §13) Carry-forward backend — preview + commit endpoints,
+      all-or-nothing tx, integration suite (bulk promote; explicitly out of this
+      Q.4.2 scope).
 - [ ] (PLANNED) Phase Q.4.3 — optional additive `divisions.capacity` migration.
 - [ ] (PLANNED) Phase Q.4.4 — Student Placement console section + carry-forward
       wizard + pure-helper tests.
