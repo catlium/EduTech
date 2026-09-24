@@ -11,9 +11,22 @@ import {
   assignableTeachers,
   byClassSubjectName,
   canAssign,
+  canTransfer,
+  proposalFlagInfo,
+  canAutoCarry,
+  destinationDivisionsFor,
+  defaultCarryForwardDecisions,
+  carryForwardSummary,
+  carryForwardCommitPayload,
+  filterPlacements,
+  placementHistory,
+  placeableStudents,
   type AcademicYear,
+  type CarryForwardDecision,
+  type CarryForwardProposal,
   type ClassRow,
   type DivisionRow,
+  type StudentPlacement,
   type TeacherAssignment,
 } from './academic.ts';
 
@@ -184,4 +197,155 @@ test('canAssign mirrors the assignments.* permission gate with manage implicatio
   assert.equal(canAssign(['assignments.create'], 'delete'), false);
   assert.equal(canAssign([], 'read'), false);
   assert.equal(canAssign(['subjects.read'], 'read'), false);
+});
+
+// ── Q.4.4 — student placement console + carry-forward wizard helpers ──
+
+test('canTransfer requires BOTH assignments.create and assignments.delete (backend AND rule)', () => {
+  assert.equal(canTransfer(['assignments.create', 'assignments.delete']), true);
+  assert.equal(canTransfer(['assignments.create']), false);
+  assert.equal(canTransfer(['assignments.delete']), false);
+  assert.equal(canTransfer(['assignments.manage']), true);
+  assert.equal(canTransfer(['assignments.read']), false);
+  assert.equal(canTransfer([]), false);
+});
+
+const proposal = (
+  overrides: Partial<CarryForwardProposal> = {},
+): CarryForwardProposal => ({
+  placementId: 'pl1',
+  membershipId: 'm1',
+  studentName: 'Ada',
+  currentClassId: 'c1',
+  currentClassName: 'Class X',
+  currentDivisionId: 'd1',
+  currentDivisionName: 'A',
+  proposedDivisionId: 'dy1',
+  proposedClassName: 'Class X',
+  proposedDivisionName: 'A',
+  flags: [],
+  ...overrides,
+});
+
+test('proposalFlagInfo maps every carry-forward flag to a label + tone', () => {
+  assert.deepEqual(proposalFlagInfo('membership-not-active'), { label: 'Membership inactive', tone: 'danger' });
+  assert.deepEqual(proposalFlagInfo('already-active-in-destination-year'), { label: 'Already placed in destination year', tone: 'warning' });
+  assert.deepEqual(proposalFlagInfo('no-destination'), { label: 'No auto-matched destination', tone: 'warning' });
+  assert.deepEqual(proposalFlagInfo('class-name-changed'), { label: 'Class missing in destination year', tone: 'info' });
+});
+
+test('canAutoCarry = matched destination AND no membership/occupancy blockers', () => {
+  assert.equal(canAutoCarry(proposal()), true);
+  assert.equal(canAutoCarry(proposal({ proposedDivisionId: null })), false);
+  assert.equal(canAutoCarry(proposal({ flags: ['no-destination'] })), false);
+  assert.equal(canAutoCarry(proposal({ flags: ['membership-not-active'] })), false);
+  assert.equal(canAutoCarry(proposal({ flags: ['already-active-in-destination-year'] })), false);
+});
+
+test('destinationDivisionsFor offers only same-class divisions of the destination year', () => {
+  const destYear = new Map([
+    ['dy1', { ...division, id: 'dy1', academicYearId: 'y2' }],
+    ['dy2', { ...division, id: 'dy2', academicYearId: 'y2', classId: 'c2' }],
+    ['fy1', { ...division, id: 'fy1', academicYearId: 'y1' }],
+  ]);
+  const options = destinationDivisionsFor(proposal(), [...destYear.values()], 'y2');
+  assert.deepEqual(options.map((d) => d.id), ['dy1']);
+});
+
+test('defaultCarryForwardDecisions picks the least-surprising plan for each scenario', () => {
+  const destYear = 'y2';
+  const auto = proposal(); // matched → keep suggestion
+  const blocked = proposal({ placementId: 'pl2', flags: ['membership-not-active'], proposedDivisionId: null });
+  const occupied = proposal({ placementId: 'pl3', flags: ['already-active-in-destination-year'] });
+  const unmatched = proposal({ placementId: 'pl4', proposedDivisionId: null, flags: ['no-destination'] });
+  const noClass = proposal({ placementId: 'pl5', proposedDivisionId: null, currentClassId: 'c3', flags: ['no-destination', 'class-name-changed'] });
+  const divisions = [
+    { ...division, id: 'dy1', academicYearId: 'y2' },
+    { ...division, id: 'dy2', academicYearId: 'y2', classId: 'c2' },
+  ];
+  const decisions = defaultCarryForwardDecisions(
+    [auto, blocked, occupied, unmatched, noClass],
+    divisions,
+    destYear,
+  );
+  assert.deepEqual(decisions.pl1, { destinationDivisionId: 'dy1', skip: false });
+  assert.deepEqual(decisions.pl2, { destinationDivisionId: null, skip: true });
+  assert.deepEqual(decisions.pl3, { destinationDivisionId: null, skip: true });
+  assert.deepEqual(decisions.pl4, { destinationDivisionId: '', skip: false });
+  assert.deepEqual(decisions.pl5, { destinationDivisionId: null, skip: false });
+});
+
+test('carryForwardSummary counts promoted / skipped / left-behind', () => {
+  const decisions: Record<string, CarryForwardDecision> = {
+    pl1: { destinationDivisionId: 'dy1', skip: false },
+    pl2: { destinationDivisionId: null, skip: true },
+    pl3: { destinationDivisionId: '', skip: false },
+    pl4: { destinationDivisionId: null, skip: false },
+    pl5: { destinationDivisionId: 'dy2', skip: true }, // skip wins over a selection
+  };
+  const summary = carryForwardSummary(
+    [proposal(), proposal({ placementId: 'pl2', proposedDivisionId: 'dy1' }), proposal({ placementId: 'pl3', proposedDivisionId: 'dy1' }), proposal({ placementId: 'pl4', proposedDivisionId: 'dy1' }), proposal({ placementId: 'pl5', proposedDivisionId: 'dy1' })],
+    decisions,
+  );
+  assert.deepEqual(summary, { promoted: 1, skipped: 2, leftBehind: 2 });
+});
+
+test('carryForwardCommitPayload builds the exact backend body (items + optional skips)', () => {
+  const decisions: Record<string, CarryForwardDecision> = {
+    pl1: { destinationDivisionId: 'dy1', skip: false },
+    pl2: { destinationDivisionId: null, skip: true },
+    pl3: { destinationDivisionId: '', skip: false },
+  };
+  const body = carryForwardCommitPayload('y2', [proposal(), proposal({ placementId: 'pl2', currentClassId: 'c2' }), proposal({ placementId: 'pl3', currentClassId: 'c2' })], decisions);
+  assert.deepEqual(body, {
+    destinationAcademicYearId: 'y2',
+    items: [{ placementId: 'pl1', destinationDivisionId: 'dy1' }],
+    skipPlacementIds: ['pl2'],
+  });
+  // all-skipped / empty plan omits the skip key entirely (backend requires items)
+  const none = carryForwardCommitPayload('y2', [], {});
+  assert.deepEqual(none, { destinationAcademicYearId: 'y2', items: [] });
+  assert.equal('skipPlacementIds' in none, false);
+});
+
+test('filterPlacements narrows by year and class via the division map', () => {
+  const p1: StudentPlacement = { id: 'p1', instituteId: 'i1', membershipId: 'm1', academicYearId: 'y1', divisionId: 'd1', status: 'active', createdAt: '', updatedAt: '', studentName: 'Ada', academicYearName: '2025-26', className: 'Class X', divisionName: 'A' };
+  const p2: StudentPlacement = { ...p1, id: 'p2', academicYearId: 'y2', divisionId: 'd3' };
+  const p3: StudentPlacement = { ...p1, id: 'p3', divisionId: 'd2' };
+  const divisions = [
+    { ...division, id: 'd1', classId: 'c1' },
+    { ...division, id: 'd2', classId: 'c2' },
+    { ...division, id: 'd3', classId: 'c1', academicYearId: 'y2' },
+  ];
+  assert.deepEqual(filterPlacements([p1, p2, p3], divisions, 'y1', null).map((p) => p.id), ['p1', 'p3']);
+  assert.deepEqual(filterPlacements([p1, p2, p3], divisions, null, 'c1').map((p) => p.id), ['p1', 'p2']);
+  assert.deepEqual(filterPlacements([p1, p2, p3], divisions, 'y2', 'c1').map((p) => p.id), ['p2']);
+  assert.deepEqual(filterPlacements([p1, p2, p3], divisions, 'y1', 'c1').map((p) => p.id), ['p1']);
+  assert.equal(filterPlacements([p1, p2, p3], divisions, 'y9', null).length, 0);
+});
+
+test('placementHistory returns a student’s other placements excluding the expanded row', () => {
+  const current: StudentPlacement = { id: 'p1', instituteId: 'i1', membershipId: 'm1', academicYearId: 'y1', divisionId: 'd1', status: 'active', createdAt: '', updatedAt: '', studentName: 'Ada', academicYearName: '2025-26', className: 'Class X', divisionName: 'A' };
+  const prior = { ...current, id: 'p0', academicYearId: 'y0', status: 'inactive' as const };
+  const other = { ...current, id: 'p9', membershipId: 'm9' };
+  const history = placementHistory([current, prior, other], 'm1', 'p1');
+  assert.deepEqual(history.map((p) => p.id), ['p0']);
+  assert.equal(placementHistory([current], 'm1', 'p1').length, 0);
+});
+
+test('placeableStudents = active STUDENT roster not already active in the division’s year', () => {
+  const ann = teacher('a', 'Ann', 'active', ['STUDENT']);
+  const bob = teacher('b', 'Bob', 'active', ['STUDENT']);
+  const carol = teacher('c', 'Carol', 'deactivated', ['STUDENT']);
+  const dean = teacher('d', 'Dean', 'active', ['TEACHER', 'STUDENT']);
+  const placed: StudentPlacement = {
+    id: 'p1', instituteId: 'i1', membershipId: 'm-a', academicYearId: 'y1', divisionId: 'd1',
+    status: 'active', createdAt: '', updatedAt: '', studentName: 'Ann', academicYearName: '2025-26', className: 'Class X', divisionName: 'A',
+  };
+  const elsewhere = { ...placed, id: 'p2', membershipId: 'm-b', academicYearId: 'y2' };
+  const divisions = [{ ...division, id: 'd1', academicYearId: 'y1' }];
+  const available = placeableStudents([ann, bob, carol, dean], [placed, elsewhere], 'd1', divisions);
+  assert.deepEqual(available.map((u) => u.name), ['Bob', 'Dean']);
+  assert.equal(placeableStudents([ann, bob], [], null, divisions).length, 2);
+  assert.equal(placeableStudents([ann], [placed], 'd1', divisions).length, 0);
 });

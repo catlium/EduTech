@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, GraduationCap, Layers, School, UserRoundCheck } from 'lucide-react';
+import { CalendarDays, GraduationCap, Layers, School, UserRoundCheck, Users } from 'lucide-react';
 
 import { api } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,6 +13,7 @@ import {
   canWriteAcademicStructure,
   bySortOrder,
   canAssign as canAssignPermission,
+  canTransfer as canTransferPermission,
   type AcademicYear,
   type ClassRow,
   type DivisionRow,
@@ -24,6 +25,7 @@ import { AcademicYearsSection } from './academic-years-section';
 import { ClassesSection } from './classes-section';
 import { DivisionsSection } from './divisions-section';
 import { TeacherAssignmentsSection } from './assignments-section';
+import { StudentPlacementsSection } from './placements-section';
 
 export default function AcademicConsolePage() {
   const { institute } = useTenant();
@@ -32,6 +34,7 @@ export default function AcademicConsolePage() {
   const canReadAssignments = canAssignPermission(grants, 'read');
   const canCreateAssignments = canAssignPermission(grants, 'create');
   const canDeleteAssignments = canAssignPermission(grants, 'delete');
+  const canTransferPlacements = canTransferPermission(grants);
 
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [classes, setClasses] = useState<ClassRow[]>([]);
@@ -113,6 +116,11 @@ export default function AcademicConsolePage() {
                 <UserRoundCheck /> Teacher Assignments
               </TabsTrigger>
             )}
+            {canReadAssignments && (
+              <TabsTrigger value="placements">
+                <Users /> Student Placements
+              </TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="years" className="pt-4">
             <AcademicYearsSection years={years} admin={admin} onChange={() => void load()} />
@@ -142,6 +150,17 @@ export default function AcademicConsolePage() {
               offeredByClass={offeredByClass}
               canCreate={canCreateAssignments}
               canDelete={canDeleteAssignments}
+              onChange={() => void load()}
+            />
+          </TabsContent>
+          <TabsContent value="placements" className="pt-4">
+            <StudentPlacementsSection
+              classes={[...classes].sort(bySortOrder)}
+              divisions={divisions}
+              years={[...years].sort(bySortOrder)}
+              canCreate={canCreateAssignments}
+              canDelete={canDeleteAssignments}
+              canTransfer={canTransferPlacements}
               onChange={() => void load()}
             />
           </TabsContent>

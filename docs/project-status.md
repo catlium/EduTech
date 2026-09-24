@@ -1,5 +1,77 @@
 # Project Status
 
+## Phase Q.4.4 — Institute Admin Student Placement Console + Carry-Forward Wizard (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Branch: `feature/student-placement` (commit `feat(student-placements): add
+institute student placement console`, pushed, no merge). Canonical design:
+`docs/architecture/academic-student-placement.md` §9 (console + wizard),
+backend contract per §7/§8/§10 (Q.4.1 + Q.4.2, already IMPLEMENTED — this
+phase only adds the UI on top of the live routes).
+
+Ships the admin-side placement console and the academic-year carry-forward
+wizard, both gated exactly as the backend declares them. Q.4.3
+(`divisions.capacity`) remains PLANNED.
+
+- **Frontend pure helpers** (`apps/web/src/lib/academic.ts`): types
+  `StudentPlacement`/`CarryForwardProposal`/`Occupancy`/`Summary`/`Preview`/
+  `CarriedPlacement`/`CommitResult`, `CARRY_FORWARD_FLAGS` + `proposalFlagInfo`
+  (label + tone per backend flag), `canAutoCarry`, `destinationDivisionsFor`
+  (same-class divisions of the destination year only — mirrors commit's
+  cross-class 400), `canTransfer` (create AND delete, AND-rule mirror of
+  `@RequiredPermissions`), `CarryForwardDecision` +
+  `defaultCarryForwardDecisions` (blocked → force-skip, matched → server
+  suggestion, unmatched-but-usable → choose, no-destination-class → unresolved),
+  `carryForwardSummary` (promoted/skipped/left-behind), `carryForwardCommitPayload`
+  (exact body, empty `skipPlacementIds` omitted), `filterPlacements` (year +
+  class via division map), `placementHistory` (student's other rows), and
+  `placeableStudents` (active STUDENT roster not already ACTIVE in the
+  division's year — backend 409 mirror).
+- **Console** (`placements-section.tsx`, "Student Placements" tab on
+  `/institute/academic`): roster table with year + class filters, per-student
+  expandable placement history rendered from the already-loaded list (the
+  endpoint returns student/academicYear/class/division names only — no extra
+  fetch), place / transfer / deactivate dialogs. The transfer dialog archives +
+  re-places in one step with a clear preview of the destination year/class/
+  division; deactivation uses `ConfirmDialog`. The student picker calls
+  `GET /users` (INSTITUTE_ADMIN-role-gated) and degrades inline to a
+  roster-unavailable note when 403 — placement rows still render for
+  read-granted custom delegates. Row actions render only for ACTIVE rows; the
+  Actions column is gated on `canDelete || canTransfer`.
+- **Wizard** (`carry-forward-wizard.tsx`, opened from the console's "Carry
+  forward" action): select step (source year + destination year restricted to
+  strictly-later `sort_order` + optional class) → `POST carry-forward/preview`
+  → review step (per-row same-class destination `Select` seeded by
+  `defaultCarryForwardDecisions`, flag badges, skip `Checkbox` with blocked rows
+  force-skipped, "Adjusted" badge when a manual pick diverges from the proposal,
+  destination-occupancy table) → confirm step (promoted/skipped/left-behind
+  tally; commit disabled until ≥1 promoted and only with create+delete grants)
+  → `POST carry-forward/commit` (all-or-nothing backend), `onCommitted` reloads
+  the console. Commit reads `CarryForwardCommitResult` for the done state.
+- **Page wiring** (`academic/page.tsx`): Student Placements tab appears under
+  the existing `assignments.read` gate (same as Teacher Assignments); grants
+  are computed per-action via `canAssign(grants, action)` + `canTransfer`.
+  Never assumes INSTITUTE_ADMIN for gating — backend authorizes every write.
+- **Coverage:** `apps/web/src/lib/academic.test.ts` +6 tests → **19/19** green
+  via `cd apps/web && node --test src/lib/academic.test.ts` (canTransfer AND
+  rule, flag → label/tone mapping, canAutoCarry, destinationDivisionsFor
+  same-class filtering, default decisions per scenario, carryForwardSummary,
+  carryForwardCommitPayload incl. omitted skips, filterPlacements, history
+  exclusion, placeableStudents.
+- **Validation:** repo `pnpm typecheck` **10/10**; `next build` clean with
+  `/institute/academic` compiled; web image rebuilt
+  (`docker compose up -d --build web`) + container Up (healthy); running
+  `.next` bundle verified to contain the new console/wizard (grep for the tab
+  + carry-forward strings inside the container).
+- **Docs:** this entry (Q.4.4 item); tasks.md (Q.4.2 carry-forward → Q.4.4
+  console/wizard item moved to IMPLEMENTED). `divisions.capacity` (Q.4.3)
+  remains PLANNED and is the only open Q.4 item.
+
+**Exact recommended next task:** Q.4.3 — optional additive, nullable
+`divisions.capacity` migration + enforcement in create/transfer/carry-forward
+commit if over-capacity hard-blocks are wanted; otherwise the platform line is
+complete — no remaining scheduled Q.4 work.
+
 ## Phase Q.4.2 — Student Placement/Transfer Backend Contract + End-to-End Authorization Coverage (2026-09-24)
 
 **Status: IMPLEMENTED + VALIDATED.**

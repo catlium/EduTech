@@ -113,8 +113,39 @@
         scratch PG17, api image rebuilt + container healthy with new routes
         verified in the running dist.
 - [ ] (PLANNED) Phase Q.4.3 — optional additive `divisions.capacity` migration.
-- [ ] (PLANNED) Phase Q.4.4 — Student Placement console section + carry-forward
-      wizard + pure-helper tests.
+- [x] Phase Q.4.4 — Student Placement console section + carry-forward wizard +
+      pure-helper tests. **IMPLEMENTED 2026-09-24** (commit
+      `feat(student-placements): add institute student placement console`,
+      pushed, no merge):
+      - Frontend helpers in `apps/web/src/lib/academic.ts`: `StudentPlacement`,
+        `CarryForwardProposal`/`Occupancy`/`Summary`/`Preview`,
+        `CarriedPlacement`/`CommitResult`, `CARRY_FORWARD_FLAGS`,
+        `proposalFlagInfo`, `canAutoCarry`, `destinationDivisionsFor` (same-class
+        dest-year), `canTransfer` (create AND delete), `CarryForwardDecision`,
+        `defaultCarryForwardDecisions`, `carryForwardSummary`,
+        `carryForwardCommitPayload` (omits empty skips), `filterPlacements`,
+        `placementHistory`, `placeableStudents`, `filterDivisions`.
+      - Console: `placements-section.tsx` — roster table (year + class filters,
+        per-student expandable history from within the already-loaded list),
+        place / transfer / deactivate dialogs, degraded student-roster picker
+        (GET /users, INSTITUTE_ADMIN-role-gated), read-gated Carry forward entry.
+      - Wizard: `carry-forward-wizard.tsx` — select (source/dest year +
+        optional class; dest restricted to strictly-later sort order) →
+        preview (POST carry-forward/preview, per-row same-class division selects
+        + flag badges + skip toggles with blocked force-skip + occupancy panel)
+        → confirm (summary tally, commit disabled until ≥1 promoted / without
+        create+delete grants) → commit (POST carry-forward/commit, all-or-
+        nothing backend, onCommitted reloads).
+      - Page: `academic/page.tsx` gains a Student Placements tab
+        (assignments.read-gated) + canRead/canCreate/canDelete/canTransfer
+        computed from grants via `canAssign`/`canTransfer`.
+      - Coverage: `academic.test.ts` +6 tests (canTransfer AND rule, flag
+        mapping, auto-carry, dest filtering, defaults, summary, commit payload,
+        roster filter, history, placeable) — 19/19 green via
+        `node --test src/lib/academic.test.ts`.
+      - Validation: repo typecheck 10/10, `next build` clean with the
+        `/institute/academic` route compiled, web image rebuilt, container
+        healthy + new bundle verified in the running `.next`.
 
 ## Phase Q.3.0 — Academic/Teacher Permission Catalogue (2026-09-23, IMPLEMENTED)
 

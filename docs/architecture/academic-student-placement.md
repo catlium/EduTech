@@ -1,9 +1,10 @@
 # Student Placement, Transfer & Academic-Year Carry-Forward Design
 
 **Status: Q.4.1 guard migration IMPLEMENTED (2026-09-24) + Q.4.2 carry-forward
-backend IMPLEMENTED (2026-09-24). Frontend console remains PLANNED (Q.4.4).**
+backend IMPLEMENTED (2026-09-24) + Q.4.4 frontend console/wizard IMPLEMENTED
+(2026-09-24). Q.4.3 `divisions.capacity` remains PLANNED.**
 Branch: `feature/student-placement` (Phase Q.4.0 design / Q.4.1 guard migration /
-Q.4.2 carry-forward backend).
+Q.4.2 carry-forward backend / Q.4.4 console + wizard).
 
 This is the canonical design for **student placement, transfer, and academic-
 year carry-forward (promotion)** — Phase Q.4.0 of the
@@ -16,10 +17,9 @@ catalogue precedent (`academic-teacher-permissions.md`), and
 `permission-catalogue.ts`.
 
 It is a **design + migration record**: the current placement/transfer/deactivate
-backend is live (the Q.4.1 permission-guard migration and the Q.4.2 carry-forward
-backend are now IMPLEMENTED); the console (Q.4.4) remains **PLANNED** and
-out of scope of those commits. Like the Q.3.0 doc, it ships as the
-recorded design + audit before any implementation branch is cut.
+backend is live (Q.4.1 permission-guard migration, the Q.4.2 carry-forward
+backend, and the Q.4.4 console + wizard are now IMPLEMENTED). Only the optional
+`divisions.capacity` (Q.4.3) remains **PLANNED**.
 
 State markers, matching the audit / Q.3 docs:
 
@@ -313,28 +313,36 @@ same student in the same destination year → one wins, the other's tx hits
 23505 and rolls back wholesale. No advisory locks needed; Q.4 adds no weaker
 path.
 
-## 9. Frontend design (PLANNED, Phase Q.4.4)
+## 9. Frontend design (IMPLEMENTED Q.4.4 — `academic/page.tsx` tab + `placements-section.tsx` + `carry-forward-wizard.tsx`)
 
-New **"Student Placement"** section on the existing `/institute/academic`
+New **"Student Placements"** section on the existing `/institute/academic`
 console (parallel to `assignments-section.tsx`; the page's parallel-fetch +
 loading/error/empty/forbidden pattern stays):
 
 - **Roster / history view** — current placement table (student · class ·
-  division · year) + per-student expandable history (list by `?membershipId`),
-  gated `assignments.read`.
+  division · year) + per-student expandable history — gated `assignments.read`.
+  History is derived client-side from the already-loaded placement list via
+  `placementHistory` (same `membershipId`, excluding the expanded row) — the
+  list endpoint's year ordering preserves chronology without an extra fetch.
 - **Place dialog** — pick student (roster via `GET /users`, degrade inline when
   `/users` is 403 for delegates, same as Q.3) + pick division; gated
-  `assignments.create`.
+  `assignments.create`. `placeableStudents` narrows the roster to ACTIVE
+  STUDENT members with no existing ACTIVE placement in the division's year.
 - **Transfer dialog** — pick destination division with a confirm copy
-  explaining archive+insert; gated create AND delete.
+  explaining archive+insert; gated create AND delete (`canTransfer`).
 - **Deactivate** — ConfirmDialog; gated `assignments.delete`.
-- **Carry-forward wizard** — year/class pickers → preview table (proposal +
-  flags + occupancy) → per-row adjust / skip → confirm summary → commit →
-  result; gates: view `assignments.read`, promote controls create AND delete.
+- **Carry-forward wizard** — select (source year + destination year restricted
+  to strictly-later `sort_order` + optional class) → `POST carry-forward/
+  preview` → review table (proposal + flag badges + per-row same-class
+  destination select + occupancy) → per-row adjust / skip (blocked rows
+  force-skipped) → confirm summary → `POST carry-forward/commit` → result;
+  gates: view `assignments.read`, commit create AND delete (button disabled
+  without both grants and while promoted = 0).
 - Pure helpers in `lib/academic.ts` (+ `academic.test.ts`, the established
-  `node --test` / `test:academic` pattern): `canCarryForward`, `matchDestination`,
-  `occupancyFor`, `proposalFlags`, `carryForwardSummary` — no API client logic
-  in components.
+  `node --test` pattern): `carryForwardCommitPayload`, `canAutoCarry`,
+  `destinationDivisionsFor`, `proposalFlagInfo`, `defaultCarryForwardDecisions`,
+  `carryForwardSummary`, `filterPlacements`, `placementHistory`,
+  `placeableStudents`, `canTransfer` — no API client logic in components.
 
 Console-level gating stays `users.read` at the workspace route layer (Q.2
 precedent); the section adds `assignments.read`/`.create`/`.delete` gating
