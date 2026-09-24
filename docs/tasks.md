@@ -1,5 +1,47 @@
 # Task Tracker
 
+## F2 — React Hook Form + Zod v4 resolver incompatibility (2026-09-24, IMPLEMENTED)
+
+> Issued task. Fix the `@hookform/resolvers` + Zod v4 incompatibility that made
+> Add User and other forms silently reject invalid submissions. Root cause
+> confirmed: `@hookform/resolvers` 3.10.0 (and the declared `^3.9.1` range)
+> only recognizes the Zod v3 error shape (`.errors`); Zod 4.4.x errors use
+> `.issues`, so the resolver's catch predicate failed and it REJECTED with the
+> raw ZodError — `form.handleSubmit` never fired and invalid input produced no
+> network request (and no visible validation). Branch
+> `feature/fix-form-validation`, from `dev`. Backend user creation untouched.
+
+- [x] Bumped `apps/web` `@hookform/resolvers` `^3.9.1 → ^5.9.1`
+      (standard-schema based; native Zod 4 detection via `_zod`; peer RHF
+      `^7.55.0` satisfied by the lockfile's react-hook-form 7.87.0). Lockfile
+      updated. The installed 5.9.1 zod resolver maps Zod v4 issues → RHF
+      `FieldErrors` (resolves), on the exact path every form (`login`, `users`,
+      `subjects/new`, `materials`, `academic` sections, `questions`,
+      `assessments`, `create-institute-dialog`) uses: `zodResolver(schema)`.
+- [x] Regression test `apps/web/src/lib/form-resolver.test.ts` (new) +
+      `test:form-resolver` script — drives the REAL resolver against the REAL
+      Zod v4 `CreateInstituteUserRequestSchema`: invalid input must RESOLVE to
+      field errors (under 3.10.0 it rejected instead) and valid input must
+      resolve clean. 2/2. The pre-fix failure mode was confirmed in the
+      installed 3.10.0 dist (`Array.isArray(error.errors)` predicate) — the
+      test is a true regression guard.
+- [x] Validation: web `node --test src/lib/*.test.ts` **67/67** (65 existing +
+      2 new); web `tsc --noEmit` clean; repo `pnpm typecheck` **10/10**; repo
+      `pnpm lint` 9/9 + `eslint` over `apps/web/src` clean; `next build` clean
+      (`/users` emitted); web container rebuilt → running image carries
+      `@hookform/resolvers@5.9.1` + the `_zod` resolver marker in the bundle.
+- [x] Live browser verification (real Chrome against the rebuilt dev stack):
+      Add user — empty submit shows validation messages AND sends no POST;
+      valid input sends `POST /users` → **201** + "Account created" toast +
+      dialog closes + row appears in the table; duplicate email → **409** +
+      "already a member" error toast. Existing forms not regressed: login form
+      works (signed in, resolver path exercised) and the academic-year create
+      form blocks empty (validation shown, no POST) then creates (POST **201**,
+      success toast).
+- [x] Docs: this tracker + project-status.md (Phase F2 entry).
+- [x] Commit `fix(web): upgrade @hookform/resolvers for Zod v4 form validation`
+      on `feature/fix-form-validation` (+ push, no merge).
+
 ## Phase Q.4.0 — Student Placement, Transfer & Carry-Forward Design (2026-09-24, DESIGN COMPLETE)
 
 > Issued task. Design/audit the authorization model + workflow for student
