@@ -72,6 +72,55 @@ wizard, both gated exactly as the backend declares them. Q.4.3
 commit if over-capacity hard-blocks are wanted; otherwise the platform line is
 complete — no remaining scheduled Q.4 work.
 
+## Phase E.1 — Student Enrollment-Override Permission-Guard Migration (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED** (backend slice).
+Branch: `feature/student-enrollment-overrides` (commit
+`feat(authz): migrate student enrollment overrides to permissions`, pushed, no
+merge). Design: `docs/architecture/academic-student-placement.md` D-Q4.10 / G6
+— the enrollment-override surface (subject ENROLLED/EXCLUDED admin) was the
+deferred sibling of the Q.4.1 placement migration and is now migrated.
+
+- **Controller** (`student-enrollments.controller.ts`): dropped the role-only
+  `ENROLLMENT_ADMIN` constant + `@RequiredRoles(...)`, runs the standard
+  guarded stack `AccessTokenGuard → TenantGuard → RolesGuard →
+  PermissionGuard` with the catalogued `assignments.*` keys: list =
+  `assignments.read`, create = `assignments.create`, remove =
+  `assignments.delete`. No new permission resource/keys — reuses the Q.3/Q.4
+  staffing family (INSTITUTE_ADMIN still auto-holds `assignments.manage`;
+  TEACHER/STUDENT default-deny; custom institute roles can be delegated
+  read/create/delete).
+- **Service** (`student-enrollments.service.ts`): **unchanged.** All invariants
+  preserved and exercised end-to-end in the new suite: active placement
+  required (inactive → 400), same-institute subject (cross-inst → 404),
+  ENROLLED/EXCLUDED class-offering validation (mismatch → 400), duplicate
+  `(placement, subject)` unique → 409, remove = row deletion reverting the
+  student to the class default.
+- **Coverage:** new `student-enrollments-authz.integration.ts`
+  (`test:student-enrollments-authz`, REAL handlers + REAL guard chain):
+  INSTITUTE_ADMIN manage passthrough (all 3 routes), TEACHER/STUDENT/zero-role
+  default-deny, custom role with `assignments.read` only (list yes,
+  create/remove 403), `assignments.create` only, `assignments.delete` only,
+  cross-institute isolation (A-owned role never granted through a B
+  membership), plus the end-to-end service-invariant phase. **6/6 green** on a
+  fresh scratch PG17 (49/49 migrations).
+- **Validation:** api lint clean, repo lint 9/9, api unit 228/228, `nest
+  build`, api `tsc --noEmit` clean; relevant suites green vs the scratch DB —
+  student-placements-authz 7/7, academic-scope, teacher-assignments-authz 5/5,
+  authz-regression 8/8, resource-scope, student-placements & teacher-
+  assignments integrations.
+- **Docs:** this entry; tasks.md (E.1 item IMPLEMENTED in the Phase Q.4.0
+  tracker); `academic-student-placement.md` D-Q4.10 + G6 flipped from
+  DEFERRED to IMPLEMENTED.
+- **Browser-visible behavior unchanged:** no route semantics, endpoint, or
+  schema change; no frontend work shipped (E.2 pending).
+
+**Exact recommended next task:** Phase E.2 — frontend slice. Gate the
+enrollment-override UI on the `/institute/academic` console behind
+`assignments.read`/`.create`/`.delete` via the established Q.3/Q.4 pattern
+(`canAssign`-style per-action gating, degraded roster picker), mirroring the
+placement section.
+
 ## Phase Q.4.2 — Student Placement/Transfer Backend Contract + End-to-End Authorization Coverage (2026-09-24)
 
 **Status: IMPLEMENTED + VALIDATED.**

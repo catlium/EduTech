@@ -2,9 +2,12 @@
 
 **Status: Q.4.1 guard migration IMPLEMENTED (2026-09-24) + Q.4.2 carry-forward
 backend IMPLEMENTED (2026-09-24) + Q.4.4 frontend console/wizard IMPLEMENTED
-(2026-09-24). Q.4.3 `divisions.capacity` remains PLANNED.**
-Branch: `feature/student-placement` (Phase Q.4.0 design / Q.4.1 guard migration /
-Q.4.2 carry-forward backend / Q.4.4 console + wizard).
+(2026-09-24). E.1 enrollment-override guard migration IMPLEMENTED (2026-09-24).
+Q.4.3 `divisions.capacity` remains PLANNED.**
+Branches: `feature/student-placement` (Phase Q.4.0 design / Q.4.1 guard
+migration / Q.4.2 carry-forward backend / Q.4.4 console + wizard);
+`feature/student-enrollment-overrides` (E.1 enrollment-override guard
+migration, D-Q4.10/G6).
 
 This is the canonical design for **student placement, transfer, and academic-
 year carry-forward (promotion)** — Phase Q.4.0 of the
@@ -97,7 +100,7 @@ one-active placement, retained history, atomic archive+insert transfer. The
 carry-forward surface (§8) is therefore an **operational composition** of the
 existing primitives, not a new placement model.
 
-## 3. Current-state authorization of student enrollments (IMPLEMENTED, out of Q.4 scope)
+## 3. Current-state authorization of student enrollments (IMPLEMENTED — guard migrated by E.1, 2026-09-24)
 
 `student_subject_enrollments` (Phase H, D5/§17 + D6/§18) are per-placement
 subject-scope **overrides** (`ENROLLED`/`EXCLUDED`), admin-invoked, unique per
@@ -110,9 +113,12 @@ Q.4 on the `assignments.*` resource.
 deactivate / carry-forward). The **enrollment override** surface (create/delete
 a subject override) is a sibling D5 slice with identical authorization shape —
 same resource, `assignments.read`/`assignments.create`/`assignments.delete` —
-but it is **DEFERRED** here to keep Q.4.0 focused on placement + promotion (its
-guard migration mirrors Q.4.1 exactly and will reuse the same tested
-infrastructure).
+but it was **DEFERRED** out of Q.4.0 to keep the phase focused on placement +
+promotion. **E.1 later applied the migration** (2026-09-24,
+`feat(authz): migrate student enrollment overrides to permissions`): the
+enrollment controller now runs the same guarded stack + `assignments.*` keys
+and the mirror `student-enrollments-authz.integration.ts` covers the same
+matrix (see §13).
 
 ## 4. Q.4 permission surface — decisions (PLANNED)
 
@@ -379,7 +385,7 @@ exactly like the teacher-assignment tab.
 | D-Q4.7 | History = existing list `?membershipId` ordering; no new history endpoint | IMPLEMENTED (reuse) |
 | D-Q4.8 | Commit is all-or-nothing, single tx, partial unique index as concurrency guard, strict forward via `sort_order` | IMPLEMENTED (Q.4.2) |
 | D-Q4.9 | Roster/occupancy = count ACTIVE placements per division (derived, no table change) | IMPLEMENTED (Q.4.2 preview) |
-| D-Q4.10 | Enrollment *override* surface (subject ENROLLED/EXCLUDED admin) = same resource/keys, DEFERRED out of Q.4.0 | DEFERRED |
+| D-Q4.10 | Enrollment *override* surface (subject ENROLLED/EXCLUDED admin) = same resource/keys, DEFERRED out of Q.4.0 | **IMPLEMENTED** — E.1 migration (2026-09-24) |
 | D-Q4.11 | Frontend section + carry-forward wizard on `/institute/academic`, gates + pure-helper patterns from Q.2/Q.3 | IMPLEMENTED (Q.4.4) |
 
 ## 12. Gaps summary
@@ -391,7 +397,7 @@ exactly like the teacher-assignment tab.
 | G3 bulk promote endpoint absent (audit §14.4) | IMPLEMENTED — Q.4.2 preview + commit (2026-09-24) |
 | G4 division occupancy/capacity not modeled | IMPLEMENTED — derived occupancy in preview (Q.4.2); optional `divisions.capacity` still PLANNED (Q.4.3) |
 | G5 history/lineage surface | REUSE existing filters; lineage pointer DEFERRED |
-| G6 enrollment-override authorization shape unresolved | DEFERRED (Q.4.0 focuses on placement/promotion) |
+| G6 enrollment-override authorization shape unresolved | **RESOLVED** — E.1 guard migration (2026-09-24): `assignments.*` keys + PermissionGuard + `student-enrollments-authz.integration.ts` |
 | G7 placement audit events | DEFERRED — platform-wide audit item (cf. Q.3 G5) |
 | G8 class/division DELETE cascade vs placement history | DEFERRED — pre-existing hardening gap (cf. Q.3 G6) |
 
@@ -427,7 +433,9 @@ health check (`docker compose up -d --build api web`), graphify update.
 
 - No change to `permission-catalogue.ts` (the `assignments.*` set already
   exists; Q.4 adds the AND combinator at the guard, not a key).
-- No change to enrollment-override semantics or its authorization (D-Q4.10).
+- No change to enrollment-override **semantics** as part of Q.4.0 (D-Q4.10);
+  the enrollment *authorization* migration shipped separately as E.1
+  (2026-09-24), also without semantic change.
 - No teacher→placement relationship (teacher "my students" roster), no
   per-student placement reports/exports, no attendance/roll call.
 - No automatic promotion without admin confirmation (bulk path is preview →

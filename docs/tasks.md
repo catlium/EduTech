@@ -146,6 +146,33 @@
       - Validation: repo typecheck 10/10, `next build` clean with the
         `/institute/academic` route compiled, web image rebuilt, container
         healthy + new bundle verified in the running `.next`.
+- [x] Phase Q.4/E.1 — Student enrollment-override permission-guard migration
+      (D-Q4.10 / G6). **IMPLEMENTED 2026-09-24** (commit
+      `feat(authz): migrate student enrollment overrides to permissions`,
+      pushed, no merge):
+      - `student-enrollments.controller.ts` drops `ENROLLMENT_ADMIN` +
+        `@RequiredRoles`, runs `AccessTokenGuard → TenantGuard → RolesGuard →
+        PermissionGuard` (the Q.3/Q.4.1 pattern): list=`assignments.read`,
+        create=`assignments.create`, remove=`assignments.delete`. No new
+        catalogue keys — reuses the `assignments.*` family. Service
+        (`student-enrollments.service.ts`) untouched — invariants preserved
+        (active placement required, same-institute subject, ENROLLED/EXCLUDED
+        class-offering validation, duplicate → 409, remove = row deletion /
+        revert to class default).
+      - New `student-enrollments-authz.integration.ts` (`test:student-
+        enrollments-authz`): REAL controller handlers + REAL guard chain —
+        INSTITUTE_ADMIN via manage (all 3 routes), TEACHER/STUDENT/zero deny,
+        custom-role exact read/create/delete, cross-institute isolation, plus
+        an end-to-end behavior phase (create ENROLLED/EXCLUDED, duplicate 409,
+        ENROLLED/EXCLUDED validation, inactive placement 400, cross-institute
+        subject 404, remove deletes the row, STUDENT 403). 6/6 green on a fresh
+        scratch PG17 (49/49 migrations).
+      - Validation: lint 9/9, api unit 228/228, nest build, api typecheck, and
+        the relevant authorization suites green (student-enrollments-authz 6/6,
+        student-placements-authz 7/7, academic-scope, teacher-assignments-authz
+        5/5, authz-regression 8/8, resource-scope, student-placements &
+        teacher-assignments integrations). E.2 (frontend gating on the
+        academic console) remains for the web slice.
 
 ## Phase Q.3.0 — Academic/Teacher Permission Catalogue (2026-09-23, IMPLEMENTED)
 

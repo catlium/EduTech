@@ -26,6 +26,7 @@
     "test:student-placements": "tsx --test src/academic-structure/student-placements.integration.ts",
     "test:student-placements-carry-forward": "tsx --test src/academic-structure/student-placements-carry-forward.integration.ts",
     "test:student-placements-authz": "tsx --test src/academic-structure/student-placements-authz.integration.ts",
+    "test:student-enrollments-authz": "tsx --test src/academic-structure/student-enrollments-authz.integration.ts",
     "test:academic-scope": "tsx --test src/authorization/academic-scope.integration.ts",
     "test:auth-session": "tsx --test src/identity/auth-session.integration.ts",
     "test:resource-scope": "tsx --test src/authorization/resource-scope.integration.ts",
