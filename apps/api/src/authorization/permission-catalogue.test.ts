@@ -118,6 +118,23 @@ test('Q.3: assignments.* is the staffing vocabulary — read/create/delete/manag
   assert.equal(hasPermission(delegate, 'assignments.delete'), false);
 });
 
+test('Q.4: AND-combinator premise — every() over create+delete means both are required', () => {
+  // The guard's RequiredPermissions(...) group passes only when EVERY key
+  // grants (permissions.guard: requiredAll.every). This is the pure-layer
+  // building block for the collapsed placement endpoints (transfer /
+  // carry-forward commit) that both archive (delete) and create.
+  const both = resolveGrantedKeys(['assignments.create', 'assignments.delete'], 'institute');
+  assert.equal(hasPermission(both, 'assignments.create'), true);
+  assert.equal(hasPermission(both, 'assignments.delete'), true);
+  // A create-only grant cannot satisfy the delete leg (and vice versa).
+  assert.equal(hasPermission(resolveGrantedKeys(['assignments.create'], 'institute'), 'assignments.delete'), false);
+  assert.equal(hasPermission(resolveGrantedKeys(['assignments.delete'], 'institute'), 'assignments.create'), false);
+  // manage implies both legs, so a manage grantee passes the AND group untouched.
+  const manage = resolveGrantedKeys(['assignments.manage'], 'institute');
+  assert.equal(hasPermission(manage, 'assignments.create'), true);
+  assert.equal(hasPermission(manage, 'assignments.delete'), true);
+});
+
 // ── Known / unknown permissions ─────────────────────────────────
 
 test('known permission resolves', () => {

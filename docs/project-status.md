@@ -1,5 +1,61 @@
 # Project Status
 
+## Phase Q.4.1 — Student-Placement Permission-Guard Migration (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Branch: `feature/student-placement` (commit `feat(authz): migrate student
+placements to permission guard`, pushed, no merge). Canonical design:
+`docs/architecture/academic-student-placement.md` (§5/D-Q4.2/G1/G2 → IMPLEMENTED).
+
+Implements the Q.4.1 slice of the Q.4.0 design: the placement surface moves
+from role-only `@RequiredRoles(...PLACEMENT_ADMIN)` to the catalogued
+`assignments.*` permission family, with a new AND-capable guard combinator for
+the collapsed transfer endpoint. No carry-forward endpoints, no UI, no schema,
+no enrollment-override change, no audit events, no cascade hardening (all
+deferred to Q.4.2/Q.4.3/Q.4.4 per design).
+
+- **AND-capable `@RequiredPermissions` (D-Q4.2/G2, IMPLEMENTED):**
+  `permissions.decorator.ts` adds `@RequiredPermissions` (AND group
+  `PERMISSIONS_ALL_KEY`); `permissions.guard.ts` now enforces BOTH requirement
+  groups — the existing `RequiredPermission` as OR (`some`, unchanged) and
+  `RequiredPermissions` as AND (`every`). Either empty group passes trivially,
+  so every single-key route keeps its exact prior behavior and a route may
+  combine both groups.
+- **Controller migration (D-Q4.2/G1, IMPLEMENTED):**
+  `student-placements.controller.ts` drops `PLACEMENT_ADMIN` +
+  `@RequiredRoles` and runs `AccessTokenGuard → TenantGuard → RolesGuard →
+  PermissionGuard` with the Q.4.2 keys: list/get `= assignments.read`,
+  create `= assignments.create`, deactivate `= assignments.delete`, transfer `=
+  assignments.create` AND `assignments.delete` (`@RequiredPermissions`).
+  Service invariants (`student-placements.service.ts`) untouched — still
+  institute-scoped, derived year from division, active-STUDENT membership
+  check, partial-unique-409 mapping, single-tx archive+insert transfer.
+- **Pure-logic premise test (permission-catalogue.test.ts):** the AND rule
+  builds on `hasPermission` per key — create+delete both required, manage
+  implies both, a single-key grant never satisfies the sibling leg.
+- **Guard-matrix integration suite** (new `student-placements-authz.integration.ts`
+  + `test:student-placements-authz` script — the Q.3
+  `teacher-assignments-authz.integration.ts` shape: REAL controller handlers +
+  REAL guards): ADMIN passes all 5 routes via `assignments.manage`;
+  TEACHER/STUDENT/zero-role deny all 5; custom-role exact sub-actions
+  (read-only reads, create-only creates, delete-only deletes); **AND-rule on
+  transfer** — create-only and delete-only delegates are DENIED, a create+delete
+  role and manage pass; cross-institute isolation (A-owned role not assignable
+  to a B membership). **5/5 green** on a fresh scratch PG17 (49/49 migrations).
+- **Validation:** repo `pnpm typecheck` 10/10; `pnpm lint` 9/9; api unit
+  `node --test` **228/228**; api `nest build` clean; focused integration suites
+  vs a throwaway loopback PG17 on 127.0.0.1:5433 (running stack untouched —
+  `test:student-placements-authz` 5/5, `test:teacher-assignments-authz` 5/5
+  regression, `test:student-placements` 1/1); api container rebuilt +
+  healthy; graphify graph updated.
+- **Docs:** `academic-student-placement.md` statuses/§5/§12/§13 → IMPLEMENTED
+  for the guard migration (carry-forward stays PLANNED); this entry; tasks.md.
+
+**Exact recommended next task:** Phase Q.4.2 — carry-forward backend
+(preview + commit endpoints, all-or-nothing single tx, strict-forward via
+`sort_order`, per-student-cause rollback payload, `@RequiredPermissions` on
+commit), then the integration suite per the design's §13 Q.4.2 item.
+
 ## Phase Q.4.0 — Student Placement, Transfer & Academic-Year Carry-Forward Design (2026-09-24)
 
 **Status: DESIGN COMPLETE (audit + permission + workflow design only).**
@@ -50,10 +106,9 @@ Key decisions (every decision tagged in the doc's §11 register):
   occupancy/capacity, history lineage, enrollment authz, audit events, DELETE
   cascade) — PLANNED or DEFERRED as in the doc's §12.
 
-**Exact recommended next task:** Phase Q.4.1 — guard migration: AND-capable
-decorator + guard branch, catalogued student-placements controller (D-Q4.2
-keys, drop `PLACEMENT_ADMIN`), and a `student-placements-authz.integration.ts`
-mirroring `teacher-assignments-authz.integration.ts`.
+**Exact recommended next task:** Phase Q.4.1 — guard migration — **DONE
+2026-09-24** (see the Phase Q.4.1 entry above). Next: Phase Q.4.2 — carry-forward
+backend (preview + commit endpoints, all-or-nothing tx, integration suite).
 
 ## Phase Q.3.0 — Academic/Teacher Permission Catalogue + Console (2026-09-23)
 

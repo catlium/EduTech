@@ -24,6 +24,7 @@
     "test:teacher-assignments": "tsx --test src/academic-structure/teacher-assignments.integration.ts",
     "test:teacher-assignments-authz": "tsx --test src/academic-structure/teacher-assignments-authz.integration.ts",
     "test:student-placements": "tsx --test src/academic-structure/student-placements.integration.ts",
+    "test:student-placements-authz": "tsx --test src/academic-structure/student-placements-authz.integration.ts",
     "test:academic-scope": "tsx --test src/authorization/academic-scope.integration.ts",
     "test:auth-session": "tsx --test src/identity/auth-session.integration.ts",
     "test:resource-scope": "tsx --test src/authorization/resource-scope.integration.ts",

@@ -1,7 +1,8 @@
 # Student Placement, Transfer & Academic-Year Carry-Forward Design
 
-**Status: DESIGN COMPLETE (2026-09-24) — audit + permission + workflow design.**
-Branch: `feature/student-placement` (Phase Q.4.0).
+**Status: DESIGN COMPLETE (2026-09-24) — audit + permission + workflow design.
+Q.4.1 guard migration IMPLEMENTED (2026-09-24).**
+Branch: `feature/student-placement` (Phase Q.4.0 design / Q.4.1 guard migration).
 
 This is the canonical design for **student placement, transfer, and academic-
 year carry-forward (promotion)** — Phase Q.4.0 of the
@@ -13,11 +14,11 @@ Phase H student-enrollment + academic-scope implementation (D6/§18), the Q.3
 catalogue precedent (`academic-teacher-permissions.md`), and
 `permission-catalogue.ts`.
 
-It is a **design document only**: the current placement/transfer/deactivate
-backend is live and unchanged; the permission-guard migration, the carry-
-forward (bulk promotion) surface, and the console are **PLANNED** and out of
-scope of this commit. Like the Q.3.0 doc, it ships as the recorded design +
-audit before any implementation branch is cut.
+It is a **design + migration record**: the current placement/transfer/deactivate
+backend is live (the Q.4.1 permission-guard migration now IMPLEMENTED); the
+carry-forward (bulk promotion) surface and the console remain **PLANNED** and
+out of scope of the guard-migration commit. Like the Q.3.0 doc, it ships as the
+recorded design + audit before any implementation branch is cut.
 
 State markers, matching the audit / Q.3 docs:
 
@@ -196,16 +197,21 @@ Rationale for the AND rule on the collapsed endpoints:
   generated, reviewed/adjusted per student, then committed atomically or not at
   all.
 
-## 5. Guard architecture delta (PLANNED)
+## 5. Guard architecture delta (IMPLEMENTED Q.4.1 for transfer; carry-forward commit reuses the same decorator in Q.4.2)
 
-- `student-placements.controller.ts`: drop `@RequiredRoles(...PLACEMENT_ADMIN)`
-  and `RolesGuard` usage (keep `AccessTokenGuard, TenantGuard`), adopt the
-  guarded stack `AccessTokenGuard → TenantGuard → PermissionGuard` with the
-  per-route keys from D-Q4.2 (the Q.3 teacher-assignment pattern,
-  `teacher-assignments.controller.ts:31-82`). Remove the now-dead
-  `PLACEMENT_ADMIN` constant.
-- Add AND-capable decorator (`@RequiredPermissions`) for transfer + commit
-  routes (§ D-Q4.2). Existing single-key routes unchanged.
+- `student-placements.controller.ts` **(IMPLEMENTED)**: dropped
+  `@RequiredRoles(...PLACEMENT_ADMIN)` and the now-dead `PLACEMENT_ADMIN`
+  constant; runs the guarded stack `AccessTokenGuard → TenantGuard →
+  RolesGuard → PermissionGuard` (the Q.3 teacher-assignment pattern,
+  `teacher-assignments.controller.ts:31-82`) with the per-route keys from
+  D-Q4.2.
+- Add AND-capable decorator **(`@RequiredPermissions`) for transfer + commit
+  routes (§ D-Q4.2) (IMPLEMENTED)**: `permissions.decorator.ts` gains
+  `@RequiredPermissions` backed by a second metadata group `PERMISSIONS_ALL_KEY`,
+  enforced with `required.every` in `permissions.guard.ts`; existing
+  single-key OR routes (any-mode) are unchanged. Applied to transfer now;
+  carry-forward `commit` applies the same decorator when its route lands
+  (Q.4.2).
 - Service invariants (`student-placements.service.ts`) are **unchanged** — they
   are structural, not role-based, and Q.4 adds no invariant changes. Carry-
   forward reuses `getDivision`, `requireActiveStudentMembership`, the partial-
@@ -368,8 +374,8 @@ exactly like the teacher-assignment tab.
 
 | Gap | Status |
 | --- | ------ |
-| G1 role-only/uncatalogued placement surface (no PermissionGuard, audit §11) | PLANNED — Q.4.1 guard migration |
-| G2 combined-endpoint authorization must be AND, guard currently ORs | PLANNED — `@RequiredPermissions` extension |
+| G1 role-only/uncatalogued placement surface (no PermissionGuard, audit §11) | IMPLEMENTED — Q.4.1 guard migration (2026-09-24) |
+| G2 combined-endpoint authorization must be AND, guard currently ORs | IMPLEMENTED — `@RequiredPermissions` extension (Q.4.1, 2026-09-24) |
 | G3 bulk promote endpoint absent (audit §14.4) | PLANNED — Q.4.2 preview + commit |
 | G4 division occupancy/capacity not modeled | PLANNED — derived counts + optional `divisions.capacity` |
 | G5 history/lineage surface | REUSE existing filters; lineage pointer DEFERRED |
@@ -386,6 +392,7 @@ exactly like the teacher-assignment tab.
   `teacher-assignments-authz.integration.ts` shape) covering ADMIN via manage,
   TEACHER/STUDENT deny, custom-role exact read/create/delete, AND-rule
   enforcement on transfer, cross-institute isolation.
+  **IMPLEMENTED 2026-09-24 (`feat(authz): migrate student placements to permission guard`).**
 - **Q.4.2 — Carry-forward backend**: preview + commit endpoints, all-or-nothing
   transaction reusing service primitives; integration suite (atomic success,
   per-student-cause rollback, over-capacity block when set, strict-forward

@@ -33,9 +33,32 @@
       tracker.
 - [x] Commit `docs(authz): design student placement, transfer and carry-forward
       surface` (+ push, no merge).
-- [ ] (PLANNED) Phase Q.4.1 — guard migration: AND-capable `@RequiredPermissions`
+- [x] (PLANNED) Phase Q.4.1 — guard migration: AND-capable `@RequiredPermissions`
       decorator/rules + catalogued student-placements controller (drop
       `PLACEMENT_ADMIN`) + `student-placements-authz.integration.ts`.
+      **IMPLEMENTED 2026-09-24** (commit `feat(authz): migrate student
+      placements to permission guard`, pushed, no merge):
+      - `permissions.decorator.ts` adds `@RequiredPermissions` (AND group
+        `PERMISSIONS_ALL_KEY`); `permissions.guard.ts` enforces it via
+        `required.every` alongside the existing OR `RequiredPermission` group —
+        single-key routes untouched.
+      - `student-placements.controller.ts` drops `PLACEMENT_ADMIN` +
+        `@RequiredRoles`, runs `AccessTokenGuard → TenantGuard → RolesGuard →
+        PermissionGuard`: list/get=`assignments.read`, create=`.create`,
+        deactivate=`.delete`, transfer=`assignments.create` AND `assignments.
+        delete` (`@RequiredPermissions`). Service invariants unchanged
+        (institute-scope, STUDENT/active check, partial-unique 409).
+      - `permission-catalogue.test.ts` adds the AND-combinator pure premise
+        test (create+delete both required; manage implies both).
+      - New `student-placements-authz.integration.ts` (`test:student-
+        placements-authz`): REAL controller handlers + REAL guards — ADMIN via
+        manage (all 5 routes), TEACHER/STUDENT/zero deny, custom-role exact
+        read/create/delete, AND-rule on transfer (create-only and delete-only
+        delegates DENIED; create+delete and manage pass), cross-institute
+        isolation. 5/5 on a fresh scratch PG17.
+      - Validation: repo typecheck 10/10, lint 9/9, api unit 228/228, nest
+        build, integration suites (student-placements, teacher-assignments-
+        authz, student-placements-authz) green, api container rebuilt.
 - [ ] (PLANNED) Phase Q.4.2 — carry-forward preview + commit endpoints,
       all-or-nothing tx, integration suite.
 - [ ] (PLANNED) Phase Q.4.3 — optional additive `divisions.capacity` migration.
