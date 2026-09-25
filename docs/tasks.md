@@ -2234,7 +2234,7 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       F3.3 remains intentionally unstarted.
 - [x] **Docs:** project-status.md F3.2 entry.
 
-## Phase F3.3 — Generate Answer UX (2026-09-25, branch `feature/question-answer-generation-ux`, IMPLEMENTED + REVIEWED + VALIDATED)
+## Phase F3.3 — Generate Answer UX (2026-09-25, branch `feature/question-answer-generation-ux`, COMPLETE + INTEGRATED INTO dev)
 
 > Add the teacher-facing trigger and lifecycle states for the existing
 > `AI_GENERATE_ANSWER` endpoint. Reuse the current candidate review editors,
@@ -2269,6 +2269,23 @@ implementation step when scheduled. Roadmap phases below remain not-started.
 - [x] **Checkpoint:** committed the F3.3 files plus the required worker
       concurrency guard as `df72962` and pushed
       `feature/question-answer-generation-ux` without merging it.
+- [x] **Integration into `dev`:** `dev` was updated from `origin/dev`
+      (`bd3d495`) and merged `--no-ff` (no rebase) as `c96bf33`; the unrelated
+      working tree, `stash@{0}`, and `main`/`origin/main` (`ef4de7e`) were left
+      untouched. Re-validated on `dev`: API answer-generation 12/12, F3.1 RC-2
+      resilience 5/5, worker answer-generation 16/16, full worker pytest 99/99,
+      web answer helper 1/1 and other web suites 44/44, `pnpm typecheck --force`
+      10/10, `pnpm lint` 9/9, `pnpm build` 7/7, worker `ruff`/`mypy` clean.
+      Containers rebuilt, all 11 services up, API health 200, and a live browser
+      run exercised the whole Generate → generate → Answer ready → manual edit →
+      save → Accept-unlock flow plus the missing-extraction error state.
+- [!] **Pre-existing, out of scope (found during integration verification):**
+      `GET /questions/bank/sets` 500s because
+      `apps/api/src/questions/question-generation.service.ts:433` groups the
+      `SELECT payload -> 'batchId'` projection by `payload ->> 'batchId'`; the
+      jsonb and text operators are different expressions. Untouched by F3.3
+      (`git diff bd3d495 HEAD` empty for that file, last changed by `d8f0a44`).
+      One-line fix, deliberately not bundled into the F3.3 integration commit.
 
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
 

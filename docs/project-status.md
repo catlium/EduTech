@@ -1,11 +1,12 @@
 # Project Status
 
-## Phase F3.3 — Generate Answer UX (2026-09-25, IMPLEMENTED + REVIEWED + VALIDATED; CHECKPOINT COMPLETE)
+## Phase F3.3 — Generate Answer UX (2026-09-25, IMPLEMENTED + REVIEWED + VALIDATED + INTEGRATED)
 
-**Status: implemented, reviewed, validated, rebuilt, committed as `df72962`, and
-pushed to `origin/feature/question-answer-generation-ux` from `dev` (`bd3d495`).**
-The teacher review surface now exposes the existing `AI_GENERATE_ANSWER` job
-without adding a new queue, migration, or service.
+**Status: implemented, reviewed, validated, committed as `df72962`, documented as
+`d1f7fdf`, and integrated into `dev` via merge `c96bf33` (`--no-ff`, from `dev`
+`bd3d495`; `main` untouched at `ef4de7e`).** The teacher review surface now
+exposes the existing `AI_GENERATE_ANSWER` job without adding a new queue,
+migration, or service.
 
 - **Web review UX** (`apps/web/src/app/(workspace)/questions/extractions/[jobId]/page.tsx`):
   Generate answer appears only for invalid persisted answers; queued/processing/completed,
@@ -44,12 +45,45 @@ without adding a new queue, migration, or service.
   `worker-material` rebuild is healthy, API health returns 200, and the live
   worker contains the revision guard.
 
-- **Scope:** no migration, no new job type, no merge to `dev`/`main`, and no
+- **Integration re-validation on `dev` (2026-09-25):**
+  API answer-generation suite 12/12; API RC-2 extraction resilience 5/5 (F3.1
+  regression); worker `test_answer_generation.py` 16/16 and full worker pytest
+  99/99; web `test:question-answer` 1/1 plus the other web suites 44/44;
+  `pnpm typecheck --force` 10/10, `pnpm lint` 9/9, `pnpm build` 7/7; worker
+  `ruff check` and `mypy` clean. `ruff format --check` still reports the same
+  three pre-existing worker files that already deviated on `bd3d495` — not an
+  F3.3 regression and deliberately not reformatted here.
+  Runtime after `docker compose up -d --build api web worker-ai worker-material`:
+  all 11 services up (healthchecks green where defined), `GET /api/v1/health`
+  200, live API bundle carries the F3.3 service guards and the
+  `.../candidates/:questionId/generate-answer` route, the live web chunk carries
+  the Generate-answer/Answer-ready/MATCHING-editor UI, and the installed worker
+  package carries the `expected_updated_at` revision guard with
+  `ANSWER_OPERATION = "AI_GENERATE_ANSWER"` registered. Live browser run on the
+  review page (8 REVIEW candidates): Generate answer → `Generating…` → persisted
+  `AI_GENERATE_ANSWER` job `completed` → `Answer ready` badge, `ANSWER_MISSING`
+  issue cleared, Accept unlocked; a manual payload edit gated Accept
+  ("Save your edits first") and Import All ("Save candidate edits before
+  importing") until saved; a bogus extraction id rendered the error state after
+  exactly one request (no endless polling). Demo data was restored to the
+  AI-generated answer after the manual-edit check.
+
+- **Pre-existing defect found during integration runtime verification (NOT F3.3, not fixed here):**
+  `GET /api/v1/questions/bank/sets` returns 500 on `/questions`. Root cause is
+  `apps/api/src/questions/question-generation.service.ts:433` — `SELECT payload -> 'batchId'`
+  is grouped by `GROUP BY payload ->> 'batchId'`; the `->` (jsonb) and `->>` (text)
+  expressions are not equal, so Postgres rejects it with
+  `column "jobs.payload" must appear in the GROUP BY clause`. The file is
+  untouched by F3.3 (`git diff bd3d495 HEAD` is empty for it; last touched by
+  `d8f0a44`). One-line fix: make the two expressions match.
+
+- **Scope:** no migration, no new job type, no merge to `main`, and no
   unrelated working-tree files included. The checkpoint includes the three worker
   files required for the concurrency guard and its test.
 
-**Exact recommended next task:** F3.3 is complete and pushed; stop here without
-starting F3.4 or merging this branch.
+**Exact recommended next task:** F3.3 is complete, integrated, and pushed; stop
+here without starting F3.4 and without merging `dev` into `main`. Schedule the
+one-line `listBankSets` GROUP BY fix separately.
 
 ## Phase F3.2 — Autonomous Answer Generation (2026-09-25, IMPLEMENTED + VALIDATED + INTEGRATED)
 
