@@ -97,7 +97,12 @@ def get_question_candidate(question_id: str, institute_id: str) -> dict[str, Any
         ).fetchone()
 
 
-def write_generated_answer(question_id: str, institute_id: str, payload: dict[str, Any]) -> bool:
+def write_generated_answer(
+    question_id: str,
+    institute_id: str,
+    payload: dict[str, Any],
+    expected_updated_at: datetime | None = None,
+) -> bool:
     """Persist a generated answer onto a REVIEW candidate (merged payload).
 
     A candidate that is no longer writable (accepted, re-swept away, other
@@ -105,11 +110,16 @@ def write_generated_answer(question_id: str, institute_id: str, payload: dict[st
     superseded instead of failing it: nothing to do is not an error.
     """
     with psycopg.connect(settings.database_url) as conn:
+        where_extra = " AND updated_at = %s" if expected_updated_at is not None else ""
+        params: list[Any] = [Jsonb(payload), _now(), question_id, institute_id]
+        if expected_updated_at is not None:
+            params.append(expected_updated_at)
         cur = conn.execute(
             "UPDATE questions SET payload = %s, updated_at = %s"
             " WHERE id = %s AND institute_id = %s AND status = 'REVIEW'"
-            "   AND source = 'EXTRACTED' RETURNING id",
-            (Jsonb(payload), _now(), question_id, institute_id),
+            "   AND source = 'EXTRACTED'"
+            f"{where_extra} RETURNING id",
+            tuple(params),
         )
         return cur.fetchone() is not None
 

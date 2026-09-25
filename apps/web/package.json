@@ -11,6 +11,7 @@
     "test:paper-pattern-builder": "node --test src/lib/paper-pattern-builder.test.ts",
     "test:platform-scope": "node --test src/lib/platform-scope.test.ts",
     "test:academic": "node --test src/lib/academic.test.ts",
+    "test:question-answer": "node --test src/lib/question-answer.test.ts",
     "clean": "rm -rf .next"
   },
   "dependencies": {

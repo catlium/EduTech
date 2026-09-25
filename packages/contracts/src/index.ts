@@ -1269,13 +1269,18 @@ export type AnswerFormat = z.infer<typeof AnswerFormatEnum>;
 export const QuestionTypeKindEnum = z.enum(['OBJECTIVE', 'SUBJECTIVE']);
 export type QuestionTypeKind = z.infer<typeof QuestionTypeKindEnum>;
 
-export const McqFormatPayloadSchema = z.object({
-  choices: z
-    .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
-    .min(2)
-    .max(10),
-  correctChoiceId: z.string().min(1).max(64),
-});
+export const McqFormatPayloadSchema = z
+  .object({
+    choices: z
+      .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
+      .min(2)
+      .max(10),
+    correctChoiceId: z.string().min(1).max(64),
+  })
+  .refine((value) => value.choices.some((choice) => choice.id === value.correctChoiceId), {
+    message: 'correctChoiceId must reference an existing choice',
+    path: ['correctChoiceId'],
+  });
 
 export const TrueFalseFormatPayloadSchema = z.object({
   correctAnswer: z.boolean(),
@@ -1289,17 +1294,31 @@ export const TextFormatPayloadSchema = z.object({
   modelAnswer: z.string().min(1).max(20000),
 });
 
-export const MatchingFormatPayloadSchema = z.object({
-  left: z
-    .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
-    .min(2)
-    .max(10),
-  right: z
-    .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
-    .min(2)
-    .max(10),
-  matches: z.record(z.string().min(1).max(64), z.string().min(1).max(64)),
-});
+export const MatchingFormatPayloadSchema = z
+  .object({
+    left: z
+      .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
+      .min(2)
+      .max(10),
+    right: z
+      .array(z.object({ id: z.string().min(1).max(64), text: z.string().min(1) }))
+      .min(2)
+      .max(10),
+    matches: z.record(z.string().min(1).max(64), z.string().min(1).max(64)),
+  })
+  .refine(
+    (value) => {
+      const rightIds = new Set(value.right.map((item) => item.id));
+      return (
+        Object.keys(value.matches).length === value.left.length &&
+        value.left.every((item) => rightIds.has(value.matches[item.id] ?? ''))
+      );
+    },
+    {
+      message: 'matches must pair every left item with an existing right item',
+      path: ['matches'],
+    },
+  );
 
 export const NumericalFormatPayloadSchema = z.object({
   modelAnswer: z.number(),
@@ -2705,6 +2724,15 @@ export const ExtractQuestionsResponseSchema = z.object({
   }),
 });
 export type ExtractQuestionsResponse = z.infer<typeof ExtractQuestionsResponseSchema>;
+
+export const GenerateQuestionAnswerResponseSchema = z.object({
+  answer: z.object({
+    jobId: z.string().uuid(),
+    status: z.enum(['QUEUED', 'COMPLETED']),
+    reused: z.boolean(),
+  }),
+});
+export type GenerateQuestionAnswerResponse = z.infer<typeof GenerateQuestionAnswerResponseSchema>;
 
 export const QuestionExtractionStatusSchema = z.object({
   extraction: z.object({

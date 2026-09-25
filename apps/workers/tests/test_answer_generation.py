@@ -15,6 +15,7 @@ Monkeypatched DB reads/writes, mirroring ``test_ai_reliability.py`` /
 """
 
 import json
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import httpx
@@ -44,6 +45,7 @@ MCQ_CANDIDATE = {
         ],
     },
     "provenance": {"jobId": "66666666-6666-6666-6666-666666666666"},
+    "updated_at": datetime(2026, 9, 25, 12, 0, tzinfo=UTC),
 }
 
 TRUE_FALSE_CANDIDATE = {
@@ -52,6 +54,7 @@ TRUE_FALSE_CANDIDATE = {
     "answer_format": "TRUE_FALSE",
     "payload": {},
     "provenance": {},
+    "updated_at": datetime(2026, 9, 25, 12, 0, tzinfo=UTC),
 }
 
 VALID_MCQ_ANSWER = json.dumps(
@@ -117,11 +120,12 @@ def _answer_harness(
     monkeypatch.setattr(db, "get_material", lambda *a, **k: material)
     monkeypatch.setattr(service, "_split_context", lambda t: [t])
     monkeypatch.setattr(service, "create_provider", lambda: provider_instance)
-    monkeypatch.setattr(
-        db,
-        "write_generated_answer",
-        lambda qid, iid, payload: (writes.append(payload) is None) and write_result,
-    )
+    def write_answer(qid: str, iid: str, payload: dict[str, object], **kwargs: object) -> bool:
+        assert kwargs["expected_updated_at"] == candidate.get("updated_at")
+        writes.append(payload)
+        return write_result
+
+    monkeypatch.setattr(db, "write_generated_answer", write_answer)
     return status_calls, writes
 
 
@@ -329,6 +333,26 @@ def test_write_generated_answer_reports_no_row(monkeypatch) -> None:
     _fake_connect(monkeypatch, cursor)
 
     assert db.write_generated_answer(QUESTION_ID, INSTITUTE_ID, {}) is False
+
+
+def test_write_generated_answer_guards_against_concurrent_candidate_edits(monkeypatch) -> None:
+    cursor = FakeCursor([])
+    _fake_connect(monkeypatch, cursor)
+    expected_updated_at = datetime(2026, 9, 25, 12, 0, 0, 123456, tzinfo=UTC)
+
+    assert (
+        db.write_generated_answer(
+            QUESTION_ID,
+            INSTITUTE_ID,
+            {"correctChoiceId": "q1-b"},
+            expected_updated_at=expected_updated_at,
+        )
+        is False
+    )
+
+    sql, params = cursor.statements[0]
+    assert "updated_at = %s" in sql
+    assert params is not None and params[-1] == expected_updated_at
 
 
 # ── C: registration / config / model ──────────────────────────────────────────

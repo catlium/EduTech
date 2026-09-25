@@ -1290,7 +1290,15 @@ def _generate_answer(
     _validate_merged_answer(merged, answer_format)
 
     _check_cancelled(job_id)
-    superseded = not db.write_generated_answer(question_id, institute_id, merged)
+    expected_updated_at = candidate.get("updated_at")
+    if expected_updated_at is None:
+        raise GenerationError("Question candidate revision is missing")
+    superseded = not db.write_generated_answer(
+        question_id,
+        institute_id,
+        merged,
+        expected_updated_at=expected_updated_at,
+    )
 
     db.update_job_status(
         job_id,

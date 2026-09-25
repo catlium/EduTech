@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 import { createDatabase } from '@catlium/database';
 import type { Database } from '@catlium/database';
@@ -14,6 +14,11 @@ import {
   membershipRoles,
   roles,
   subjects,
+  chapters,
+  topics,
+  classes,
+  classSubjects,
+  teacherAssignments,
   materials,
   questionTypes,
   questions,
@@ -24,6 +29,7 @@ import { JobsService } from '../jobs/jobs.service.ts';
 import type { RabbitMQService } from '../common/services/rabbitmq.service.ts';
 import { AcademicScopeService } from '../authorization/academic-scope.service.ts';
 import { QuestionTypesService } from '../questions/question-types.service.ts';
+import { QuestionsService } from '../questions/questions.service.ts';
 import { MaterialEnhancementService } from '../material-enhancement/enhancement.service.ts';
 import { QuestionExtractionService } from './question-extraction.service.ts';
 
@@ -76,6 +82,11 @@ test('F3.2 answer-generation queueing', { skip }, async (t) => {
   const [adminRole] = await svc.select({ id: roles.id }).from(roles).where(eq(roles.key, 'INSTITUTE_ADMIN')).limit(1);
   if (!adminRole) throw new Error('INSTITUTE_ADMIN role not seeded in the test database');
   await svc.insert(membershipRoles).values({ membershipId: membership!.id, roleId: adminRole!.id });
+  const [teacherRole] = await svc.select({ id: roles.id }).from(roles).where(eq(roles.key, 'TEACHER')).limit(1);
+  if (!teacherRole) throw new Error('TEACHER role not seeded in the test database');
+  const [otherUser] = await svc.insert(users).values({ email: `f32-other-${suffix}@example.test`, name: 'F3.2 Other', passwordHash: 'x' }).returning();
+  const [otherMembership] = await svc.insert(memberships).values({ userId: otherUser.id, instituteId: inst.id, status: 'active' }).returning();
+  await svc.insert(membershipRoles).values({ membershipId: otherMembership!.id, roleId: teacherRole!.id });
 
   const [subject] = await svc.insert(subjects).values({ instituteId: inst.id, name: 'F3.2 Subject', slug: `f32subj-${suffix}` }).returning();
   await svc.insert(questionTypes).values({
@@ -100,18 +111,19 @@ test('F3.2 answer-generation queueing', { skip }, async (t) => {
     await db.delete(questionTypes).where(eq(questionTypes.instituteId, inst.id));
     await db.delete(materials).where(eq(materials.instituteId, inst.id));
     await db.delete(subjects).where(inArray(subjects.id, [subject.id]));
-    await db.delete(membershipRoles).where(inArray(membershipRoles.membershipId, [membership.id]));
-    await db.delete(memberships).where(inArray(memberships.id, [membership.id]));
-    await db.delete(users).where(inArray(users.id, [user.id]));
+    await db.delete(membershipRoles).where(inArray(membershipRoles.membershipId, [membership.id, otherMembership.id]));
+    await db.delete(memberships).where(inArray(memberships.id, [membership.id, otherMembership.id]));
+    await db.delete(users).where(inArray(users.id, [user.id, otherUser.id]));
     await db.delete(institutes).where(inArray(institutes.id, [inst.id]));
   });
 
   const types = new QuestionTypesService(svc);
+  const questionService = new QuestionsService(svc, types, scope);
   const enhancement = new MaterialEnhancementService(svc, jobsService);
 
   const runExtraction = async () => {
     const service = new QuestionExtractionService(
-      svc, jobsService, enhancement, types, {} as unknown as never, scope,
+      svc, jobsService, enhancement, types, questionService, scope,
     ) as unknown as { processJob(jobId: string, instituteId: string, payload: unknown, createdBy: string | null): Promise<void> };
 
     const [material] = await svc
@@ -163,8 +175,8 @@ test('F3.2 answer-generation queueing', { skip }, async (t) => {
       .where(and(eq(jobs.instituteId, inst.id), eq(jobs.type, 'AI_GENERATE_ANSWER')));
 
   const extraction = new QuestionExtractionService(
-    svc, jobsService, new MaterialEnhancementService(svc, jobsService), new QuestionTypesService(svc), {} as unknown as never, scope,
-  ) as { requestAnswerGeneration: (i: string, m: string, u: string, j: string, q: string) => Promise<{ jobId: string; status: string; reused: boolean }> };
+    svc, jobsService, enhancement, types, questionService, scope,
+  );
 
   let extractionJobId = '';
   let missingId = '';
@@ -200,6 +212,187 @@ test('F3.2 answer-generation queueing', { skip }, async (t) => {
     scratchJobs.push(rows[0]!.id);
   });
 
+  await t.test('review edits preserve and resolve unscoped question-paper candidates', async () => {
+    const [unscoped] = await svc
+      .insert(questions)
+      .values({
+        instituteId: inst.id,
+        subjectId: null,
+        stem: 'Unscoped review candidate',
+        questionType: 'MCQ',
+        answerFormat: 'MCQ',
+        payload: {
+          choices: [
+            { id: 'unscoped-a', text: 'First' },
+            { id: 'unscoped-b', text: 'Second' },
+          ],
+          correctChoiceId: 'unscoped-b',
+        },
+        source: 'EXTRACTED',
+        provenance: { jobId: extractionJobId, issues: [] },
+        status: 'REVIEW',
+        createdBy: user.id,
+        updatedBy: user.id,
+      })
+      .returning();
+    assert.ok(unscoped);
+    scratchQuestions.push(unscoped!.id);
+
+    const updated = await extraction.updateCandidate(
+      inst.id,
+      membership.id,
+      user.id,
+      extractionJobId,
+      unscoped!.id,
+      { explanation: 'Reviewed without an academic scope.', chapterId: null, topicId: null },
+    );
+    assert.equal(updated.explanation, 'Reviewed without an academic scope.');
+    assert.equal(updated.subjectId, null);
+
+    const [chapter] = await svc
+      .insert(chapters)
+      .values({ subjectId: subject.id, name: 'F3.2 Chapter', slug: `f32chap-${suffix}` })
+      .returning();
+    const [topic] = await svc
+      .insert(topics)
+      .values({ chapterId: chapter!.id, name: 'F3.2 Topic', slug: `f32topic-${suffix}` })
+      .returning();
+    const scoped = await extraction.updateCandidate(
+      inst.id,
+      membership.id,
+      user.id,
+      extractionJobId,
+      unscoped!.id,
+      { topicId: topic!.id },
+    );
+    assert.equal(scoped.subjectId, subject.id);
+    assert.equal(scoped.chapterId, chapter!.id);
+    assert.equal(scoped.topicId, topic!.id);
+
+    const subjectOnly = await extraction.updateCandidate(
+      inst.id,
+      membership.id,
+      user.id,
+      extractionJobId,
+      unscoped!.id,
+      { chapterId: null, topicId: null },
+    );
+    assert.equal(subjectOnly.subjectId, subject.id);
+    assert.equal(subjectOnly.chapterId, null);
+    assert.equal(subjectOnly.topicId, null);
+  });
+
+  await t.test('does not enqueue generation for an already-valid answer', async () => {
+    await assert.rejects(
+      extraction.requestAnswerGeneration(
+        inst.id,
+        membership.id,
+        user.id,
+        extractionJobId,
+        answeredId,
+      ),
+      BadRequestException,
+    );
+    assert.equal((await answerJobs()).length, 1);
+  });
+
+  await t.test('a non-admin owner can clear scope on an unscoped candidate', async () => {
+    const ownedJob = await jobsService.insertJob(
+      inst.id,
+      'QP_EXTRACT',
+      { paperId: randomUUID() },
+      otherUser.id,
+    );
+    scratchJobs.push(ownedJob.id);
+    const [ownedQuestion] = await svc
+      .insert(questions)
+      .values({
+        instituteId: inst.id,
+        subjectId: null,
+        stem: 'Owned unscoped review candidate',
+        questionType: 'MCQ',
+        answerFormat: 'MCQ',
+        payload: {
+          choices: [
+            { id: 'owned-a', text: 'First' },
+            { id: 'owned-b', text: 'Second' },
+          ],
+          correctChoiceId: 'owned-b',
+        },
+        source: 'EXTRACTED',
+        provenance: { jobId: ownedJob.id, issues: [] },
+        status: 'REVIEW',
+        createdBy: otherUser.id,
+        updatedBy: otherUser.id,
+      })
+      .returning();
+    assert.ok(ownedQuestion);
+    scratchQuestions.push(ownedQuestion!.id);
+
+    const updated = await extraction.updateCandidate(
+      inst.id,
+      otherMembership.id,
+      otherUser.id,
+      ownedJob.id,
+      ownedQuestion!.id,
+      { explanation: 'Reviewed without an academic scope.', chapterId: null, topicId: null },
+    );
+    assert.equal(updated.explanation, 'Reviewed without an academic scope.');
+    assert.equal(updated.subjectId, null);
+
+    const [scopeClass] = await svc
+      .insert(classes)
+      .values({ instituteId: inst.id, name: `F3.2 Scope Class ${suffix}` })
+      .returning();
+    const [scopeOffering] = await svc
+      .insert(classSubjects)
+      .values({ classId: scopeClass!.id, subjectId: subject.id })
+      .returning();
+    const [assignment] = await svc
+      .insert(teacherAssignments)
+      .values({
+        instituteId: inst.id,
+        classSubjectId: scopeOffering!.id,
+        membershipId: otherMembership.id,
+      })
+      .returning();
+    const [scopeChapter] = await svc
+      .insert(chapters)
+      .values({ subjectId: subject.id, name: 'F3.2 Owner Chapter', slug: `f32owner-${suffix}` })
+      .returning();
+
+    const assigned = await extraction.updateCandidate(
+      inst.id,
+      otherMembership.id,
+      otherUser.id,
+      ownedJob.id,
+      ownedQuestion!.id,
+      { chapterId: scopeChapter!.id },
+    );
+    assert.equal(assigned.subjectId, subject.id);
+    assert.equal(assigned.chapterId, scopeChapter!.id);
+
+    await svc.delete(teacherAssignments).where(eq(teacherAssignments.id, assignment!.id));
+    const visible = await extraction.listCandidates(
+      inst.id,
+      otherMembership.id,
+      otherUser.id,
+      ownedJob.id,
+    );
+    assert.equal(visible.candidates.length, 0);
+    await assert.rejects(
+      extraction.updateCandidate(
+        inst.id,
+        otherMembership.id,
+        otherUser.id,
+        ownedJob.id,
+        ownedQuestion!.id,
+        { explanation: 'Should be denied after losing scope.' },
+      ),
+      ForbiddenException,
+    );
+  });
+
   await t.test('manual trigger reuses the active auto-enqueued generation', async () => {
     const res = await extraction.requestAnswerGeneration(inst.id, membership.id, user.id, extractionJobId, missingId);
 
@@ -208,6 +401,28 @@ test('F3.2 answer-generation queueing', { skip }, async (t) => {
     const [only] = await answerJobs();
     assert.equal(res.jobId, only?.id, 'no duplicate job is created');
     assert.equal((await answerJobs()).length, 1);
+  });
+
+  await t.test('a failed generation is retried with a fresh job', async () => {
+    const [failed] = await answerJobs();
+    assert.ok(failed);
+    await jobsService.updateJobStatus(failed.id, 'failed', undefined, {
+      message: 'provider failed',
+    });
+
+    const res = await extraction.requestAnswerGeneration(
+      inst.id,
+      membership.id,
+      user.id,
+      extractionJobId,
+      missingId,
+    );
+
+    assert.equal(res.reused, false);
+    assert.equal(res.status, 'QUEUED');
+    assert.notEqual(res.jobId, failed.id);
+    scratchJobs.push(res.jobId);
+    assert.equal((await answerJobs()).length, 2);
   });
 
   await t.test('a completed generation is reused and reported COMPLETED', async () => {
@@ -225,7 +440,93 @@ test('F3.2 answer-generation queueing', { skip }, async (t) => {
     assert.equal(res.reused, true);
     assert.equal(res.status, 'COMPLETED');
     assert.equal(res.jobId, done.id);
-    assert.equal((await answerJobs()).length, 2, 'still no new job for the completed case');
+    assert.equal((await answerJobs()).length, 3, 'still no new job for the completed case');
+  });
+
+  await t.test('an invalid edit gets a fresh generation instead of reusing a completed job', async () => {
+    const invalid = await extraction.updateCandidate(
+      inst.id,
+      membership.id,
+      user.id,
+      extractionJobId,
+      answeredId,
+      {
+        payload: {
+          choices: [
+            { id: 'a', text: 'A' },
+            { id: 'b', text: 'B' },
+          ],
+          correctChoiceId: 'missing',
+        },
+      },
+    );
+    assert.equal(invalid.payload['correctChoiceId'], 'missing');
+
+    const res = await extraction.requestAnswerGeneration(
+      inst.id,
+      membership.id,
+      user.id,
+      extractionJobId,
+      answeredId,
+    );
+    assert.equal(res.reused, false);
+    assert.equal(res.status, 'QUEUED');
+    const completed = (await answerJobs()).find((row) => row.status === 'completed');
+    assert.ok(completed);
+    assert.notEqual(res.jobId, completed!.id);
+    scratchJobs.push(res.jobId);
+
+    await extraction.updateCandidate(
+      inst.id,
+      membership.id,
+      user.id,
+      extractionJobId,
+      answeredId,
+      {
+        payload: {
+          choices: [
+            { id: 'a', text: 'A' },
+            { id: 'b', text: 'B' },
+          ],
+          correctChoiceId: 'b',
+        },
+      },
+    );
+  });
+
+  await t.test('a teacher outside the subject scope cannot request generation', async () => {
+    const before = (await answerJobs()).length;
+    await assert.rejects(
+      extraction.requestAnswerGeneration(
+        inst.id,
+        otherMembership.id,
+        otherUser.id,
+        extractionJobId,
+        missingId,
+      ),
+      ForbiddenException,
+    );
+    assert.equal((await answerJobs()).length, before);
+  });
+
+  await t.test('accept and import reject an invalid generated-answer candidate', async () => {
+    await assert.rejects(
+      extraction.acceptCandidate(inst.id, membership.id, user.id, extractionJobId, missingId),
+      BadRequestException,
+    );
+    const [stillReview] = await svc
+      .select({ status: questions.status })
+      .from(questions)
+      .where(eq(questions.id, missingId))
+      .limit(1);
+    assert.equal(stillReview?.status, 'REVIEW');
+
+    const result = await extraction.importAll(inst.id, membership.id, user.id, extractionJobId);
+    assert.equal(result.imported, 2, 'the already-valid candidates import');
+    assert.deepEqual(
+      result.skipped.map((row) => row.questionId),
+      [missingId],
+    );
   });
 
   await t.test('cross-institute request is rejected before queueing', async () => {
