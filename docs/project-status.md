@@ -1,5 +1,56 @@
 # Project Status
 
+## Phase F3.3 — Generate Answer UX (2026-09-25, IMPLEMENTED + REVIEWED + VALIDATED; CHECKPOINT PENDING)
+
+**Status: implemented, reviewed, validated, and rebuilt on `feature/question-answer-generation-ux`
+from `dev` (`bd3d495`); the checkpoint commit and push remain.**
+The teacher review surface now exposes the existing `AI_GENERATE_ANSWER` job
+without adding a new queue, migration, or service.
+
+- **Web review UX** (`apps/web/src/app/(workspace)/questions/extractions/[jobId]/page.tsx`):
+  Generate answer appears only for invalid persisted answers; queued/processing/completed,
+  failure/retry, and non-retryable error states are represented; valid persisted
+  payloads show `Answer ready`; generation locks edits and gates Save, Accept,
+  and Import All. Missing extraction IDs render the existing error state instead of
+  an endless skeleton. A server response that the answer is already valid reloads
+  the candidate and clears stale generation state.
+- **API/contracts**:
+  `GenerateQuestionAnswerResponseSchema` is shared through `@catlium/contracts`;
+  the existing candidate endpoint reuses active jobs and completed jobs only when
+  the persisted payload is still valid, creates a fresh job after failure or an
+  invalid edit, and rejects redundant generation of an already-valid answer.
+  Accept awaits the authoritative question payload validator. Review updates allow
+  an explicitly unscoped question-paper candidate to retain null subject/chapter/topic
+  values, derive the complete scope chain from topic-only edits, and re-check the
+  actor's current subject scope for candidate actions and candidate listing.
+- **Worker concurrency safety**:
+  generated-answer writes carry the candidate `updated_at` revision into an
+  optimistic `WHERE updated_at = ...` guard. A concurrent candidate edit or
+  acceptance supersedes the job instead of overwriting newer data; a missing
+  revision fails rather than using an unsafe unconditional write.
+- **Regression coverage**:
+  `question-answer-generation.integration.ts` now covers unscoped review edits,
+  topic-only scope derivation, failed-job retry, completed-job validity, ownership,
+  scope-loss filtering/denial, invalid Accept, and Import All (12/12);
+  `apps/workers/tests/test_answer_generation.py` passes 16/16 and covers the
+  revision-guarded write; `apps/web/src/lib/question-answer.test.ts` covers
+  format-specific answer validity (1/1).
+- **Validation**:
+  API typecheck/lint, API integration, web typecheck/test/build, contracts
+  typecheck/build/lint, worker `ruff`/`mypy`/`pytest`, root `pnpm typecheck` (10/10),
+  and `git diff --check`   pass. Repository-wide lint remains non-green because of
+  pre-existing validation-file findings; focused checks are clean. Earlier live
+  Chrome checks passed; the final `api`, `web`, `worker-ai`, and
+  `worker-material` rebuild is healthy, API health returns 200, and the live
+  worker contains the revision guard.
+
+- **Scope:** no migration, no new job type, no merge to `dev`/`main`, and no
+  unrelated working-tree files included. The checkpoint includes the three worker
+  files required for the concurrency guard and its test.
+
+**Exact recommended next task:** commit and push the scoped F3.3 checkpoint
+without starting F3.4 or merging this branch.
+
 ## Phase F3.2 — Autonomous Answer Generation (2026-09-25, IMPLEMENTED + VALIDATED + INTEGRATED)
 
 **Status: implemented, validated, and integrated into `dev` via merge

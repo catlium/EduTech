@@ -2234,6 +2234,42 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       F3.3 remains intentionally unstarted.
 - [x] **Docs:** project-status.md F3.2 entry.
 
+## Phase F3.3 — Generate Answer UX (2026-09-25, branch `feature/question-answer-generation-ux`, IMPLEMENTED + REVIEWED + VALIDATED)
+
+> Add the teacher-facing trigger and lifecycle states for the existing
+> `AI_GENERATE_ANSWER` endpoint. Reuse the current candidate review editors,
+> job poll, Accept, and Import All flow; no new job system or migration.
+
+- [x] **Review UX:** show Generate answer only while the candidate answer is
+  invalid; show Answer ready after a valid payload is persisted; support
+  queued/processing, completed, failed/retry, and non-retryable 401/403/404
+  states. A missing extraction now renders the existing error state instead of
+  polling forever. A redundant valid-answer 400 reloads the candidate and clears
+  stale generation state.
+- [x] **Generation flow:** POST the existing candidate endpoint, poll its job at
+      the established 3s interval, refresh the candidate on completion, and
+      preserve the requirement to save manual edits before Accept/Import All.
+- [x] **API hardening:** await authoritative payload validation during Accept;
+      reuse completed jobs only while their answer remains valid; retry failed
+      jobs and invalid edits with a fresh job; re-authorize candidate actions
+      against current scope; filter subject-anchored candidates by the actor's
+      current academic scope; and preserve unscoped question-paper candidate
+      edits while deriving complete scope chains from topic-only patches.
+- [x] **Worker concurrency guard:** pass the candidate `updated_at` revision to
+      the conditional generated-answer write so concurrent edits or acceptance
+      supersede the job instead of being overwritten; fail on a missing revision.
+- [x] **Validation:** focused API/web tests, typecheck, lint/build, live browser
+      QA, and targeted service rebuild/verification. API answer-generation suite
+      12/12; worker answer-generation suite 16/16; web answer helper 1/1; API
+      typecheck/lint clean; web typecheck/test/build clean; contracts typecheck/
+      build/lint clean; worker `ruff`/`mypy` clean; root typecheck 10/10; and
+      `git diff --check` clean. Earlier live Chrome checks passed; the final
+      `api`, `web`, `worker-ai`, and `worker-material` rebuild is healthy, API
+      health returns 200, and the live worker contains the revision guard.
+- [~] **Checkpoint:** commit only the F3.3 files plus the required worker
+      concurrency guard and push `feature/question-answer-generation-ux` without
+      merging it.
+
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
 
 > Two correctness fixes on top of the question-extraction work above. Kept off

@@ -13,12 +13,14 @@ import {
   FileSearch,
   Loader2,
   Save,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
 
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, waitForJob } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
+import { hasValidQuestionAnswer, isSupportedQuestionAnswerFormat } from '@/lib/question-answer';
 import { useTenant, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { ErrorState } from '@/components/app/error-state';
@@ -43,6 +45,8 @@ import type {
   ChapterResponse,
   TopicResponse,
   QuestionTypeDefinition,
+  GenerateQuestionAnswerResponse,
+  JobResponse,
   QuestionExtractionCandidate,
   QuestionExtractionCandidatesResponse,
   QuestionExtractionStatus,
@@ -60,6 +64,13 @@ interface Draft {
   payload: Record<string, unknown>;
 }
 
+interface AnswerGenerationState {
+  status: 'requesting' | 'queued' | 'processing' | 'failed';
+  jobId?: string;
+  message?: string;
+  retryable: boolean;
+}
+
 /* Seed the editable draft from a candidate row. */
 function draftOf(c: QuestionExtractionCandidate): Draft {
   return {
@@ -72,8 +83,21 @@ function draftOf(c: QuestionExtractionCandidate): Draft {
   };
 }
 
-function issuesOf(c: QuestionExtractionCandidate): { code: string; message: string }[] {
-  return c.provenance.issues ?? [];
+function issuesOf(
+  c: QuestionExtractionCandidate,
+  hasAnswer: boolean,
+): { code: string; message: string }[] {
+  return (c.provenance.issues ?? []).filter(
+    (issue) => issue.code !== 'ANSWER_MISSING' || !hasAnswer,
+  );
+}
+
+function answerActionLabel(state: AnswerGenerationState | undefined): string {
+  if (!state) return 'Generate answer';
+  if (state.status === 'requesting') return 'Starting…';
+  if (state.status === 'queued') return 'Queued';
+  if (state.status === 'processing') return 'Generating…';
+  return state.retryable ? 'Retry answer' : 'Unavailable';
 }
 
 function PayloadPreview({ payload }: { payload: Record<string, unknown> }) {
@@ -168,12 +192,16 @@ export default function QuestionExtractionReviewPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const [answerGeneration, setAnswerGeneration] = useState<Record<string, AnswerGenerationState>>({});
   const [importing, setImporting] = useState(false);
   const [discardAllOpen, setDiscardAllOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const finished = status?.status === 'completed' || status?.status === 'failed';
+  const finished =
+    status?.status === 'completed' ||
+    status?.status === 'failed' ||
+    status?.status === 'cancelled';
 
   /* ── types / academic lists ── */
   useEffect(() => {
@@ -227,11 +255,23 @@ export default function QuestionExtractionReviewPage() {
         const resp = await api<QuestionExtractionStatus>(`/questions/extraction/${jobId}`);
         if (cancelled) return;
         setStatus(resp.extraction);
-        if (resp.extraction.status === 'completed' || resp.extraction.status === 'failed') {
+        if (
+          resp.extraction.status === 'completed' ||
+          resp.extraction.status === 'failed' ||
+          resp.extraction.status === 'cancelled'
+        ) {
           clearInterval(interval);
         }
-      } catch {
-        /* keep polling */
+      } catch (err) {
+        if (cancelled) return;
+        if (
+          err instanceof ApiError &&
+          (err.status === 401 || err.status === 403 || err.status === 404)
+        ) {
+          setError(err.message);
+          setLoading(false);
+          clearInterval(interval);
+        }
       }
     };
     void tick();
@@ -244,9 +284,9 @@ export default function QuestionExtractionReviewPage() {
 
   /* ── load candidates once the job completes (or earlier if reused) ── */
   const loadCandidates = useCallback(
-    async (initial = false) => {
-      if (!jobId) return;
-      if (initial && !finished) return;
+    async (initial = false, resetDraftId?: string) => {
+      if (!jobId) return undefined;
+      if (initial && !finished) return undefined;
       try {
         const resp = await api<QuestionExtractionCandidatesResponse>(
           `/questions/extraction/${jobId}/candidates`,
@@ -256,15 +296,17 @@ export default function QuestionExtractionReviewPage() {
         setDrafts((prev) => {
           const next = { ...prev };
           for (const c of resp.candidates) {
-            if (!next[c.id]) next[c.id] = draftOf(c);
+            if (c.id === resetDraftId || !next[c.id]) next[c.id] = draftOf(c);
           }
           return next;
         });
         setLoading(false);
+        setError(null);
+        return resp.candidates;
       } catch (err) {
-        if (!initial) {
-          setError(err instanceof ApiError ? err.message : 'Failed to load candidates');
-        }
+        setError(err instanceof ApiError ? err.message : 'Failed to load candidates');
+        setLoading(false);
+        return undefined;
       }
     },
     [jobId, finished],
@@ -274,8 +316,11 @@ export default function QuestionExtractionReviewPage() {
     void loadCandidates(true);
   }, [loadCandidates]);
 
+  const answerGenerating = Object.values(answerGeneration).some(
+    (state) => state.status !== 'failed',
+  );
   const busy =
-    savingId !== null || acceptingId !== null || discardingId !== null || importing || !finished;
+    savingId !== null || acceptingId !== null || discardingId !== null || importing || answerGenerating || !finished;
 
   const draft = (id: string): Draft =>
     drafts[id] ?? { stem: '', difficulty: 'MEDIUM', explanation: '', chapterId: '', topicId: '', payload: {} };
@@ -286,6 +331,14 @@ export default function QuestionExtractionReviewPage() {
   function updateFromPatch(id: string, patched: QuestionExtractionCandidate) {
     setCandidates((prev) => prev.map((c) => (c.id === id ? patched : c)));
     setDrafts((prev) => ({ ...prev, [id]: draftOf(patched) }));
+  }
+
+  function clearAnswerGeneration(id: string) {
+    setAnswerGeneration((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
   /* ── actions ── */
@@ -334,6 +387,7 @@ export default function QuestionExtractionReviewPage() {
     },
     [candidates, drafts],
   );
+  const hasDirtyDrafts = candidates.some((c) => !unchanged(c.id));
 
   async function saveCandidate(c: QuestionExtractionCandidate) {
     setSavingId(c.id);
@@ -356,11 +410,79 @@ export default function QuestionExtractionReviewPage() {
         },
       );
       updateFromPatch(c.id, resp.question);
+      if (hasValidQuestionAnswer(resp.question.answerFormat, resp.question.payload)) {
+        clearAnswerGeneration(c.id);
+      }
       toast.success('Candidate updated');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to update candidate');
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function generateAnswer(c: QuestionExtractionCandidate) {
+    if (!isSupportedQuestionAnswerFormat(c.answerFormat)) {
+      toast.error('Answer generation is not supported for this question format.');
+      return;
+    }
+    if (!unchanged(c.id)) {
+      toast.error('Save candidate edits before generating an answer.');
+      return;
+    }
+    setAnswerGeneration((prev) => ({
+      ...prev,
+      [c.id]: { status: 'requesting', retryable: false },
+    }));
+    try {
+      const response = await api<GenerateQuestionAnswerResponse>(
+        `/questions/extraction/${jobId}/candidates/${c.id}/generate-answer`,
+        { method: 'POST' },
+      );
+      const { jobId: answerJobId } = response.answer;
+      setAnswerGeneration((prev) => ({
+        ...prev,
+        [c.id]: { status: 'queued', jobId: answerJobId, retryable: false },
+      }));
+
+      await waitForJob(async () => {
+        const jobResponse = await api<{ job: JobResponse }>(`/jobs/${answerJobId}`);
+        const jobStatus = jobResponse.job.status;
+        if (jobStatus === 'queued' || jobStatus === 'processing') {
+          setAnswerGeneration((prev) => ({
+            ...prev,
+            [c.id]: { status: jobStatus, jobId: answerJobId, retryable: false },
+          }));
+        }
+        return jobResponse;
+      });
+
+      const refreshed = (await loadCandidates(false, c.id))?.find((row) => row.id === c.id);
+      if (!refreshed)
+        throw new Error('Generation finished, but the candidate could not be refreshed.');
+      if (!hasValidQuestionAnswer(refreshed.answerFormat, refreshed.payload)) {
+        throw new Error('Generation finished without a valid answer. Retry or edit it manually.');
+      }
+      clearAnswerGeneration(c.id);
+      toast.success('Answer generated — review and save any edits');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 400) {
+        const refreshed = (await loadCandidates(false, c.id))?.find((row) => row.id === c.id);
+        if (refreshed && hasValidQuestionAnswer(refreshed.answerFormat, refreshed.payload)) {
+          clearAnswerGeneration(c.id);
+          toast.success('Answer is already available — review and save any edits');
+          return;
+        }
+      }
+      const denied =
+        err instanceof ApiError && (err.status === 401 || err.status === 403 || err.status === 404);
+      const message =
+        err instanceof ApiError || err instanceof Error ? err.message : 'Answer generation failed';
+      setAnswerGeneration((prev) => ({
+        ...prev,
+        [c.id]: { status: 'failed', message, retryable: !denied },
+      }));
+      toast.error(message);
     }
   }
 
@@ -372,6 +494,7 @@ export default function QuestionExtractionReviewPage() {
         { method: 'POST' },
       );
       setCandidates((prev) => prev.filter((x) => x.id !== c.id));
+      clearAnswerGeneration(c.id);
       toast.success('Accepted into the bank');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Accept failed');
@@ -387,6 +510,7 @@ export default function QuestionExtractionReviewPage() {
         method: 'POST',
       });
       setCandidates((prev) => prev.filter((x) => x.id !== c.id));
+      clearAnswerGeneration(c.id);
       toast.success('Candidate discarded');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Discard failed');
@@ -432,7 +556,11 @@ export default function QuestionExtractionReviewPage() {
   }
 
   const pending =
-    status?.status === 'queued' || status?.status === 'processing' ? status.status : null;
+    status?.status === 'queued' ||
+    status?.status === 'processing' ||
+    status?.status === 'cancelling'
+      ? status.status
+      : null;
 
   const chapterOptions = useMemo(
     () => chapters.filter((c) => c.subjectId === meta?.subjectId),
@@ -478,8 +606,9 @@ export default function QuestionExtractionReviewPage() {
                 </Button>
                 <Button
                   size="sm"
-                  disabled={busy || candidates.length === 0}
+                  disabled={busy || hasDirtyDrafts || candidates.length === 0}
                   onClick={() => void importAll()}
+                  title={hasDirtyDrafts ? 'Save candidate edits before importing' : undefined}
                 >
                   {importing ? (
                     <Loader2 className="mr-1 size-3.5 animate-spin" />
@@ -507,12 +636,20 @@ export default function QuestionExtractionReviewPage() {
         </div>
       )}
 
+      {status?.status === 'cancelled' && (
+        <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm">
+          Extraction was cancelled.
+        </div>
+      )}
+
       {!meta && !error && !loading && (
         <div className="flex flex-col items-center justify-center py-16 text-sm text-muted-foreground">
           <FileSearch className="mb-2 size-8" />
           {status?.status === 'completed'
             ? 'No candidates were detected for this source.'
-            : `Waiting for the extraction job (${status?.status ?? 'queued'}).`}
+            : status?.status === 'cancelled'
+              ? 'The extraction was cancelled before candidates were available.'
+              : `Waiting for the extraction job (${status?.status ?? 'queued'}).`}
         </div>
       )}
 
@@ -547,15 +684,30 @@ export default function QuestionExtractionReviewPage() {
         {candidates.map((c) => {
           const d = draft(c.id);
           const isDirty = !unchanged(c.id);
-          const issues = issuesOf(c);
+          const answerValid = hasValidQuestionAnswer(c.answerFormat, c.payload);
+          const draftAnswerValid = hasValidQuestionAnswer(c.answerFormat, d.payload);
+          const canGenerate = isSupportedQuestionAnswerFormat(c.answerFormat);
+          const generationState = answerGeneration[c.id];
+          const isGenerating =
+            generationState?.status !== undefined && generationState.status !== 'failed';
+          const issues = issuesOf(c, answerValid || (isDirty && draftAnswerValid));
           const typeName =
             types.find((t) => t.code === c.questionType)?.name ?? c.questionType;
           return (
             <Card key={c.id}>
               <CardContent className="space-y-3 pt-5">
+                <fieldset disabled={isGenerating} className="min-w-0 space-y-3 disabled:opacity-70">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge>{typeName}</Badge>
                   <Badge variant="secondary">{c.difficulty}</Badge>
+                   {answerValid && !isDirty && (
+                     <Badge
+                      variant="outline"
+                      className="border-emerald-500/50 text-emerald-600 dark:text-emerald-400"
+                    >
+                      Answer ready
+                    </Badge>
+                  )}
                   {c.provenance.originalNumber && (
                     <Badge variant="outline">№ {c.provenance.originalNumber}</Badge>
                   )}
@@ -650,7 +802,7 @@ export default function QuestionExtractionReviewPage() {
                     </div>
                   </div>
 
-                  {c.questionType === 'MCQ' && (
+                  {c.answerFormat === 'MCQ' && (
                     <PayloadMcqEditor
                       payload={d.payload}
                       setPayload={(p) => setPayload(c.id, p)}
@@ -659,52 +811,49 @@ export default function QuestionExtractionReviewPage() {
                       removeChoice={(choiceId) => removeMcqChoice(c.id, choiceId)}
                     />
                   )}
-                  {c.questionType === 'TRUE_FALSE' && (
+                  {c.answerFormat === 'TRUE_FALSE' && (
                     <PayloadTfEditor
                       payload={d.payload}
                       setPayload={(p) => setPayload(c.id, p)}
                     />
                   )}
-                  {c.questionType === 'FILL_IN_BLANK' && (
+                  {c.answerFormat === 'FILL_IN_BLANK' && (
                     <PayloadFibEditor
                       payload={d.payload}
                       setPayload={(p) => setPayload(c.id, p)}
                     />
                   )}
-                  {(c.questionType === 'SHORT_ANSWER' ||
-                    c.questionType === 'LONG_ANSWER' ||
-                    c.questionType === 'BRIEF_ANSWER' ||
-                    c.questionType === 'VERY_SHORT_ANSWER' ||
-                    c.questionType === 'DEFINITION' ||
-                    c.questionType === 'CASE_STUDY') && (
+                  {c.answerFormat === 'TEXT' && (
                     <PayloadTextEditor
                       payload={d.payload}
                       setPayload={(p) => setPayload(c.id, p)}
                     />
                   )}
-                  {c.questionType === 'NUMERICAL' && (
+                  {c.answerFormat === 'NUMERICAL' && (
                     <PayloadNumericalEditor
                       payload={d.payload}
                       setPayload={(p) => setPayload(c.id, p)}
                     />
                   )}
-                  {c.questionType !== 'MCQ' &&
-                    c.questionType !== 'TRUE_FALSE' &&
-                    c.questionType !== 'FILL_IN_BLANK' &&
-                    c.questionType !== 'NUMERICAL' &&
-                    !(
-                      c.questionType === 'SHORT_ANSWER' ||
-                      c.questionType === 'LONG_ANSWER' ||
-                      c.questionType === 'BRIEF_ANSWER' ||
-                      c.questionType === 'VERY_SHORT_ANSWER' ||
-                      c.questionType === 'DEFINITION' ||
-                      c.questionType === 'CASE_STUDY'
-                    ) && (
-                      <div className="grid gap-2">
-                        <Label>Answer</Label>
-                        <PayloadPreview payload={d.payload} />
-                      </div>
-                    )}
+                  {c.answerFormat === 'MATCHING' && (
+                    <PayloadMatchingEditor
+                      payload={d.payload}
+                      setPayload={(p) => setPayload(c.id, p)}
+                    />
+                  )}
+                  {![
+                    'MCQ',
+                    'TRUE_FALSE',
+                    'FILL_IN_BLANK',
+                    'TEXT',
+                    'NUMERICAL',
+                    'MATCHING',
+                  ].includes(c.answerFormat) && (
+                    <div className="grid gap-2">
+                      <Label>Answer</Label>
+                      <PayloadPreview payload={d.payload} />
+                    </div>
+                  )}
 
                   <div className="grid gap-2">
                     <Label>Explanation</Label>
@@ -715,6 +864,12 @@ export default function QuestionExtractionReviewPage() {
                     />
                   </div>
                 </div>
+                {!answerValid && generationState?.status === 'failed' && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {generationState.message ?? 'Answer generation failed.'}
+                  </p>
+                )}
+                </fieldset>
               </CardContent>
               <CardFooter className="justify-between">
                 <p className="text-xs text-muted-foreground">
@@ -723,11 +878,33 @@ export default function QuestionExtractionReviewPage() {
                     ? ` / ${topicName.get(d.topicId)}`
                     : ''}
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                   {!answerValid && canGenerate && (
+                     <Button
+                       size="sm"
+                       variant="outline"
+                       disabled={
+                         isDirty ||
+                         isGenerating ||
+                         (generationState?.status === 'failed' && !generationState.retryable)
+                       }
+                       onClick={() => void generateAnswer(c)}
+                       title={
+                         isDirty ? 'Save candidate edits before generating' : generationState?.message
+                       }
+                     >
+                      {isGenerating ? (
+                        <Loader2 className="mr-1 size-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-1 size-3.5" />
+                      )}
+                      {answerActionLabel(generationState)}
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={savingId === c.id}
+                    disabled={isGenerating || savingId === c.id}
                     onClick={() => void saveCandidate(c)}
                   >
                     {savingId === c.id ? (
@@ -740,7 +917,7 @@ export default function QuestionExtractionReviewPage() {
                   <Button
                     size="sm"
                     variant="destructive"
-                    disabled={discardingId === c.id}
+                    disabled={isGenerating || discardingId === c.id}
                     onClick={() => void discardCandidate(c)}
                   >
                     {discardingId === c.id ? (
@@ -752,9 +929,15 @@ export default function QuestionExtractionReviewPage() {
                   </Button>
                   <Button
                     size="sm"
-                    disabled={isDirty || acceptingId === c.id}
+                    disabled={isDirty || !answerValid || isGenerating || acceptingId === c.id}
                     onClick={() => void acceptCandidate(c)}
-                    title={isDirty ? 'Save your edits first' : 'Accept into the bank'}
+                    title={
+                      isDirty
+                        ? 'Save your edits first'
+                        : !answerValid
+                          ? 'Add and save a valid answer first'
+                          : 'Accept into the bank'
+                    }
                   >
                     {acceptingId === c.id ? (
                       <Loader2 className="mr-1 size-3.5 animate-spin" />
@@ -902,6 +1085,44 @@ function PayloadFibEditor({
       >
         Add answer
       </Button>
+    </div>
+  );
+}
+
+function PayloadMatchingEditor({
+  payload,
+  setPayload,
+}: {
+  payload: Record<string, unknown>;
+  setPayload: (p: Record<string, unknown>) => void;
+}) {
+  const left = (payload['left'] as { id: string; text: string }[] | undefined) ?? [];
+  const right = (payload['right'] as { id: string; text: string }[] | undefined) ?? [];
+  const matches = (payload['matches'] as Record<string, string> | undefined) ?? {};
+
+  return (
+    <div className="space-y-2">
+      <Label>Matches</Label>
+      {left.map((item) => (
+        <div key={item.id} className="grid items-center gap-2 sm:grid-cols-2">
+          <span className="text-sm">{item.text}</span>
+          <Select
+            value={matches[item.id] ?? ''}
+            onValueChange={(id) => setPayload({ matches: { ...matches, [item.id]: id } })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Choose the matching item" />
+            </SelectTrigger>
+            <SelectContent>
+              {right.map((candidate) => (
+                <SelectItem key={candidate.id} value={candidate.id}>
+                  {candidate.text}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ))}
     </div>
   );
 }

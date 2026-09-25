@@ -33,7 +33,9 @@ import {
   questionPapers,
   questions,
 } from '@catlium/database';
+import { FormatPayloadSchemas } from '@catlium/contracts';
 import type {
+  GenerateQuestionAnswerResponse,
   MaterialEnhancedBlock,
   QuestionExtractionIssue,
   QuestionExtractionProvenance,
@@ -199,19 +201,54 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     userId: string,
     jobId: string,
     questionId: string,
-  ): Promise<{ jobId: string; status: 'QUEUED' | 'COMPLETED'; reused: boolean }> {
-    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
+  ): Promise<GenerateQuestionAnswerResponse['answer']> {
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId, questionId);
     await this.getCandidate(instituteId, jobId, questionId); // REVIEW + EXTRACTED + run match
     return this.enqueueAnswerGeneration(instituteId, userId, questionId);
   }
 
   /** Insert + publish an AI_GENERATE_ANSWER job for a candidate, reusing an
-   *  existing active or completed job for the same (institute, question). */
+   *  existing active or valid completed job for the same (institute, question). */
   private async enqueueAnswerGeneration(
     instituteId: string,
     userId: string,
     questionId: string,
-  ): Promise<{ jobId: string; status: 'QUEUED' | 'COMPLETED'; reused: boolean }> {
+  ): Promise<GenerateQuestionAnswerResponse['answer']> {
+    const [candidate] = await this.db
+      .select({
+        questionType: questions.questionType,
+        answerFormat: questions.answerFormat,
+        payload: questions.payload,
+      })
+      .from(questions)
+      .where(
+        and(
+          eq(questions.id, questionId),
+          eq(questions.instituteId, instituteId),
+          eq(questions.status, 'REVIEW'),
+          eq(questions.source, 'EXTRACTED'),
+          isNull(questions.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!candidate || !candidate.answerFormat || !Object.hasOwn(FormatPayloadSchemas, candidate.answerFormat)) {
+      throw new BadRequestException('Answer generation is not supported for this candidate');
+    }
+    const candidatePayload = payloadOf(candidate.payload);
+    if (!candidatePayload) {
+      throw new BadRequestException('Question payload must be an object');
+    }
+    let answerValid = true;
+    try {
+      await this.questionsService.validateQuestionPayload(
+        instituteId,
+        candidate.questionType,
+        candidatePayload,
+      );
+    } catch {
+      answerValid = false;
+    }
+
     const [existing] = await this.db
       .select({ id: jobs.id, status: jobs.status })
       .from(jobs)
@@ -227,11 +264,13 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       .orderBy(desc(jobs.createdAt))
       .limit(1);
     if (existing) {
-      return {
-        jobId: existing.id,
-        status: existing.status === 'completed' ? 'COMPLETED' : 'QUEUED',
-        reused: true,
-      };
+      if (existing.status !== 'completed') {
+        return { jobId: existing.id, status: 'QUEUED', reused: true };
+      }
+      if (answerValid) return { jobId: existing.id, status: 'COMPLETED', reused: true };
+    }
+    if (answerValid) {
+      throw new BadRequestException('Candidate already has a valid answer');
     }
 
     const job = await this.jobsService.issueJob(
@@ -465,6 +504,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     membershipId: string,
     userId: string,
     jobId: string,
+    questionId?: string,
   ): Promise<void> {
     const job = await this.jobsService.getJob(jobId, instituteId);
     const subjectId = String(job.payload?.['subjectId'] ?? '');
@@ -475,6 +515,12 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     const owner = job.createdBy ?? undefined;
     if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
       throw new NotFoundException('Question extraction run not found');
+    }
+    if (questionId) {
+      const candidate = await this.getCandidate(instituteId, jobId, questionId);
+      if (candidate.subjectId) {
+        await this.scope.requireWritableSubject(instituteId, membershipId, candidate.subjectId);
+      }
     }
   }
 
@@ -535,6 +581,13 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       )
       .orderBy(asc(questions.createdAt));
 
+    const actorScope = await this.scope.resolveScope(instituteId, membershipId);
+    const visibleRows = rows.filter(
+      (row) =>
+        row.subjectId === null ||
+        actorScope.kind === 'whole-institute' ||
+        actorScope.subjectIds.includes(row.subjectId),
+    );
     const result = payloadOf(job.result) ?? {};
     return {
       meta: {
@@ -556,7 +609,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
         createdAt: job.createdAt,
         completedAt: job.completedAt,
       },
-      candidates: rows.map(toCandidateRow),
+      candidates: visibleRows.map(toCandidateRow),
     };
   }
 
@@ -570,24 +623,33 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     questionId: string,
     patch: ReviewQuestionCandidate,
   ): Promise<CandidateRow> {
-    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId, questionId);
     const candidate = await this.getCandidate(instituteId, jobId, questionId);
 
+    let subjectId = candidate.subjectId;
     let chapterId = candidate.chapterId;
     let topicId = candidate.topicId;
     if (patch.chapterId !== undefined || patch.topicId !== undefined) {
       chapterId = patch.chapterId === null ? null : (patch.chapterId ?? candidate.chapterId);
       topicId = patch.topicId === null ? null : (patch.topicId ?? candidate.topicId);
       const chain = await resolveScopeChain(
-        { db: this.db, instituteId, requireSubject: true },
         {
-          subjectId: candidate.subjectId ?? undefined,
+          db: this.db,
+          instituteId,
+          requireSubject: subjectId !== null || chapterId !== null || topicId !== null,
+        },
+        {
+          subjectId: subjectId ?? undefined,
           chapterId: chapterId ?? undefined,
           topicId: topicId ?? undefined,
         },
       );
+      subjectId = chain.subjectId;
       chapterId = chain.chapterId;
       topicId = chain.topicId;
+      if (subjectId !== null) {
+        await this.scope.requireWritableSubject(instituteId, membershipId, subjectId);
+      }
     }
 
     let answerFormat = candidate.answerFormat;
@@ -604,8 +666,9 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
         ...(patch.difficulty !== undefined ? { difficulty: patch.difficulty } : {}),
         ...(patch.explanation !== undefined ? { explanation: patch.explanation } : {}),
         ...(patch.payload !== undefined ? { payload: patch.payload } : {}),
-        ...(patch.chapterId !== undefined ? { chapterId } : {}),
-        ...(patch.topicId !== undefined ? { topicId } : {}),
+        ...(patch.chapterId !== undefined || patch.topicId !== undefined
+          ? { subjectId, chapterId, topicId }
+          : {}),
         updatedBy: userId,
         updatedAt: new Date(),
       })
@@ -622,11 +685,11 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     jobId: string,
     questionId: string,
   ): Promise<CandidateRow> {
-    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId, questionId);
     const candidate = await this.getCandidate(instituteId, jobId, questionId);
 
     const type = await this.types.findByCode(instituteId, candidate.questionType);
-    this.questionsService.validateQuestionPayload(instituteId, type.code, candidate.payload);
+    await this.questionsService.validateQuestionPayload(instituteId, type.code, candidate.payload);
 
     if (candidate.chapterId !== null || candidate.topicId !== null) {
       await resolveScopeChain(
@@ -683,7 +746,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     jobId: string,
     questionId: string,
   ): Promise<void> {
-    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId, questionId);
     await this.getCandidate(instituteId, jobId, questionId);
     await this.db
       .delete(questions)
