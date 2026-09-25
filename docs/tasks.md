@@ -45,6 +45,11 @@
     refresh-on-success. Single-student flow (single create) untouched --
     both paths shown via the same dialog defaulting to the visible roster.
 - [x] **Docs:** this tracker Phase F.1 entry.
+- [x] **Final F.1 audit (2026-09-25, PASS):** full checklist re-validated on a
+  fresh scratch PG17 — backend bulk 1/1, authz 8/8, single 1/1, carry-forward
+  1/1, web academic 28/28, repo typecheck (8 workspaces), api lint, web build.
+  No HIGH/MEDIUM findings; only LOW/INFO items (cosmetic, no code change).
+  Full report in `docs/project-status.md` (Final F.1 audit).
 
 ## Phase Q.4.0 — Student Placement, Transfer & Carry-Forward Design (2026-09-24, DESIGN COMPLETE)
 

@@ -69,6 +69,30 @@ multiselect` into `feature/student-placement` (or the integration branch)
 after review, or proceed to the next planned work-item per tasks.md — this
 branch has no merge and no further F.1 sub-items are open.
 
+### Final F.1 audit (2026-09-25, PASS)
+
+Re-ran and passed every F.1-relevant suite against a fresh scratch loopback
+PG17 (`127.0.0.1:5433`, migrations applied, running stack untouched):
+backend bulk integration 1/1, placements-authz 8/8 (incl. the F.1 bulk
+sub-test), single-placement 1/1, carry-forward 1/1; web `test:academic`
+28/28. Repo typecheck clean for all 8 TS workspaces; api lint clean; api
+`nest build` clean; web `next build` clean. Checklist versus the intended F.1
+requirements: bulk DTO + route + `assignments.create` authz, institute
+isolation, active-STUDENT validation, server-side dedup, existing partial-
+unique invariant, atomic all-or-nothing rollback on any conflict, single-
+placement/transfer/carry-forward regression — all green; no migration added.
+Frontend: select/deselect, visible-subset select-all + clear, live count,
+division gating, exactly one `/bulk` request with loading/error/success toasts
+and refresh-on-success, `canCreate` permission gating, 403 surface via
+`ApiError` — contract matches the backend DTO
+(`membershipIds: UUID[], divisionId: UUID`). No HIGH/MEDIUM findings; LOW/INFO
+items (cosmetic JSX indentation, app-wide `w-fit→w-full` on the shared
+`SelectTrigger` shipped in the F1 commit, ValidationPipe not exercised in the
+guard-driven suites — consistent with all sibling suites) are recorded in the
+audit report and left unfixed (no speculative changes). Note: the running
+`api` image predates F1 (branch unmerged) — deploy/rebuild belongs to the
+merge step, not this audit.
+
 ## Phase Q.4.4 — Institute Admin Student Placement Console + Carry-Forward Wizard (2026-09-24)
 
 **Status: IMPLEMENTED + VALIDATED.**
