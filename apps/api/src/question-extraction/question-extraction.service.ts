@@ -18,6 +18,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   OnApplicationBootstrap,
   OnModuleDestroy,
@@ -56,6 +57,12 @@ const EXTRACTION_LEASE_MS = 60_000;
 
 const TYPE = 'QUESTION_EXTRACT';
 
+// Autonomous answer generation (F3.2): the worker fills a REVIEW candidate's
+// missing answer (extraction flagged ANSWER_MISSING) without a teacher writing
+// it by hand. AI_GENERATE_ANSWER jobs are genuinely published to the
+// `ai_generation` queue (unlike QUESTION_EXTRACT, which stays coordinator-owned).
+const ANSWER_TYPE = 'AI_GENERATE_ANSWER';
+
 export interface CandidateRow {
   id: string;
   stem: string;
@@ -75,6 +82,7 @@ export interface CandidateRow {
 @Injectable()
 export class QuestionExtractionService implements OnApplicationBootstrap, OnModuleDestroy {
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly logger = new Logger(QuestionExtractionService.name);
 
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
@@ -178,6 +186,65 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
   ): Promise<Job> {
     await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
     return this.jobsService.getJob(jobId, instituteId);
+  }
+
+  /** Guard + queue autonomous answer generation for one REVIEW candidate.
+   *  Reuses an existing active or completed AI_GENERATE_ANSWER job for the same
+   *  (institute, question) so a teacher-initiated trigger never duplicates the
+   *  extraction sweep's automatic enqueue. A failed/cancelled job is never
+   *  reused, so this doubles as the manual retry path. */
+  async requestAnswerGeneration(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    jobId: string,
+    questionId: string,
+  ): Promise<{ jobId: string; status: 'QUEUED' | 'COMPLETED'; reused: boolean }> {
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
+    await this.getCandidate(instituteId, jobId, questionId); // REVIEW + EXTRACTED + run match
+    return this.enqueueAnswerGeneration(instituteId, userId, questionId);
+  }
+
+  /** Insert + publish an AI_GENERATE_ANSWER job for a candidate, reusing an
+   *  existing active or completed job for the same (institute, question). */
+  private async enqueueAnswerGeneration(
+    instituteId: string,
+    userId: string,
+    questionId: string,
+  ): Promise<{ jobId: string; status: 'QUEUED' | 'COMPLETED'; reused: boolean }> {
+    const [existing] = await this.db
+      .select({ id: jobs.id, status: jobs.status })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.type, ANSWER_TYPE),
+          eq(jobs.instituteId, instituteId),
+          sql`${jobs.payload}->'source'->>'type' = 'QUESTION'`,
+          sql`${jobs.payload}->'source'->>'id' = ${questionId}`,
+          inArray(jobs.status, ['queued', 'processing', 'completed']),
+        ),
+      )
+      .orderBy(desc(jobs.createdAt))
+      .limit(1);
+    if (existing) {
+      return {
+        jobId: existing.id,
+        status: existing.status === 'completed' ? 'COMPLETED' : 'QUEUED',
+        reused: true,
+      };
+    }
+
+    const job = await this.jobsService.issueJob(
+      instituteId,
+      ANSWER_TYPE,
+      {
+        operation: ANSWER_TYPE,
+        source: { type: 'QUESTION', id: questionId },
+        requestedBy: userId,
+      },
+      userId,
+    );
+    return { jobId: job.id, status: 'QUEUED', reused: false };
   }
 
   // ── Sweep (adopt queued QUESTION_EXTRACT jobs) ────────────────────
@@ -338,19 +405,49 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       }
     }
 
-    if (rows.length > 0) {
-      await this.db.insert(questions).values(rows.map((r) => ({ instituteId, ...r })));
-    }
+    const inserted: Array<{ id: string }> =
+      rows.length > 0
+        ? await this.db
+            .insert(questions)
+            .values(rows.map((r) => ({ instituteId, ...r })))
+            .returning({ id: questions.id })
+        : [];
 
     const candidateCount = rows.length;
     const reviewRequiredCount = rows.filter((r) => (r.provenance as QuestionExtractionProvenance).issues.length > 0).length;
     const issueCount = rows.reduce((n, r) => n + (r.provenance as QuestionExtractionProvenance).issues.length, 0);
+
+    // Autonomous answer generation: any candidate whose answer was not
+    // extractable (ANSWER_MISSING) gets an AI_GENERATE_ANSWER job enqueued so
+    // the teacher does not have to write every objective answer by hand. A
+    // failed enqueue never fails the extraction — the candidate stays REVIEW and
+    // any teacher can retry via POST .../candidates/:questionId/generate-answer.
+    let answerJobsEnqueued = 0;
+    for (let i = 0; i < inserted.length; i += 1) {
+      const issues = (rows[i]?.provenance as QuestionExtractionProvenance | undefined)?.issues ?? [];
+      if (!issues.some((issue) => issue.code === 'ANSWER_MISSING')) continue;
+      try {
+        await this.enqueueAnswerGeneration(
+          instituteId,
+          rows[i]!.createdBy ?? material.createdBy,
+          inserted[i]!.id,
+        );
+        answerJobsEnqueued += 1;
+      } catch (error) {
+        this.logger.warn(
+          `Answer generation enqueue failed for candidate ${inserted[i]!.id}: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
 
     await this.jobsService.updateJobStatus(jobId, 'completed', {
       status: candidateCount === 0 ? 'no-questions' : 'extracted',
       candidateCount,
       reviewRequiredCount,
       issueCount,
+      answerJobsEnqueued,
       ...(unresolvedQuestions.length > 0 ? { unresolvedQuestions } : {}),
       source,
       materialRevision: material.revision,

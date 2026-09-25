@@ -1,5 +1,49 @@
 # Project Status
 
+## Phase F3.2 — Autonomous Answer Generation (2026-09-25, IMPLEMENTED + VALIDATED)
+
+**Status: implemented, validated; branch `feature/question-answer-generation`
+(from `dev`, unmerged — coordinator merge pending).** Auto-fills the expected
+answer for extraction REVIEW candidates the extractor flagged `ANSWER_MISSING`,
+via the existing jobs/RabbitMQ/AI-worker architecture.
+
+- **API — manual trigger + reuse** (`apps/api/src/question-extraction/`):
+  `POST /questions/extraction/:jobId/candidates/:questionId/generate-answer`
+  (202, INSTITUTE_ADMIN/TEACHER) gates the run + REVIEW/EXTRACTED candidate,
+  then enqueues `AI_GENERATE_ANSWER`
+  (`{operation, source:{type:'QUESTION',id}, requestedBy}`). An existing
+  queued/processing/completed job for the same (institute, question) is reused
+  (`{reused:true, status:'QUEUED'|'COMPLETED'}`); FAILED jobs are never reused,
+  so the endpoint is also the retry path.
+- **API — automatic sweep**: `QuestionExtractionService.processJob` now
+  auto-enqueues an answer job for every persisted candidate with an
+  `ANSWER_MISSING` provenance issue (`result.answerJobsEnqueued`), per-candidate
+  try/catch so one enqueue failure never fails extraction. Extraction-only —
+  QP_EXTRACT candidates stay manual-trigger-only. `JOB_QUEUE_BY_TYPE` gains
+  `AI_GENERATE_ANSWER: 'ai_generation'`; `ALLOWED_JOB_TYPES` unchanged (LOW-1
+  intact).
+- **Worker** (`apps/workers`): `GeneratedAnswer` + per-format subset models in
+  `schemas.py`; `generation/answer.py` prompt that fills ONLY the missing
+  answer (never regenerates choices/ids, optional bounded material context);
+  `service.py` registers the operation (QUESTION content type, no aggregator,
+  dispatch before `_resolve_materials`), full-format-validates the MERGED
+  payload and reference-checks MCQ `correctChoiceId` / MATCHING `matches` ids,
+  writes via `db.write_generated_answer` (REVIEW + EXTRACTED guarded);
+  superseded candidate → job completes `superseded:true`, never fails.
+  Candidates stay REVIEW for teacher approval.
+- **Tests:** worker `test_answer_generation.py` 15 new cases; API
+  `question-answer-generation.integration.ts` (`test:question-answer-`
+  `generation`, 5 subtests).
+- **Validation:** worker pytest 36/36, ruff + mypy clean; API typecheck + lint
+  clean; scratch loopback PG17: new suite 5/5, RC-2 resilience 5/5, LOW-1
+  job-ownership 14/14. Note: two-level `t.test()` nesting deadlocks under tsx
+  on Node 24 — suites keep subtests at one level.
+- **Docs:** tasks.md Phase F3.2 entry.
+
+**Exact recommended next task:** merge `feature/question-answer-generation`
+into `dev` after review (backend-only; the frontend "Generate answer" button
+in the review dialog is deliberately deferred to a later phase).
+
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, IMPLEMENTED + VALIDATED)
 
 **Status: implemented, validated, committed and pushed.** Branch:

@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC", "CHAPTER", "SUBJECT", "SYLLABUS"}
+VALID_SOURCE_TYPES = {"MATERIAL", "TOPIC", "CHAPTER", "SUBJECT", "SYLLABUS", "QUESTION"}
 
 QA_OPERATION = "AI_GENERATE_QUESTIONS"
 VALID_DIFFICULTIES = {"EASY", "MEDIUM", "HARD"}
@@ -53,6 +53,7 @@ ContentTypeName = Literal["note", "summary", "flashcards", "concepts", "cornell"
 SYLLABUS_ANALYSIS_OPERATION = "AI_ANALYZE_SYLLABUS"
 BLUEPRINT_OPERATION = "AI_GENERATE_BLUEPRINT"
 STARTER_MATERIAL_OPERATION = "AI_GENERATE_STARTER_MATERIAL"
+ANSWER_OPERATION = "AI_GENERATE_ANSWER"
 
 MAX_QUESTION_COUNT = 50
 MAX_BANK_TOTAL = 200
@@ -452,6 +453,15 @@ OPERATIONS: dict[str, Operation] = {
         default_title="AI-generated starter material",
         aggregate=None,  # handled by _generate_starter_material
     ),
+    ANSWER_OPERATION: Operation(
+        operation=ANSWER_OPERATION,
+        content_type="QUESTION",
+        build_messages=generation.answer.build_messages,
+        parse=generation.answer.parse_answer_json,
+        model=schemas.GeneratedAnswer,
+        default_title="AI-generated answer",
+        aggregate=None,  # handled by _generate_answer
+    ),
 }
 
 
@@ -489,6 +499,11 @@ def generate(
             return
         if operation.operation == STARTER_MATERIAL_OPERATION:
             _generate_starter_material(job_id, institute_id, operation, source, payload, publish)
+            return
+        # Answer generation targets an extracted REVIEW question directly —
+        # no materials, no chunks, no academic-scope resolution.
+        if operation.operation == ANSWER_OPERATION:
+            _generate_answer(job_id, institute_id, operation, source, payload)
             return
 
         materials = _resolve_materials(institute_id, source)
@@ -1214,6 +1229,154 @@ def _generate_starter_material(
         material_id,
         dependents,
     )
+
+
+def _generate_answer(
+    job_id: str,
+    institute_id: str,
+    operation: Operation,
+    source: dict[str, str],
+    payload: dict[str, Any],
+) -> None:
+    """Generate the missing answer for one extracted REVIEW candidate (F3.2).
+
+    The candidate's immutable parts (stem, question type, format, extracted
+    choices/matching items) are authoritative; only the missing answer fields
+    are generated, merged into the existing payload, and written back. The
+    candidate stays REVIEW — the teacher still approves it. A candidate that is
+    no longer a REVIEW candidate when the job lands is not an error: the job
+    completes with ``superseded: true`` and nothing is written.
+    """
+    question_id = source["id"]
+    candidate = db.get_question_candidate(question_id, institute_id)
+    if candidate is None:
+        raise GenerationError("Question candidate not found")
+
+    answer_format = str(candidate.get("answer_format") or "").upper()
+    if answer_format not in schemas.QUESTION_FORMATS:
+        raise GenerationError("Candidate answer format is not supported")
+
+    existing_payload = candidate.get("payload")
+    if not isinstance(existing_payload, dict):
+        existing_payload = {}
+
+    review: dict[str, Any] = {
+        "stem": candidate.get("stem"),
+        "questionType": candidate.get("question_type"),
+        "answerFormat": answer_format,
+        "payload": existing_payload,
+    }
+
+    _check_cancelled(job_id)
+    provider = create_provider()
+    answer = _complete_validated(
+        provider,
+        operation,
+        operation.build_messages(
+            review,
+            material_context=_question_material_context(candidate, institute_id),
+        ),
+    )
+
+    declared_format = str(answer.get("answerFormat") or "").upper()
+    if declared_format and declared_format != answer_format:
+        raise GenerationError("AI returned the answer for a different answer format")
+
+    generated_payload = answer.get("payload")
+    if not isinstance(generated_payload, dict) or not generated_payload:
+        raise GenerationError("AI returned no answer for the question")
+
+    merged = {**existing_payload, **generated_payload}
+    _validate_merged_answer(merged, answer_format)
+
+    _check_cancelled(job_id)
+    superseded = not db.write_generated_answer(question_id, institute_id, merged)
+
+    db.update_job_status(
+        job_id,
+        "completed",
+        result={
+            "questionId": question_id,
+            "superseded": superseded,
+            "answerFormat": answer_format,
+        },
+    )
+    logger.info(
+        "AI answer generated: job=%s question=%s superseded=%s",
+        job_id,
+        question_id,
+        superseded,
+    )
+
+
+def _question_material_context(
+    candidate: dict[str, Any], institute_id: str
+) -> str:
+    """Best-effort bounded source-material excerpt for the answer prompt.
+
+    The candidate's provenance records the source material it was extracted
+    from; when it exists and has text, the first bounded chunk grounds the
+    answer. Missing material/text is fine — the stem + payload on their own are
+    still a valid prompt.
+    """
+    provenance = candidate.get("provenance")
+    if not isinstance(provenance, dict):
+        return ""
+    material_id = provenance.get("materialId")
+    if not isinstance(material_id, str):
+        return ""
+    material = db.get_material(material_id, institute_id)
+    if material is None:
+        return ""
+    text = (material.get("text_content") or "").strip()
+    if not text:
+        return ""
+    chunks = _split_context(text)
+    return chunks[0] if chunks else ""
+
+
+def _validate_merged_answer(payload: dict[str, Any], answer_format: str) -> None:
+    """Deterministic gate on the merged payload before it is written.
+
+    The whole payload (extracted parts + generated answer) must validate against
+    the candidate's FULL format shape, and generated cross-references (MCQ
+    correctChoiceId, MATCHING matches) must point at existing ids — the
+    per-format payload models cannot express those references.
+    """
+    full_model = schemas.FULL_ANSWER_PAYLOAD_MODELS.get(answer_format)
+    if full_model is None:
+        raise GenerationError("Unsupported answer format")
+    try:
+        full_model.model_validate(payload)
+    except ValidationError as exc:
+        logger.warning("Merged answer failed %s validation: %s", answer_format, exc)
+        raise GenerationError("AI answer is invalid for the question format") from exc
+
+    if answer_format == "MCQ":
+        choice_ids = {
+            c.get("id")
+            for c in payload.get("choices", [])
+            if isinstance(c, dict) and isinstance(c.get("id"), str)
+        }
+        if payload.get("correctChoiceId") not in choice_ids:
+            raise GenerationError("AI answer references an unknown question choice")
+    elif answer_format == "MATCHING":
+        left_ids = {
+            i.get("id")
+            for i in payload.get("left", [])
+            if isinstance(i, dict) and isinstance(i.get("id"), str)
+        }
+        right_ids = {
+            i.get("id")
+            for i in payload.get("right", [])
+            if isinstance(i, dict) and isinstance(i.get("id"), str)
+        }
+        matches = payload.get("matches")
+        if not isinstance(matches, dict):
+            raise GenerationError("AI answer is missing the matching pairs")
+        for left_id, right_id in matches.items():
+            if left_id not in left_ids or right_id not in right_ids:
+                raise GenerationError("AI answer references an unknown matching item")
 
 
 def _enqueue_dependents(
