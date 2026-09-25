@@ -1,11 +1,11 @@
 # Project Status
 
-## Phase F3.2 — Autonomous Answer Generation (2026-09-25, IMPLEMENTED + VALIDATED)
+## Phase F3.2 — Autonomous Answer Generation (2026-09-25, IMPLEMENTED + VALIDATED + INTEGRATED)
 
-**Status: implemented, validated; branch `feature/question-answer-generation`
-(from `dev`, unmerged — coordinator merge pending).** Auto-fills the expected
-answer for extraction REVIEW candidates the extractor flagged `ANSWER_MISSING`,
-via the existing jobs/RabbitMQ/AI-worker architecture.
+**Status: implemented, validated, and integrated into `dev` via merge
+`fe202e9`.** Auto-fills the expected answer for extraction REVIEW candidates
+the extractor flagged `ANSWER_MISSING`, via the existing jobs/RabbitMQ/AI-worker
+architecture.
 
 - **API — manual trigger + reuse** (`apps/api/src/question-extraction/`):
   `POST /questions/extraction/:jobId/candidates/:questionId/generate-answer`
@@ -34,15 +34,18 @@ via the existing jobs/RabbitMQ/AI-worker architecture.
 - **Tests:** worker `test_answer_generation.py` 15 new cases; API
   `question-answer-generation.integration.ts` (`test:question-answer-`
   `generation`, 5 subtests).
-- **Validation:** worker pytest 36/36, ruff + mypy clean; API typecheck + lint
-  clean; scratch loopback PG17: new suite 5/5, RC-2 resilience 5/5, LOW-1
-  job-ownership 14/14. Note: two-level `t.test()` nesting deadlocks under tsx
-  on Node 24 — suites keep subtests at one level.
+- **Validation:** worker focused `test_answer_generation.py` 15/15; full worker
+  pytest 98/98, ruff + mypy clean; API typecheck + lint clean; extractor tests
+  28/28; scratch PG17: answer-generation 5/5, RC-2 resilience 5/5, LOW-1
+  job-ownership 14/14. API/worker containers rebuilt; API health returned 200;
+  the running worker registry contains `AI_GENERATE_ANSWER`, and the existing
+  extraction route responded 401 unauthenticated rather than 404. Note:
+  two-level `t.test()` nesting deadlocks under tsx on Node 24 — suites keep
+  subtests at one level.
 - **Docs:** tasks.md Phase F3.2 entry.
 
-**Exact recommended next task:** merge `feature/question-answer-generation`
-into `dev` after review (backend-only; the frontend "Generate answer" button
-in the review dialog is deliberately deferred to a later phase).
+**Exact recommended next task:** F3.3 remains intentionally unstarted; stop
+after this integration.
 
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, IMPLEMENTED + VALIDATED)
 

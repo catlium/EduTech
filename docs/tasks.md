@@ -2169,13 +2169,14 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       answer." stem bug + per-candidate issue pollution (runIssues spread to
       every candidate) both fixed and regression-tested.
 
-## Phase F3.2 — Autonomous Answer Generation (2026-09-25, branch `feature/question-answer-generation`, COMPLETE)
+## Phase F3.2 — Autonomous Answer Generation (2026-09-25, branch `feature/question-answer-generation`, COMPLETE + INTEGRATED INTO dev)
 
 > Auto-fills the missing expected answer for extraction REVIEW candidates that
 > the extractor flagged `ANSWER_MISSING`, using the existing jobs/RabbitMQ/AI-
 > worker architecture (AI_GENERATE_ANSWER → `ai_generation` queue → worker).
-> Kept off `dev` until merged by the coordinator. Tests require
-> `TEST_DATABASE_URL` (fresh scratch PG17, migrations applied).
+> Integrated into `dev` as merge `fe202e9`; F3.3 intentionally remains
+> unstarted. Tests require `TEST_DATABASE_URL` (fresh scratch PG17, migrations
+> applied).
 
 - [x] **API trigger + queueing** (`question-extraction.service.ts`): new
       `POST /questions/extraction/:jobId/candidates/:questionId/generate-answer`
@@ -2221,12 +2222,16 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       for the ANSWER_MISSING candidate + queued payload/ownership, manual
       reuse of active job, reuse of a completed job reported COMPLETED,
       cross-institute rejected).
-- [x] **Validation:** worker pytest 36/36 (15 new + 21 regressions
-      test_ai_reliability + test_question_bank_batch), worker ruff + mypy
-      clean; api typecheck + lint clean; api integration green on scratch
-      loopback PG17: new suite 5/5, RC-2 resilience 5/5, LOW-1 job-ownership
-      14/14. Two-level `await t.test()` nesting deadlocks under tsx on Node 24
-      — integration suites keep subtests to ONE nesting level.
+- [x] **Validation:** worker focused `test_answer_generation.py` 15/15; full
+      worker pytest 98/98, worker ruff + mypy clean; API typecheck + lint clean;
+      extractor tests 28/28; API integration green on scratch loopback PG17:
+      answer-generation 5/5, RC-2 resilience 5/5, LOW-1 job-ownership 14/14.
+      Two-level `await t.test()` nesting deadlocks under tsx on Node 24 —
+      integration suites keep subtests to ONE nesting level.
+- [x] **Integration:** merged into `dev` as `fe202e9`; API and worker images
+      rebuilt; API health 200; running worker registry contains
+      `AI_GENERATE_ANSWER`; existing extraction route remains registered.
+      F3.3 remains intentionally unstarted.
 - [x] **Docs:** project-status.md F3.2 entry.
 
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
