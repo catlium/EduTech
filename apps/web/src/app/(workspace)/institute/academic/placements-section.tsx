@@ -22,6 +22,10 @@ import {
   placeableStudents,
   placementHistory,
   bySortOrder,
+  togglePlacementSelection,
+  togglePlacementSelectAll,
+  bulkPlacementPayload,
+  canSubmitBulkPlacement,
   type AcademicYear,
   type ClassRow,
   type DivisionRow,
@@ -53,6 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -65,20 +70,21 @@ import {
 import { CarryForwardWizard } from './carry-forward-wizard';
 import { EnrollmentOverridesDialog } from './enrollments-dialog';
 
-// Phase Q.4.4 — student placement console (design §9). Which STUDENT membership
-// is placed into which division of an academic year. The roster + history render
-// for `assignments.read`; place/deactivate/transfer and the carry-forward
-// promote controls are gated by `assignments.create`/`.delete` exactly as the
-// backend declares them (transfer and carry-forward commit need create AND
-// delete). The roster picker (GET /users) is INSTITUTE_ADMIN-role-gated, so a
-// custom delegate without that role sees the table but cannot enumerate
+// Phase Q.4.4 — student placement console (design §9) + F.1 bulk placement.
+// Which STUDENT membership is placed into which division of an academic year.
+// The roster + history render for `assignments.read`; place/deactivate/transfer
+// and the carry-forward promote controls are gated by `assignments.create`/
+// `.delete` exactly as the backend declares them (transfer and carry-forward
+// commit need create AND delete, and bulk place needs `assignments.create` like
+// single place). The roster picker (GET /users) is INSTITUTE_ADMIN-role-gated,
+// so a custom delegate without that role sees the table but cannot enumerate
 // students (degraded inline, same as the teacher-assignment tab).
 
 interface PlaceDraft {
   academicYearId: string;
   classId: string;
   divisionId: string;
-  membershipId: string;
+  membershipIds: string[];
 }
 
 interface TransferDraft {
@@ -124,7 +130,7 @@ export function StudentPlacementsSection({
     academicYearId: '',
     classId: '',
     divisionId: '',
-    membershipId: '',
+    membershipIds: [],
   });
   const [transferTarget, setTransferTarget] = useState<StudentPlacement | null>(null);
   const [transferDraft, setTransferDraft] = useState<TransferDraft>({
@@ -208,7 +214,7 @@ export function StudentPlacementsSection({
       academicYearId: defaultYear(),
       classId: defaultClass(),
       divisionId: '',
-      membershipId: '',
+      membershipIds: [],
     });
   }
 
@@ -216,20 +222,24 @@ export function StudentPlacementsSection({
     setTransferDraft({ academicYearId: defaultYear(), classId: defaultClass(), divisionId: '' });
   }
 
-  async function placeStudent() {
-    if (!placeDraft.divisionId || !placeDraft.membershipId) return;
+  async function placeStudents() {
+    if (!canSubmitBulkPlacement(placeDraft.membershipIds, placeDraft.divisionId)) return;
     setBusy(true);
     try {
-      await api('/academic/student-placements', {
+      await api('/academic/student-placements/bulk', {
         method: 'POST',
-        body: { membershipId: placeDraft.membershipId, divisionId: placeDraft.divisionId },
+        body: bulkPlacementPayload(placeDraft.membershipIds, placeDraft.divisionId),
       });
-      toast.success('Student placed');
+      toast.success(
+        placeDraft.membershipIds.length === 1
+          ? 'Student placed'
+          : `${placeDraft.membershipIds.length} students placed`,
+      );
       setPlaceOpen(false);
       await load();
       onChange();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to place student');
+      toast.error(err instanceof ApiError ? err.message : 'Failed to place students');
     } finally {
       setBusy(false);
     }
@@ -414,10 +424,11 @@ export function StudentPlacementsSection({
       <Dialog open={placeOpen} onOpenChange={(o) => setPlaceOpen(o)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Place a student</DialogTitle>
+            <DialogTitle>Place students</DialogTitle>
             <DialogDescription>
-              Choose the year, class and division to place a STUDENT member into. A student can
-              hold one active placement per academic year.
+              Choose the year, class and division, then select the STUDENT members to place — one
+              or many, submitted as a single batch. A student can hold one active placement per
+              academic year.
             </DialogDescription>
           </DialogHeader>
 
@@ -428,7 +439,7 @@ export function StudentPlacementsSection({
                 <Select
                   value={placeDraft.academicYearId}
                   onValueChange={(academicYearId) =>
-                    setPlaceDraft((d) => ({ ...d, academicYearId, divisionId: '', membershipId: '' }))
+                    setPlaceDraft((d) => ({ ...d, academicYearId, divisionId: '', membershipIds: [] }))
                   }
                 >
                   <SelectTrigger>
@@ -448,7 +459,7 @@ export function StudentPlacementsSection({
                 <Select
                   value={placeDraft.classId}
                   onValueChange={(classId) =>
-                    setPlaceDraft((d) => ({ ...d, classId, divisionId: '', membershipId: '' }))
+                    setPlaceDraft((d) => ({ ...d, classId, divisionId: '', membershipIds: [] }))
                   }
                 >
                   <SelectTrigger>
@@ -467,13 +478,13 @@ export function StudentPlacementsSection({
 
             <div className="space-y-1.5">
               <Label>Division</Label>
-              <Select
-                value={placeDraft.divisionId}
-                onValueChange={(divisionId) =>
-                  setPlaceDraft((d) => ({ ...d, divisionId, membershipId: '' }))
-                }
-                disabled={!placeDraft.academicYearId || !placeDraft.classId}
-              >
+<Select
+                  value={placeDraft.divisionId}
+                  onValueChange={(divisionId) =>
+                    setPlaceDraft((d) => ({ ...d, divisionId, membershipIds: [] }))
+                  }
+                  disabled={!placeDraft.academicYearId || !placeDraft.classId}
+                >
                 <SelectTrigger>
                   <SelectValue
                     placeholder={
@@ -494,31 +505,75 @@ export function StudentPlacementsSection({
             </div>
 
             <div className="space-y-1.5">
-              <Label>Student</Label>
-              <Select
-                value={placeDraft.membershipId}
-                onValueChange={(membershipId) => setPlaceDraft((d) => ({ ...d, membershipId }))}
-                disabled={!placeDraft.divisionId}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      !placeDraft.divisionId
-                        ? 'Pick a division first'
-                        : placeable.length === 0
-                          ? 'No placeable students'
-                          : 'Select a student'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {placeable.map((student) => (
-                    <SelectItem key={student.membershipId} value={student.membershipId}>
-                      {student.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Students</Label>
+              {!placeDraft.divisionId ? (
+                <p className="text-sm text-muted-foreground">
+                  Pick a division first to list the eligible student roster.
+                </p>
+              ) : placeable.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No placeable students in this division's academic year.
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setPlaceDraft((d) => ({
+                            ...d,
+                            membershipIds: togglePlacementSelectAll(
+                              d.membershipIds,
+                              placeable.map((s) => s.membershipId),
+                            ),
+                          }))
+                        }
+                      >
+                        Select all
+                      </Button>
+                      {placeDraft.membershipIds.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setPlaceDraft((d) => ({ ...d, membershipIds: [] }))}
+                        >
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                    <span className="text-muted-foreground">
+                      {placeDraft.membershipIds.length} selected
+                    </span>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto rounded-md border">
+                    {placeable.map((student) => (
+                      <label
+                        key={student.membershipId}
+                        className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted/50"
+                      >
+                        <Checkbox
+                          checked={placeDraft.membershipIds.includes(student.membershipId)}
+                          onCheckedChange={() =>
+                            setPlaceDraft((d) => ({
+                              ...d,
+                              membershipIds: togglePlacementSelection(
+                                d.membershipIds,
+                                student.membershipId,
+                              ),
+                            }))
+                          }
+                        />
+                        <span className="font-medium">{student.name}</span>
+                        <span className="text-muted-foreground">{student.email}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
               {rosterUnavailable && (
                 <p className="text-xs text-muted-foreground">
                   The student roster is unavailable to your role — listable by institute admins
@@ -538,9 +593,13 @@ export function StudentPlacementsSection({
             >
               Cancel
             </Button>
-            <Button onClick={() => void placeStudent()} disabled={!placeDraft.membershipId || busy}>
+            <Button
+              onClick={() => void placeStudents()}
+              disabled={!canSubmitBulkPlacement(placeDraft.membershipIds, placeDraft.divisionId) || busy}
+            >
               {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Place student
+              Place {placeDraft.membershipIds.length}{' '}
+              {placeDraft.membershipIds.length === 1 ? 'student' : 'students'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,74 @@
 # Project Status
 
+## Phase F.1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Branch: `feature/fix-student-placement-multiselect` (unmerged feature branch,
+pushed), HEAD add `docs(blackbook): strip chapter pages…` =
+`docs(blackbook): strip chapter pages and blanks from diagrams-only pdf`
+(commit `feat(authz): record final E-track audit for enrollment overrides` is
+the tip of the merged work; this branch adds the F.1 console surface on top).
+Design context: `docs/architecture/academic-student-placement.md` §9/Q.4.4
+console + §7/§8 contracts; authorization mirrors the per-student create path.
+
+Ships the atomic bulk-placement surface on top of the single-place console:
+an institute admin checks off any subset of the visible, placeable STUDENT
+roster and submits ONE `POST …/student-placements/bulk` request. The batch is
+deduplicated, revalidated, and committed in a single all-or-nothing
+transaction — any conflict rolls back the entire batch. Single-student
+placement (Q.4.x), history, transfer, carry-forward, delegation, permission
+gating and 403 behavior are all preserved and re-validated.
+
+- **Backend** (`apps/api/src/academic-structure/`):
+  - DTO `CreateStudentPlacementsBulkDto {membershipIds: UUID[], divisionId:
+    UUID}` (`@IsArray`/`@ArrayNotEmpty`/`@IsUUID('4',{each:true})` + division).
+  - `POST /academic/student-placements/bulk` (`@HttpCode(201)`), authz =
+    `assignments.create` (`@RequiredPassword(?)` → actually `RequiredPermission
+    create` AND the existing tenant/roles/guard chain), same as single create.
+    Declared before the `@Get(':placementId')` sibling so the literal `bulk`
+    segment wins the route match.
+  - Service `createStudentPlacementsBulk(instituteId, {membershipIds,
+    divisionId})`: non-empty guard (400), institute-scoped division lookup,
+    year derived from the division, server-side ID dedup (`Set`), then a single
+    `db.transaction`: every membership revalidated via
+    `requireActiveStudentMembership` (active same-institute STUDENT else 400),
+    all rows inserted together; the partial-unique index violation is mapped to
+    a 409 conflict and the whole transaction rolls back (`throwIfUniqueViolation`).
+  - No schema/migration change (reuses the existing partial-unique invariant).
+- **Frontend** (`apps/web/`):
+  - Pure helpers in `apps/web/src/lib/academic.ts` (+`academic.test.ts`):
+    `togglePlacementSelection`, `togglePlacementSelectAll` (visible-subset
+    select/clear, outside-visible preserved), `bulkPlacementPayload`
+    (`{membershipIds, divisionId}`), `canSubmitBulkPlacement` (requires a
+    division AND ≥1 selected). Unit coverage 4 new cases.
+  - `placements-section.tsx` — the Place dialog now offers a multi-select
+    roster (checkboxes) with Select-all/Clear and a live “N selected” count,
+    submitting the single bulk payload once; loading/error/success toasts,
+    refresh-on-success, division/year/class gating preserved. The dialog and
+    roster picker authz/gating unchanged from Q.4.4.
+- **Tests:**
+  - Backend: new `student-placements-bulk.integration.ts` (`test:student-
+    placements-bulk`, TEST_DATABASE_URL-gated): happy path (multiple active
+    STUDENTs → N active rows, derived year/division), duplicate-ID dedup,
+    atomic rollback on any member conflict (siblings absent), inactive
+    student 400, foreign/cross-institute membership 400/404, institute
+    isolation. Plus `student-placements-authz.integration.ts` extended 6/6 →
+    7/7 to drive the REAL bulk controller handler through the REAL guard
+    chain: admin passes, delete-only delegate DENIED, cross-institute
+    delegate DENIED, create-only delegate CAN bulk (mirrors single create),
+    bulk conflict → full rollback.
+  - Web: `academic.test.ts` 24 → 28/28.
+- **Validation:** api bulk integration 1/1, authz 8/8, single-placement
+  1/1 on the scratch loopback PG17 (`127.0.0.1:5433`); repo typecheck 10/10,
+  api lint clean, `nest build` clean, web `next build` clean, web academic
+  tests 28/28.
+- **Docs:** this entry; tasks.md (Phase F.1 entry).
+
+**Exact recommended next task:** merge `feature/fix-student-placement-
+multiselect` into `feature/student-placement` (or the integration branch)
+after review, or proceed to the next planned work-item per tasks.md — this
+branch has no merge and no further F.1 sub-items are open.
+
 ## Phase Q.4.4 — Institute Admin Student Placement Console + Carry-Forward Wizard (2026-09-24)
 
 **Status: IMPLEMENTED + VALIDATED.**

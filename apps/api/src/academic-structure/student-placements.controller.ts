@@ -15,6 +15,7 @@ import {
 import { StudentPlacementsService } from './student-placements.service.js';
 import {
   CreateStudentPlacementDto,
+  CreateStudentPlacementsBulkDto,
   TransferStudentPlacementDto,
   CarryForwardPreviewDto,
   CarryForwardCommitDto,
@@ -85,6 +86,25 @@ export class StudentPlacementsController {
       dto,
     );
     return { placement };
+  }
+
+  // F.1 — bulk place many students into one division in a single atomic
+  // request. Same authorization model as single create (assignments.create),
+  // same service invariants, one transaction — any conflict rolls back the
+  // whole batch. Declared before @Get(':placementId')'s sibling POSTs so the
+  // literal segment wins over any param route.
+  @Post('bulk')
+  @HttpCode(HttpStatus.CREATED)
+  @RequiredPermission('assignments.create')
+  async createStudentPlacementsBulk(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: CreateStudentPlacementsBulkDto,
+  ) {
+    const placements = await this.studentPlacementsService.createStudentPlacementsBulk(
+      tenant.instituteId,
+      dto,
+    );
+    return { placements };
   }
 
   @Post(':placementId/transfer')

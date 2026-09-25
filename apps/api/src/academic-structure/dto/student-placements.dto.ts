@@ -12,6 +12,21 @@ export class CreateStudentPlacementDto {
   divisionId!: string;
 }
 
+// F.1 — bulk placement: place many STUDENT memberships into ONE division in a
+// single atomic request. Duplicate IDs are tolerated (deduplicated server-side);
+// the same division/year semantics as single create apply to every member.
+export class CreateStudentPlacementsBulkDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID('4', { each: true })
+  membershipIds!: string[];
+
+  // The shared destination division for every member; its academic year +
+  // class are derived server-side (never client-supplied).
+  @IsUUID()
+  divisionId!: string;
+}
+
 export class TransferStudentPlacementDto {
   @IsUUID()
   divisionId!: string;
