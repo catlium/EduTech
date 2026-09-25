@@ -2154,6 +2154,41 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       answer." stem bug + per-candidate issue pollution (runIssues spread to
       every candidate) both fixed and regression-tested.
 
+## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
+
+> Two correctness fixes on top of the question-extraction work above. Kept off
+> `dev` until merged by the coordinator. Tests require `TEST_DATABASE_URL`
+> (fresh scratch PG17, 49/49 migrations applied).
+
+- [x] **RC-1 — QP_EXTRACT teacher review authorization.** A teacher-owned
+      `QP_EXTRACT` job has no `subjectId` in its payload, so the coordinator
+      gate in `QuestionExtractionService.gateCandidateJob` treated the owner
+      as being outside every subject scope and returned 403. Fix: read
+      `subjectId` from the job payload; when present keep the
+      `requireWritableSubject` check (QUESTION_EXTRACT stays subject-scoped),
+      when absent fall through to the owner-or-institute-admin gate. Job
+      ownership (`jobs.createdBy`) is still server-stamped; non-owner
+      teachers get NotFound; cross-tenant stays denied.
+- [x] **RC-2 — extraction batch resilience.** Both extraction paths
+      (`QUESTION_EXTRACT` in `question-extraction.service.ts`, `QP_EXTRACT`
+      in `question-paper-extraction.service.ts`) looped candidates with one
+      throw aborting the run and discarding already-detected candidates. Now
+      each candidate is processed independently in a try/catch; failures are
+      recorded in a compact
+      `result.unresolvedQuestions` = `[{ ref, format, error }]` entry
+      (`ref` = original number or first stem line, max 60 chars). Unexpected
+      wiring errors outside the per-candidate loop still fail the job
+      normally. All-valid runs keep the exact legacy result shape
+      (no `unresolvedQuestions` key).
+- [x] **Tests:** `test:job-ownership` (14 subtests incl. RC-1: owning teacher
+      can review, non-owner denied, admin allowed, QUESTION_EXTRACT
+      out-of-scope still 403, cross-tenant denied); new
+      `test:question-extraction-resilience` (RC-2: mixed + all-valid batches
+      for both paths — global TRUE_FALSE template removed from the scratch DB
+      to force the unresolvable format, restored on exit).
+- [x] **Validation:** api typecheck + lint clean; RC-1 14/14, RC-2 5/5,
+      `question-extractor.test.ts` 12/12, `pattern-extractor.test.ts` 16/16.
+
 ## Phase 46 — Paper-pattern extraction from materials (Phase B, 2026-09-18)
 
 > **Amended by Phase 48 A (2026-09-19)**: extraction is now a generic

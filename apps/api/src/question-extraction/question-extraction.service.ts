@@ -288,45 +288,54 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       );
 
     const rows = [];
+    const unresolvedQuestions: Array<{ ref: string; format: string; error: string }> = [];
     for (const detectedQuestion of detected) {
-      const { chapterId, topicId, issues: scopeIssues } = assignScope(
-        detectedQuestion.matchText,
-        targets,
-        scopeConstraint,
-      );
-      const type = await this.resolveType(instituteId, detectedQuestion);
-      const issues = [...detectedQuestion.issues, ...scopeIssues];
-      const provenance: QuestionExtractionProvenance = {
-        operation: 'EXTRACT_QUESTIONS',
-        jobId,
-        materialId,
-        materialRevision: material.revision,
-        subjectId: resolvedSubjectId,
-        source,
-        page: detectedQuestion.page,
-        blockIds: detectedQuestion.blockIds,
-        originalNumber: detectedQuestion.originalNumber,
-        originalSection: detectedQuestion.section,
-        originalMarks: detectedQuestion.originalMarks,
-        issues,
-        extractedAt: new Date().toISOString(),
-      };
-      rows.push({
-        subjectId: resolvedSubjectId,
-        chapterId: chapterId ?? null,
-        topicId: topicId ?? null,
-        stem: detectedQuestion.stem,
-        questionType: type.code,
-        answerFormat: type.answerFormat,
-        difficulty: detectedQuestion.difficulty ?? 'MEDIUM',
-        payload: detectedQuestion.payload,
-        source: 'EXTRACTED',
-        provenance,
-        approvalStatus: 'PENDING',
-        status: 'REVIEW',
-        createdBy: createdBy ?? material.createdBy,
-        updatedBy: createdBy ?? material.createdBy,
-      });
+      try {
+        const { chapterId, topicId, issues: scopeIssues } = assignScope(
+          detectedQuestion.matchText,
+          targets,
+          scopeConstraint,
+        );
+        const type = await this.resolveType(instituteId, detectedQuestion);
+        const issues = [...detectedQuestion.issues, ...scopeIssues];
+        const provenance: QuestionExtractionProvenance = {
+          operation: 'EXTRACT_QUESTIONS',
+          jobId,
+          materialId,
+          materialRevision: material.revision,
+          subjectId: resolvedSubjectId,
+          source,
+          page: detectedQuestion.page,
+          blockIds: detectedQuestion.blockIds,
+          originalNumber: detectedQuestion.originalNumber,
+          originalSection: detectedQuestion.section,
+          originalMarks: detectedQuestion.originalMarks,
+          issues,
+          extractedAt: new Date().toISOString(),
+        };
+        rows.push({
+          subjectId: resolvedSubjectId,
+          chapterId: chapterId ?? null,
+          topicId: topicId ?? null,
+          stem: detectedQuestion.stem,
+          questionType: type.code,
+          answerFormat: type.answerFormat,
+          difficulty: detectedQuestion.difficulty ?? 'MEDIUM',
+          payload: detectedQuestion.payload,
+          source: 'EXTRACTED',
+          provenance,
+          approvalStatus: 'PENDING',
+          status: 'REVIEW',
+          createdBy: createdBy ?? material.createdBy,
+          updatedBy: createdBy ?? material.createdBy,
+        });
+      } catch (error) {
+        unresolvedQuestions.push({
+          ref: detectedQuestion.originalNumber ?? stemSnippet(detectedQuestion.stem),
+          format: detectedQuestion.format,
+          error: error instanceof Error ? error.message : 'Extraction failed',
+        });
+      }
     }
 
     if (rows.length > 0) {
@@ -342,6 +351,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       candidateCount,
       reviewRequiredCount,
       issueCount,
+      ...(unresolvedQuestions.length > 0 ? { unresolvedQuestions } : {}),
       source,
       materialRevision: material.revision,
     });
@@ -350,7 +360,9 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
   // ── Review reads ─────────────────────────────────────────────────
 
   /** REVIEW candidates are staged work owned by the requesting teacher — O1:
-   *  owner or institute admin, always inside the subject scope (§18.7). */
+   *  owner or institute admin. Subject-scope applies only when the run is
+   *  subject-anchored (QUESTION_EXTRACT from a material); QP_EXTRACT runs carry
+   *  no subjectId, so they gate on ownership alone (§18.7). */
   private async gateCandidateJob(
     instituteId: string,
     membershipId: string,
@@ -359,7 +371,9 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
   ): Promise<void> {
     const job = await this.jobsService.getJob(jobId, instituteId);
     const subjectId = String(job.payload?.['subjectId'] ?? '');
-    await this.scope.requireWritableSubject(instituteId, membershipId, subjectId);
+    if (subjectId) {
+      await this.scope.requireWritableSubject(instituteId, membershipId, subjectId);
+    }
     const scope = await this.scope.resolveScope(instituteId, membershipId);
     const owner = job.createdBy ?? undefined;
     if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
@@ -803,4 +817,10 @@ function payloadOf(payload: unknown): Record<string, unknown> | null {
 
 function normalizeMessage(message: string): string {
   return message.replace(/^Bad Request Exception:? ?|^Not Found Exception:? ?/i, '').trim();
+}
+
+/** Compact first-line snippet of a question stem, for unresolved-question refs. */
+function stemSnippet(stem: string): string {
+  const line = stem.split('\n').find((l) => l.trim().length > 0) ?? stem;
+  return line.trim().slice(0, 60);
 }

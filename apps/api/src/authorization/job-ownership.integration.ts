@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import { eq, inArray } from 'drizzle-orm';
 import { validate } from 'class-validator';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 import { createDatabase } from '@catlium/database';
 import type { Database } from '@catlium/database';
@@ -77,6 +77,7 @@ test('LOW-1 trusted job ownership', { skip }, async (t) => {
 
   const owner = await member('owner-teacher', 'TEACHER');
   const other = await member('other-teacher', 'TEACHER');
+  const outsider = await member('outsider-teacher', 'TEACHER');
   const admin = await member('owner-admin', 'INSTITUTE_ADMIN');
 
   // A writable subject for the QUESTION_EXTRACT gate (teacher assignment).
@@ -91,7 +92,7 @@ test('LOW-1 trusted job ownership', { skip }, async (t) => {
   t.after(async () => {
     if (!db) return;
     await db.delete(jobs).where(inArray(jobs.id, scratchJobs));
-    const emails = [`owner-teacher-${suffix}@example.test`, `other-teacher-${suffix}@example.test`, `owner-admin-${suffix}@example.test`];
+    const emails = [`owner-teacher-${suffix}@example.test`, `other-teacher-${suffix}@example.test`, `outsider-teacher-${suffix}@example.test`, `owner-admin-${suffix}@example.test`];
     const userIds = (await db.select({ id: users.id }).from(users).where(inArray(users.email, emails))).map((r) => r.id);
     if (userIds.length === 0) return;
     const membershipIds = (await db.select({ id: memberships.id }).from(memberships).where(inArray(memberships.userId, userIds))).map((r) => r.id);
@@ -199,6 +200,83 @@ test('LOW-1 trusted job ownership', { skip }, async (t) => {
       NotFoundException,
     );
     assert.equal((await service.getExtraction(inst.id, admin.membershipId, admin.userId, job.id)).createdBy, owner.userId);
+  });
+
+  await t.test('RC-1: QP_EXTRACT owning teacher can review candidates (no subject scope needed)', async () => {
+    const svc = db as Database;
+    const service = new QuestionExtractionService(
+      svc, jobsService, {} as unknown as never, new QuestionTypesService(svc), {} as unknown as never, scope,
+    );
+    const job = await jobsService.insertJob(inst.id, 'QP_EXTRACT', { sourceHash: randomUUID() }, owner.userId);
+    scratchJobs.push(job.id);
+
+    // QP_EXTRACT payloads carry no subjectId; the subject-scope gate is skipped
+    // and the owner-or-admin gate decides (owner wins).
+    const read = await service.getExtraction(inst.id, owner.membershipId, owner.userId, job.id);
+    assert.equal(read.createdBy, owner.userId);
+  });
+
+  await t.test('RC-1: QP_EXTRACT non-owner teacher is denied (not found)', async () => {
+    const svc = db as Database;
+    const service = new QuestionExtractionService(
+      svc, jobsService, {} as unknown as never, new QuestionTypesService(svc), {} as unknown as never, scope,
+    );
+    const job = await jobsService.insertJob(inst.id, 'QP_EXTRACT', { sourceHash: randomUUID() }, owner.userId);
+    scratchJobs.push(job.id);
+
+    await assert.rejects(
+      service.getExtraction(inst.id, other.membershipId, other.userId, job.id),
+      NotFoundException,
+    );
+  });
+
+  await t.test('RC-1: QP_EXTRACT institute admin can review candidates', async () => {
+    const svc = db as Database;
+    const service = new QuestionExtractionService(
+      svc, jobsService, {} as unknown as never, new QuestionTypesService(svc), {} as unknown as never, scope,
+    );
+    const job = await jobsService.insertJob(inst.id, 'QP_EXTRACT', { sourceHash: randomUUID() }, owner.userId);
+    scratchJobs.push(job.id);
+
+    const read = await service.getExtraction(inst.id, admin.membershipId, admin.userId, job.id);
+    assert.equal(read.createdBy, owner.userId);
+  });
+
+  await t.test('RC-1: QUESTION_EXTRACT teacher outside subject scope is still 403', async () => {
+    const svc = db as Database;
+    const service = new QuestionExtractionService(
+      svc, jobsService, {} as unknown as never, new QuestionTypesService(svc), {} as unknown as never, scope,
+    );
+    // `outsider` is a TEACHER with no assignment — subject set is empty, so the
+    // subject-scope gate must still reject a QUESTION_EXTRACT run.
+    const job = await jobsService.insertJob(
+      inst.id,
+      'QUESTION_EXTRACT',
+      { materialId: randomUUID(), subjectId: subject.id, userId: other.userId },
+      owner.userId,
+    );
+    scratchJobs.push(job.id);
+
+    await assert.rejects(
+      service.getExtraction(inst.id, outsider.membershipId, outsider.userId, job.id),
+      ForbiddenException,
+    );
+  });
+
+  await t.test('RC-1: cross-tenant candidate/job gate is denied', async () => {
+    const svc = db as Database;
+    const service = new QuestionExtractionService(
+      svc, jobsService, {} as unknown as never, new QuestionTypesService(svc), {} as unknown as never, scope,
+    );
+    const [foreign] = await svc.insert(institutes).values({ name: `owner-foreign-${suffix}`, slug: `owner-foreign-${suffix}` }).returning();
+    const job = await jobsService.insertJob(foreign.id, 'QP_EXTRACT', { sourceHash: randomUUID() }, owner.userId);
+    scratchJobs.push(job.id);
+    await db!.delete(institutes).where(inArray(institutes.id, [foreign.id]));
+
+    await assert.rejects(
+      service.getExtraction(inst.id, owner.membershipId, owner.userId, job.id),
+      NotFoundException,
+    );
   });
 
   await t.test('Q: tenant isolation remains intact', async () => {

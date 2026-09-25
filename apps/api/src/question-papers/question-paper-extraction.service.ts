@@ -324,32 +324,41 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       originalMarks: number | null;
       section: string | null;
     }> = [];
+    const unresolvedQuestions: Array<{ ref: string; format: string; error: string }> = [];
     for (const detectedQuestion of detected) {
-      const type = await this.resolveType(instituteId, detectedQuestion);
-      const provenance: QuestionExtractionProvenance = {
-        operation: 'EXTRACT_QUESTIONS',
-        jobId,
-        ...(paperId ? { paperId } : {}),
-        source,
-        page: detectedQuestion.page,
-        blockIds: detectedQuestion.blockIds,
-        originalNumber: detectedQuestion.originalNumber,
-        originalSection: detectedQuestion.section,
-        originalMarks: detectedQuestion.originalMarks,
-        issues: detectedQuestion.issues,
-        extractedAt: new Date().toISOString(),
-      };
-      rows.push({
-        stem: detectedQuestion.stem,
-        questionType: type.code,
-        answerFormat: type.answerFormat,
-        difficulty: detectedQuestion.difficulty ?? 'MEDIUM',
-        payload: detectedQuestion.payload,
-        provenance,
-        issues: detectedQuestion.issues,
-        originalMarks: detectedQuestion.originalMarks,
-        section: detectedQuestion.section,
-      });
+      try {
+        const type = await this.resolveType(instituteId, detectedQuestion);
+        const provenance: QuestionExtractionProvenance = {
+          operation: 'EXTRACT_QUESTIONS',
+          jobId,
+          ...(paperId ? { paperId } : {}),
+          source,
+          page: detectedQuestion.page,
+          blockIds: detectedQuestion.blockIds,
+          originalNumber: detectedQuestion.originalNumber,
+          originalSection: detectedQuestion.section,
+          originalMarks: detectedQuestion.originalMarks,
+          issues: detectedQuestion.issues,
+          extractedAt: new Date().toISOString(),
+        };
+        rows.push({
+          stem: detectedQuestion.stem,
+          questionType: type.code,
+          answerFormat: type.answerFormat,
+          difficulty: detectedQuestion.difficulty ?? 'MEDIUM',
+          payload: detectedQuestion.payload,
+          provenance,
+          issues: detectedQuestion.issues,
+          originalMarks: detectedQuestion.originalMarks,
+          section: detectedQuestion.section,
+        });
+      } catch (error) {
+        unresolvedQuestions.push({
+          ref: detectedQuestion.originalNumber ?? stemSnippet(detectedQuestion.stem),
+          format: detectedQuestion.format,
+          error: error instanceof Error ? error.message : 'Extraction failed',
+        });
+      }
     }
 
     await this.db.transaction(async (tx) => {
@@ -417,6 +426,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       candidateCount,
       reviewRequiredCount,
       issueCount,
+      ...(unresolvedQuestions.length > 0 ? { unresolvedQuestions } : {}),
       totalMarks: paperTotals.totalMarks,
       durationMinutes: paperTotals.durationMinutes,
     });
@@ -633,6 +643,12 @@ function extOf(mimeType: string): string {
     default:
       return 'bin';
   }
+}
+
+/** Compact first-line snippet of a question stem, for unresolved-question refs. */
+function stemSnippet(stem: string): string {
+  const line = stem.split('\n').find((l) => l.trim().length > 0) ?? stem;
+  return line.trim().slice(0, 60);
 }
 
 function titleFrom(fileName: string | undefined, text: string | undefined): string {

@@ -1,5 +1,44 @@
 # Project Status
 
+## Phase F3.1 — Question-Extraction Unblock (2026-09-25, IMPLEMENTED + VALIDATED)
+
+**Status: implemented, validated, committed and pushed.** Branch:
+`feature/fix-question-extraction` (from `dev`, unmerged — coordinator merge
+pending). Two correctness fixes found while reviewing question extraction.
+
+- **RC-1 — QP_EXTRACT teacher review authorization**
+  (`apps/api/src/question-extraction/question-extraction.service.ts`,
+  `gateCandidateJob`): a teacher-owned QP_EXTRACT job has no `subjectId` in
+  its payload, so the former gate treated the owner as outside every subject
+  scope → 403 on their own run. Now: payload `subjectId` present →
+  `requireWritableSubject` kept (QUESTION_EXTRACT stays subject-scoped);
+  subjectId absent → owner-or-institute-admin gate instead. Job ownership
+  stays server-stamped; non-owner teacher → NotFound; cross-tenant → denied.
+- **RC-2 — extraction batch resilience** (both
+  `question-extraction.service.ts` QUESTION_EXTRACT and
+  `question-papers/question-paper-extraction.service.ts` QP_EXTRACT): a
+  single unresolvable candidate (e.g. an answer format no question type
+  covers) used to abort the whole run. Each candidate now processes
+  independently; failures land in a compact
+  `result.unresolvedQuestions` = `[{ ref, format, error }]` entry; valid
+  candidates persist; all-valid runs keep the exact legacy result shape
+  (no `unresolvedQuestions` key).
+- **Tests:** RC-1 in `authorization/job-ownership.integration.ts`
+  (`test:job-ownership`, 14 subtests); RC-2 in new
+  `question-extraction/question-extraction-resilience.integration.ts`
+  (`test:question-extraction-resilience`, 5 subtests). The resilience suite
+  removes the migration-0017 global TRUE_FALSE template from the scratch DB
+  to force the unresolvable format (restored on exit).
+- **Validation:** scratch loopback PG17 (`127.0.0.1:15432`, fresh,
+  49/49 migrations): `test:job-ownership` 14/14, `test:question-extraction-
+  resilience` 5/5; `question-extractor.test.ts` 12/12, `pattern-extractor
+  .test.ts` 16/16; api `typecheck` + `lint` clean.
+- **Docs:** tasks.md Phase F3.1 entry.
+
+**Exact recommended next task:** merge `feature/fix-question-extraction`
+into `dev` after review (RC-1 + RC-2 are small, self-contained, and fully
+regression-tested).
+
 ## Phase F.1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
 
 **Status: IMPLEMENTED + VALIDATED.**
