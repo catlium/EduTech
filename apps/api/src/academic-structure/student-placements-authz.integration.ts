@@ -58,6 +58,7 @@ const sign = (sub: string, sid: string) => JWT.signAsync({ sub, sid }, { expires
 const LIST = StudentPlacementsController.prototype.listStudentPlacements;
 const GET = StudentPlacementsController.prototype.getStudentPlacement;
 const CREATE = StudentPlacementsController.prototype.createStudentPlacement;
+const BULK = StudentPlacementsController.prototype.createStudentPlacementsBulk;
 const DELETE = StudentPlacementsController.prototype.deactivateStudentPlacement;
 const TRANSFER = StudentPlacementsController.prototype.transferStudentPlacement;
 const CARRY_PREVIEW = StudentPlacementsController.prototype.previewCarryForward;
@@ -155,6 +156,7 @@ test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_D
       `sp_delegate_both-${suffix}`, `sp_delegate_manage-${suffix}`, `sp_cross_delegate-${suffix}`,
       `sp_beh_studentA-${suffix}`, `sp_beh_studentB-${suffix}`, `sp_beh_studentX-${suffix}`,
       `sp_beh_studentC-${suffix}`, `sp_beh_studentD-${suffix}`,
+      `sp_beh_studentE-${suffix}`, `sp_beh_studentF-${suffix}`, `sp_beh_studentG-${suffix}`,
     ].map((e) => `${e}@example.test`);
     const userIds = (await db.select({ id: users.id }).from(users).where(inArray(users.email, emails))).map((r) => r.id!);
     if (userIds.length === 0) return;
@@ -200,22 +202,28 @@ test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_D
   const inactiveStudent = await makeUser('sp_beh_studentX');
   const studentC = await makeUser('sp_beh_studentC');
   const studentD = await makeUser('sp_beh_studentD');
+  const studentE = await makeUser('sp_beh_studentE');
+  const studentF = await makeUser('sp_beh_studentF');
+  const studentG = await makeUser('sp_beh_studentG');
   await grantMembership(instA!.id, studentA!.id, ['STUDENT']);
   await grantMembership(instA!.id, studentB!.id, ['STUDENT']);
   await grantMembership(instA!.id, studentC!.id, ['STUDENT']);
   await grantMembership(instA!.id, studentD!.id, ['STUDENT']);
+  await grantMembership(instA!.id, studentE!.id, ['STUDENT']);
+  await grantMembership(instA!.id, studentF!.id, ['STUDENT']);
+  await grantMembership(instA!.id, studentG!.id, ['STUDENT']);
   const [inactiveMembership] = await db!.insert(memberships).values({ userId: inactiveStudent!.id, instituteId: instA!.id, status: 'deactivated' }).returning();
   await db!.insert(membershipRoles).values({ membershipId: inactiveMembership!.id, roleId: roleIds.STUDENT! });
 
-  await t.test('built-in INSTITUTE_ADMIN passes read/get/create/delete/transfer/carry-forward via assignments.manage', async () => {
-    for (const handler of [LIST, GET, CREATE, DELETE, TRANSFER, CARRY_PREVIEW, CARRY_COMMIT]) {
+  await t.test('built-in INSTITUTE_ADMIN passes read/get/create/bulk/delete/transfer/carry-forward via assignments.manage', async () => {
+    for (const handler of [LIST, GET, CREATE, BULK, DELETE, TRANSFER, CARRY_PREVIEW, CARRY_COMMIT]) {
       await runChain(handler, await ctx('admin'));
     }
   });
 
   await t.test('TEACHER/STUDENT/zero-role default-deny every placement route', async () => {
     for (const who of ['teacher', 'student', 'zeroRole'] as const) {
-      for (const handler of [LIST, GET, CREATE, DELETE, TRANSFER, CARRY_PREVIEW, CARRY_COMMIT]) {
+      for (const handler of [LIST, GET, CREATE, BULK, DELETE, TRANSFER, CARRY_PREVIEW, CARRY_COMMIT]) {
         await assert.rejects(
           runChain(handler, await ctx(who)),
           ForbiddenException,
@@ -255,24 +263,26 @@ test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_D
     await runChain(LIST, await ctx('delegateRead'));
     await runChain(GET, await ctx('delegateRead'));
     await runChain(CARRY_PREVIEW, await ctx('delegateRead'));
-    for (const handler of [CREATE, DELETE, TRANSFER, CARRY_COMMIT]) {
+    for (const handler of [CREATE, BULK, DELETE, TRANSFER, CARRY_COMMIT]) {
       await assert.rejects(runChain(handler, await ctx('delegateRead')), ForbiddenException);
     }
 
-    // create-only: create yes, reads/delete no, transfer AND commit DENIED (lack delete).
+    // create-only: create + bulk yes, reads/delete no, transfer AND commit DENIED (lack delete).
     await assert.rejects(runChain(LIST, await ctx('delegateCreate')), ForbiddenException);
     await assert.rejects(runChain(GET, await ctx('delegateCreate')), ForbiddenException);
     await assert.rejects(runChain(CARRY_PREVIEW, await ctx('delegateCreate')), ForbiddenException);
     await runChain(CREATE, await ctx('delegateCreate'));
+    await runChain(BULK, await ctx('delegateCreate'));
     await assert.rejects(runChain(DELETE, await ctx('delegateCreate')), ForbiddenException);
     await assert.rejects(runChain(TRANSFER, await ctx('delegateCreate')), ForbiddenException);
     await assert.rejects(runChain(CARRY_COMMIT, await ctx('delegateCreate')), ForbiddenException);
 
-    // delete-only: delete yes, reads/create no, transfer AND commit DENIED (lack create).
+    // delete-only: delete yes, reads/create/bulk no, transfer AND commit DENIED (lack create).
     await assert.rejects(runChain(LIST, await ctx('delegateDelete')), ForbiddenException);
     await assert.rejects(runChain(GET, await ctx('delegateDelete')), ForbiddenException);
     await assert.rejects(runChain(CARRY_PREVIEW, await ctx('delegateDelete')), ForbiddenException);
     await assert.rejects(runChain(CREATE, await ctx('delegateDelete')), ForbiddenException);
+    await assert.rejects(runChain(BULK, await ctx('delegateDelete')), ForbiddenException);
     await runChain(DELETE, await ctx('delegateDelete'));
     await assert.rejects(runChain(TRANSFER, await ctx('delegateDelete')), ForbiddenException);
     await assert.rejects(runChain(CARRY_COMMIT, await ctx('delegateDelete')), ForbiddenException);
@@ -282,12 +292,13 @@ test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_D
     await assert.rejects(runChain(LIST, await ctx('delegateBoth')), ForbiddenException);
     await assert.rejects(runChain(CARRY_PREVIEW, await ctx('delegateBoth')), ForbiddenException);
     await runChain(CREATE, await ctx('delegateBoth'));
+    await runChain(BULK, await ctx('delegateBoth'));
     await runChain(DELETE, await ctx('delegateBoth'));
     await runChain(TRANSFER, await ctx('delegateBoth'));
     await runChain(CARRY_COMMIT, await ctx('delegateBoth'));
 
     // manage: every route passes via implication.
-    for (const handler of [LIST, GET, CREATE, DELETE, TRANSFER, CARRY_PREVIEW, CARRY_COMMIT]) {
+    for (const handler of [LIST, GET, CREATE, BULK, DELETE, TRANSFER, CARRY_PREVIEW, CARRY_COMMIT]) {
       await runChain(handler, await ctx('delegateManage'));
     }
   });
@@ -528,5 +539,76 @@ test('Q.4.1 student-placement guard matrix', { skip: testDbUrl ? false : 'TEST_D
       .from(studentPlacements)
       .where(and(eq(studentPlacements.membershipId, studentDM), eq(studentPlacements.academicYearId, yr2!.id)));
     assert.equal(dYr2.length, 0, 'rollback: no destination placement for the valid item');
+  });
+
+  await t.test('F.1 bulk placement: admin places many at once, conflict rolls back whole batch, authz mirrors single create', async () => {
+    const ctl = new StudentPlacementsController(new StudentPlacementsService(db as unknown as Database));
+    const membershipOf = async (userId: string) =>
+      (await db!.select().from(memberships).where(eq(memberships.userId, userId)).limit(1))[0]!.id;
+    const invoke = async (who: keyof typeof sid, handler: unknown, ...args: unknown[]) => {
+      const request = { headers: { 'x-institute-id': instA!.id }, cookies: { access_token: await sign(await userIdFor(who), sid[who]) } };
+      const req = await runChain(handler, request);
+      return (handler as (...h: unknown[]) => unknown).apply(ctl, [req.tenant, ...args]);
+    };
+
+    const eM = await membershipOf(studentE!.id);
+    const fM = await membershipOf(studentF!.id);
+    const gM = await membershipOf(studentG!.id);
+    const inactiveM = await membershipOf(inactiveStudent!.id);
+
+    // admin (assignments.manage) places two fresh students in ONE atomic request
+    const bulk = (await invoke('admin', BULK, { membershipIds: [eM, fM], divisionId: dvA!.id })) as {
+      placements: Array<{ id: string; status: string; academicYearId: string; divisionId: string }>;
+    };
+    assert.equal(bulk.placements.length, 2);
+    assert.ok(bulk.placements.every((p) => p.status === 'active' && p.academicYearId === yr1!.id && p.divisionId === dvA!.id));
+
+    // already-placed conflict (eM now holds an ACTIVE yr1 row) → 409 + FULL rollback:
+    // the sibling (gM) is NOT placed, eM keeps its single row.
+    await assert.rejects(
+      invoke('admin', BULK, { membershipIds: [gM, eM], divisionId: dvA!.id }),
+      ConflictException,
+    );
+    assert.equal(
+      (await db!.select({ id: studentPlacements.id }).from(studentPlacements).where(eq(studentPlacements.membershipId, gM))).length,
+      0,
+      'rollback: sibling member must not be placed',
+    );
+    assert.equal(
+      (await db!.select({ id: studentPlacements.id }).from(studentPlacements).where(eq(studentPlacements.membershipId, eM))).length,
+      1,
+      'rollback: already-placed member keeps exactly its original row',
+    );
+
+    // inactive student rejected via bulk → 400
+    await assert.rejects(
+      invoke('admin', BULK, { membershipIds: [inactiveM], divisionId: dvA!.id }),
+      BadRequestException,
+    );
+
+    // STUDENT default-deny on bulk → 403 (before any service work)
+    await assert.rejects(
+      invoke('student', BULK, { membershipIds: [gM], divisionId: dvA!.id }),
+      ForbiddenException,
+    );
+
+    // delete-only delegate cannot bulk place (needs assignments.create) → 403
+    await assert.rejects(
+      invoke('delegateDelete', BULK, { membershipIds: [gM], divisionId: dvA!.id }),
+      ForbiddenException,
+    );
+
+    // cross-institute (B-only) delegate denied on bulk → 403
+    await assert.rejects(
+      invoke('crossDelegate', BULK, { membershipIds: [gM], divisionId: dvA!.id }),
+      ForbiddenException,
+    );
+
+    // create-only delegate CAN bulk place (assignments.create), matching single create
+    const delegated = (await invoke('delegateCreate', BULK, { membershipIds: [gM], divisionId: dvA!.id })) as {
+      placements: Array<{ status: string }>;
+    };
+    assert.equal(delegated.placements.length, 1);
+    assert.equal(delegated.placements[0]!.status, 'active');
   });
 });

@@ -123,6 +123,37 @@ export class StudentPlacementsService {
     }
   }
 
+  // F.1 — bulk placement: an atomic, all-or-nothing batch of the single-create
+  // semantics. Every membership is deduplicated, then revalidated inside ONE
+  // transaction against the same invariants as single create (division must
+  // belong to the institute + membership an active same-institute STUDENT),
+  // then all rows are inserted together. Any violation — including the partial
+  // unique index on (academic_year, membership) where status = 'active' — rolls
+  // back the ENTIRE batch: partial placement is impossible.
+  async createStudentPlacementsBulk(instituteId: string, input: { membershipIds: string[]; divisionId: string }) {
+    if (input.membershipIds.length === 0) {
+      throw new BadRequestException('At least one student must be selected');
+    }
+    const division = await this.getDivision(instituteId, input.divisionId);
+    const academicYearId = division.academicYearId;
+    const membershipIds = [...new Set(input.membershipIds)];
+
+    return this.db.transaction(async (tx) => {
+      for (const membershipId of membershipIds) {
+        await this.requireActiveStudentMembership(instituteId, membershipId, tx);
+      }
+      try {
+        return await tx
+          .insert(studentPlacements)
+          .values(membershipIds.map((membershipId) => ({ instituteId, membershipId, academicYearId, divisionId: division.id })))
+          .returning();
+      } catch (error) {
+        this.throwIfUniqueViolation(error, 'One or more students already have an active placement in this academic year');
+        throw error;
+      }
+    });
+  }
+
   async deactivateStudentPlacement(instituteId: string, placementId: string) {
     await this.getPlacementRow(instituteId, placementId);
     const [row] = await this.db

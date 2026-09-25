@@ -1,5 +1,56 @@
 # Task Tracker
 
+## Phase F.1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
+
+> Atomic multi-student placement from the institute console. An institute admin
+> checks off any subset of the visible placeable STUDENT roster and submits ONE
+> bulk request; the batch is deduplicated, revalidated, and committed in a
+> single all-or-nothing transaction. Full report: `docs/project-status.md`
+> (Phase F.1 entry). Branch `feature/fix-student-placement-multiselect`,
+> pushed, no merge — this is unmerged session work per AGENTS.
+
+- [x] **Backend — bulk route + service + authz (`apps/api/src/academic-
+      structure/`):**
+  - DTO `CreateStudentPlacementsBulkDto {membershipIds: UUID[] (IsArray +
+    ArrayNotEmpty + IsUUID each), divisionId}`.
+  - `POST /academic/student-placements/bulk` (201, `assignments.create`,
+    declared before `@Get(':placementId')` so the literal `bulk` segment wins).
+  - Service `createStudentPlacementsBulk(instituteId, {membershipIds,
+    divisionId})`: empty guard 400; institute-scoped division lookup; server-
+    side dedup (`new Set`); ONE `db.transaction`: every membership revalidated
+    via `requireActiveStudentMembership` (active same-institute STUDENT, else
+    400) and all rows inserted together — any partial-unique/`requireActive`
+    violation throws, the whole batch rolls back (`throwIfUniqueViolation`
+    inside the tx → ConflictException). Single-create invariants unchanged.
+  - Authz: bulk gated exactly like single create (`assignments.create`).
+- [x] **Integration coverage (both REAL-guard suites, TEST_DATABASE_URL-gated):**
+  - `student-placements-bulk.integration.ts` (`test:student-placements-bulk`):
+    happy path N ACTIVE rows with derived year/division, duplicate-ID dedup,
+    atomic rollback (conflict ⇒ siblings absent), inactive/teacher/foreign/
+    cross-institute member rejection, institute isolation, empty batch 400.
+  - `student-placements-authz.integration.ts` extended to drive the REAL bulk
+    controller handler: admin passes, delete-only delegate DENIED, create-only
+    delegate CAN bulk (mirrors single create), conflict ⇒ full rollback.
+  - `package.json` adds `test:student-placements-bulk`.
+- [x] **Web — console multiselect (`apps/web/`):**
+  - Helpers in `src/lib/academic.ts`: `togglePlacementSelection`,
+    `togglePlacementSelectAll` (visible-subset select/clear, preserves
+    out-of-visible selection), `bulkPlacementPayload`, `canSubmitBulkPlacement`
+    (requires division + ≥1 selected). `academic.ts` adds tests → 24/24 →
+    28/28 (existing `test:academic` script reloads the same suite).
+  - `placements-section.tsx`: the Place dialog gains a placeable-student
+    multiselect — checkbox roster with Select-all / Select-all-then-clear /
+    live "N selected" count / Clear; submit fires ONE `/bulk` POST with
+    `{membershipIds, divisionId}`; loading/error/success toast feedback +
+    refresh-on-success. Single-student flow (single create) untouched --
+    both paths shown via the same dialog defaulting to the visible roster.
+- [x] **Docs:** this tracker Phase F.1 entry.
+- [x] **Final F.1 audit (2026-09-25, PASS):** full checklist re-validated on a
+  fresh scratch PG17 — backend bulk 1/1, authz 8/8, single 1/1, carry-forward
+  1/1, web academic 28/28, repo typecheck (8 workspaces), api lint, web build.
+  No HIGH/MEDIUM findings; only LOW/INFO items (cosmetic, no code change).
+  Full report in `docs/project-status.md` (Final F.1 audit).
+
 ## Phase Q.4.0 — Student Placement, Transfer & Carry-Forward Design (2026-09-24, DESIGN COMPLETE)
 
 > Issued task. Design/audit the authorization model + workflow for student

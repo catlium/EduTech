@@ -21,6 +21,10 @@ import {
   filterPlacements,
   placementHistory,
   placeableStudents,
+  togglePlacementSelection,
+  togglePlacementSelectAll,
+  bulkPlacementPayload,
+  canSubmitBulkPlacement,
   canEnroll,
   offeredSubjectIdsForDivision,
   enrollmentState,
@@ -355,6 +359,37 @@ test('placeableStudents = active STUDENT roster not already active in the divisi
   assert.deepEqual(available.map((u) => u.name), ['Bob', 'Dean']);
   assert.equal(placeableStudents([ann, bob], [], null, divisions).length, 2);
   assert.equal(placeableStudents([ann], [placed], 'd1', divisions).length, 0);
+});
+
+// ── F.1 — bulk place dialog helpers ────────────────────────────────────
+
+test('togglePlacementSelection toggles a single student in/out of the selection', () => {
+  assert.deepEqual(togglePlacementSelection([], 'm1'), ['m1']);
+  assert.deepEqual(togglePlacementSelection(['m1'], 'm1'), []);
+  assert.deepEqual(togglePlacementSelection(['m1', 'm2'], 'm3'), ['m1', 'm2', 'm3']);
+  assert.deepEqual(togglePlacementSelection(['m1', 'm2'], 'm2'), ['m1']);
+});
+
+test('togglePlacementSelectAll selects the visible roster, then clears only the visible subset', () => {
+  assert.deepEqual(togglePlacementSelectAll([], ['m1', 'm2']), ['m1', 'm2']);
+  // already fully selected → toggle clears the visible set only
+  assert.deepEqual(togglePlacementSelectAll(['m1', 'm2'], ['m1', 'm2']), []);
+  // students selected outside the visible roster are preserved
+  assert.deepEqual(togglePlacementSelectAll(['m9'], ['m1', 'm2']), ['m9', 'm1', 'm2']);
+  assert.deepEqual(togglePlacementSelectAll(['m9', 'm1', 'm2'], ['m1', 'm2']), ['m9']);
+  // empty visible roster is a no-op
+  assert.deepEqual(togglePlacementSelectAll(['m1'], []), ['m1']);
+});
+
+test('bulkPlacementPayload = selected membershipIds + one destination division', () => {
+  assert.deepEqual(bulkPlacementPayload(['m1', 'm2'], 'd1'), { membershipIds: ['m1', 'm2'], divisionId: 'd1' });
+});
+
+test('canSubmitBulkPlacement requires a division AND at least one selected student', () => {
+  assert.equal(canSubmitBulkPlacement([], 'd1'), false);
+  assert.equal(canSubmitBulkPlacement(['m1'], null), false);
+  assert.equal(canSubmitBulkPlacement(['m1'], ''), false);
+  assert.equal(canSubmitBulkPlacement(['m1'], 'd1'), true);
 });
 
 // ── E.2 — student subject-enrollment override helpers ──────────────────

@@ -481,6 +481,45 @@ export function placeableStudents(
   );
 }
 
+// ── F.1 — bulk place dialog helpers ─────────────────────────────────────
+
+/** Toggle one student in the bulk-place selection (immutable). Returned array
+ *  is the new membershipId selection; empty is a valid (cleared) state. */
+export function togglePlacementSelection(selected: string[], membershipId: string): string[] {
+  return selected.includes(membershipId)
+    ? selected.filter((id) => id !== membershipId)
+    : [...selected, membershipId];
+}
+
+/** Select every visible (currently filtered) eligible student, or clear the
+ *  visible subset when it is already fully selected. Students selected outside
+ *  the visible roster are preserved. */
+export function togglePlacementSelectAll(selected: string[], visible: string[]): string[] {
+  const visibleSet = new Set(visible);
+  const allVisibleSelected = visible.length > 0 && visible.every((id) => selected.includes(id));
+  if (allVisibleSelected) {
+    return selected.filter((id) => !visibleSet.has(id));
+  }
+  const next = new Set(selected);
+  for (const id of visible) next.add(id);
+  return [...next];
+}
+
+/** The atomic bulk-place request body: student memberships + one destination
+ *  division; the division's year/class stay server-derived. */
+export function bulkPlacementPayload(
+  membershipIds: string[],
+  divisionId: string | null,
+): { membershipIds: string[]; divisionId: string } {
+  return { membershipIds, divisionId: divisionId ?? '' };
+}
+
+/** Place is submittable once a destination division is chosen and at least one
+ *  student is selected. */
+export function canSubmitBulkPlacement(membershipIds: string[], divisionId: string | null): boolean {
+  return membershipIds.length > 0 && Boolean(divisionId);
+}
+
 export function filterDivisions(
   divisions: DivisionRow[],
   academicYearId: string | null,
