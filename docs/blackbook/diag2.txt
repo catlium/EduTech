@@ -1,0 +1,47 @@
+=== 1) how were the existing 4-per-page app plates MADE? look for the montage/convert command that produced them — check .playwright-mcp history + any plate-building go.mjs (the converter-condos extra argv '--montage'?) in the mermaid-cli install ===
+1F 1D:
+
+...modules/@mermaid-js/mermaid-cli/opencode-svgpdf/ go.mjs
+--- montage binary anywhere? ---
+apps/
+docs/
+graphify-out/
+infrastructure/
+packages/
+scripts/
+storage/
+test-doc/
+AGENTS.md  17.4K
+bt.aux  81B
+bt.log  20.5K
+bt.out  0B
+bt.tex  1.2K
+docker-compose.demo.yml  3.3K
+docker-compose.dev.yml  4.1K
+docker-compose.yml  15.4K
+eslint.config.js  728B
+package.json  1.1K
+pnpm-lock.yaml  286.4K
+pnpm-workspace.yaml  69B
+tsconfig.base.json  554B
+turbo.json  440B
+... (1 filtered)
+[see remaining: tail -n +1 ~/.local/share/rtk/tee/1790306505_ls-hidden.log]
+
+=== 2) the interconnect: go.mjs argv contract (already recovered earlier), and does it accept MULTIPLE inputs → a single native-scale pdf of concatenated pages? (that is how a 4-per-page plate could be one pdf) ===
+import puppeteer from 'puppeteer';
+import fs from 'node:fs';
+const [inFile, outFile] = process.argv.slice(2);
+const svg = fs.readFileSync(inFile, 'utf8');
+const html = `<!doctype html><html><head><style>html,body{margin:0;padding:0}svg{display:block}</style></head><body>${svg}</body></html>`;
+const browser = await puppeteer.launch({headless: true, args:['--no-sandbox','--disable-dev-shm-usage']});
+const page = await browser.newPage();
+await page.setContent(html, {waitUntil:'networkidle0'});
+const dim = await page.evaluate(() => { const s=document.querySelector('svg'); return {w:parseFloat(s.getAttribute('width')), h:parseFloat(s.getAttribute('height'))}; });
+const inches = (px) => ((px*0.75)/72)+'in';
+await page.pdf({path: outFile, width: inches(dim.w), height: inches(dim.h), printBackground:true, margin:{top:'0',right:'0',bottom:'0',left:'0'}});
+console.log('ok', dim.w, dim.h);
+await browser.close();
+=== 3) the actual bw mermaid config (this forces everything white/black). To flip to COLOUR I drop the bw json in the mmdc call. list the bw json + mmd colour theme present ===
+diagrams/mermaid-bw.json
+---

@@ -1,0 +1,1 @@
+=== C) how are app png PLATES physically referenced today (a plate = sidewaysfigure with \includegraphics of the app-*.png)? show the actual captions/includegraphics ===

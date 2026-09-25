@@ -706,6 +706,21 @@
       sized `height=0.86\textheight,keepaspectratio`, placed on its own page.
 - [x] Validated final build: `latexmk -xelatex` exit 0; 72 pages; 0 Float-too-
       large; 0 Overfull; no number-only/stranded pages; 8 genuine blank forcing
+- [x] Screenshot deliverable: 8 colour app captures
+      (`app-assessments/content/dashboard/materials/paper-patterns/
+      question-papers/questions/subjects.png`) assembled as two 4-per-page
+      colour plates (`plate-1.png`, `plate-2.png`, each 4 tiles); registered
+      appendix `appendices/appendix-screenshots.tex` (references the two
+      plates) in `main.tex` after the permissions appendix.
+- [x] Colour diagram renderer `diagrams/render-colour.py`: idempotent,
+      convergence-safe, restart-safe (skips any `*-colour.pdf` already newer
+      than its `-bw.mmd` source); renders to the real
+      `docs/blackbook/figures/` dir so output survives restart mid-batch.
+      25/33 colour pdfs on disk at checkpoint; renderer re-runs to finish.
+- [x] The tex figure refs are guarded: every `figures/*-bw.pdf` reference is
+      swapped to `-colour.pdf` only when that colour pdf exists on disk
+      (no broken-build risk; swap converges to 33/33 as the renderer
+      completes). 28 refs swappable at checkpoint.
       pages; Figure 7.2 caption present in body (page 38) and in the LoF.
 
 ### Layout round 2 — centering + front-matter page numbers (2026-09-22, COMPLETE)
