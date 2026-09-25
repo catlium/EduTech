@@ -216,6 +216,29 @@ export class QuestionExtractionController {
     return { question };
   }
 
+  /** Automated generation of a missing answer for one REVIEW candidate (manual
+   *  trigger — extraction also auto-enqueues). Reuses an existing active or
+   *  completed generation for the same question; a failed one is retried fresh. */
+  @Post('extraction/:jobId/candidates/:questionId/generate-answer')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequiredRoles(...WRITE_ROLES)
+  async generateAnswer(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+  ) {
+    return {
+      answer: await this.extractionService.requestAnswerGeneration(
+        tenant.instituteId,
+        tenant.membershipId,
+        user.userId,
+        jobId,
+        questionId,
+      ),
+    };
+  }
+
   @Post('extraction/:jobId/candidates/:questionId/discard')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequiredRoles(...WRITE_ROLES)

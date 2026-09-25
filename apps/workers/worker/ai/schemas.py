@@ -331,6 +331,71 @@ class GeneratedQuestions(BaseModel):
     questions: list[GeneratedQuestion] = Field(min_length=1)
 
 
+# ── AI answer generation (extracted REVIEW candidates) ──────────────────────
+
+
+class McqAnswerPayload(BaseModel):
+    """Answer-only additions for an extracted MCQ: the correct choice ref only.
+    The choice list stays the extractor's (ids untouched), so only the
+    correctChoiceId is generated — never re-generated choices."""
+
+    correctChoiceId: str = Field(min_length=1, max_length=128)  # noqa: N815
+
+
+class MatchingAnswerPayload(BaseModel):
+    """Answer-only additions for an extracted MATCHING question: the pairing.
+    left/right item lists stay the extractor's; matches must reference their ids."""
+
+    matches: dict[str, str]
+
+
+# Per-format payload subset the answer generator may emit. TRUE_FALSE /
+# FILL_IN_BLANK / TEXT / NUMERICAL answers are the whole payload (the single
+# answer field), so they share the full payload models; MCQ / MATCHING answer
+# additions are subsets because the extracted part (choices/items) is fixed.
+ANSWER_PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
+    "MCQ": McqAnswerPayload,
+    "TRUE_FALSE": TrueFalseQuestionPayload,
+    "FILL_IN_BLANK": FillInBlankQuestionPayload,
+    "TEXT": TextQuestionPayload,
+    "MATCHING": MatchingAnswerPayload,
+    "NUMERICAL": NumericalQuestionPayload,
+}
+
+# Full per-format payload shapes, used to validate the MERGED candidate payload
+# (extracted + generated) before it is written back.
+FULL_ANSWER_PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
+    "MCQ": McqQuestionPayload,
+    "TRUE_FALSE": TrueFalseQuestionPayload,
+    "FILL_IN_BLANK": FillInBlankQuestionPayload,
+    "TEXT": TextQuestionPayload,
+    "MATCHING": MatchingQuestionPayload,
+    "NUMERICAL": NumericalQuestionPayload,
+}
+
+
+class GeneratedAnswer(BaseModel):
+    """Answer-only output for one extracted REVIEW question (AI_GENERATE_ANSWER).
+
+    Only the missing answer fields are generated; the candidate's stem, format,
+    choices and matching items are authoritative and never regenerated. The
+    payload is validated against the DECLARED answer format here; the service
+    then re-checks the merged payload against the CANDIDATE's format and
+    reference-validates MCQ/MATCHING ids (which these models cannot see)."""
+
+    answerFormat: str | None = Field(default=None, max_length=50)  # noqa: N815
+    payload: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _finalize_payload(self) -> GeneratedAnswer:
+        fmt = (self.answerFormat or "").upper()
+        model = ANSWER_PAYLOAD_MODELS.get(fmt)
+        if model is None:
+            raise ValueError(f"Unsupported answer format: {fmt or '<missing>'}")
+        self.payload = model.model_validate(self.payload).model_dump()
+        return self
+
+
 class ContentPackage(BaseModel):
     """One provider response covering all requested content-package resources.
 

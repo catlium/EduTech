@@ -2169,6 +2169,66 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       answer." stem bug + per-candidate issue pollution (runIssues spread to
       every candidate) both fixed and regression-tested.
 
+## Phase F3.2 — Autonomous Answer Generation (2026-09-25, branch `feature/question-answer-generation`, COMPLETE)
+
+> Auto-fills the missing expected answer for extraction REVIEW candidates that
+> the extractor flagged `ANSWER_MISSING`, using the existing jobs/RabbitMQ/AI-
+> worker architecture (AI_GENERATE_ANSWER → `ai_generation` queue → worker).
+> Kept off `dev` until merged by the coordinator. Tests require
+> `TEST_DATABASE_URL` (fresh scratch PG17, migrations applied).
+
+- [x] **API trigger + queueing** (`question-extraction.service.ts`): new
+      `POST /questions/extraction/:jobId/candidates/:questionId/generate-answer`
+      (ACCEPTED, INSTITUTE_ADMIN/TEACHER) → `requestAnswerGeneration` gates the
+      run (`gateCandidateJob` + REVIEW/EXTRACTED candidate) then enqueues
+      `AI_GENERATE_ANSWER` with
+      payload `{operation, source:{type:'QUESTION',id}, requestedBy}`. Reuse
+      rule: an existing job for the same (institute, question) in
+      queued/processing/completed is returned as-is (resp `{reused:true,
+      status:'QUEUED'|'COMPLETED'}`); a FAILED job is never reused → the
+      endpoint doubles as the manual retry path.
+- [x] **Autonomous sweep** (`processJob` in `question-extraction.service.ts`):
+      after a successful QUESTION_EXTRACT run, every persisted candidate whose
+      `provenance.issues` contains `ANSWER_MISSING` gets the answer job
+      auto-enqueued (`result.answerJobsEnqueued`). Per-candidate try/catch — a
+      failed enqueue never fails extraction; the candidate stays REVIEW and
+      any teacher can retry the manual trigger. Extraction-only: QP_EXTRACT
+      candidates keep manual-only triggers. `JOB_QUEUE_BY_TYPE` gains
+      `AI_GENERATE_ANSWER: 'ai_generation'`; `ALLOWED_JOB_TYPES` unchanged, so
+      generic `POST /jobs` still rejects the type (LOW-1 intact).
+- [x] **Worker** (`apps/workers`): `schemas.GeneratedAnswer` + per-format
+      subset models (`McqAnswerPayload{correctChoiceId}`,
+      `MatchingAnswerPayload{matches}`, plus full-payload reuse for
+      TRUE_FALSE/FILL_IN_BLANK/TEXT/NUMERICAL) with a model_validator that
+      validates/normalizes the payload against the DECLARED format; new
+      `generation/answer.py` (teacher-answer prompt that ONLY fills missing
+      answers, never regenerates choices/ids, optional bounded material
+      context); `service.py` registers the operation (QUESTION content type,
+      no aggregator, dispatch before `_resolve_materials`), validates the
+      merged payload against the candidate's FULL format shape and reference-
+      checks MCQ `correctChoiceId` / MATCHING `matches` ids, and writes back
+      via `db.write_generated_answer` (REVIEW + EXTRACTED guarded; a
+      superseded candidate completes the job with `superseded:true` instead of
+      failing — nothing to do is not an error). Candidate stays REVIEW for
+      teacher approval.
+- [x] **Tests:** worker `tests/test_answer_generation.py` (15 cases: real
+      provider + monkeypatched writes — merge-preserves-choices, unknown-id
+      choice ref fails without write, missing candidate fails before provider,
+      declared-format mismatch fails, bounded material context, superseded
+      completes, DB SQL guards REVIEW/EXTRACTED, registration/config/model);
+      api `question-answer-generation.integration.ts`
+      (`test:question-answer-generation`, 5 subtests: auto-enqueue exactly one
+      for the ANSWER_MISSING candidate + queued payload/ownership, manual
+      reuse of active job, reuse of a completed job reported COMPLETED,
+      cross-institute rejected).
+- [x] **Validation:** worker pytest 36/36 (15 new + 21 regressions
+      test_ai_reliability + test_question_bank_batch), worker ruff + mypy
+      clean; api typecheck + lint clean; api integration green on scratch
+      loopback PG17: new suite 5/5, RC-2 resilience 5/5, LOW-1 job-ownership
+      14/14. Two-level `await t.test()` nesting deadlocks under tsx on Node 24
+      — integration suites keep subtests to ONE nesting level.
+- [x] **Docs:** project-status.md F3.2 entry.
+
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
 
 > Two correctness fixes on top of the question-extraction work above. Kept off
