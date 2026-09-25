@@ -34,6 +34,7 @@
     "test:authz-regression": "tsx --test src/authorization/authz-regression.integration.ts",
     "test:phase-m-remediation": "tsx --test src/authorization/phase-m-remediation.integration.ts",
     "test:job-ownership": "tsx --test src/authorization/job-ownership.integration.ts",
+    "test:question-extraction-resilience": "tsx --test src/question-extraction/question-extraction-resilience.integration.ts",
     "test:mod-3-export-scope": "tsx --test src/authorization/mod-3-export-scope.integration.ts",
     "test:mod-4-attempts-scope": "tsx --test src/authorization/mod-4-attempts-scope.integration.ts",
     "test:institute-lifecycle": "tsx --test src/platform/institute-lifecycle.integration.ts",
