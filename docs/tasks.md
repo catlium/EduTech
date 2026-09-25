@@ -2266,9 +2266,9 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       `git diff --check` clean. Earlier live Chrome checks passed; the final
       `api`, `web`, `worker-ai`, and `worker-material` rebuild is healthy, API
       health returns 200, and the live worker contains the revision guard.
-- [~] **Checkpoint:** commit only the F3.3 files plus the required worker
-      concurrency guard and push `feature/question-answer-generation-ux` without
-      merging it.
+- [x] **Checkpoint:** committed the F3.3 files plus the required worker
+      concurrency guard as `df72962` and pushed
+      `feature/question-answer-generation-ux` without merging it.
 
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
 

@@ -1,9 +1,9 @@
 # Project Status
 
-## Phase F3.3 — Generate Answer UX (2026-09-25, IMPLEMENTED + REVIEWED + VALIDATED; CHECKPOINT PENDING)
+## Phase F3.3 — Generate Answer UX (2026-09-25, IMPLEMENTED + REVIEWED + VALIDATED; CHECKPOINT COMPLETE)
 
-**Status: implemented, reviewed, validated, and rebuilt on `feature/question-answer-generation-ux`
-from `dev` (`bd3d495`); the checkpoint commit and push remain.**
+**Status: implemented, reviewed, validated, rebuilt, committed as `df72962`, and
+pushed to `origin/feature/question-answer-generation-ux` from `dev` (`bd3d495`).**
 The teacher review surface now exposes the existing `AI_GENERATE_ANSWER` job
 without adding a new queue, migration, or service.
 
@@ -38,7 +38,7 @@ without adding a new queue, migration, or service.
 - **Validation**:
   API typecheck/lint, API integration, web typecheck/test/build, contracts
   typecheck/build/lint, worker `ruff`/`mypy`/`pytest`, root `pnpm typecheck` (10/10),
-  and `git diff --check`   pass. Repository-wide lint remains non-green because of
+  and `git diff --check` pass. Repository-wide lint remains non-green because of
   pre-existing validation-file findings; focused checks are clean. Earlier live
   Chrome checks passed; the final `api`, `web`, `worker-ai`, and
   `worker-material` rebuild is healthy, API health returns 200, and the live
@@ -48,8 +48,8 @@ without adding a new queue, migration, or service.
   unrelated working-tree files included. The checkpoint includes the three worker
   files required for the concurrency guard and its test.
 
-**Exact recommended next task:** commit and push the scoped F3.3 checkpoint
-without starting F3.4 or merging this branch.
+**Exact recommended next task:** F3.3 is complete and pushed; stop here without
+starting F3.4 or merging this branch.
 
 ## Phase F3.2 — Autonomous Answer Generation (2026-09-25, IMPLEMENTED + VALIDATED + INTEGRATED)
 
