@@ -93,6 +93,73 @@
 - [x] Commit `fix(web): upgrade @hookform/resolvers for Zod v4 form validation`
       on `feature/fix-form-validation` (+ push, no merge).
 
+## F4 — Enforce the syllabus Chapter → Topic invariant (2026-09-24, IMPLEMENTED)
+
+> Issued task. Every syllabus chapter must contain at least one topic because
+> downstream derived-content generation is topic-based
+> (`GenerateQuestionsDto` requires `topicId`; starter-material generation
+> rejects chapter-only sources). Branch `feature/fix-syllabus-topics`, from
+> `dev`; commit `fix(syllabus): require at least one topic per chapter` (+
+> push, no merge). No migration; no silent mutation of already-confirmed
+> syllabi.
+
+- [x] **Worker prompt** (`worker/ai/generation/syllabus.py`): replaces "0 or
+      more topics" with "must contain at least one topic"; when the document
+      has no explicit subtopic headings the model derives meaningful
+      first-level topics from the chapter's own content and never invents
+      topics the document does not support. Docstring updated to the same rule.
+- [x] **Worker schema** (`worker/ai/schemas.py`): `SyllabusChapter.topics` is
+      now `Field(min_length=1, max_length=200)` (the list is required; an
+      empty/absent topics list fails Pydantic validation).
+- [x] **Shared contract** (`packages/contracts/src/index.ts`):
+      `SyllabusChapterSchema.topics` now `z.array(SyllabusTopicSchema)
+      .min(1).max(200)`.
+- [x] **API validation** (`apps/api/src/syllabus/syllabus.validation.ts`):
+      `SyllabusValidator` extracted to a pure module (existing
+      `paper-patterns.validation.ts` precedent) so confirm/update's exact gate
+      is unit-testable; `syllabus.service.ts` delegates unchanged.
+      confirm(→ `parseStructure` of the analyzed structure) and
+      PATCH-update structure now reject chapter-only shapes with the existing
+      400 `Invalid syllabus structure` via `SyllabusValidator` — no duplicated
+      validation logic.
+- [x] **Retry behaviour** — no code change: a chapter-only model response now
+      fails `SyllabusAnalysisPayload` validation inside the existing
+      `_complete_validated` loop (retries `ai_validation_retries` times);
+      after exhaustion the job honestly fails (`fail_syllabus_analysis` +
+      `job:failed`), nothing is persisted to the teacher-confirm path.
+- [x] **Tests**:
+      - `test_syllabus.py`: new `test_chapter_only_output_fails_validation_and_never_confirms`
+        — chapter-only provider output drives the REAL `_complete_validated`
+        retry loop (3 provider calls with `ai_validation_retries=2`), then
+        fails honestly; `complete_syllabus_analysis` never called.
+      - New `apps/api/src/syllabus/syllabus-validator.test.ts` (4 cases):
+        valid Chapter → Topic parses; `topics: []` → 400-style
+        `BadRequestException` through `SyllabusValidator` (the exact
+        confirm/update gate); `SyllabusStructureSchema.safeParse` rejects
+        `topics: []`; accepts a chapter with ≥1 topic.
+      - `test_aggregation.py`: aggregation fixture chapter previously
+        `topics: []` now carries a topic (valid chapter shape).
+      - `scripts/e2e/mock_ai_provider.py`: canned syllabus "Geometry" chapter
+        `topics: []` → one topic, keeping the e2e/demo mock valid under the
+        new schema.
+- [x] **Legacy data** — documented, not mutated: already-CONFIRMED syllabi are
+      left untouched and read paths never parse structure (no regression); a
+      legacy chapter-only PROPOSED row cannot be confirmed as-is (400) and
+      requires explicit re-analysis/backfill through a fresh analysis + confirm.
+      No migration added.
+- [x] **Validation**: worker `pytest` 84/84 (incl. the new honest-failure
+      case); api unit `node --test` **232/232** (228 + 4 new validator);
+      repo `pnpm typecheck` 10/10; repo `pnpm lint` 9/9; repo `pnpm build` 7/7;
+      raw `ruff` + source `mypy` clean (test-file mypy noise pre-existing);
+      api/worker-ai/worker-material images rebuilt; running containers verified
+      to carry the change (worker schema `MinLen(min_length=1)` +
+      new prompt text; api contracts dist has
+      `topics:z.array(...).min(1).max(200)`).
+- [x] Docs: this tracker + project-status.md (Phase F4 entry). Graphify graph
+      re-run (`graphify update .`).
+- [x] Commit `fix(syllabus): require at least one topic per chapter` on
+      `feature/fix-syllabus-topics` (+ push, no merge).
+
 ## Phase Q.4.0 — Student Placement, Transfer & Carry-Forward Design (2026-09-24, DESIGN COMPLETE)
 
 > Issued task. Design/audit the authorization model + workflow for student
