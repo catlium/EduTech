@@ -800,6 +800,7 @@ there is no wildcard.
 
 | resource | actions | notes / operation→action mapping |
 |---|---|---|
+| `academic-structure` | read, create, update, delete, manage | **F5.1 (2026-09-26)** — the D4 structural layer as one resource: academic years, classes, class↔subject offerings, divisions. Catalogued in Phase F5.1; the `/academic` routes are still `@RequiredRoles('INSTITUTE_ADMIN')` until **F5.2** migrates them. |
 | `subjects` | read, create, update, delete, manage | academic structure CRUD |
 | `chapters` | read, create, update, delete, manage | academic structure CRUD |
 | `topics` | read, create, update, delete, manage | academic structure CRUD |
@@ -834,10 +835,13 @@ Notes:
   endpoints exist — keys are never catalogued before their endpoint exists.
 - **Phase E and Phase F endpoints were implemented with
   `@RequiredRoles('INSTITUTE_ADMIN')` (RolesGuard) directly**, not catalogue
-  keys — consistent with the pre-permission-machinery modules. The
-  `academic-years` / `classes` / `divisions` / `offerings` / `assignments`
-  keys below therefore remain uncatalogued until the permission machine
-  (Phase B/C) lands and Phase I migrates these modules onto it.
+  keys — consistent with the pre-permission-machinery modules. The permission
+  machine (Phase B/C) has since landed and F5 is migrating those modules onto
+  it surface by surface: `assignments` was catalogued + guard-migrated in
+  Q.3 (2026-09-23), and **F5.1 (2026-09-26) catalogued `academic-structure`**
+  for the D4 structural layer. The `/academic` routes are migrated in **F5.2**,
+  so until then the structural keys are catalogued but not yet required by any
+  handler — catalogued first, enforced next, by design.
 - Permission keys are explicit and listed; **no wildcard keys (`*`,
   `resources.*`) are stored or checked anywhere.**
 
@@ -848,11 +852,12 @@ Phase E–G endpoints exist (built-in role mapping finalized in Phase C):
 
 | resource | actions | notes |
 |---|---|---|
-| `academic-years` | read, manage | academic year setup/lifecycle (D4) |
-| `classes` | read, create, update, delete, manage | class level definitions (D4) |
-| `divisions` | read, create, update, delete, manage | year-bound cohorts (D4) |
-| `offerings` | read, manage | class↔subject offerings (D4/D5) |
-| `assignments` | read, create, delete, manage | teacher assignments + student placements/enrollments (D5). Action set refined 2026-09-23 by Phase Q.3.0 — `docs/architecture/academic-teacher-permissions.md` §2 (D-Q3.2): `update` deliberately uncatalogued (no reassign endpoint; reassign = delete+create). Keys **IMPLEMENTED 2026-09-23** with the Q.3 guard migration + console (feature/teacher-assignment) |
+| `academic-structure` | read, create, update, delete, manage | **IMPLEMENTED 2026-09-26 (F5.1)** — the D4 structural layer (academic years, classes, class↔subject offerings, divisions) collapsed into **one** resource rather than the four per-entity keys originally sketched here. One resource, not four: the `/academic` console and the structural endpoints are administered as a single responsibility, and per-entity keys would fragment a boundary that is never enforced separately. Guard migration is F5.2. |
+| `academic-years` | read, manage | **SUPERSEDED 2026-09-26 (F5.1)** — folded into `academic-structure`; not catalogued. |
+| `classes` | read, create, update, delete, manage | **SUPERSEDED 2026-09-26 (F5.1)** — folded into `academic-structure`; not catalogued. |
+| `divisions` | read, create, update, delete, manage | **SUPERSEDED 2026-09-26 (F5.1)** — folded into `academic-structure`; not catalogued. |
+| `offerings` | read, manage | **SUPERSEDED 2026-09-26 (F5.1)** — folded into `academic-structure`; not catalogued. |
+| `assignments` | read, create, delete, manage | teacher assignments + student placements/enrollments (D5). Action set refined 2026-09-23 by Phase Q.3.0 — `docs/architecture/academic-teacher-permissions.md` §2 (D-Q3.2): `update` deliberately uncatalogued (no reassign endpoint; reassign = delete+create). Keys **IMPLEMENTED 2026-09-23** with the Q.3 guard migration + console (feature/teacher-assignment). Staffing stays a **separate** resource from `academic-structure` — D-Q3.3/G3, deliberately not collapsed. |
 
 ### Manage implication rule
 
@@ -911,6 +916,17 @@ Phase E–G endpoints exist (built-in role mapping finalized in Phase C):
   by owner, §5).
 - `SUPER_ADMIN` (platform domain): all platform-domain keys
   (`institutes.*`, `ocr-workers.*`).
+
+F5.1 (2026-09-26) records the `academic-structure` defaults: the mapping is
+derived from `INSTITUTE_RESOURCES`, so **INSTITUTE_ADMIN holds
+`academic-structure.manage`** automatically and needs no per-key entry;
+**TEACHER and STUDENT hold no `academic-structure.*` key at all** (structural
+administration is admin-only by default, same posture as `roles.*` and
+`assignments.*`). The resource is institute-domain only — no platform
+permission is introduced and `SUPER_ADMIN` never resolves it. An institute that
+wants a structural curator creates a **custom** role and grants it
+`academic-structure.*` through the existing role-permission surface
+(`PUT /roles/:roleId/permissions`); no new grant path was added.
 
 ---
 

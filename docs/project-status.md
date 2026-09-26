@@ -2,18 +2,22 @@
 
 ## Phase F5 — Permission Enforcement & Delegation on the Teaching/Examination Surface
 
-**Status: F5.0 COMPLETE (2026-09-26). The two validated feature branches are
-merged into `feature/f5-0-integrate-validated-branches` (off `dev` `77b6e05`),
-validated, documented, committed and pushed. F5.1 has NOT started.**
-`dev`/`origin/dev` (`77b6e05`), `main`/`origin/main` (`ef4de7e`) and
-`stash@{0}` are untouched; the unrelated working tree is preserved
-byte-for-byte and nothing outside this branch was committed. No authorization
-code changes were made.
+**Status: F5.0 COMPLETE AND INTEGRATED INTO `dev`.** (Corrected 2026-09-26 at
+the start of F5.1: this entry previously said F5.0 lived on the feature branch
+only and was not merged. It was merged into `dev` as **`5230bf6`**
+(`Merge branch 'feature/f5-0-integrate-validated-branches' into dev`), and the
+API/web containers were rebuilt afterwards so the live dev stack serves F2+F4 —
+verified against the running code, not just `Up (healthy)`.)
+
+**F5.1 (academic-structure catalogue expansion) is in progress** on
+`feature/f5-1-academic-structure-catalogue`, branched from `dev` `5230bf6`.
+`main`/`origin/main` (`ef4de7e`) and `stash@{0}` are untouched; the unrelated
+working tree (blackbook/proposal work) is preserved byte-for-byte.
 
 ### Current phase
 
-F5. F5.0 is the integration + documentation checkpoint; F5.1–F5.8 are the
-actual permission-enforcement work and are all unstarted.
+F5. F5.0 is closed and merged. F5.1 is in progress — catalogue only, no guard
+migration. F5.2–F5.8 are unstarted.
 
 ### Completed work
 
@@ -80,11 +84,27 @@ actual permission-enforcement work and are all unstarted.
 
 ### Work in progress
 
-None. F5.0 is closed; F5.1 is the next task and has not been started.
+- [~] **F5.1 — Academic-Structure Catalogue Expansion**, on
+      `feature/f5-1-academic-structure-catalogue` (off `dev` `5230bf6`).
+      Catalogue only; no guard migration. `INSTITUTE_RESOURCES` gains
+      `'academic-structure'` with `read, create, update, delete, manage`
+      (the D4 layer — academic years, classes, offerings, divisions — as ONE
+      resource, superseding the four per-entity keys sketched in
+      `authorization.md` §13). INSTITUTE_ADMIN gets `academic-structure.manage`
+      automatically via the derived mapping; TEACHER and STUDENT get none;
+      institute-domain only, no platform permission. A custom institute role
+      receives the keys through the existing
+      `PUT /roles/:roleId/permissions` surface — no new grant path, no schema
+      change, no migration; `PermissionSyncService` inserts the five
+      `permissions` rows on next boot. Docs updated in `authorization.md` §13,
+      `institute-operations-audit.md` §16/§17 and
+      `academic-teacher-permissions.md` §2. 7 focused regression tests added
+      (42/42 in `permission-catalogue.test.ts`).
 
 ### Pending work
 
-- [ ] F5.1 — Academic-Structure Catalogue Expansion
+- [~] F5.1 — Academic-Structure Catalogue Expansion (see above; finishing
+      validation + commit on the feature branch — **not** merged into `dev`)
 - [ ] F5.2 — Structure Guard Migration
 - [ ] F5.3 — Question + Paper Surface Guard Migration
 - [ ] F5.4 — Examination + Attempt + Practice Guard Migration
@@ -129,8 +149,9 @@ None. F5.0 is closed; F5.1 is the next task and has not been started.
 DB-backed suites ran against the dev `catlium_dev` over the docker bridge
 (`172.18.0.3:5432`); the host publishes no PG port outside the dev override.
 They need `TEST_DATABASE_URL` and a built `packages/contracts/dist`. **The
-API/web containers were NOT rebuilt in this session**, so the running dev stack
-still predates F2+F4 — rebuild before trusting it.
+API/web containers have since been rebuilt** (after the `5230bf6` merge), so
+the running dev stack does serve F2+F4 — see the status note at the top of this
+entry.
 
 ### Known issues
 
@@ -144,18 +165,20 @@ still predates F2+F4 — rebuild before trusting it.
 
 ### Latest checkpoint
 
-Branch `feature/f5-0-integrate-validated-branches`, F5.0 checkpoint commit
-`docs(authz): integrate validated branches and record F5 track` (hash = this
-entry's commit; `git log -1` on the branch). It sits on top of merge `7805814`
-(F4) and merge `26f0540` (F2), over `dev` `77b6e05`. Pushed to the feature
-branch only; not merged into `dev`.
+`dev`/`origin/dev` is `5230bf6` — `Merge branch
+'feature/f5-0-integrate-validated-branches' into dev`, which carries the F5.0
+checkpoint commit `docs(authz): integrate validated branches and record F5
+track` on top of merge `7805814` (F4) and merge `26f0540` (F2). F5.0 is
+therefore integrated, not branch-only. F5.1 builds on that commit on
+`feature/f5-1-academic-structure-catalogue`, **not yet merged into `dev`**.
 
 ### Exact recommended next task
 
-Merge `feature/f5-0-integrate-validated-branches` into `dev` as a separate
-explicit step, then begin F5.1.
-
-Next: F5.1 — academic-structure catalogue expansion.
+Finish F5.1 (catalogue + defaults + docs + tests), review and merge
+`feature/f5-1-academic-structure-catalogue` into `dev`, then begin **F5.2 —
+Structure Guard Migration**: replace `@RequiredRoles('INSTITUTE_ADMIN')` on the
+`/academic` structural routes with the `academic-structure.*` keys, mirroring
+the Q.3 `assignments` migration in `docs/architecture/academic-teacher-permissions.md`.
 
 ## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, MERGED INTO dev)
 

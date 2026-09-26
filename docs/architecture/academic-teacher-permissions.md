@@ -102,10 +102,12 @@ enrollments (the authority INSTITUTE_ADMIN already holds over both via its
   `read` → `assignments.read`, assign → `assignments.create`,
   unassign → `assignments.delete`, reassign → `assignments.delete` +
   `assignments.create` (no update verb; no new verb).
-- No other catalogue change is proposed. The academic-years/classes/divisions/
-  offerings structure keys stay uncatalogued (Q.2 deliberately shipped with
-  role-only gating + `users.read` route reuse; their expansion remains a
-  separate, deferred decision — see §14).
+- No other catalogue change is proposed **by Q.3**. The academic-years/classes/
+  divisions/offerings structure layer was deliberately left uncatalogued by Q.3
+  (Q.2 shipped with role-only gating + `users.read` route reuse) and is **now
+  catalogued** as the single `academic-structure` resource by **F5.1
+  (2026-09-26)** — a separate decision, taken in `docs/tasks.md` F5.1 and
+  recorded in `authorization.md` §13. It does not reopen `assignments`.
 
 ## 3. Default role mapping (PLANNED; effective behavior unchanged)
 

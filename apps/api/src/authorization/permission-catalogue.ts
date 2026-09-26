@@ -23,11 +23,15 @@ interface ResourceDefinition {
 type ResourceMap = Record<string, ResourceDefinition>;
 
 // Institute-domain resources (§13 catalogue). No speculative keys: nothing is
-// catalogued before an endpoint exists. Academic structure administration maps
-// to `users.*`/`roles.*`; staffing configuration (D5 family) lives on
-// `assignments.*` — the teacher-assignment slice now, student placements/
-// enrollments in Q.4 (see docs/architecture/academic-teacher-permissions.md).
+// catalogued before an endpoint exists. Staffing configuration (D5 family)
+// lives on `assignments.*` — the teacher-assignment slice and student
+// placements/enrollments (see docs/architecture/academic-teacher-permissions.md).
+// F5.1 (2026-09-26) adds `academic-structure` for the D4 structural layer
+// (academic years, classes, class↔subject offerings, divisions), which until
+// then mapped to `users.*`/`roles.*`. The keys are catalogued here; the
+// `/academic` routes stay `@RequiredRoles` until F5.2 migrates them.
 export const INSTITUTE_RESOURCES = {
+  'academic-structure': { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   assignments: { actions: ['read', 'create', 'delete', 'manage'] },
   subjects: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   chapters: { actions: ['read', 'create', 'update', 'delete', 'manage'] },

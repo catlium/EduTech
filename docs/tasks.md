@@ -28,10 +28,38 @@
       `pnpm typecheck` 10/10, `turbo run lint` 9/9, `pnpm build` 7/7,
       `job-ownership` 14/14, `academic-scope` 1/1, `git diff --check` clean.
       Checkpoint commit `docs(authz): integrate validated branches and record
-      F5 track`, pushed to the feature branch only — **not** merged into `dev`.
-      `dev`/`origin/dev` `77b6e05`, `main`/`origin/main` `ef4de7e` and
-      `stash@{0}` untouched; the unrelated working tree preserved.
-- [ ] F5.1 — Academic-Structure Catalogue Expansion
+      F5 track`. **Corrected 2026-09-26 at the start of F5.1:** the entry
+      previously said "pushed to the feature branch only — **not** merged into
+      `dev`". It WAS merged into `dev` as **`5230bf6`**, and the API/web
+      containers were rebuilt afterwards, so the running dev stack serves
+      F2+F4. `main`/`origin/main` `ef4de7e` and `stash@{0}` untouched
+      throughout; the unrelated working tree preserved.
+- [~] **F5.1 — Academic-Structure Catalogue Expansion.** IN PROGRESS on
+      `feature/f5-1-academic-structure-catalogue` (off `dev` `5230bf6`).
+      Catalogue only — **no controller/guard migration (that is F5.2)**:
+      - `INSTITUTE_RESOURCES` gains `'academic-structure'` with the full
+        `read, create, update, delete, manage` set — the D4 structural layer
+        (academic years, classes, class↔subject offerings, divisions) as ONE
+        resource. It supersedes the four per-entity keys sketched in
+        `authorization.md` §13 (`academic-years`/`classes`/`divisions`/
+        `offerings`); those stay uncatalogued. Staffing remains the separate
+        `assignments` resource (D-Q3.3/G3 not reopened).
+      - Built-in defaults: INSTITUTE_ADMIN gets `academic-structure.manage`
+        automatically (the mapping is derived from `INSTITUTE_RESOURCES`, so no
+        per-key entry); TEACHER and STUDENT get **no** `academic-structure.*`
+        key. Institute-domain only — no platform permission introduced.
+      - Delegation uses the existing mechanism only: a custom institute role
+        receives the keys through `PUT /roles/:roleId/permissions`
+        (`invalidInstitutePermissionKeys` accepts them unchanged). No new grant
+        path, no schema change, no migration — `PermissionSyncService` inserts
+        the five missing `permissions` rows on the next API boot.
+      - Docs: `authorization.md` §13 (catalogue table, D4–D6 additions table,
+        built-in mapping), `institute-operations-audit.md` §16/§17,
+        `academic-teacher-permissions.md` §2 stale note.
+      - Tests: 7 focused cases in `permission-catalogue.test.ts` (key existence
+        + domain + metadata, §13 manage implication, built-in defaults, no
+        platform leakage, custom-role grant through the existing path, sync
+        insert set/idempotency). 42/42 in that file.
 - [ ] F5.2 — Structure Guard Migration
 - [ ] F5.3 — Question + Paper Surface Guard Migration
 - [ ] F5.4 — Examination + Attempt + Practice Guard Migration
