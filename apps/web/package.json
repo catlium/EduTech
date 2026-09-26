@@ -12,6 +12,7 @@
     "test:platform-scope": "node --test src/lib/platform-scope.test.ts",
     "test:academic": "node --test src/lib/academic.test.ts",
     "test:question-answer": "node --test src/lib/question-answer.test.ts",
+    "test:api": "node --test src/lib/api.test.ts",
     "clean": "rm -rf .next"
   },
   "dependencies": {

@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { api, ApiError, setActiveInstituteId } from './api.ts';
+import { api, ApiError, isTerminalPollError, setActiveInstituteId } from './api.ts';
 
 // api.ts reads lazy globals (document/window/fetch) at call time, so we can
 // script them per test. KEY invariant under test:
@@ -144,4 +144,20 @@ test('GET 403 is checked only AFTER the 401 refresh path', async () => {
   await assert.rejects(api('/questions'), (e: unknown) => e instanceof ApiError && e.status === 403);
   assert.equal(refreshCount, 1);
   assert.deepEqual(events, ['catlium:forbidden']);
+});
+
+// A 400 from a UUID path param (ParseUUIDPipe) can never become valid on a
+// later tick, so the extraction-status poll must stop instead of spinning.
+test('isTerminalPollError treats 400/401/403/404 as permanent', () => {
+  for (const status of [400, 401, 403, 404]) {
+    assert.equal(isTerminalPollError(new ApiError(status, 'nope')), true, `status ${status}`);
+  }
+});
+
+test('isTerminalPollError keeps 5xx and transport errors retryable', () => {
+  for (const status of [408, 429, 500, 502, 503, 504]) {
+    assert.equal(isTerminalPollError(new ApiError(status, 'later')), false, `status ${status}`);
+  }
+  assert.equal(isTerminalPollError(new TypeError('fetch failed')), false);
+  assert.equal(isTerminalPollError(undefined), false);
 });

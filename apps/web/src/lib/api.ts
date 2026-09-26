@@ -167,6 +167,12 @@ export function jobDone(job: { status: string }): boolean {
   return job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
 }
 
+const TERMINAL_POLL_ERRORS = new Set([400, 401, 403, 404]);
+
+export function isTerminalPollError(err: unknown): boolean {
+  return err instanceof ApiError && TERMINAL_POLL_ERRORS.has(err.status);
+}
+
 // 2MB parts keep every chunk request at ~35s over the Cloudflare Tunnel's
 // measured ~55KB/s upload path — well under the 100s origin budget that used
 // to 524 whole-file uploads.

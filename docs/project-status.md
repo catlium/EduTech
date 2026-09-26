@@ -1,5 +1,77 @@
 # Project Status
 
+## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, BRANCH ONLY)
+
+**Status: audited, one genuine defect fixed and regression-tested, validated,
+and left on the branch `feature/question-extraction-final-hardening` (from `dev`
+`db75f26`). NOT merged into `dev`; `main`/`origin/main` untouched at `ef4de7e`;
+`stash@{0}` and the unrelated working tree untouched.** Closes out the
+F3.1 → F3.2 → F3.3 → F3.3a extraction-to-bank pipeline.
+
+- **Defect fixed — a malformed extraction id polled forever.** The review page
+  (`apps/web/src/app/(workspace)/questions/extractions/[jobId]/page.tsx`)
+  stopped its 3s status poll only on 401/403/404. A non-UUID `jobId` is rejected
+  by the API's `ParseUUIDPipe` with **400**, which was not in that set, so
+  `/questions/extractions/not-a-uuid` re-requested every 3s indefinitely and left
+  the teacher on a permanently blank "Reviewing extraction" page — no error, no
+  retry, no exit. A 400 from a UUID path param is provably permanent (the URL can
+  never become valid on a later tick), so it belongs in the existing terminal
+  set. Fix: `isTerminalPollError(err)` in `apps/web/src/lib/api.ts`, a
+  `TERMINAL_POLL_ERRORS` set placed beside its sibling `jobDone`, consumed by the
+  page's poll catch. 5xx and transport errors deliberately stay retryable.
+- **Regression test:** `apps/web/src/lib/api.test.ts` — one test pinning
+  400/401/403/404 as permanent, one pinning 408/429/5xx/transport/`undefined` as
+  retryable. `apps/web/package.json` gained the missing `test:api` script (the
+  suite already existed but no script ran it). Web `test:api` 12/12.
+- **Audit result — no other defect.** Candidate persistence and per-candidate
+  batch isolation, tenant/subject/owner gating, valid-candidate rejection,
+  active/completed job reuse, per-candidate try/catch around enqueue,
+  merged-payload and reference validation against the candidate's declared
+  format, authoritative validation on Accept, the worker `updated_at` CAS that
+  makes a concurrent edit or Accept supersede an in-flight generation, Import
+  All's per-candidate skip reasons, and the F3.3a bank-set aggregation all read
+  clean and are covered by existing tests. The `failed`-job-never-reused rule is
+  asserted by `question-answer-generation.integration.ts` and re-confirmed live.
+  `/questions/bank/sets` correctly aggregates `AI_GENERATE_QUESTIONS` only —
+  extracted answers belong to the ordinary question bank, which is where the
+  live E2E confirmed they land.
+- **Validation:** F3 answer-generation 12/12 · F3.1 extraction resilience 5/5 ·
+  F3.3a bank sets 4/4 · job-ownership 14/14 · full API suite 228/228 · worker
+  answer-generation 16/16 and full worker pytest 99/99 with `ruff check .` and
+  `mypy worker` clean · web 57/57 across all five suites · `pnpm typecheck` 10/10
+  · `pnpm lint` 9/9 · `pnpm build` 7/7 · the four changed files Prettier-clean ·
+  `git diff --check` clean. DB-backed suites ran in-network against
+  `catlium_dev` (the host publishes no PG port without the dev override) and
+  remove their own institute/user fixtures afterwards.
+- **Live browser QA (dev+demo stack, `http://127.0.0.1:8080`):** verified the
+  whole teacher path end to end — 3 candidates extracted; `ANSWER_MISSING`
+  cleared after generation with `correctChoiceId` resolving to an existing choice
+  (choice IDs preserved, not regenerated); a forced job failure surfacing
+  `Retry answer` with the provider message and recovering on retry; a teacher
+  edit correctly blocking both Accept and Accept-all until saved; single Accept;
+  Import All importing the valid candidate and skipping the invalid one with an
+  explicit reason; a repeat Import All returning `{"imported":0,"skipped":[]}`;
+  the bank count moving 811→814 with the imports `ACTIVE`/`APPROVED`; and
+  `GET /questions/bank/sets` returning 200 with populated sets. The fix was then
+  confirmed on the rebuilt container: the malformed-id page issued exactly **1**
+  request (previously 11+ and climbing) and rendered "Something went wrong —
+  Validation failed (uuid is expected) — Retry", while a valid-but-missing UUID
+  still correctly renders "Job not found". All E2E fixtures were deleted and the
+  bank is back to 811 with no F3.4 rows left.
+- **Out of scope (pre-existing, reported not fixed):** repo-wide
+  `pnpm format:check` fails on 220 files; the gitignored
+  `apps/workers/ocr-worker/build/` artifact makes `mypy .` fail on a duplicate
+  `ocr_worker` module. Both reproduce independently of F3.4. Two generic
+  concerns were noted while auditing and deliberately left alone as
+  out-of-scope redesigns: `GET /jobs/:id` is institute-scoped rather than
+  creator-scoped (pre-dates F3.4; the review page only polls jobs it created), and
+  worker candidate reads omit `deleted_at IS NULL` (no current soft-delete
+  trigger).
+
+**Exact recommended next task:** review and merge
+`feature/question-extraction-final-hardening` into `dev` (`--no-ff`, no rebase)
+when the pipeline audit is accepted; `main` stays untouched until that is done.
+
 ## Phase F3.3a — Question Bank Sets 500 Fix (2026-09-26, IMPLEMENTED + VALIDATED + INTEGRATED)
 
 **Status: fixed and validated, committed as `7e53933`, and integrated into `dev`
