@@ -9,15 +9,16 @@ only and was not merged. It was merged into `dev` as **`5230bf6`**
 API/web containers were rebuilt afterwards so the live dev stack serves F2+F4 —
 verified against the running code, not just `Up (healthy)`.)
 
-**F5.1 (academic-structure catalogue expansion) is in progress** on
-`feature/f5-1-academic-structure-catalogue`, branched from `dev` `5230bf6`.
-`main`/`origin/main` (`ef4de7e`) and `stash@{0}` are untouched; the unrelated
-working tree (blackbook/proposal work) is preserved byte-for-byte.
+**F5.2 (academic-structure guard migration) is implemented + validated** on
+`feature/f5-2-structure-guard-migration`, branched from `dev` `329fea8` and
+pushed to origin — **not merged into `dev`**. F5.1 was already merged into `dev`
+as `329fea8`. `main`/`origin/main` (`ef4de7e`) and `stash@{0}` are untouched; the
+unrelated working tree (blackbook/proposal work) is preserved byte-for-byte.
 
 ### Current phase
 
-F5. F5.0 is closed and merged. F5.1 is in progress — catalogue only, no guard
-migration. F5.2–F5.8 are unstarted.
+F5. F5.0 and F5.1 are closed and merged. F5.2 is implemented and validated on its
+feature branch, awaiting review/merge. F5.3–F5.8 are unstarted.
 
 ### Completed work
 
@@ -84,28 +85,118 @@ migration. F5.2–F5.8 are unstarted.
 
 ### Work in progress
 
-- [~] **F5.1 — Academic-Structure Catalogue Expansion**, on
-      `feature/f5-1-academic-structure-catalogue` (off `dev` `5230bf6`).
-      Catalogue only; no guard migration. `INSTITUTE_RESOURCES` gains
-      `'academic-structure'` with `read, create, update, delete, manage`
-      (the D4 layer — academic years, classes, offerings, divisions — as ONE
-      resource, superseding the four per-entity keys sketched in
-      `authorization.md` §13). INSTITUTE_ADMIN gets `academic-structure.manage`
-      automatically via the derived mapping; TEACHER and STUDENT get none;
-      institute-domain only, no platform permission. A custom institute role
-      receives the keys through the existing
+- [~] **F5.2 — Structure Guard Migration**, on
+      `feature/f5-2-structure-guard-migration` (off `dev` `329fea8`). Pushed to
+      origin, **not merged into `dev`** — awaiting review.
+- [x] **F5.1 — Academic-Structure Catalogue Expansion**, COMPLETE and merged
+      into `dev` as `329fea8` (branch `feature/f5-1-academic-structure-catalogue`
+      off `dev` `5230bf6`). Catalogue only; no guard migration (that was F5.2).
+      `INSTITUTE_RESOURCES` gained `'academic-structure'` with
+      `read, create, update, delete, manage` (the D4 layer — academic years,
+      classes, offerings, divisions — as ONE resource, superseding the four
+      per-entity keys sketched in `authorization.md` §13). INSTITUTE_ADMIN gets
+      `academic-structure.manage` automatically via the derived mapping;
+      TEACHER and STUDENT get none; institute-domain only, no platform
+      permission. A custom institute role receives the keys through the existing
       `PUT /roles/:roleId/permissions` surface — no new grant path, no schema
-      change, no migration; `PermissionSyncService` inserts the five
-      `permissions` rows on next boot. Docs updated in `authorization.md` §13,
-      `institute-operations-audit.md` §16/§17 and
-      `academic-teacher-permissions.md` §2. 7 focused regression tests added
-      (42/42 in `permission-catalogue.test.ts`).
+      change, no migration. 7 focused regression tests (42/42 in
+      `permission-catalogue.test.ts`).
+
+### Completed work
+
+- [x] **F5.2 — Structure Guard Migration** (2026-09-26, IMPLEMENTED +
+      VALIDATED, BRANCH ONLY — not merged into `dev`). Authorization only; **no
+      schema change and no migration**.
+  - **What changed.** `AcademicStructureController` drops
+    `@RequiredRoles('INSTITUTE_ADMIN')` and the `STRUCTURE_ADMIN` constant, adds
+    `PermissionGuard` to its guard chain
+    (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` — the
+    Q.3/Q.4 order, `RolesGuard` retained as a no-op), and each of the **14**
+    D4 structural routes declares exactly one
+    `@RequiredPermission('academic-structure.*')` key:
+    - read → `read`: `GET /academic/academic-years`, `/academic/classes`,
+      `/academic/classes/:classId/subjects`, `/academic/divisions`
+    - create → `create`: `POST` on `academic-years`, `classes`, `divisions`, and
+      `classes/:classId/subjects/:subjectId` (offering add)
+    - update → `update`: `PATCH` on `academic-years/:id`, `classes/:id`,
+      `divisions/:id`
+    - delete → `delete`: `DELETE` on `classes/:id`,
+      `classes/:classId/subjects/:subjectId` (offering remove), `divisions/:id`
+    - **no explicit `manage` anywhere** — `manage` is implied by
+      `hasPermission`, so INSTITUTE_ADMIN (built-in mapping) and a custom role
+      granted `academic-structure.manage` both clear every route. No OR
+      widening, no `@RequiredPermissions` (none of these operations is a
+      collapsed multi-action endpoint like Q.4's transfer).
+  - **Preserved, not weakened.** `TenantGuard` + `x-institute-id` institute
+    scoping; `AcademicStructureService`'s per-query `instituteId` scoping and
+    its `NotFound` for a foreign year/class/subject; every existing ownership
+    and relationship check (e.g. `createDivision` still resolves its academic
+    year and class in-institute). The permission check **authorizes the
+    operation and never substitutes for a scope check** — proven in the tests by
+    a fully-authorized `manage` delegate still receiving `NotFound` for another
+    institute's class and offering.
+  - **One intended behaviour change, documented in `authorization.md` §13:**
+    structural **reads** were previously open to any active member (no decorator
+    at all). They now require `academic-structure.read`, which TEACHER and
+    STUDENT do not hold, so the D4 layer is admin-only-or-delegated end to end
+    — reads included. This matches the existing `roles.*` / `assignments.*`
+    posture and the F5.1 recorded defaults, and it reaches no student or teacher
+    surface: these routes are consumed only by the institute academic console.
+  - **Out of scope after audit, stated explicitly:** the `/academic`
+    subjects/chapters/topics routes on `AcademicController` are academic
+    *content*, catalogued as `subjects.*`/`chapters.*`/`topics.*` and
+    deliberately **not** part of `academic-structure` (F5.1's D4 boundary). They
+    stay `@RequiredRoles` for their own phase (F5.5). Staffing —
+    teacher-assignments, student placements/enrollments (`assignments.*`, Q.3/
+    Q.4, D-Q3.3/G3) — was not touched; the assignments permission design is not
+    reopened.
+  - **No migration required, confirmed by audit:** F5.1 already inserted the five
+    `academic-structure.*` `permissions` rows (verified present in `catlium_dev`),
+    and the catalogue is code-defined, so an authorization change cannot need
+    schema work. No migration file was created.
+  - **Tests.** New `apps/api/src/academic-structure/academic-structure-authz.integration.ts`
+    (`test:academic-structure-authz`, TEST_DATABASE_URL-gated), reusing the
+    Q.3/Q.4 real-guard-chain harness — no second framework. **9/9**:
+    metadata assertions (every handler declares exactly one
+    `academic-structure.*` key; the operation→action mapping; **no residual
+    `ROLES_KEY` on the class or any handler**), INSTITUTE_ADMIN passes all 14
+    via `manage`, TEACHER/STUDENT/zero-role default-deny all 14, the four
+    single-action delegate roles (read-only / create-only / update-only /
+    delete-only) each pass their action and fail every other, a `manage` delegate
+    passes all 14, cross-institute custom-role isolation (assign rejected +
+    no A grant context through a B membership), and the service-level scoping
+    proof described above. **Negative probe:** reverting one decorator to
+    `@RequiredRoles` makes 5 of the 9 sub-tests fail, so the suite has teeth.
+  - **Validation.** New suite 9/9 · Q.3/Q.4 authz regressions
+    `test:teacher-assignments-authz` 5/5, `test:student-placements-authz` 8/8,
+    `test:student-enrollments-authz` 6/6 · `test:authz-regression` 8/8 ·
+    `test:academic-scope` 1/1, `test:resource-scope` 1/1, `test:job-ownership`
+    14/14 · `test:teacher-assignments` 1/1, `test:student-placements` 1/1,
+    `test:student-placements-bulk` 1/1,
+    `test:student-placements-carry-forward` 1/1, `test:phase-m-remediation` 1/1,
+    `test:mod-3-export-scope` 1/1, `test:mod-4-attempts-scope` 1/1 · API unit
+    `pnpm --filter @catlium/api test` **238/238** · web `test:academic` 28/28 ·
+    API `tsc --noEmit` clean · `pnpm typecheck` 10/10 · `npx turbo run lint` 9/9 ·
+    `pnpm build` 7/7 · `git diff --check` clean. DB-backed suites ran against
+    `catlium_dev` through a throwaway loopback socat forwarder
+    (`127.0.0.1:15432 → postgres:5432` on the `edutech_default` bridge), since
+    the base compose file publishes no PG port and the running stack was left
+    untouched.
+  - **Files changed:** `academic-structure.controller.ts`, the new authz
+    integration test, `apps/api/package.json` (one `test:` script), and the
+    F5.2 documentation in `docs/tasks.md`, `docs/project-status.md`,
+    `docs/architecture/authorization.md` §13 and
+    `docs/architecture/institute-operations-audit.md` §16. **No web, worker,
+    database, or compose file was touched.**
 
 ### Pending work
 
-- [~] F5.1 — Academic-Structure Catalogue Expansion (see above; finishing
-      validation + commit on the feature branch — **not** merged into `dev`)
-- [ ] F5.2 — Structure Guard Migration
+- [~] F5.2 — Structure Guard Migration — **implemented + validated** on
+      `feature/f5-2-structure-guard-migration` (pushed, **not** merged into
+      `dev`). All 14 D4 structural routes now declare
+      `academic-structure.read/create/update/delete`; no `@RequiredRoles`
+      remains on the controller. See the F5.2 entry above and
+      `docs/tasks.md`.
 - [ ] F5.3 — Question + Paper Surface Guard Migration
 - [ ] F5.4 — Examination + Attempt + Practice Guard Migration
 - [ ] F5.5 — Remaining Surface Guard Migration
@@ -127,31 +218,31 @@ migration. F5.2–F5.8 are unstarted.
 - [-] Question-extraction material-driven surface: retire or restore — needs an
       explicit user decision (see `question-lifecycle.md` §8a).
 
-### Validation status (F5.0 — final run)
+### Validation status (F5.2 — final run, 2026-09-26)
 
 | Check | Result |
 | ----- | ------ |
-| `pnpm install --frozen-lockfile` | clean (F2 lockfile update; resolver 3.10.0 → 5.9.1) |
-| web `test:form-resolver` | 2/2 |
-| web `test:api` / `test:question-answer` | 12/12, 1/1 |
-| `pnpm --filter api test` | **232/232** |
-| worker pytest | **100/100** |
-| worker `ruff check .` / `mypy worker` | clean / clean (27 source files) |
+| `test:academic-structure-authz` (DB-backed, new) | **9/9** |
+| Q.3/Q.4 authz regressions (`teacher-assignments-authz` / `student-placements-authz` / `student-enrollments-authz`) | 5/5, 8/8, 6/6 |
+| `test:authz-regression` (DB-backed) | 8/8 |
+| `test:academic-scope` / `test:resource-scope` / `test:job-ownership` (DB-backed) | 1/1, 1/1, 14/14 |
+| placement/attempt/export DB suites | 1/1 each (`teacher-assignments`, `student-placements`, `student-placements-bulk`, `student-placements-carry-forward`, `phase-m-remediation`, `mod-3-export-scope`, `mod-4-attempts-scope`) |
+| `pnpm --filter @catlium/api test` | **238/238** |
+| web `test:academic` | 28/28 |
+| API `tsc --noEmit` (not Turbo-cached) | clean |
 | `pnpm typecheck` | 10/10 |
-| `turbo run lint` | 9/9 (`pnpm lint` itself fails with a pnpm CLI internal `RetryOperation` error, unrelated to the code) |
+| `npx turbo run lint` | 9/9 (`pnpm lint` itself fails with a pnpm CLI internal `RetryOperation` error, unrelated to the code) |
 | `pnpm build` | 7/7 |
-| `test:job-ownership` (DB-backed) | 14/14 |
-| `test:academic-scope` (DB-backed) | 1/1 |
 | `git diff --check` | clean |
-| `graphify update .` | 6488 nodes / 16791 edges / 305 communities (gitignored output) |
-| prettier on the touched docs | **not clean — pre-existing**: all 5 flagged `.md` files were already unformatted at `HEAD` (part of the documented 220-file repo-wide condition). Not reformatted, to avoid reflowing whole documents. |
+| prettier on the touched docs | **not clean — pre-existing**: the F5.2-touched `.md` files were already unformatted at `HEAD` (part of the documented 220-file repo-wide condition). Not reformatted, to avoid reflowing whole documents. |
+| `graphify update .` | re-run after the change (gitignored output) |
 
-DB-backed suites ran against the dev `catlium_dev` over the docker bridge
-(`172.18.0.3:5432`); the host publishes no PG port outside the dev override.
-They need `TEST_DATABASE_URL` and a built `packages/contracts/dist`. **The
-API/web containers have since been rebuilt** (after the `5230bf6` merge), so
-the running dev stack does serve F2+F4 — see the status note at the top of this
-entry.
+DB-backed suites ran against the dev `catlium_dev` over the `edutech_default`
+docker bridge, reached from the host through a throwaway loopback forwarder
+(`127.0.0.1:15432 → postgres:5432`); the running compose stack was not modified
+or recreated. They need `TEST_DATABASE_URL`. The F5.0/F5.1 runs used
+`172.18.0.3:5432` for the same reason — the base compose file publishes no PG
+port.
 
 ### Known issues
 
@@ -162,23 +253,28 @@ entry.
 - `GET /questions/bank/sets` was reported 500ing on `payload -> 'batchId'`
   grouping (F3.3, out of scope) — believed fixed by F3.3a but unverified here.
 - Repo-wide `pnpm format:check` fails on 220 pre-existing files; untouched.
+  The docs F5.2 touched are among them, so they were not reformatted either —
+  reflowing whole documents would bury the F5.2 diff.
+- DB-backed suites need `TEST_DATABASE_URL` pointing at a host-reachable
+  Postgres. The base compose file publishes no PG port, so the F5.2 run used a
+  throwaway loopback socat forwarder on the compose bridge; the running stack
+  itself was never recreated.
 
 ### Latest checkpoint
 
-`dev`/`origin/dev` is `5230bf6` — `Merge branch
-'feature/f5-0-integrate-validated-branches' into dev`, which carries the F5.0
-checkpoint commit `docs(authz): integrate validated branches and record F5
-track` on top of merge `7805814` (F4) and merge `26f0540` (F2). F5.0 is
-therefore integrated, not branch-only. F5.1 builds on that commit on
-`feature/f5-1-academic-structure-catalogue`, **not yet merged into `dev`**.
+`dev`/`origin/dev` is `329fea8` — `Merge branch
+'feature/f5-1-academic-structure-catalogue' into dev`, which carries the F5.0
+merge `5230bf6`, the F4 merge `7805814` and the F2 merge `26f0540` underneath.
+F5.0 and F5.1 are therefore integrated into `dev`, not branch-only. **F5.2 sits
+on `feature/f5-2-structure-guard-migration`, pushed to origin and NOT merged.**
+`main`/`origin/main` is `ef4de7e` and `stash@{0}` were not touched.
 
 ### Exact recommended next task
 
-Finish F5.1 (catalogue + defaults + docs + tests), review and merge
-`feature/f5-1-academic-structure-catalogue` into `dev`, then begin **F5.2 —
-Structure Guard Migration**: replace `@RequiredRoles('INSTITUTE_ADMIN')` on the
-`/academic` structural routes with the `academic-structure.*` keys, mirroring
-the Q.3 `assignments` migration in `docs/architecture/academic-teacher-permissions.md`.
+Review and merge `feature/f5-2-structure-guard-migration` into `dev`, then
+rebuild the API container so the running dev stack serves the migrated
+structural guards. After that, begin **F5.3 — Question + Paper Surface Guard
+Migration** (the next unstarted F5 phase), mirroring the Q.3/F5.2 pattern.
 
 ## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, MERGED INTO dev)
 
