@@ -13,11 +13,12 @@
     "test:academic": "node --test src/lib/academic.test.ts",
     "test:question-answer": "node --test src/lib/question-answer.test.ts",
     "test:api": "node --test src/lib/api.test.ts",
+    "test:form-resolver": "node --test src/lib/form-resolver.test.ts",
     "clean": "rm -rf .next"
   },
   "dependencies": {
     "@catlium/contracts": "workspace:*",
-    "@hookform/resolvers": "^3.9.1",
+    "@hookform/resolvers": "^5.9.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",

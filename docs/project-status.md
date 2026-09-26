@@ -385,6 +385,60 @@ audit report and left unfixed (no speculative changes). Note: the running
 `api` image predates F1 (branch unmerged) — deploy/rebuild belongs to the
 merge step, not this audit.
 
+## Phase F2 — React Hook Form + Zod v4 Resolver Compatibility Fix (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED (backend untouched).**
+Branch: `feature/fix-form-validation` (commit `fix(web): upgrade
+@hookform/resolvers for Zod v4 form validation`, pushed, no merge).
+
+Add User and every other React Hook Form form shared one defect: the zod
+resolver silently rejected invalid submissions, so the form did nothing.
+
+- **Root cause (confirmed in the installed 3.10.0 dist):** the resolver's
+  failure handler only recognizes the Zod v3 error shape at
+  `Array.isArray(error.errors)`; a Zod 4.4.x error exposes `.issues`, so the
+  predicate failed and the resolver rethrew the raw ZodError. `handleSubmit`
+  aborts on a rejected resolver → invalid Add User submissions produced no
+  validation UI and no network request.
+- **Fix:** `apps/web` `@hookform/resolvers` `^3.9.1 → ^5.9.1`
+  (standard-schema interface, native Zod 4 support; peer react-hook-form
+  `^7.55.0` satisfied by the lockfile's 7.87.0). One dependency bump — no
+  component, backend, or contract change; every consumer already routes
+  through `zodResolver(schema)`.
+- **Regression test:** `apps/web/src/lib/form-resolver.test.ts` (+
+  `test:form-resolver` script) calls the real resolver against the real Zod 4
+  `CreateInstituteUserRequestSchema` — invalid input must resolve to field
+  errors (it rejected under 3.10.0) and valid input must resolve clean. 2/2.
+- **Validation:**
+  - Web lib tests `node --test src/lib/*.test.ts` **67/67** (65 + 2 new).
+  - Web `tsc --noEmit` clean; repo `pnpm typecheck` **10/10**; repo `pnpm
+    lint` 9/9 + web `eslint` clean; `next build` clean.
+  - Web container rebuilt; the running image carries
+    `@hookform/resolvers@5.9.1` and the bundle ships the resolver's Zod 4
+    detection marker.
+  - **Live browser verification (real Chrome, rebuilt dev stack):**
+    - Add User, empty submit → validation messages shown, **no** POST.
+    - Add User, valid input → `POST /users` **201**, "Account created" toast,
+      dialog closes, new row appears in the table.
+    - Add User, duplicate email → `POST /users` **409**, "This user is already
+      a member of the institute" error toast.
+    - Existing forms not regressed: login form signs in (resolver path
+      exercised); academic-year create form blocks empty input with a visible
+      "Name is required" error and no POST, then creates (POST **201**,
+      success toast).
+- **Docs:** this entry + tasks.md (Phase F2).
+- **Dev-DB artifacts from verification (offered for removal):** one demo user
+  `form-regression-f2@catlium.dev` and one academic year `2027-XXXX` created
+  in `catlium_dev` by the browser checks — harmless local data, can be left or
+  cleaned on request.
+
+**Exact recommended next task:** F2 is complete. The pre-existing unrelated
+working-tree changes (`.opencode/skills/*`, `docs/proposal/`,
+`questions/*`, `ui/select.tsx`) remain untouched on the branch; the next unit
+is whatever the platform timeline schedules next (e.g. Q.4.3
+`divisions.capacity`, the deferred teacher "my assignments" read surface, or
+the platform audit view).
+
 ## Phase Q.4.4 — Institute Admin Student Placement Console + Carry-Forward Wizard (2026-09-24)
 
 **Status: IMPLEMENTED + VALIDATED.**
