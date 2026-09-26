@@ -1,11 +1,11 @@
 # Project Status
 
-## Phase F3.3a — Question Bank Sets 500 Fix (2026-09-26, IMPLEMENTED + VALIDATED)
+## Phase F3.3a — Question Bank Sets 500 Fix (2026-09-26, IMPLEMENTED + VALIDATED + INTEGRATED)
 
-**Status: fixed and validated on branch `feature/fix-question-bank-sets`
-(branched from `dev` `56d7253`; `dev` and `main`/`ef4de7e` untouched).** Closes
-the pre-existing `GET /api/v1/questions/bank/sets` 500 found during the F3.3
-integration audit.
+**Status: fixed and validated, committed as `7e53933`, and integrated into `dev`
+via merge `69bdb62` (`--no-ff`, from `dev` `56d7253`; no rebase; `main` untouched
+at `ef4de7e`).** Closes the pre-existing `GET /api/v1/questions/bank/sets` 500
+found during the F3.3 integration audit.
 
 - **Root cause:** `QuestionGenerationService.listBankSets` selected
   `payload -> 'batchId'` (jsonb) while grouping by `payload ->> 'batchId'`
@@ -37,8 +37,17 @@ integration audit.
   worker files are untouched, and no unrelated working-tree file is included in
   the commit.
 
-**Exact recommended next task:** F3.4 remains unstarted — do not begin it until
-this branch is reviewed and merged into `dev`.
+- **Integration validation (post-merge, on `dev` `69bdb62`):** `test:question-bank-sets`
+  4/4, `test:question-answer-generation` 12/12, `test:question-extraction-resilience`
+  5/5, full API `test` 228/228, `pnpm typecheck` 10/10, `pnpm lint` 9/9, `pnpm build`
+  7/7. API container force-recreated from the freshly built image: health 200, live
+  bundle carries `payload ->> 'batchId' AS batch_id` with no `payload -> 'batchId'`
+  projection left, and `GET /api/v1/questions/bank/sets` returns 200 with 25 sets
+  whose `batchId` values are all bare strings. No unrelated working-tree change was
+  staged; `stash@{0}` and `main` untouched. F3.4 not started.
+
+**Exact recommended next task:** F3.4 remains unstarted — begin it only when it is
+explicitly assigned.
 
 ## Phase F3.3 — Generate Answer UX (2026-09-25, IMPLEMENTED + REVIEWED + VALIDATED + INTEGRATED)
 
