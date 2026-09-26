@@ -1,11 +1,171 @@
 # Project Status
 
-## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, BRANCH ONLY)
+## Phase F5 — Permission Enforcement & Delegation on the Teaching/Examination Surface
+
+**Status: F5.0 COMPLETE (2026-09-26). The two validated feature branches are
+merged into `feature/f5-0-integrate-validated-branches` (off `dev` `77b6e05`),
+validated, documented, committed and pushed. F5.1 has NOT started.**
+`dev`/`origin/dev` (`77b6e05`), `main`/`origin/main` (`ef4de7e`) and
+`stash@{0}` are untouched; the unrelated working tree is preserved
+byte-for-byte and nothing outside this branch was committed. No authorization
+code changes were made.
+
+### Current phase
+
+F5. F5.0 is the integration + documentation checkpoint; F5.1–F5.8 are the
+actual permission-enforcement work and are all unstarted.
+
+### Completed work
+
+- [x] **F2 — React Hook Form + Zod v4 resolver compatibility**, merged `--no-ff`
+      as `26f0540` from `feature/fix-form-validation` (`b829f70`). Still
+      required on `dev`: `dev` pinned `@hookform/resolvers` 3.10.0 against Zod
+      4.4.3, and 3.10.0 reads the removed `.errors` property, so every
+      resolver-based form silently produced no field errors. Now `^5.9.1`, with
+      the missing regression test wired as `pnpm --filter web test:form-resolver`
+      (2/2 — the suite did not exist on `dev`). Docs conflict resolved by
+      keeping both the `dev` history and the F2 entry.
+- [x] **F4 — Syllabus Chapter → Topic invariant**, merged `--no-ff` as
+      `7805814` from `feature/fix-syllabus-topics` (`14d28dc`). Still required
+      on `dev`: `SyllabusChapterSchema.topics` was `z.array(...).max(200)` with
+      no lower bound, so a chapter with `topics: []` was accepted by the
+      contract, by `SyllabusValidator`, and by the worker's Pydantic model
+      (no `min_length`). Now `.min(1)` end to end, `SyllabusValidator` was
+      extracted from `syllabus.service.ts` so the confirm/update gate is
+      unit-testable (`syllabus-validator.test.ts`), and the worker prompt/model
+      follow. **Note for the next session:** the two new API tests import
+      `@catlium/contracts` from its built `dist`, so they FAIL against a stale
+      build — run `pnpm build` before `pnpm --filter api test` after any
+      contracts change. This cost a debugging cycle here and will again.
+- [x] **Documentation reconciliation.** `AGENTS.md` §2 no longer claims the core
+      modules are unimplemented; the pre-overhaul security-audit decision set is
+      now cited as **SA-F1…SA-F6** so it stops colliding with the F-track (F2
+      and F4 above are delivery phases, not SA-F2/SA-F4); H5ten is recorded as
+      remediated — the institute-workspace OCR worker registration it described
+      no longer exists, the registry being platform-plane under `PlatformGuard`
+      with `ocr-workers.*` (SA-F4 decided: shared platform infrastructure). **No
+      route or code was removed**; whether the platform-plane `/ocr/workers`
+      admin surface is still needed is deferred to F5.5.
+- [x] **`institute-operations-audit.md` §16/§17 refreshed** against the code:
+      Q.2/Q.3/Q.4 are implemented (all five sections ship inside
+      `/institute/academic`), Q.5 is backend-complete with **web UI only**
+      outstanding, class/division hard delete is still open (§14.1), and the
+      design-gated catalogue expansion is decided for the staffing slice only.
+- [x] **`user-validation.md`** no longer tells a reader to run Ollama or to use
+      a `infrastructure/compose/docker-compose.yml` path that does not exist —
+      AI goes through OmniRoute (`AGENTS.md` §6) and the compose files are at
+      the repo root.
+- [x] **`.planning/`** is marked superseded (it claimed "Phase 8 of 3 · 0%" /
+      85% and was last touched 2026-09-11). `AGENTS.md` +
+      `docs/project-status.md` + `docs/tasks.md` are the authoritative state.
+- [x] **Question-extraction deletion adjudicated.** The uncommitted deletion of
+      `question-extraction-dialog.tsx` + the "Extract" button is a **stray
+      experiment, not a documented retirement**: the deleted dialog is the only
+      web caller of the still-live `POST /questions/extract-from-material`, and
+      the retained `QuestionSourceExtractionDialog` targets different
+      endpoints. It is **left uncommitted and unstaged**; committing it would
+      silently drop material-driven extraction. Recorded in
+      `question-lifecycle.md` §8a, pending an explicit decision.
+- [x] **Label normalization:** `F.1` → `F1` (13 sites) so the track reads
+      F1, F2, F3.1–F3.4, F4, F5.0–F5.8.
+- [x] **Stale "not merged" claims corrected.** F3.4 and F1 both still claimed
+      "BRANCH ONLY / no merge"; `git branch --contains` shows `dev` contains
+      both (`dev` HEAD `77b6e05` **is** the F3.4 merge). Corrected in both
+      files. The older Q.* phase entries keep their historical per-branch
+      wording on purpose — each names its own feature branch, and rewriting
+      them all was not worth the diff.
+- [x] **`graphify update .`** re-run after the merges: 6488 nodes, 16791 edges,
+      305 communities. `graphify-out/` is gitignored, so this produces no
+      repository change.
+
+### Work in progress
+
+None. F5.0 is closed; F5.1 is the next task and has not been started.
+
+### Pending work
+
+- [ ] F5.1 — Academic-Structure Catalogue Expansion
+- [ ] F5.2 — Structure Guard Migration
+- [ ] F5.3 — Question + Paper Surface Guard Migration
+- [ ] F5.4 — Examination + Attempt + Practice Guard Migration
+- [ ] F5.5 — Remaining Surface Guard Migration
+- [ ] F5.6 — Frontend Gate Alignment
+- [ ] F5.7 — Roles Console + User Role Management
+- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+
+### Deferred work
+
+- [-] Class/division delete hardening — `deleteClass`/`deleteDivision`
+      (`academic-structure.service.ts:145`, `:268`) are still hard cascades
+      (audit §14.1 / G6).
+- [-] `divisions.capacity` migration (Q.4.3) — optional stretch, occupancy is
+      computed on the fly today.
+- [-] Assessment-mutation audit events (G5) — institute-plane audit duty is
+      deferred platform-wide (O.2).
+- [-] Whether the platform-plane `/ocr/workers` admin surface is still needed
+      (rides with F5.5).
+- [-] Question-extraction material-driven surface: retire or restore — needs an
+      explicit user decision (see `question-lifecycle.md` §8a).
+
+### Validation status (F5.0 — final run)
+
+| Check | Result |
+| ----- | ------ |
+| `pnpm install --frozen-lockfile` | clean (F2 lockfile update; resolver 3.10.0 → 5.9.1) |
+| web `test:form-resolver` | 2/2 |
+| web `test:api` / `test:question-answer` | 12/12, 1/1 |
+| `pnpm --filter api test` | **232/232** |
+| worker pytest | **100/100** |
+| worker `ruff check .` / `mypy worker` | clean / clean (27 source files) |
+| `pnpm typecheck` | 10/10 |
+| `turbo run lint` | 9/9 (`pnpm lint` itself fails with a pnpm CLI internal `RetryOperation` error, unrelated to the code) |
+| `pnpm build` | 7/7 |
+| `test:job-ownership` (DB-backed) | 14/14 |
+| `test:academic-scope` (DB-backed) | 1/1 |
+| `git diff --check` | clean |
+| `graphify update .` | 6488 nodes / 16791 edges / 305 communities (gitignored output) |
+| prettier on the touched docs | **not clean — pre-existing**: all 5 flagged `.md` files were already unformatted at `HEAD` (part of the documented 220-file repo-wide condition). Not reformatted, to avoid reflowing whole documents. |
+
+DB-backed suites ran against the dev `catlium_dev` over the docker bridge
+(`172.18.0.3:5432`); the host publishes no PG port outside the dev override.
+They need `TEST_DATABASE_URL` and a built `packages/contracts/dist`. **The
+API/web containers were NOT rebuilt in this session**, so the running dev stack
+still predates F2+F4 — rebuild before trusting it.
+
+### Known issues
+
+- `pnpm lint` aborts inside pnpm itself (`TypeError: Cannot set property message
+  of …` in `RetryOperation._fn`). `npx turbo run lint` is the working path.
+- A stale `packages/contracts/dist` silently fails API tests that assert on
+  contract schemas; rebuild after any contracts change.
+- `GET /questions/bank/sets` was reported 500ing on `payload -> 'batchId'`
+  grouping (F3.3, out of scope) — believed fixed by F3.3a but unverified here.
+- Repo-wide `pnpm format:check` fails on 220 pre-existing files; untouched.
+
+### Latest checkpoint
+
+Branch `feature/f5-0-integrate-validated-branches`, F5.0 checkpoint commit
+`docs(authz): integrate validated branches and record F5 track` (hash = this
+entry's commit; `git log -1` on the branch). It sits on top of merge `7805814`
+(F4) and merge `26f0540` (F2), over `dev` `77b6e05`. Pushed to the feature
+branch only; not merged into `dev`.
+
+### Exact recommended next task
+
+Merge `feature/f5-0-integrate-validated-branches` into `dev` as a separate
+explicit step, then begin F5.1.
+
+Next: F5.1 — academic-structure catalogue expansion.
+
+## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, MERGED INTO dev)
 
 **Status: audited, one genuine defect fixed and regression-tested, validated,
-and left on the branch `feature/question-extraction-final-hardening` (from `dev`
-`db75f26`). NOT merged into `dev`; `main`/`origin/main` untouched at `ef4de7e`;
-`stash@{0}` and the unrelated working tree untouched.** Closes out the
+committed on `feature/question-extraction-final-hardening` (from `dev`
+`db75f26`) and SINCE MERGED into `dev` as `77b6e05`. `main`/`origin/main`
+untouched at `ef4de7e`; `stash@{0}` untouched.** (Corrected 2026-09-26 during
+F5.0 doc reconciliation: the entry previously said "BRANCH ONLY / NOT merged
+into `dev`", which stopped being true when `dev` advanced to the merge
+`77b6e05` — that merge commit is this branch.) Closes out the
 F3.1 → F3.2 → F3.3 → F3.3a extraction-to-bank pipeline.
 
 - **Defect fixed — a malformed extraction id polled forever.** The review page
@@ -292,14 +452,14 @@ pending). Two correctness fixes found while reviewing question extraction.
 into `dev` after review (RC-1 + RC-2 are small, self-contained, and fully
 regression-tested).
 
-## Phase F.1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
+## Phase F1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
 
 **Status: IMPLEMENTED + VALIDATED.**
 Branch: `feature/fix-student-placement-multiselect` (unmerged feature branch,
 pushed), HEAD add `docs(blackbook): strip chapter pages…` =
 `docs(blackbook): strip chapter pages and blanks from diagrams-only pdf`
 (commit `feat(authz): record final E-track audit for enrollment overrides` is
-the tip of the merged work; this branch adds the F.1 console surface on top).
+the tip of the merged work; this branch adds the F1 console surface on top).
 Design context: `docs/architecture/academic-student-placement.md` §9/Q.4.4
 console + §7/§8 contracts; authorization mirrors the per-student create path.
 
@@ -354,21 +514,22 @@ gating and 403 behavior are all preserved and re-validated.
   1/1 on the scratch loopback PG17 (`127.0.0.1:5433`); repo typecheck 10/10,
   api lint clean, `nest build` clean, web `next build` clean, web academic
   tests 28/28.
-- **Docs:** this entry; tasks.md (Phase F.1 entry).
+- **Docs:** this entry; tasks.md (Phase F1 entry).
 
-**Exact recommended next task:** merge `feature/fix-student-placement-
-multiselect` into `feature/student-placement` (or the integration branch)
-after review, or proceed to the next planned work-item per tasks.md — this
-branch has no merge and no further F.1 sub-items are open.
+**Exact recommended next task (as of 2026-09-25):** merge
+`feature/fix-student-placement-multiselect` after review, or proceed to the
+next planned work-item per tasks.md — no further F1 sub-items are open.
+*Superseded 2026-09-26: the merge into `dev` has since happened, so this
+note is historical. F1 is closed; the live track is F5.*
 
-### Final F.1 audit (2026-09-25, PASS)
+### Final F1 audit (2026-09-25, PASS)
 
-Re-ran and passed every F.1-relevant suite against a fresh scratch loopback
+Re-ran and passed every F1-relevant suite against a fresh scratch loopback
 PG17 (`127.0.0.1:5433`, migrations applied, running stack untouched):
-backend bulk integration 1/1, placements-authz 8/8 (incl. the F.1 bulk
+backend bulk integration 1/1, placements-authz 8/8 (incl. the F1 bulk
 sub-test), single-placement 1/1, carry-forward 1/1; web `test:academic`
 28/28. Repo typecheck clean for all 8 TS workspaces; api lint clean; api
-`nest build` clean; web `next build` clean. Checklist versus the intended F.1
+`nest build` clean; web `next build` clean. Checklist versus the intended F1
 requirements: bulk DTO + route + `assignments.create` authz, institute
 isolation, active-STUDENT validation, server-side dedup, existing partial-
 unique invariant, atomic all-or-nothing rollback on any conflict, single-
@@ -384,6 +545,125 @@ guard-driven suites — consistent with all sibling suites) are recorded in the
 audit report and left unfixed (no speculative changes). Note: the running
 `api` image predates F1 (branch unmerged) — deploy/rebuild belongs to the
 merge step, not this audit.
+
+## Phase F2 — React Hook Form + Zod v4 Resolver Compatibility Fix (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED (backend untouched).**
+Branch: `feature/fix-form-validation` (commit `fix(web): upgrade
+@hookform/resolvers for Zod v4 form validation`, pushed, no merge).
+
+Add User and every other React Hook Form form shared one defect: the zod
+resolver silently rejected invalid submissions, so the form did nothing.
+
+- **Root cause (confirmed in the installed 3.10.0 dist):** the resolver's
+  failure handler only recognizes the Zod v3 error shape at
+  `Array.isArray(error.errors)`; a Zod 4.4.x error exposes `.issues`, so the
+  predicate failed and the resolver rethrew the raw ZodError. `handleSubmit`
+  aborts on a rejected resolver → invalid Add User submissions produced no
+  validation UI and no network request.
+- **Fix:** `apps/web` `@hookform/resolvers` `^3.9.1 → ^5.9.1`
+  (standard-schema interface, native Zod 4 support; peer react-hook-form
+  `^7.55.0` satisfied by the lockfile's 7.87.0). One dependency bump — no
+  component, backend, or contract change; every consumer already routes
+  through `zodResolver(schema)`.
+- **Regression test:** `apps/web/src/lib/form-resolver.test.ts` (+
+  `test:form-resolver` script) calls the real resolver against the real Zod 4
+  `CreateInstituteUserRequestSchema` — invalid input must resolve to field
+  errors (it rejected under 3.10.0) and valid input must resolve clean. 2/2.
+- **Validation:**
+  - Web lib tests `node --test src/lib/*.test.ts` **67/67** (65 + 2 new).
+  - Web `tsc --noEmit` clean; repo `pnpm typecheck` **10/10**; repo `pnpm
+    lint` 9/9 + web `eslint` clean; `next build` clean.
+  - Web container rebuilt; the running image carries
+    `@hookform/resolvers@5.9.1` and the bundle ships the resolver's Zod 4
+    detection marker.
+  - **Live browser verification (real Chrome, rebuilt dev stack):**
+    - Add User, empty submit → validation messages shown, **no** POST.
+    - Add User, valid input → `POST /users` **201**, "Account created" toast,
+      dialog closes, new row appears in the table.
+    - Add User, duplicate email → `POST /users` **409**, "This user is already
+      a member of the institute" error toast.
+    - Existing forms not regressed: login form signs in (resolver path
+      exercised); academic-year create form blocks empty input with a visible
+      "Name is required" error and no POST, then creates (POST **201**,
+      success toast).
+- **Docs:** this entry + tasks.md (Phase F2).
+- **Dev-DB artifacts from verification (offered for removal):** one demo user
+  `form-regression-f2@catlium.dev` and one academic year `2027-XXXX` created
+  in `catlium_dev` by the browser checks — harmless local data, can be left or
+  cleaned on request.
+
+**Exact recommended next task:** F2 is complete. The pre-existing unrelated
+working-tree changes (`.opencode/skills/*`, `docs/proposal/`,
+`questions/*`, `ui/select.tsx`) remain untouched on the branch; the next unit
+is whatever the platform timeline schedules next (e.g. Q.4.3
+`divisions.capacity`, the deferred teacher "my assignments" read surface, or
+the platform audit view).
+
+## Phase F4 — Syllabus Chapter → Topic Invariant (2026-09-24)
+
+**Status: IMPLEMENTED + VALIDATED.**
+Branch: `feature/fix-syllabus-topics` (commit
+`fix(syllabus): require at least one topic per chapter`, pushed, no merge).
+
+Enforces the `Subject → Chapter → Topic(s)` invariant — every syllabus chapter
+must carry at least one topic because derived-content generation is
+topic-based (`GenerateQuestionsDto` requires `topicId`; starter-material
+generation rejects chapter-only sources).
+
+- **Worker prompt** (`apps/workers/worker/ai/generation/syllabus.py`): the
+  instruction now reads "must contain at least one topic (an empty topics list
+  is invalid)"; when a document states no explicit subtopic headings, the model
+  derives meaningful first-level topics from the chapter's own content, never
+  inventing topics the document does not support. Module docstring states the
+  same rule.
+- **Worker schema** (`worker/ai/schemas.py`): `SyllabusChapter.topics` is
+  `Field(min_length=1, max_length=200)` — an empty or absent topics list fails
+  Pydantic validation of `SyllabusAnalysisPayload`.
+- **Shared contract** (`packages/contracts/src/index.ts`):
+  `SyllabusChapterSchema.topics` is `z.array(SyllabusTopicSchema).min(1).max(200)`.
+- **API validation** (`apps/api/src/syllabus/syllabus.validation.ts`): the
+  existing `SyllabusValidator` moved to a pure module (the established
+  `paper-patterns.validation.ts` pattern) and is the exact gate confirm and
+  PATCH-update already run. Chapter-only structures now surface the existing
+  400 `Invalid syllabus structure` — zero duplicated validation logic:
+  confirm `parseStructure(locked.structure)` (`syllabus.service.ts`) and
+  update-structure both reject `topics: []`.
+- **Retry behaviour** (no new code): a chapter-only model response fails
+  `SyllabusAnalysisPayload` validation in the existing `_complete_validated`
+  loop, retrying `ai_validation_retries` times; after exhaustion the job
+  honestly fails (`fail_syllabus_analysis` + `job:failed`) and nothing reaches
+  the teacher-confirm path.
+- **Tests:**
+  - Worker `tests/test_syllabus.py` → new
+    `test_chapter_only_output_fails_validation_and_never_confirms`: real
+    retry loop drives 3 provider calls on `topics: []` output, then honest
+    failure; `complete_syllabus_analysis` never called. Valid
+    Chapter → Topic behavior preserved by the existing happy-path test.
+  - New `apps/api/src/syllabus/syllabus-validator.test.ts` (4 cases): valid
+    structure parses; `topics: []` → 400-style `BadRequestException` via
+    `SyllabusValidator`; `SyllabusStructureSchema.safeParse` rejects
+    `topics: []`; accepts a chapter with ≥1 topic.
+  - `tests/test_aggregation.py` + `scripts/e2e/mock_ai_provider.py` updated so
+    no worker/e2e fixture carries an empty chapter.
+- **Legacy data** — not silently mutated, no migration: already-CONFIRMED
+  syllabi are untouched (read paths never parse structure, so no read
+  regression). Legacy chapter-only structures remain valid for the UI to edit,
+  but re-confirming one as-is now 400s — such rows require explicit
+  re-analysis/backfill (fresh analysis producing topics, then confirm).
+- **Validation:** worker `pytest` 84/84; api unit tests **232/232** (228 + 4
+  new); repo `pnpm typecheck` **10/10**; repo `pnpm lint` 9/9; repo `pnpm
+  build` 7/7; `ruff` and source `mypy` clean (test-file mypy strict noise is
+  pre-existing). Containers rebuilt per the container rule; running images
+  verified to carry the change — worker-ai/worker-material schema reports
+  `MinLen(min_length=1)` and carry the new prompt text, api `dist`
+  `syllabus.validation.js` serves the validator and the bundled contracts dist
+  has `topics:z.array(SyllabusTopicSchema).min(1).max(200)`.
+- **Docs:** this entry; tasks.md (Phase F4). Graphify graph re-run.
+- **Commits:** `fix(syllabus): require at least one topic per chapter` on
+  `feature/fix-syllabus-topics` (+ push, no merge).
+
+**Exact recommended next task:** none scheduled for F4 — do not start F1 or F3.
 
 ## Phase Q.4.4 — Institute Admin Student Placement Console + Carry-Forward Wizard (2026-09-24)
 

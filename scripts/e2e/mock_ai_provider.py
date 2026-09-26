@@ -42,7 +42,7 @@ SYLLABUS = {
                 {"name": "Quadratic Equations", "description": "Quadratic formula"},
             ],
         },
-        {"name": "Geometry", "description": "Shapes and space", "topics": []},
+        {"name": "Geometry", "description": "Shapes and space", "topics": [{"name": "Basic Geometric Shapes"}]},
     ]
 }
 

@@ -1,13 +1,55 @@
 # Task Tracker
 
-## Phase F.1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
+## F5 — Permission Enforcement & Delegation on the Teaching/Examination Surface
+
+> Directive track. The teaching and examination surfaces are authorized by
+> **role** (`@RequiredRoles`) rather than by the additive **permission
+> catalogue** (`@RequiredPermission` + `PermissionGuard`). Only
+> `users.controller.ts` has been migrated, so staffing delegation works
+> (`assignments.*`, D-Q3.1/D-Q3.8) but the rest of the teaching/exam surface
+> cannot delegate authority to a custom institute role. F5 closes that gap in
+> guarded increments — catalogue expansion first, then surface-by-surface guard
+> migration, then the frontend gates that mirror it, then the remaining console
+> work. `docs/architecture/authorization.md` §13/§18 and
+> `docs/architecture/academic-teacher-permissions.md` are the source of truth.
+
+- [x] **F5.0 — Integrate validated branches + documentation reconciliation.**
+      **COMPLETE 2026-09-26.** Merged the two validated feature branches into
+      `feature/f5-0-integrate-validated-branches` (off `dev` `77b6e05`, no
+      rebase/reset): F2 `feature/fix-form-validation` → `26f0540`, F4
+      `feature/fix-syllabus-topics` → `7805814`, both `--no-ff`. No
+      authorization code changes. Then reconciled the documentation (see the
+      `## Phase F5` entry in `docs/project-status.md` for the full list:
+      `AGENTS.md` §2, SA-F1…SA-F6 disambiguation, H5ten/SA-F4, the
+      institute-operations audit §16/§17, OmniRoute in `user-validation.md`,
+      `.planning/` superseded, the question-extraction deletion decision, the
+      F1/F3.4 "not merged" claims, and `F.1`→`F1`). Final validation: API
+      232/232, worker pytest 100/100 + ruff + mypy clean, web 15/15,
+      `pnpm typecheck` 10/10, `turbo run lint` 9/9, `pnpm build` 7/7,
+      `job-ownership` 14/14, `academic-scope` 1/1, `git diff --check` clean.
+      Checkpoint commit `docs(authz): integrate validated branches and record
+      F5 track`, pushed to the feature branch only — **not** merged into `dev`.
+      `dev`/`origin/dev` `77b6e05`, `main`/`origin/main` `ef4de7e` and
+      `stash@{0}` untouched; the unrelated working tree preserved.
+- [ ] F5.1 — Academic-Structure Catalogue Expansion
+- [ ] F5.2 — Structure Guard Migration
+- [ ] F5.3 — Question + Paper Surface Guard Migration
+- [ ] F5.4 — Examination + Attempt + Practice Guard Migration
+- [ ] F5.5 — Remaining Surface Guard Migration
+- [ ] F5.6 — Frontend Gate Alignment
+- [ ] F5.7 — Roles Console + User Role Management
+- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+
+## Phase F1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
 
 > Atomic multi-student placement from the institute console. An institute admin
 > checks off any subset of the visible placeable STUDENT roster and submits ONE
 > bulk request; the batch is deduplicated, revalidated, and committed in a
 > single all-or-nothing transaction. Full report: `docs/project-status.md`
-> (Phase F.1 entry). Branch `feature/fix-student-placement-multiselect`,
-> pushed, no merge — this is unmerged session work per AGENTS.
+> (Phase F1 entry). Branch `feature/fix-student-placement-multiselect`,
+> pushed and **since merged into `dev`** (`git branch --contains` confirms
+> `dev`; corrected 2026-09-26 during F5.0 doc reconciliation — the entry
+> previously said "no merge / unmerged session work").
 
 - [x] **Backend — bulk route + service + authz (`apps/api/src/academic-
       structure/`):**
@@ -44,12 +86,121 @@
     `{membershipIds, divisionId}`; loading/error/success toast feedback +
     refresh-on-success. Single-student flow (single create) untouched --
     both paths shown via the same dialog defaulting to the visible roster.
-- [x] **Docs:** this tracker Phase F.1 entry.
-- [x] **Final F.1 audit (2026-09-25, PASS):** full checklist re-validated on a
+- [x] **Docs:** this tracker Phase F1 entry.
+- [x] **Final F1 audit (2026-09-25, PASS):** full checklist re-validated on a
   fresh scratch PG17 — backend bulk 1/1, authz 8/8, single 1/1, carry-forward
   1/1, web academic 28/28, repo typecheck (8 workspaces), api lint, web build.
   No HIGH/MEDIUM findings; only LOW/INFO items (cosmetic, no code change).
-  Full report in `docs/project-status.md` (Final F.1 audit).
+  Full report in `docs/project-status.md` (Final F1 audit).
+
+## F2 — React Hook Form + Zod v4 resolver incompatibility (2026-09-24, IMPLEMENTED)
+
+> Issued task. Fix the `@hookform/resolvers` + Zod v4 incompatibility that made
+> Add User and other forms silently reject invalid submissions. Root cause
+> confirmed: `@hookform/resolvers` 3.10.0 (and the declared `^3.9.1` range)
+> only recognizes the Zod v3 error shape (`.errors`); Zod 4.4.x errors use
+> `.issues`, so the resolver's catch predicate failed and it REJECTED with the
+> raw ZodError — `form.handleSubmit` never fired and invalid input produced no
+> network request (and no visible validation). Branch
+> `feature/fix-form-validation`, from `dev`. Backend user creation untouched.
+
+- [x] Bumped `apps/web` `@hookform/resolvers` `^3.9.1 → ^5.9.1`
+      (standard-schema based; native Zod 4 detection via `_zod`; peer RHF
+      `^7.55.0` satisfied by the lockfile's react-hook-form 7.87.0). Lockfile
+      updated. The installed 5.9.1 zod resolver maps Zod v4 issues → RHF
+      `FieldErrors` (resolves), on the exact path every form (`login`, `users`,
+      `subjects/new`, `materials`, `academic` sections, `questions`,
+      `assessments`, `create-institute-dialog`) uses: `zodResolver(schema)`.
+- [x] Regression test `apps/web/src/lib/form-resolver.test.ts` (new) +
+      `test:form-resolver` script — drives the REAL resolver against the REAL
+      Zod v4 `CreateInstituteUserRequestSchema`: invalid input must RESOLVE to
+      field errors (under 3.10.0 it rejected instead) and valid input must
+      resolve clean. 2/2. The pre-fix failure mode was confirmed in the
+      installed 3.10.0 dist (`Array.isArray(error.errors)` predicate) — the
+      test is a true regression guard.
+- [x] Validation: web `node --test src/lib/*.test.ts` **67/67** (65 existing +
+      2 new); web `tsc --noEmit` clean; repo `pnpm typecheck` **10/10**; repo
+      `pnpm lint` 9/9 + `eslint` over `apps/web/src` clean; `next build` clean
+      (`/users` emitted); web container rebuilt → running image carries
+      `@hookform/resolvers@5.9.1` + the `_zod` resolver marker in the bundle.
+- [x] Live browser verification (real Chrome against the rebuilt dev stack):
+      Add user — empty submit shows validation messages AND sends no POST;
+      valid input sends `POST /users` → **201** + "Account created" toast +
+      dialog closes + row appears in the table; duplicate email → **409** +
+      "already a member" error toast. Existing forms not regressed: login form
+      works (signed in, resolver path exercised) and the academic-year create
+      form blocks empty (validation shown, no POST) then creates (POST **201**,
+      success toast).
+- [x] Docs: this tracker + project-status.md (Phase F2 entry).
+- [x] Commit `fix(web): upgrade @hookform/resolvers for Zod v4 form validation`
+      on `feature/fix-form-validation` (+ push, no merge).
+
+## F4 — Enforce the syllabus Chapter → Topic invariant (2026-09-24, IMPLEMENTED)
+
+> Issued task. Every syllabus chapter must contain at least one topic because
+> downstream derived-content generation is topic-based
+> (`GenerateQuestionsDto` requires `topicId`; starter-material generation
+> rejects chapter-only sources). Branch `feature/fix-syllabus-topics`, from
+> `dev`; commit `fix(syllabus): require at least one topic per chapter` (+
+> push, no merge). No migration; no silent mutation of already-confirmed
+> syllabi.
+
+- [x] **Worker prompt** (`worker/ai/generation/syllabus.py`): replaces "0 or
+      more topics" with "must contain at least one topic"; when the document
+      has no explicit subtopic headings the model derives meaningful
+      first-level topics from the chapter's own content and never invents
+      topics the document does not support. Docstring updated to the same rule.
+- [x] **Worker schema** (`worker/ai/schemas.py`): `SyllabusChapter.topics` is
+      now `Field(min_length=1, max_length=200)` (the list is required; an
+      empty/absent topics list fails Pydantic validation).
+- [x] **Shared contract** (`packages/contracts/src/index.ts`):
+      `SyllabusChapterSchema.topics` now `z.array(SyllabusTopicSchema)
+      .min(1).max(200)`.
+- [x] **API validation** (`apps/api/src/syllabus/syllabus.validation.ts`):
+      `SyllabusValidator` extracted to a pure module (existing
+      `paper-patterns.validation.ts` precedent) so confirm/update's exact gate
+      is unit-testable; `syllabus.service.ts` delegates unchanged.
+      confirm(→ `parseStructure` of the analyzed structure) and
+      PATCH-update structure now reject chapter-only shapes with the existing
+      400 `Invalid syllabus structure` via `SyllabusValidator` — no duplicated
+      validation logic.
+- [x] **Retry behaviour** — no code change: a chapter-only model response now
+      fails `SyllabusAnalysisPayload` validation inside the existing
+      `_complete_validated` loop (retries `ai_validation_retries` times);
+      after exhaustion the job honestly fails (`fail_syllabus_analysis` +
+      `job:failed`), nothing is persisted to the teacher-confirm path.
+- [x] **Tests**:
+      - `test_syllabus.py`: new `test_chapter_only_output_fails_validation_and_never_confirms`
+        — chapter-only provider output drives the REAL `_complete_validated`
+        retry loop (3 provider calls with `ai_validation_retries=2`), then
+        fails honestly; `complete_syllabus_analysis` never called.
+      - New `apps/api/src/syllabus/syllabus-validator.test.ts` (4 cases):
+        valid Chapter → Topic parses; `topics: []` → 400-style
+        `BadRequestException` through `SyllabusValidator` (the exact
+        confirm/update gate); `SyllabusStructureSchema.safeParse` rejects
+        `topics: []`; accepts a chapter with ≥1 topic.
+      - `test_aggregation.py`: aggregation fixture chapter previously
+        `topics: []` now carries a topic (valid chapter shape).
+      - `scripts/e2e/mock_ai_provider.py`: canned syllabus "Geometry" chapter
+        `topics: []` → one topic, keeping the e2e/demo mock valid under the
+        new schema.
+- [x] **Legacy data** — documented, not mutated: already-CONFIRMED syllabi are
+      left untouched and read paths never parse structure (no regression); a
+      legacy chapter-only PROPOSED row cannot be confirmed as-is (400) and
+      requires explicit re-analysis/backfill through a fresh analysis + confirm.
+      No migration added.
+- [x] **Validation**: worker `pytest` 84/84 (incl. the new honest-failure
+      case); api unit `node --test` **232/232** (228 + 4 new validator);
+      repo `pnpm typecheck` 10/10; repo `pnpm lint` 9/9; repo `pnpm build` 7/7;
+      raw `ruff` + source `mypy` clean (test-file mypy noise pre-existing);
+      api/worker-ai/worker-material images rebuilt; running containers verified
+      to carry the change (worker schema `MinLen(min_length=1)` +
+      new prompt text; api contracts dist has
+      `topics:z.array(...).min(1).max(200)`).
+- [x] Docs: this tracker + project-status.md (Phase F4 entry). Graphify graph
+      re-run (`graphify update .`).
+- [x] Commit `fix(syllabus): require at least one topic per chapter` on
+      `feature/fix-syllabus-topics` (+ push, no merge).
 
 ## Phase Q.4.0 — Student Placement, Transfer & Carry-Forward Design (2026-09-24, DESIGN COMPLETE)
 
@@ -163,7 +314,12 @@
         all four placement/assignment integration suites 14/14 green on the
         scratch PG17, api image rebuilt + container healthy with new routes
         verified in the running dist.
-- [ ] (PLANNED) Phase Q.4.3 — optional additive `divisions.capacity` migration.
+- [-] Phase Q.4.3 — optional additive `divisions.capacity` migration.
+      **DEFERRED** (2026-09-26 reconciliation): an optional capacity/occupancy
+      stretch that was never scheduled. The occupancy data the placement
+      console needs today is already computed on the fly in
+      `carry-forward-wizard.tsx`; the migration only becomes worth it if a
+      hard capacity limit is ever enforced. Do not pick this up incidentally.
 - [x] Phase Q.4.4 — Student Placement console section + carry-forward wizard +
       pure-helper tests. **IMPLEMENTED 2026-09-24** (commit
       `feat(student-placements): add institute student placement console`,
@@ -428,21 +584,32 @@
   placement routes are `INSTITUTE_ADMIN` role-only and uncatalogued.
 - Class/division hard DELETE cascades placement history (FK cascade) — gap.
 
-### Recommended next (not scheduled)
+### Recommended next (status refreshed 2026-09-26)
 
 - [x] Q.2 — Academic-structure console (years/classes/offerings/divisions)
       — COMPLETE 2026-09-23 (see Phase Q.2 below). Delete hardening deferred
       (backend unchanged by design; UI states the exact cascade in the
       destructive confirm).
-- [ ] (PLANNED) Q.3 — Teacher → class-subject assignment UI.
-      Design prerequisite (permission catalogue) DONE 2026-09-23 — Phase Q.3.0
-      above (`assignments` = read/create/delete/manage).
-- [ ] (PLANNED) Q.4 — Student placement/transfer UI.
-- [ ] (PLANNED) Q.5 — User-management completeness + roles console
-      (+ design-gated catalogue expansion for structure keys).
-
-- [ ] Commit `docs(audit): inventory institute admin operations` on
-      `feature/institute-admin-operations-audit` (+ push, no merge).
+- [x] Q.3 — Teacher → class-subject assignment UI — **COMPLETE**. Design
+      prerequisite (permission catalogue) done 2026-09-23 (Phase Q.3.0 above,
+      `assignments` = read/create/delete/manage) and the console shipped in the
+      `/institute/academic` → `assignments-section.tsx` surface.
+- [x] Q.4 — Student placement/transfer UI — **COMPLETE**. Phase Q.4.0–Q.4.4
+      (backend + carry-forward + console) and the E-track enrollment override
+      all shipped; console is `/institute/academic` → `placements-section.tsx`
+      with `carry-forward-wizard.tsx` + `enrollments-dialog.tsx`. Only the
+      optional `divisions.capacity` stretch remains, DEFERRED (Q.4.3 above).
+- [ ] Q.5 — User-management completeness + roles console. Backend is DONE
+      (`PUT /users/:userId/roles`, full `/roles` CRUD + `PUT
+      /roles/:roleId/permissions`); **what is left is web UI only** — a role
+      editor on `/users` and a Roles management page. The design-gated
+      catalogue expansion is no longer open: it was DECIDED and implemented for
+      the staffing slice (`assignments.*`, D-Q3.1/D-Q3.8), and academic
+      structure deliberately keeps mapping to `users.*`/`roles.*` (no
+      speculative keys). Password reset stays deferred elsewhere.
+- [x] `docs(audit): inventory institute admin operations` — committed; the
+      audit lives at `docs/architecture/institute-operations-audit.md` and its
+      §16/§17 statuses were refreshed on 2026-09-26.
 
 > Issued task (backend only — user-confirmed; console deferred). Implement the
 > Phase P.1 design: platform-user role grant/revoke + suspend/reactivate service
@@ -2358,9 +2525,12 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       institute-scoped rather than creator-scoped (pre-dates F3.4 and the review
       page only ever polls jobs it created), and worker candidate reads omit
       `deleted_at IS NULL` (no current soft-delete trigger).
-- [ ] **Checkpoint:** commit the F3.4 files and push
-      `feature/question-extraction-final-hardening` without merging it into
-      `dev`; `main`/`origin/main` and `stash@{0}` stay untouched.
+- [x] **Checkpoint:** committed and pushed
+      `feature/question-extraction-final-hardening`, then **merged into `dev`
+      as `77b6e05`** (`main`/`origin/main` `ef4de7e` and `stash@{0}` untouched).
+      *Corrected 2026-09-26 during F5.0 reconciliation: this item previously
+      read "commit and push without merging it into `dev`" — the merge has
+      since happened, so the "without merging" wording was stale.*
 
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
 

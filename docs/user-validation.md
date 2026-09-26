@@ -721,7 +721,8 @@ syllabus 39, p8 86; `pnpm typecheck` + `pnpm lint` + `next build` PASS.
 
 Status: `[x]` **PASS=39 FAIL=0 (2026-09-08)** via
 `bash scripts/e2e/syllabus_e2e.sh` — SYL-01..SYL-11 against a live local stack
-(Postgres + RabbitMQ via `infrastructure/compose/docker-compose.yml`, API on
+(Postgres + RabbitMQ via the root `docker-compose.yml` (2026-09-08: then at
+`infrastructure/compose/`), API on
 :3000, local OpenAI-compatible AI worker on `WORKER_AI_PROVIDER_URL=http://127.0.0.1:8899/v1`
 returning a fixed 3-chapter JSON via `scripts/e2e/mock_ai_provider.py` — no real LLM).
 The harness logs each check with PASS/FAIL and cleans up its own workers.
@@ -832,14 +833,17 @@ JSON serializable`.
 # 1. Env
 cp .env.example .env
 
-# 2. Bring up full stack (postgres, redis, rabbitmq, migrate, api, ocr,
-#    worker-material, worker-ai)
-docker compose -f infrastructure/compose/docker-compose.yml up --build
+# 2. Bring up full stack (postgres, redis, rabbitmq, omniroute, migrate, api,
+#    ocr, worker-material, worker-ai). The compose files live at the repo
+#    ROOT; the dev override publishes 127.0.0.1 ports for local tooling.
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
-# 3. AI provider: local Ollama running on the host (default)
-#    WORKER_AI_PROVIDER_URL=http://host.docker.internal:11434/v1
-#    WORKER_AI_MODEL=llama3.2  (any OpenAI-compatible endpoint works)
-ollama pull llama3.2 && ollama serve
+# 3. AI provider: OmniRoute, the ONLY supported AI gateway (AGENTS.md §6).
+#    No local LLM/Ollama and no direct cloud SDK calls. In-network the workers
+#    reach it at http://omniroute:20128/v1; the host-side .env uses
+#    WORKER_AI_PROVIDER_URL=http://localhost:20128/v1, WORKER_AI_MODEL=auto,
+#    and a WORKER_AI_API_KEY that matches the endpoint key configured in
+#    OmniRoute. Dashboard: http://127.0.0.1:20128 (loopback only).
 ```
 
 Health checks:
