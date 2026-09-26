@@ -54,8 +54,9 @@ test('every resource.action in the resource maps is catalogued', () => {
   }
 });
 
-test('catalogue resources are exactly the §13 V1 vocabulary (+ Phase C roles, Phase Q.3 assignments)', () => {
+test('catalogue resources are exactly the §13 V1 vocabulary (+ Phase C roles, Phase Q.3 assignments, F5.1 academic-structure)', () => {
   assert.deepEqual(Object.keys(INSTITUTE_RESOURCES).sort(), [
+    'academic-structure',
     'assessments',
     'assignments',
     'attempts',
@@ -133,6 +134,205 @@ test('Q.4: AND-combinator premise — every() over create+delete means both are 
   const manage = resolveGrantedKeys(['assignments.manage'], 'institute');
   assert.equal(hasPermission(manage, 'assignments.create'), true);
   assert.equal(hasPermission(manage, 'assignments.delete'), true);
+});
+
+// ── F5.1 — `academic-structure` catalogue expansion ──────────────
+// D4 structural layer (academic years, classes, class↔subject offerings,
+// divisions) catalogued as one resource with the full CRUD+manage action set.
+// F5.1 is catalogue-only: no controller/guard migration (that is F5.2).
+
+const ACADEMIC_STRUCTURE_ACTIONS = ['read', 'create', 'update', 'delete', 'manage'] as const;
+
+test('F5.1: all five academic-structure.* keys exist and are institute-domain', () => {
+  assert.deepEqual(
+    [...INSTITUTE_RESOURCES['academic-structure'].actions],
+    ['read', 'create', 'update', 'delete', 'manage'],
+  );
+  for (const action of ACADEMIC_STRUCTURE_ACTIONS) {
+    const key = `academic-structure.${action}`;
+    assert.equal(isSupportedPermission(key), true, key);
+    assert.equal(permissionDomain(key), 'institute', key);
+    // Declared with the standard metadata the DB `permissions` row mirrors.
+    const def = PERMISSION_CATALOGUE.find((p) => p.key === key);
+    assert.ok(def, key);
+    assert.equal(def.resource, 'academic-structure', key);
+    assert.equal(def.action, action, key);
+    assert.equal(def.domain, 'institute', key);
+    assert.ok(def.name.length > 0 && def.description.length > 0, key);
+  }
+});
+
+test('F5.1: academic-structure manage semantics follow the §13 implication rule', () => {
+  // manage implies every other action of its own resource, and only that resource.
+  for (const action of ACADEMIC_STRUCTURE_ACTIONS) {
+    if (action === 'manage') continue;
+    assert.equal(
+      hasPermission(['academic-structure.manage'], `academic-structure.${action}`),
+      true,
+      action,
+    );
+  }
+  // A bare sub-action never implies manage or a sibling action.
+  for (const action of ['read', 'create', 'update', 'delete'] as const) {
+    const granted = [`academic-structure.${action}`];
+    assert.equal(hasPermission(granted, 'academic-structure.manage'), false, action);
+    for (const other of ['read', 'create', 'update', 'delete'] as const) {
+      if (other === action) continue;
+      assert.equal(
+        hasPermission(granted, `academic-structure.${other}`),
+        false,
+        `${action} -> ${other}`,
+      );
+    }
+  }
+  // Implication is resource-scoped: the structural layer grants no staffing,
+  // user-management or platform authority.
+  assert.equal(hasPermission(['academic-structure.manage'], 'assignments.read'), false);
+  assert.equal(hasPermission(['academic-structure.manage'], 'users.create'), false);
+  assert.equal(hasPermission(['academic-structure.manage'], 'subjects.read'), false);
+  assert.equal(
+    hasPermission(['academic-structure.manage'], 'institutes.read' as PermissionKey),
+    false,
+  );
+});
+
+test('F5.1: built-in role defaults — INSTITUTE_ADMIN manage, TEACHER/STUDENT none', () => {
+  const admin = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN], 'institute');
+  assert.equal(hasPermission(admin, 'academic-structure.manage'), true);
+  for (const action of ACADEMIC_STRUCTURE_ACTIONS) {
+    if (action === 'manage') continue;
+    assert.equal(hasPermission(admin, `academic-structure.${action}`), true, action);
+  }
+  // Staffing configuration stays admin-only and is NOT reached through the
+  // structural manage key.
+  assert.equal(hasPermission(admin, 'assignments.manage'), true); // own resource, own key
+  assert.equal(
+    hasPermission(
+      resolveGrantedKeys(['academic-structure.manage'], 'institute'),
+      'assignments.manage',
+    ),
+    false,
+  );
+
+  // Default-deny: class users never hold structural administration by default.
+  for (const key of [TEACHER, STUDENT] as const) {
+    const granted = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[key], 'institute');
+    for (const action of ACADEMIC_STRUCTURE_ACTIONS) {
+      assert.equal(
+        hasPermission(granted, `academic-structure.${action}`),
+        false,
+        `${key}.${action}`,
+      );
+    }
+    // The mapping itself carries no academic-structure key at all.
+    for (const perm of BUILT_IN_ROLE_PERMISSIONS[key]) {
+      assert.equal(perm.startsWith('academic-structure.'), false, `${key}: ${perm}`);
+    }
+  }
+});
+
+test('F5.1: no platform permission is introduced — the resource is institute-only', () => {
+  // SUPER_ADMIN (platform plane) must not resolve any academic-structure key.
+  const superAdmin = resolveGrantedKeys(BUILT_IN_ROLE_PERMISSIONS[SUPER_ADMIN], 'platform');
+  for (const action of ACADEMIC_STRUCTURE_ACTIONS) {
+    assert.equal(hasPermission(superAdmin, `academic-structure.${action}`), false, action);
+  }
+  assert.equal(
+    resolveGrantedKeys([...BUILT_IN_ROLE_PERMISSIONS[SUPER_ADMIN]], 'institute').size,
+    0,
+  );
+  // The key is a valid institute grant and an invalid platform one.
+  assert.deepEqual(invalidInstitutePermissionKeys(['academic-structure.manage']), []);
+  assert.deepEqual(
+    invalidInstitutePermissionKeys(['academic-structure.read', 'ocr-workers.read']),
+    ['ocr-workers.read'],
+  );
+});
+
+test('F5.1: a custom institute role can be granted academic-structure via the existing mechanism', () => {
+  // The role-permission assignment surface accepts the new keys unchanged —
+  // no bespoke path: same invalidInstitutePermissionKeys check as any resource.
+  const curator: RoleState = {
+    key: 'structure-curator',
+    kind: 'institute',
+    domain: 'institute',
+    instituteId: INST_A,
+  };
+  assert.equal(isMembershipRoleEligible(curator), true);
+  assert.equal(roleVisibleToInstitute(curator, INST_A), true);
+  assert.equal(isBuiltinRoleKey('structure-curator'), false);
+  assert.deepEqual(
+    invalidInstitutePermissionKeys([
+      'academic-structure.read',
+      'academic-structure.create',
+      'academic-structure.update',
+      'academic-structure.delete',
+    ]),
+    [],
+  );
+
+  // A read+update custom grant resolves exactly those two (manage implication,
+  // default-deny) — the same resolution path a seeded role row takes.
+  const readUpdate = resolveGrantedKeys(
+    ['academic-structure.read', 'academic-structure.update'],
+    'institute',
+  );
+  assert.equal(hasPermission(readUpdate, 'academic-structure.read'), true);
+  assert.equal(hasPermission(readUpdate, 'academic-structure.update'), true);
+  assert.equal(hasPermission(readUpdate, 'academic-structure.create'), false);
+  assert.equal(hasPermission(readUpdate, 'academic-structure.delete'), false);
+  assert.equal(hasPermission(readUpdate, 'academic-structure.manage'), false);
+
+  // A delegate granted manage passes every structural action and nothing else.
+  const delegate = resolveGrantedKeys(['academic-structure.manage'], 'institute');
+  for (const action of ACADEMIC_STRUCTURE_ACTIONS) {
+    assert.equal(hasPermission(delegate, `academic-structure.${action}`), true, action);
+  }
+  assert.equal(hasPermission(delegate, 'subjects.read'), false);
+  assert.equal(hasPermission(delegate, 'users.update'), false);
+
+  // Dropping the role's own grant narrows back to exactly what the admin holds.
+  const withAdmin = resolveGrantedKeys(
+    [
+      'academic-structure.read',
+      'academic-structure.update',
+      ...BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN],
+    ],
+    'institute',
+  );
+  assert.equal(hasPermission(withAdmin, 'academic-structure.create'), true); // from admin.manage
+  assert.equal(hasPermission(withAdmin, 'academic-structure.read'), true);
+  const afterRoleRemoved = resolveGrantedKeys(
+    BUILT_IN_ROLE_PERMISSIONS[INSTITUTE_ADMIN],
+    'institute',
+  );
+  assert.equal(hasPermission(afterRoleRemoved, 'academic-structure.manage'), true);
+  // Default-deny: a membership with no structural role at all holds nothing.
+  assert.equal(
+    hasPermission(resolveGrantedKeys([], 'institute'), 'academic-structure.read'),
+    false,
+  );
+});
+
+test('F5.1: the new keys are picked up by the deterministic PermissionSync insert set', () => {
+  const allKeys = PERMISSION_CATALOGUE.map((p) => p.key);
+  for (const action of ACADEMIC_STRUCTURE_ACTIONS) {
+    assert.ok(allKeys.includes(`academic-structure.${action}`), action);
+  }
+  // A live DB that predates F5.1 has none of them → all five are "missing" and
+  // get inserted; once present, the second pass is empty (idempotent).
+  const preF51 = missingPermissionKeys(
+    new Set(allKeys.filter((k) => !k.startsWith('academic-structure.'))),
+  );
+  assert.deepEqual(preF51.filter((k) => k.startsWith('academic-structure.')).sort(), [
+    'academic-structure.create',
+    'academic-structure.delete',
+    'academic-structure.manage',
+    'academic-structure.read',
+    'academic-structure.update',
+  ]);
+  const afterFirst = new Set([...allKeys]);
+  assert.deepEqual(missingPermissionKeys(afterFirst), []);
 });
 
 // ── Known / unknown permissions ─────────────────────────────────
