@@ -61,12 +61,16 @@ catlium-edutech/
 - Do NOT split modules into separate services.
 - OCR is the only separately deployed service.
 
-### 2. Core Modules (Future)
+### 2. Core Modules (SHIPPED)
 
-These are the planned logical modules for the API. Do NOT implement them now:
+These logical modules are **implemented and live** — identity, tenancy,
+academic, content, study, questions, examination, practice, jobs (plus
+materials/OCR, AI generation, flashcards/notes, syllabus, paper patterns,
+export). See "What NOT to Implement Yet" below for the authoritative list.
 
-- identity, tenancy, academic, content, study, questions,
-  examination, practice, jobs
+The standing rule is about *new* surface, not these modules: do NOT invent a
+new top-level module or product surface without a tracked phase in
+`docs/tasks.md`.
 
 ### 3. Tenant Isolation
 

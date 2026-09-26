@@ -1,11 +1,171 @@
 # Project Status
 
-## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, BRANCH ONLY)
+## Phase F5 — Permission Enforcement & Delegation on the Teaching/Examination Surface
+
+**Status: F5.0 COMPLETE (2026-09-26). The two validated feature branches are
+merged into `feature/f5-0-integrate-validated-branches` (off `dev` `77b6e05`),
+validated, documented, committed and pushed. F5.1 has NOT started.**
+`dev`/`origin/dev` (`77b6e05`), `main`/`origin/main` (`ef4de7e`) and
+`stash@{0}` are untouched; the unrelated working tree is preserved
+byte-for-byte and nothing outside this branch was committed. No authorization
+code changes were made.
+
+### Current phase
+
+F5. F5.0 is the integration + documentation checkpoint; F5.1–F5.8 are the
+actual permission-enforcement work and are all unstarted.
+
+### Completed work
+
+- [x] **F2 — React Hook Form + Zod v4 resolver compatibility**, merged `--no-ff`
+      as `26f0540` from `feature/fix-form-validation` (`b829f70`). Still
+      required on `dev`: `dev` pinned `@hookform/resolvers` 3.10.0 against Zod
+      4.4.3, and 3.10.0 reads the removed `.errors` property, so every
+      resolver-based form silently produced no field errors. Now `^5.9.1`, with
+      the missing regression test wired as `pnpm --filter web test:form-resolver`
+      (2/2 — the suite did not exist on `dev`). Docs conflict resolved by
+      keeping both the `dev` history and the F2 entry.
+- [x] **F4 — Syllabus Chapter → Topic invariant**, merged `--no-ff` as
+      `7805814` from `feature/fix-syllabus-topics` (`14d28dc`). Still required
+      on `dev`: `SyllabusChapterSchema.topics` was `z.array(...).max(200)` with
+      no lower bound, so a chapter with `topics: []` was accepted by the
+      contract, by `SyllabusValidator`, and by the worker's Pydantic model
+      (no `min_length`). Now `.min(1)` end to end, `SyllabusValidator` was
+      extracted from `syllabus.service.ts` so the confirm/update gate is
+      unit-testable (`syllabus-validator.test.ts`), and the worker prompt/model
+      follow. **Note for the next session:** the two new API tests import
+      `@catlium/contracts` from its built `dist`, so they FAIL against a stale
+      build — run `pnpm build` before `pnpm --filter api test` after any
+      contracts change. This cost a debugging cycle here and will again.
+- [x] **Documentation reconciliation.** `AGENTS.md` §2 no longer claims the core
+      modules are unimplemented; the pre-overhaul security-audit decision set is
+      now cited as **SA-F1…SA-F6** so it stops colliding with the F-track (F2
+      and F4 above are delivery phases, not SA-F2/SA-F4); H5ten is recorded as
+      remediated — the institute-workspace OCR worker registration it described
+      no longer exists, the registry being platform-plane under `PlatformGuard`
+      with `ocr-workers.*` (SA-F4 decided: shared platform infrastructure). **No
+      route or code was removed**; whether the platform-plane `/ocr/workers`
+      admin surface is still needed is deferred to F5.5.
+- [x] **`institute-operations-audit.md` §16/§17 refreshed** against the code:
+      Q.2/Q.3/Q.4 are implemented (all five sections ship inside
+      `/institute/academic`), Q.5 is backend-complete with **web UI only**
+      outstanding, class/division hard delete is still open (§14.1), and the
+      design-gated catalogue expansion is decided for the staffing slice only.
+- [x] **`user-validation.md`** no longer tells a reader to run Ollama or to use
+      a `infrastructure/compose/docker-compose.yml` path that does not exist —
+      AI goes through OmniRoute (`AGENTS.md` §6) and the compose files are at
+      the repo root.
+- [x] **`.planning/`** is marked superseded (it claimed "Phase 8 of 3 · 0%" /
+      85% and was last touched 2026-09-11). `AGENTS.md` +
+      `docs/project-status.md` + `docs/tasks.md` are the authoritative state.
+- [x] **Question-extraction deletion adjudicated.** The uncommitted deletion of
+      `question-extraction-dialog.tsx` + the "Extract" button is a **stray
+      experiment, not a documented retirement**: the deleted dialog is the only
+      web caller of the still-live `POST /questions/extract-from-material`, and
+      the retained `QuestionSourceExtractionDialog` targets different
+      endpoints. It is **left uncommitted and unstaged**; committing it would
+      silently drop material-driven extraction. Recorded in
+      `question-lifecycle.md` §8a, pending an explicit decision.
+- [x] **Label normalization:** `F.1` → `F1` (13 sites) so the track reads
+      F1, F2, F3.1–F3.4, F4, F5.0–F5.8.
+- [x] **Stale "not merged" claims corrected.** F3.4 and F1 both still claimed
+      "BRANCH ONLY / no merge"; `git branch --contains` shows `dev` contains
+      both (`dev` HEAD `77b6e05` **is** the F3.4 merge). Corrected in both
+      files. The older Q.* phase entries keep their historical per-branch
+      wording on purpose — each names its own feature branch, and rewriting
+      them all was not worth the diff.
+- [x] **`graphify update .`** re-run after the merges: 6488 nodes, 16791 edges,
+      305 communities. `graphify-out/` is gitignored, so this produces no
+      repository change.
+
+### Work in progress
+
+None. F5.0 is closed; F5.1 is the next task and has not been started.
+
+### Pending work
+
+- [ ] F5.1 — Academic-Structure Catalogue Expansion
+- [ ] F5.2 — Structure Guard Migration
+- [ ] F5.3 — Question + Paper Surface Guard Migration
+- [ ] F5.4 — Examination + Attempt + Practice Guard Migration
+- [ ] F5.5 — Remaining Surface Guard Migration
+- [ ] F5.6 — Frontend Gate Alignment
+- [ ] F5.7 — Roles Console + User Role Management
+- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+
+### Deferred work
+
+- [-] Class/division delete hardening — `deleteClass`/`deleteDivision`
+      (`academic-structure.service.ts:145`, `:268`) are still hard cascades
+      (audit §14.1 / G6).
+- [-] `divisions.capacity` migration (Q.4.3) — optional stretch, occupancy is
+      computed on the fly today.
+- [-] Assessment-mutation audit events (G5) — institute-plane audit duty is
+      deferred platform-wide (O.2).
+- [-] Whether the platform-plane `/ocr/workers` admin surface is still needed
+      (rides with F5.5).
+- [-] Question-extraction material-driven surface: retire or restore — needs an
+      explicit user decision (see `question-lifecycle.md` §8a).
+
+### Validation status (F5.0 — final run)
+
+| Check | Result |
+| ----- | ------ |
+| `pnpm install --frozen-lockfile` | clean (F2 lockfile update; resolver 3.10.0 → 5.9.1) |
+| web `test:form-resolver` | 2/2 |
+| web `test:api` / `test:question-answer` | 12/12, 1/1 |
+| `pnpm --filter api test` | **232/232** |
+| worker pytest | **100/100** |
+| worker `ruff check .` / `mypy worker` | clean / clean (27 source files) |
+| `pnpm typecheck` | 10/10 |
+| `turbo run lint` | 9/9 (`pnpm lint` itself fails with a pnpm CLI internal `RetryOperation` error, unrelated to the code) |
+| `pnpm build` | 7/7 |
+| `test:job-ownership` (DB-backed) | 14/14 |
+| `test:academic-scope` (DB-backed) | 1/1 |
+| `git diff --check` | clean |
+| `graphify update .` | 6488 nodes / 16791 edges / 305 communities (gitignored output) |
+| prettier on the touched docs | **not clean — pre-existing**: all 5 flagged `.md` files were already unformatted at `HEAD` (part of the documented 220-file repo-wide condition). Not reformatted, to avoid reflowing whole documents. |
+
+DB-backed suites ran against the dev `catlium_dev` over the docker bridge
+(`172.18.0.3:5432`); the host publishes no PG port outside the dev override.
+They need `TEST_DATABASE_URL` and a built `packages/contracts/dist`. **The
+API/web containers were NOT rebuilt in this session**, so the running dev stack
+still predates F2+F4 — rebuild before trusting it.
+
+### Known issues
+
+- `pnpm lint` aborts inside pnpm itself (`TypeError: Cannot set property message
+  of …` in `RetryOperation._fn`). `npx turbo run lint` is the working path.
+- A stale `packages/contracts/dist` silently fails API tests that assert on
+  contract schemas; rebuild after any contracts change.
+- `GET /questions/bank/sets` was reported 500ing on `payload -> 'batchId'`
+  grouping (F3.3, out of scope) — believed fixed by F3.3a but unverified here.
+- Repo-wide `pnpm format:check` fails on 220 pre-existing files; untouched.
+
+### Latest checkpoint
+
+Branch `feature/f5-0-integrate-validated-branches`, F5.0 checkpoint commit
+`docs(authz): integrate validated branches and record F5 track` (hash = this
+entry's commit; `git log -1` on the branch). It sits on top of merge `7805814`
+(F4) and merge `26f0540` (F2), over `dev` `77b6e05`. Pushed to the feature
+branch only; not merged into `dev`.
+
+### Exact recommended next task
+
+Merge `feature/f5-0-integrate-validated-branches` into `dev` as a separate
+explicit step, then begin F5.1.
+
+Next: F5.1 — academic-structure catalogue expansion.
+
+## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, MERGED INTO dev)
 
 **Status: audited, one genuine defect fixed and regression-tested, validated,
-and left on the branch `feature/question-extraction-final-hardening` (from `dev`
-`db75f26`). NOT merged into `dev`; `main`/`origin/main` untouched at `ef4de7e`;
-`stash@{0}` and the unrelated working tree untouched.** Closes out the
+committed on `feature/question-extraction-final-hardening` (from `dev`
+`db75f26`) and SINCE MERGED into `dev` as `77b6e05`. `main`/`origin/main`
+untouched at `ef4de7e`; `stash@{0}` untouched.** (Corrected 2026-09-26 during
+F5.0 doc reconciliation: the entry previously said "BRANCH ONLY / NOT merged
+into `dev`", which stopped being true when `dev` advanced to the merge
+`77b6e05` — that merge commit is this branch.) Closes out the
 F3.1 → F3.2 → F3.3 → F3.3a extraction-to-bank pipeline.
 
 - **Defect fixed — a malformed extraction id polled forever.** The review page
@@ -292,14 +452,14 @@ pending). Two correctness fixes found while reviewing question extraction.
 into `dev` after review (RC-1 + RC-2 are small, self-contained, and fully
 regression-tested).
 
-## Phase F.1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
+## Phase F1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
 
 **Status: IMPLEMENTED + VALIDATED.**
 Branch: `feature/fix-student-placement-multiselect` (unmerged feature branch,
 pushed), HEAD add `docs(blackbook): strip chapter pages…` =
 `docs(blackbook): strip chapter pages and blanks from diagrams-only pdf`
 (commit `feat(authz): record final E-track audit for enrollment overrides` is
-the tip of the merged work; this branch adds the F.1 console surface on top).
+the tip of the merged work; this branch adds the F1 console surface on top).
 Design context: `docs/architecture/academic-student-placement.md` §9/Q.4.4
 console + §7/§8 contracts; authorization mirrors the per-student create path.
 
@@ -354,21 +514,22 @@ gating and 403 behavior are all preserved and re-validated.
   1/1 on the scratch loopback PG17 (`127.0.0.1:5433`); repo typecheck 10/10,
   api lint clean, `nest build` clean, web `next build` clean, web academic
   tests 28/28.
-- **Docs:** this entry; tasks.md (Phase F.1 entry).
+- **Docs:** this entry; tasks.md (Phase F1 entry).
 
-**Exact recommended next task:** merge `feature/fix-student-placement-
-multiselect` into `feature/student-placement` (or the integration branch)
-after review, or proceed to the next planned work-item per tasks.md — this
-branch has no merge and no further F.1 sub-items are open.
+**Exact recommended next task (as of 2026-09-25):** merge
+`feature/fix-student-placement-multiselect` after review, or proceed to the
+next planned work-item per tasks.md — no further F1 sub-items are open.
+*Superseded 2026-09-26: the merge into `dev` has since happened, so this
+note is historical. F1 is closed; the live track is F5.*
 
-### Final F.1 audit (2026-09-25, PASS)
+### Final F1 audit (2026-09-25, PASS)
 
-Re-ran and passed every F.1-relevant suite against a fresh scratch loopback
+Re-ran and passed every F1-relevant suite against a fresh scratch loopback
 PG17 (`127.0.0.1:5433`, migrations applied, running stack untouched):
-backend bulk integration 1/1, placements-authz 8/8 (incl. the F.1 bulk
+backend bulk integration 1/1, placements-authz 8/8 (incl. the F1 bulk
 sub-test), single-placement 1/1, carry-forward 1/1; web `test:academic`
 28/28. Repo typecheck clean for all 8 TS workspaces; api lint clean; api
-`nest build` clean; web `next build` clean. Checklist versus the intended F.1
+`nest build` clean; web `next build` clean. Checklist versus the intended F1
 requirements: bulk DTO + route + `assignments.create` authz, institute
 isolation, active-STUDENT validation, server-side dedup, existing partial-
 unique invariant, atomic all-or-nothing rollback on any conflict, single-

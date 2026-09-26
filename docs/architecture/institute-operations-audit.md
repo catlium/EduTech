@@ -314,51 +314,62 @@ Conversely, `GET /memberships` (picker) and `GET /memberships/scope`
 
 ## 16. Findings summary
 
-| Area | Status |
-| ---- | ------ |
-| Academic Year CRUD | Backend IMPLEMENTED / UI MISSING |
-| Class CRUD | Backend IMPLEMENTED / UI MISSING |
-| Class Subject offerings | Backend IMPLEMENTED / UI MISSING |
-| Division/Batch CRUD | Backend IMPLEMENTED / UI MISSING |
-| Teacher → Class Subject assignment | Backend IMPLEMENTED / UI MISSING |
-| Student placement + transfer | Backend IMPLEMENTED / UI MISSING |
-| Student enrollments | Backend IMPLEMENTED / UI MISSING |
-| Syllabus | IMPLEMENTED end-to-end |
-| User provisioning | Backend IMPLEMENTED / UI PARTIAL (no role edit/admin grant/password reset) |
-| Roles management | Backend IMPLEMENTED / UI MISSING |
-| Granular permissions for structure ops | MISSING (role-only; no catalogue keys) |
-| Safe delete semantics | PARTIAL (soft-delete used for placements/assignments; hard cascade on class/division delete) |
+Status refreshed 2026-09-26 against the code (evidence in the right-hand
+column). The original audit predates the academic-structure console and the
+Q.3 permission-catalogue migration; the UI-less rows below are now shipped.
+
+| Area | Status | Evidence |
+| ---- | ------ | -------- |
+| Academic Year CRUD | IMPLEMENTED end-to-end | `/institute/academic` → `academic-years-section.tsx` |
+| Class CRUD | IMPLEMENTED end-to-end | `classes-section.tsx` |
+| Class Subject offerings | IMPLEMENTED end-to-end | offerings picker inside `classes-section.tsx` |
+| Division/Batch CRUD | IMPLEMENTED end-to-end | `divisions-section.tsx` |
+| Teacher → Class Subject assignment | IMPLEMENTED end-to-end, permission-gated | `assignments-section.tsx`; `assignments.*` catalogue keys + `PermissionGuard` (D-Q3.8) |
+| Student placement + transfer | IMPLEMENTED | `placements-section.tsx`, `carry-forward-wizard.tsx` |
+| Student enrollments | IMPLEMENTED | `enrollments-dialog.tsx` |
+| Syllabus | IMPLEMENTED end-to-end | syllabus module + console |
+| User provisioning | Backend IMPLEMENTED / UI PARTIAL | API `POST /users`, `PUT /users/:userId/roles`, `PATCH /users/:id/status` all exist; the web `/users` page only creates + flips status — **role editing has no UI**, and password reset is still deferred |
+| Roles management | Backend IMPLEMENTED / UI MISSING | `/roles` GET/POST/PATCH/DELETE + `PUT /roles/:roleId/permissions`; no web page |
+| Granular permissions for structure ops | PARTIAL | `assignments.*` (staffing) is catalogued and guard-migrated; academic-structure administration still maps to `users.*`/`roles.*`. No `academic`/`students`/`teachers` keys were added — see `academic-teacher-permissions.md` D-Q3.1/§10 |
+| Safe delete semantics | PARTIAL (unchanged) | placements/assignments soft-delete; `deleteClass`/`deleteDivision` (`academic-structure.service.ts:145`, `:268`) are still hard deletes with no placement/assignment guard — §14.1 / G6 remains DEFERRED |
 
 ## 17. Dependencies and recommended implementation phases
 
-The seven UI-less workflows share one natural grouping. Recommended order
-(dependencies only; **not scheduled** — see `docs/project-status.md`):
+Refreshed 2026-09-26. Q.2, Q.3 and Q.4 are **implemented** (all five sections
+ship inside the single `/institute/academic` console) and the DESIGN-GATED
+permission-catalogue decision has been **decided and implemented** for the
+staffing slice. What remains is catalogued below. See `docs/tasks.md` for the
+live track (**F5** — Permission Enforcement & Delegation) and its sub-goals.
 
-- **Phase Q.2 — Academic structure console (years → classes → divisions).**
-  `academic-years`, `classes`, `class-subject` offerings, `divisions` CRUD
-  under a new `/institute/academic` section (sidebar entry + layout route gate
-  reusing existing `users.read` or a new `academic.*` key). Depends on:
-  nothing; pure CRUD against existing endpoints. The natural base for
-  placements below. **Prerequisite hardening:** class/division delete should
-  block or soft-delete when placements/assignments exist (gap §14.1).
-- **Phase Q.3 — Staffing: teacher assignments UI.** Admin picks class→subject
-  offering, assigns an institute `TEACHER` member; lists + revoke active
-  assignments. Consumes the existing teacher-assignments endpoints. Depends
-  on Q.2 (offerings picker).
-- **Phase Q.4 — Student placement UI.** Place a student member into a
-  year+class+division, transfer (promotion / section move), list by year/
-  class/division with roster filters. Consumes existing placement endpoints +
-  maybe the non-existent roster aggregation (gap §14.3). Depends on Q.2.
-  Optional stretch: batch promote (§14.4) — new endpoint, so DEFERRED.
-- **Phase Q.5 — User management completeness + roles.** Extend `/users` with
-  role editing (`PUT /users/:userId/roles`), INSTITUTE_ADMIN grant, password
-  reset (deferred elsewhere); add a Roles management page consuming
-  `/roles*` + `PUT /roles/:roleId/permissions`.
-- **DESIGN-GATED (not implementation):** decide the permission-catalogue
-  expansion (§14.2) — add `academic`, `students`, `teachers` (or
-  `academic-years`/`classes`/`divisions`) keys and migrate the role-gated
-  structure routes to `PermissionGuard`, matching the `users`/`roles`
-  precedent. If custom-role delegation for staffing/placement is wanted, this
-  must precede Q.3/Q.4. Otherwise the Q.2–Q.4 UIs keep `INSTITUTE_ADMIN`-
-  only gating and the phases are independent of it.
-- **Revisit (deferred):** academic-read scope checks (§14.5).
+- [x] **Phase Q.2 — Academic structure console (years → classes → divisions).**
+  IMPLEMENTED as `/institute/academic` (`academic-years-section.tsx`,
+  `classes-section.tsx` with offerings, `divisions-section.tsx`), gated by the
+  existing `users.read`/`roles.*` keys. The Q.2 prerequisite hardening
+  (class/division delete when placements/assignments exist, §14.1) was **not**
+  done and remains DEFERRED — `deleteClass`/`deleteDivision` are still hard.
+- [x] **Phase Q.3 — Staffing: teacher assignments UI.** IMPLEMENTED
+  (`assignments-section.tsx`) and guard-migrated to the `assignments.*`
+  catalogue keys; see `academic-teacher-permissions.md` (D-Q3.1 … D-Q3.11).
+- [x] **Phase Q.4 — Student placement UI.** IMPLEMENTED (`placements-section.tsx`,
+  plus `carry-forward-wizard.tsx` for year-over-year promotion and
+  `enrollments-dialog.tsx`). The `assignments` resource now also covers the
+  placement/enrollment slices (G3: deliberate — one D5 family, not fragmented).
+  The optional batch-promote endpoint (§14.4) was **not** built; the wizard is
+  the implemented path. Roster aggregation (§14.3) is served by the placements
+  list endpoints.
+- [~] **Phase Q.5 — User management completeness + roles.** Backend complete:
+  role editing (`PUT /users/:userId/roles`) and the full `/roles` CRUD +
+  permission grant exist. **Remaining: web UI only** — a role editor on
+  `/users` and a Roles management page consuming `/roles*` +
+  `PUT /roles/:roleId/permissions`. Password reset stays deferred elsewhere.
+- [x] **DESIGN-GATED — permission-catalogue expansion (§14.2).** DECIDED and
+  IMPLEMENTED for staffing/placement: resource `assignments` with
+  `read, create, delete, manage` (no `update` — reassign is delete+create),
+  default grants INSTITUTE_ADMIN=manage / TEACHER,STUDENT=none, and the
+  `@RequiredRoles` → `PermissionGuard` migration on the staffing routes.
+  Academic-structure administration deliberately continues to map to
+  `users.*`/`roles.*`; no `academic`/`students`/`teachers` keys were added
+  because no endpoint needs one yet (no speculative keys — the catalogue rule).
+  Any future per-surface split (e.g. staffing-not-placement) would reopen G3.
+- [-] **Revisit (deferred):** academic-read scope checks (§14.5) and
+  class/division delete hardening (§14.1 / G6).

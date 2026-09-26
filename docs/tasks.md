@@ -1,13 +1,55 @@
 # Task Tracker
 
-## Phase F.1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
+## F5 — Permission Enforcement & Delegation on the Teaching/Examination Surface
+
+> Directive track. The teaching and examination surfaces are authorized by
+> **role** (`@RequiredRoles`) rather than by the additive **permission
+> catalogue** (`@RequiredPermission` + `PermissionGuard`). Only
+> `users.controller.ts` has been migrated, so staffing delegation works
+> (`assignments.*`, D-Q3.1/D-Q3.8) but the rest of the teaching/exam surface
+> cannot delegate authority to a custom institute role. F5 closes that gap in
+> guarded increments — catalogue expansion first, then surface-by-surface guard
+> migration, then the frontend gates that mirror it, then the remaining console
+> work. `docs/architecture/authorization.md` §13/§18 and
+> `docs/architecture/academic-teacher-permissions.md` are the source of truth.
+
+- [x] **F5.0 — Integrate validated branches + documentation reconciliation.**
+      **COMPLETE 2026-09-26.** Merged the two validated feature branches into
+      `feature/f5-0-integrate-validated-branches` (off `dev` `77b6e05`, no
+      rebase/reset): F2 `feature/fix-form-validation` → `26f0540`, F4
+      `feature/fix-syllabus-topics` → `7805814`, both `--no-ff`. No
+      authorization code changes. Then reconciled the documentation (see the
+      `## Phase F5` entry in `docs/project-status.md` for the full list:
+      `AGENTS.md` §2, SA-F1…SA-F6 disambiguation, H5ten/SA-F4, the
+      institute-operations audit §16/§17, OmniRoute in `user-validation.md`,
+      `.planning/` superseded, the question-extraction deletion decision, the
+      F1/F3.4 "not merged" claims, and `F.1`→`F1`). Final validation: API
+      232/232, worker pytest 100/100 + ruff + mypy clean, web 15/15,
+      `pnpm typecheck` 10/10, `turbo run lint` 9/9, `pnpm build` 7/7,
+      `job-ownership` 14/14, `academic-scope` 1/1, `git diff --check` clean.
+      Checkpoint commit `docs(authz): integrate validated branches and record
+      F5 track`, pushed to the feature branch only — **not** merged into `dev`.
+      `dev`/`origin/dev` `77b6e05`, `main`/`origin/main` `ef4de7e` and
+      `stash@{0}` untouched; the unrelated working tree preserved.
+- [ ] F5.1 — Academic-Structure Catalogue Expansion
+- [ ] F5.2 — Structure Guard Migration
+- [ ] F5.3 — Question + Paper Surface Guard Migration
+- [ ] F5.4 — Examination + Attempt + Practice Guard Migration
+- [ ] F5.5 — Remaining Surface Guard Migration
+- [ ] F5.6 — Frontend Gate Alignment
+- [ ] F5.7 — Roles Console + User Role Management
+- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+
+## Phase F1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
 
 > Atomic multi-student placement from the institute console. An institute admin
 > checks off any subset of the visible placeable STUDENT roster and submits ONE
 > bulk request; the batch is deduplicated, revalidated, and committed in a
 > single all-or-nothing transaction. Full report: `docs/project-status.md`
-> (Phase F.1 entry). Branch `feature/fix-student-placement-multiselect`,
-> pushed, no merge — this is unmerged session work per AGENTS.
+> (Phase F1 entry). Branch `feature/fix-student-placement-multiselect`,
+> pushed and **since merged into `dev`** (`git branch --contains` confirms
+> `dev`; corrected 2026-09-26 during F5.0 doc reconciliation — the entry
+> previously said "no merge / unmerged session work").
 
 - [x] **Backend — bulk route + service + authz (`apps/api/src/academic-
       structure/`):**
@@ -44,12 +86,12 @@
     `{membershipIds, divisionId}`; loading/error/success toast feedback +
     refresh-on-success. Single-student flow (single create) untouched --
     both paths shown via the same dialog defaulting to the visible roster.
-- [x] **Docs:** this tracker Phase F.1 entry.
-- [x] **Final F.1 audit (2026-09-25, PASS):** full checklist re-validated on a
+- [x] **Docs:** this tracker Phase F1 entry.
+- [x] **Final F1 audit (2026-09-25, PASS):** full checklist re-validated on a
   fresh scratch PG17 — backend bulk 1/1, authz 8/8, single 1/1, carry-forward
   1/1, web academic 28/28, repo typecheck (8 workspaces), api lint, web build.
   No HIGH/MEDIUM findings; only LOW/INFO items (cosmetic, no code change).
-  Full report in `docs/project-status.md` (Final F.1 audit).
+  Full report in `docs/project-status.md` (Final F1 audit).
 
 ## F2 — React Hook Form + Zod v4 resolver incompatibility (2026-09-24, IMPLEMENTED)
 
@@ -272,7 +314,12 @@
         all four placement/assignment integration suites 14/14 green on the
         scratch PG17, api image rebuilt + container healthy with new routes
         verified in the running dist.
-- [ ] (PLANNED) Phase Q.4.3 — optional additive `divisions.capacity` migration.
+- [-] Phase Q.4.3 — optional additive `divisions.capacity` migration.
+      **DEFERRED** (2026-09-26 reconciliation): an optional capacity/occupancy
+      stretch that was never scheduled. The occupancy data the placement
+      console needs today is already computed on the fly in
+      `carry-forward-wizard.tsx`; the migration only becomes worth it if a
+      hard capacity limit is ever enforced. Do not pick this up incidentally.
 - [x] Phase Q.4.4 — Student Placement console section + carry-forward wizard +
       pure-helper tests. **IMPLEMENTED 2026-09-24** (commit
       `feat(student-placements): add institute student placement console`,
@@ -537,21 +584,32 @@
   placement routes are `INSTITUTE_ADMIN` role-only and uncatalogued.
 - Class/division hard DELETE cascades placement history (FK cascade) — gap.
 
-### Recommended next (not scheduled)
+### Recommended next (status refreshed 2026-09-26)
 
 - [x] Q.2 — Academic-structure console (years/classes/offerings/divisions)
       — COMPLETE 2026-09-23 (see Phase Q.2 below). Delete hardening deferred
       (backend unchanged by design; UI states the exact cascade in the
       destructive confirm).
-- [ ] (PLANNED) Q.3 — Teacher → class-subject assignment UI.
-      Design prerequisite (permission catalogue) DONE 2026-09-23 — Phase Q.3.0
-      above (`assignments` = read/create/delete/manage).
-- [ ] (PLANNED) Q.4 — Student placement/transfer UI.
-- [ ] (PLANNED) Q.5 — User-management completeness + roles console
-      (+ design-gated catalogue expansion for structure keys).
-
-- [ ] Commit `docs(audit): inventory institute admin operations` on
-      `feature/institute-admin-operations-audit` (+ push, no merge).
+- [x] Q.3 — Teacher → class-subject assignment UI — **COMPLETE**. Design
+      prerequisite (permission catalogue) done 2026-09-23 (Phase Q.3.0 above,
+      `assignments` = read/create/delete/manage) and the console shipped in the
+      `/institute/academic` → `assignments-section.tsx` surface.
+- [x] Q.4 — Student placement/transfer UI — **COMPLETE**. Phase Q.4.0–Q.4.4
+      (backend + carry-forward + console) and the E-track enrollment override
+      all shipped; console is `/institute/academic` → `placements-section.tsx`
+      with `carry-forward-wizard.tsx` + `enrollments-dialog.tsx`. Only the
+      optional `divisions.capacity` stretch remains, DEFERRED (Q.4.3 above).
+- [ ] Q.5 — User-management completeness + roles console. Backend is DONE
+      (`PUT /users/:userId/roles`, full `/roles` CRUD + `PUT
+      /roles/:roleId/permissions`); **what is left is web UI only** — a role
+      editor on `/users` and a Roles management page. The design-gated
+      catalogue expansion is no longer open: it was DECIDED and implemented for
+      the staffing slice (`assignments.*`, D-Q3.1/D-Q3.8), and academic
+      structure deliberately keeps mapping to `users.*`/`roles.*` (no
+      speculative keys). Password reset stays deferred elsewhere.
+- [x] `docs(audit): inventory institute admin operations` — committed; the
+      audit lives at `docs/architecture/institute-operations-audit.md` and its
+      §16/§17 statuses were refreshed on 2026-09-26.
 
 > Issued task (backend only — user-confirmed; console deferred). Implement the
 > Phase P.1 design: platform-user role grant/revoke + suspend/reactivate service
@@ -2467,9 +2525,12 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       institute-scoped rather than creator-scoped (pre-dates F3.4 and the review
       page only ever polls jobs it created), and worker candidate reads omit
       `deleted_at IS NULL` (no current soft-delete trigger).
-- [ ] **Checkpoint:** commit the F3.4 files and push
-      `feature/question-extraction-final-hardening` without merging it into
-      `dev`; `main`/`origin/main` and `stash@{0}` stay untouched.
+- [x] **Checkpoint:** committed and pushed
+      `feature/question-extraction-final-hardening`, then **merged into `dev`
+      as `77b6e05`** (`main`/`origin/main` `ef4de7e` and `stash@{0}` untouched).
+      *Corrected 2026-09-26 during F5.0 reconciliation: this item previously
+      read "commit and push without merging it into `dev`" — the merge has
+      since happened, so the "without merging" wording was stale.*
 
 ## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
 
