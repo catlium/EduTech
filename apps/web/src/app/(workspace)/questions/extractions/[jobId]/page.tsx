@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react';
 
-import { api, ApiError, waitForJob } from '@/lib/api';
+import { api, ApiError, isTerminalPollError, waitForJob } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
 import { hasValidQuestionAnswer, isSupportedQuestionAnswerFormat } from '@/lib/question-answer';
 import { useTenant, canManage } from '@/lib/tenant';
@@ -264,11 +264,8 @@ export default function QuestionExtractionReviewPage() {
         }
       } catch (err) {
         if (cancelled) return;
-        if (
-          err instanceof ApiError &&
-          (err.status === 401 || err.status === 403 || err.status === 404)
-        ) {
-          setError(err.message);
+        if (isTerminalPollError(err)) {
+          setError((err as ApiError).message);
           setLoading(false);
           clearInterval(interval);
         }
