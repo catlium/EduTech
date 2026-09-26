@@ -418,7 +418,7 @@ const job = await this.jobs.issueJob(instituteId, OPERATION, {
 
   async listBankSets(instituteId: string, limit = 25) {
     const rows = await this.db.execute(sql`
-      SELECT payload -> 'batchId' AS batch_id,
+      SELECT payload ->> 'batchId' AS batch_id,
              max(created_at) AS last_at,
              count(*)::int AS total_jobs,
              count(*) FILTER (WHERE status = 'completed')::int AS completed,

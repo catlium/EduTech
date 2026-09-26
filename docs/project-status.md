@@ -1,5 +1,45 @@
 # Project Status
 
+## Phase F3.3a — Question Bank Sets 500 Fix (2026-09-26, IMPLEMENTED + VALIDATED)
+
+**Status: fixed and validated on branch `feature/fix-question-bank-sets`
+(branched from `dev` `56d7253`; `dev` and `main`/`ef4de7e` untouched).** Closes
+the pre-existing `GET /api/v1/questions/bank/sets` 500 found during the F3.3
+integration audit.
+
+- **Root cause:** `QuestionGenerationService.listBankSets` selected
+  `payload -> 'batchId'` (jsonb) while grouping by `payload ->> 'batchId'`
+  (text). Postgres treats those as different group expressions and rejects the
+  whole query — `column "jobs.payload" must appear in the GROUP BY clause or be
+  used in an aggregate function` (SQLSTATE 42803) — which the controller turned
+  into HTTP 500. Confirmed by running the query directly against the running
+  Postgres.
+- **Fix:** one character class — the projection now uses `->>` so the selected
+  and grouped expressions are the same `text` expression. This also makes
+  `batchId` arrive as a bare string instead of a jsonb value, matching the
+  `r['batch_id'] as string` mapping. No other query touched, no question-bank
+  redesign.
+- **Regression test:** `apps/api/src/questions/question-bank-sets.integration.ts`
+  (new, `pnpm --filter @catlium/api test:question-bank-sets`) seeds two batches
+  plus a batch-less job and a cross-tenant job, then asserts the query no longer
+  throws, `batchId` is a bare string, and the per-batch status/generated
+  aggregation stays correct and tenant-scoped. Fails 4/4 on the pre-fix
+  expression, passes 4/4 on the fix. Skips cleanly when `TEST_DATABASE_URL` is
+  unset, matching the other DB-backed suites.
+- **Validation:** existing `pnpm --filter @catlium/api test` 228/228 (includes the
+  question-bank bucket/batch suites); F3.3 answer-generation + extraction
+  resilience + the new suite together 21/21; API typecheck, lint, and build all
+  clean. Runtime: `docker compose up -d --build api` → all 11 services up, health
+  200, the live bundle carries `payload ->> 'batchId' AS batch_id`, and
+  `GET /api/v1/questions/bank/sets` returns 200 with populated sets (it returned
+  500 on the same request before the rebuild).
+- **Out of scope:** the pre-existing `ruff format --check` deviations in three
+  worker files are untouched, and no unrelated working-tree file is included in
+  the commit.
+
+**Exact recommended next task:** F3.4 remains unstarted — do not begin it until
+this branch is reviewed and merged into `dev`.
+
 ## Phase F3.3 — Generate Answer UX (2026-09-25, IMPLEMENTED + REVIEWED + VALIDATED + INTEGRATED)
 
 **Status: implemented, reviewed, validated, committed as `df72962`, documented as
@@ -68,7 +108,7 @@ migration, or service.
   exactly one request (no endless polling). Demo data was restored to the
   AI-generated answer after the manual-edit check.
 
-- **Pre-existing defect found during integration runtime verification (NOT F3.3, not fixed here):**
+- **Pre-existing defect found during integration runtime verification (NOT F3.3, fixed separately in Phase F3.3a above):**
   `GET /api/v1/questions/bank/sets` returns 500 on `/questions`. Root cause is
   `apps/api/src/questions/question-generation.service.ts:433` — `SELECT payload -> 'batchId'`
   is grouped by `GROUP BY payload ->> 'batchId'`; the `->` (jsonb) and `->>` (text)
