@@ -34,9 +34,10 @@
       containers were rebuilt afterwards, so the running dev stack serves
       F2+F4. `main`/`origin/main` `ef4de7e` and `stash@{0}` untouched
       throughout; the unrelated working tree preserved.
-- [~] **F5.1 — Academic-Structure Catalogue Expansion.** IN PROGRESS on
-      `feature/f5-1-academic-structure-catalogue` (off `dev` `5230bf6`).
-      Catalogue only — **no controller/guard migration (that is F5.2)**:
+- [x] **F5.1 — Academic-Structure Catalogue Expansion.** COMPLETE 2026-09-26 on
+      `feature/f5-1-academic-structure-catalogue` (off `dev` `5230bf6`), merged
+      into `dev` as `329fea8`. Catalogue only — **no controller/guard migration
+      (that was F5.2)**:
       - `INSTITUTE_RESOURCES` gains `'academic-structure'` with the full
         `read, create, update, delete, manage` set — the D4 structural layer
         (academic years, classes, class↔subject offerings, divisions) as ONE
@@ -60,7 +61,53 @@
         + domain + metadata, §13 manage implication, built-in defaults, no
         platform leakage, custom-role grant through the existing path, sync
         insert set/idempotency). 42/42 in that file.
-- [ ] F5.2 — Structure Guard Migration
+- [x] **F5.2 — Structure Guard Migration.** **IMPLEMENTED + VALIDATED
+      2026-09-26** on `feature/f5-2-structure-guard-migration` (off `dev`
+      `329fea8`), pushed to origin, **not** merged into `dev`.
+  - Migrated all **14** D4 structural routes on
+    `AcademicStructureController` from `@RequiredRoles('INSTITUTE_ADMIN')` to
+    `@RequiredPermission('academic-structure.*')` and added `PermissionGuard`
+    to the controller's guard chain
+    (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`, the
+    Q.3/Q.4 order). **Zero `@RequiredRoles` remains on the controller**;
+    `RolesGuard` is now a no-op for this surface.
+  - Mapping, one key per handler, no OR widening, no explicit `manage`:
+    `GET academic-years|classes|classes/:id/subjects|divisions` → `read`;
+    `POST academic-years|classes|divisions|classes/:id/subjects/:sid` →
+    `create`; `PATCH academic-years/:id|classes/:id|divisions/:id` → `update`;
+    `DELETE classes/:id|classes/:id/subjects/:sid|divisions/:id` → `delete`.
+    `manage` stays implied only.
+  - Preserved, not weakened: `TenantGuard` + `x-institute-id` scoping, the
+    service's per-query `instituteId` scoping (`NotFound` for a foreign
+    year/class/subject), and every existing ownership check. The permission
+    check authorizes the operation; it never replaces a scope check.
+  - Behaviour change, intended and documented in `authorization.md` §13:
+    structural **reads** were open to any active member and now require
+    `academic-structure.read`, which TEACHER/STUDENT do not hold — the D4 layer
+    is admin-only-or-delegated end to end, matching `roles.*`/`assignments.*`.
+    Only the institute academic console consumes these routes, so no student or
+    teacher surface is affected.
+  - Out of scope by design, confirmed in the audit: the `/academic`
+    subjects/chapters/topics routes are **academic content**, catalogued as
+    `subjects.*`/`chapters.*`/`topics.*`, and stay role-based for their own
+    phase (F5.5). Staffing/teacher-assignment and student placement/enrollment
+    (`assignments.*`, Q.3/Q.4, D-Q3.3/G3) were not touched.
+  - **No schema change and no migration** — `academic-structure` was
+    catalogued in F5.1 and its five `permissions` rows already exist.
+  - Tests: new `academic-structure-authz.integration.ts`
+    (`test:academic-structure-authz`, TEST_DATABASE_URL-gated) — 9/9. Metadata
+    assertions (exactly one `academic-structure.*` key per handler, no residual
+    `ROLES_KEY` on class or handler), INSTITUTE_ADMIN via `manage`, the four
+    single-action delegate roles plus a `manage` delegate, TEACHER/STUDENT/
+    zero-role default-deny, cross-institute custom-role isolation, and a
+    fully-authorized delegate still getting `NotFound` for another institute's
+    class. Verified to **fail** (5 sub-tests) when one decorator is reverted.
+  - Validation: new suite 9/9; Q.3/Q.4 authz 5+8+6, `authz-regression` 8/8,
+    `academic-scope` 1/1, `resource-scope` 1/1, `job-ownership` 14/14,
+    teacher-assignments/placement/placement-bulk/carry-forward/phase-m/
+    mod-3/mod-4 all green; API unit 238/238; web `test:academic` 28/28;
+    API `tsc --noEmit` clean; `pnpm typecheck` 10/10; `turbo run lint` 9/9;
+    `pnpm build` 7/7; `git diff --check` clean.
 - [ ] F5.3 — Question + Paper Surface Guard Migration
 - [ ] F5.4 — Examination + Attempt + Practice Guard Migration
 - [ ] F5.5 — Remaining Surface Guard Migration

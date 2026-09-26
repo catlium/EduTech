@@ -800,7 +800,7 @@ there is no wildcard.
 
 | resource | actions | notes / operation→action mapping |
 |---|---|---|
-| `academic-structure` | read, create, update, delete, manage | **F5.1 (2026-09-26)** — the D4 structural layer as one resource: academic years, classes, class↔subject offerings, divisions. Catalogued in Phase F5.1; the `/academic` routes are still `@RequiredRoles('INSTITUTE_ADMIN')` until **F5.2** migrates them. |
+| `academic-structure` | read, create, update, delete, manage | **F5.1 (2026-09-26)** catalogued; **F5.2 (2026-09-26) guard-migrated** — the D4 structural layer as one resource: academic years, classes, class↔subject offerings, divisions. The `/academic` structural routes are `@RequiredPermission('academic-structure.*')`; no `@RequiredRoles` remains on that controller. |
 | `subjects` | read, create, update, delete, manage | academic structure CRUD |
 | `chapters` | read, create, update, delete, manage | academic structure CRUD |
 | `topics` | read, create, update, delete, manage | academic structure CRUD |
@@ -839,9 +839,12 @@ Notes:
   machine (Phase B/C) has since landed and F5 is migrating those modules onto
   it surface by surface: `assignments` was catalogued + guard-migrated in
   Q.3 (2026-09-23), and **F5.1 (2026-09-26) catalogued `academic-structure`**
-  for the D4 structural layer. The `/academic` routes are migrated in **F5.2**,
-  so until then the structural keys are catalogued but not yet required by any
-  handler — catalogued first, enforced next, by design.
+  for the D4 structural layer, which **F5.2 (2026-09-26) guard-migrated** —
+  so the structural keys are now required by the routes that declare them, not
+  merely catalogued. The academic *content* routes on the same `/academic`
+  controller (`subjects`/`chapters`/`topics`) are a different resource
+  (`subjects.*`/`chapters.*`/`topics.*`, D-F5.5) and stay role-based until
+  their own phase.
 - Permission keys are explicit and listed; **no wildcard keys (`*`,
   `resources.*`) are stored or checked anywhere.**
 
@@ -852,7 +855,7 @@ Phase E–G endpoints exist (built-in role mapping finalized in Phase C):
 
 | resource | actions | notes |
 |---|---|---|
-| `academic-structure` | read, create, update, delete, manage | **IMPLEMENTED 2026-09-26 (F5.1)** — the D4 structural layer (academic years, classes, class↔subject offerings, divisions) collapsed into **one** resource rather than the four per-entity keys originally sketched here. One resource, not four: the `/academic` console and the structural endpoints are administered as a single responsibility, and per-entity keys would fragment a boundary that is never enforced separately. Guard migration is F5.2. |
+| `academic-structure` | read, create, update, delete, manage | **IMPLEMENTED 2026-09-26 (F5.1)** — the D4 structural layer (academic years, classes, class↔subject offerings, divisions) collapsed into **one** resource rather than the four per-entity keys originally sketched here. One resource, not four: the `/academic` console and the structural endpoints are administered as a single responsibility, and per-entity keys would fragment a boundary that is never enforced separately. **Guard-migrated in F5.2 (2026-09-26)** — the 14 structural routes declare `academic-structure.read/create/update/delete` by operation; `manage` is implied, never declared on an ordinary endpoint. |
 | `academic-years` | read, manage | **SUPERSEDED 2026-09-26 (F5.1)** — folded into `academic-structure`; not catalogued. |
 | `classes` | read, create, update, delete, manage | **SUPERSEDED 2026-09-26 (F5.1)** — folded into `academic-structure`; not catalogued. |
 | `divisions` | read, create, update, delete, manage | **SUPERSEDED 2026-09-26 (F5.1)** — folded into `academic-structure`; not catalogued. |
@@ -927,6 +930,32 @@ permission is introduced and `SUPER_ADMIN` never resolves it. An institute that
 wants a structural curator creates a **custom** role and grants it
 `academic-structure.*` through the existing role-permission surface
 (`PUT /roles/:roleId/permissions`); no new grant path was added.
+
+**F5.2 (2026-09-26) enforcement.** The mapping above is now the *only* thing
+standing between a caller and a structural write. Each of the 14 routes on
+`AcademicStructureController` declares exactly one key by operation — read →
+`academic-structure.read`, create (including a class↔subject offering add) →
+`academic-structure.create`, update → `academic-structure.update`, delete
+(including an offering remove) → `academic-structure.delete` — with no OR
+widening and no explicit `manage` decorator. The consequences are deliberate:
+
+- INSTITUTE_ADMIN keeps every structural operation through
+  `academic-structure.manage` and the implication rule; a custom role granted
+  `academic-structure.manage` is equivalent.
+- **Reads are no longer open to any active member.** They were, before F5.2,
+  and TEACHER/STUDENT still hold no `academic-structure.*` key, so the D4
+  structural layer is now admin-only (or delegated) end to end — reads
+  included. This is the same posture `roles.*` and `assignments.*` already
+  have, and it does not reach any student or teacher surface: the structural
+  routes are consumed only by the institute academic console.
+- A custom institute role holding one sub-action gets exactly that action.
+  `read` does not imply `create`; `create` does not imply `read`.
+- The permission check **authorizes the operation, it never substitutes for
+  it**: `AcademicStructureService` still scopes every query by `instituteId`
+  and throws `NotFound` for another institute's year/class/subject, so a
+  fully-authorized delegate cannot reach across institutes.
+- Staffing is untouched: `assignments.*` (Q.3/Q.4) and the D-Q3.3/G3 boundary
+  are unchanged.
 
 ---
 

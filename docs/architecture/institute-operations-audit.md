@@ -368,11 +368,12 @@ live track (**F5** — Permission Enforcement & Delegation) and its sub-goals.
   default grants INSTITUTE_ADMIN=manage / TEACHER,STUDENT=none, and the
   `@RequiredRoles` → `PermissionGuard` migration on the staffing routes.
   Academic-structure administration continues to map to
-  `users.*`/`roles.*` **on the routes** — but since **F5.1 (2026-09-26)** the
-  keys exist: resource `academic-structure` with
+  `users.*`/`roles.*` **on the non-structural routes** — but since
+  **F5.1 (2026-09-26)** the keys exist: resource `academic-structure` with
   `read, create, update, delete, manage`, default grants
-  INSTITUTE_ADMIN=manage / TEACHER,STUDENT=none, guard-migrating the `/academic`
-  structural routes in **F5.2**. No `students`/`teachers` keys were added
+  INSTITUTE_ADMIN=manage / TEACHER,STUDENT=none, and **F5.2 (2026-09-26)
+  guard-migrated the `/academic` structural routes** (14 of them) onto those
+  keys. No `students`/`teachers` keys were added
   (no speculative keys — the catalogue rule); staffing stays on the separate
   `assignments` resource. Any future per-surface split (e.g.
   staffing-not-placement) would reopen G3.
