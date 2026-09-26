@@ -63,7 +63,9 @@
         insert set/idempotency). 42/42 in that file.
 - [x] **F5.2 — Structure Guard Migration.** **IMPLEMENTED + VALIDATED
       2026-09-26** on `feature/f5-2-structure-guard-migration` (off `dev`
-      `329fea8`), pushed to origin, **not** merged into `dev`.
+      `329fea8`), and **integrated into `dev` as `c7a622d`** (`--no-ff`,
+      conflict-free) with the post-merge re-validation and the live API
+      verification recorded in `docs/project-status.md`.
   - Migrated all **14** D4 structural routes on
     `AcademicStructureController` from `@RequiredRoles('INSTITUTE_ADMIN')` to
     `@RequiredPermission('academic-structure.*')` and added `PermissionGuard`

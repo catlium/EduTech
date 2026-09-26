@@ -9,16 +9,26 @@ only and was not merged. It was merged into `dev` as **`5230bf6`**
 API/web containers were rebuilt afterwards so the live dev stack serves F2+F4 —
 verified against the running code, not just `Up (healthy)`.)
 
-**F5.2 (academic-structure guard migration) is implemented + validated** on
-`feature/f5-2-structure-guard-migration`, branched from `dev` `329fea8` and
-pushed to origin — **not merged into `dev`**. F5.1 was already merged into `dev`
-as `329fea8`. `main`/`origin/main` (`ef4de7e`) and `stash@{0}` are untouched; the
-unrelated working tree (blackbook/proposal work) is preserved byte-for-byte.
+**F5.2 (academic-structure guard migration) is integrated into `dev`**, merged
+`--no-ff` as `c7a622d` from `feature/f5-2-structure-guard-migration` (`5542360`,
+branched from `dev` `329fea8`) — conflict-free, and re-validated after the merge
+(`test:academic-structure-authz` 9/9, Q.3 5/5, Q.4 8/8, E.1 6/6, authz regression
+8/8, academic scope 1/1, resource scope 1/1, API unit 238/238, direct `tsc
+--noEmit`, `npx turbo run lint`, `pnpm build`, `git diff --check` all clean). The
+API container was rebuilt and the **live compiled** `AcademicStructureController`
+verified by reading its Nest metadata: 4 `read` / 4 `create` / 3 `update` / 3
+`delete` routes, zero `@RequiredRoles` residue, 14/14 routes declaring exactly one
+permission; a live HTTP authorization smoke (12/12) confirmed INSTITUTE_ADMIN
+full surface, STUDENT default-deny, a custom `academic-structure.read` delegate
+read-only, and a custom `academic-structure.manage` delegate fully managing.
+F5.1 was already merged into `dev` as `329fea8`. `main`/`origin/main` (`ef4de7e`)
+and `stash@{0}` are untouched; the unrelated working tree (blackbook/proposal work)
+is preserved byte-for-byte.
 
 ### Current phase
 
-F5. F5.0 and F5.1 are closed and merged. F5.2 is implemented and validated on its
-feature branch, awaiting review/merge. F5.3–F5.8 are unstarted.
+F5. F5.0, F5.1 and F5.2 are closed and merged into `dev`. F5.3–F5.8 are
+unstarted.
 
 ### Completed work
 
@@ -191,9 +201,10 @@ feature branch, awaiting review/merge. F5.3–F5.8 are unstarted.
 
 ### Pending work
 
-- [~] F5.2 — Structure Guard Migration — **implemented + validated** on
-      `feature/f5-2-structure-guard-migration` (pushed, **not** merged into
-      `dev`). All 14 D4 structural routes now declare
+- [x] F5.2 — Structure Guard Migration — **integrated into `dev`** as `c7a622d`
+      (`--no-ff` from `5542360`), conflict-free and re-validated post-merge
+      against both the in-process guard chain and the live API. All 14 D4
+      structural routes now declare
       `academic-structure.read/create/update/delete`; no `@RequiredRoles`
       remains on the controller. See the F5.2 entry above and
       `docs/tasks.md`.
@@ -262,19 +273,19 @@ port.
 
 ### Latest checkpoint
 
-`dev`/`origin/dev` is `329fea8` — `Merge branch
-'feature/f5-1-academic-structure-catalogue' into dev`, which carries the F5.0
-merge `5230bf6`, the F4 merge `7805814` and the F2 merge `26f0540` underneath.
-F5.0 and F5.1 are therefore integrated into `dev`, not branch-only. **F5.2 sits
-on `feature/f5-2-structure-guard-migration`, pushed to origin and NOT merged.**
-`main`/`origin/main` is `ef4de7e` and `stash@{0}` were not touched.
+`dev`/`origin/dev` is `c7a622d` — `Merge branch
+'feature/f5-2-structure-guard-migration' into dev`, carrying the F5.1 merge
+`329fea8` (and the F5.0 merge `5230bf6`, F4 merge `7805814`, F2 merge `26f0540`)
+underneath. F5.0, F5.1 and F5.2 are therefore integrated into `dev`, not
+branch-only; the API container was rebuilt and verified against the running
+code, not just `Up (healthy)`. `main`/`origin/main` is `ef4de7e` and
+`stash@{0}` were not touched.
 
 ### Exact recommended next task
 
-Review and merge `feature/f5-2-structure-guard-migration` into `dev`, then
-rebuild the API container so the running dev stack serves the migrated
-structural guards. After that, begin **F5.3 — Question + Paper Surface Guard
-Migration** (the next unstarted F5 phase), mirroring the Q.3/F5.2 pattern.
+Begin **F5.3 — Question + Paper Surface Guard Migration** (the next unstarted F5
+phase), mirroring the Q.3/F5.2 pattern. Do not start it without a tracked phase
+in `docs/tasks.md`.
 
 ## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, MERGED INTO dev)
 
