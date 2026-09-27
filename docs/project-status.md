@@ -420,12 +420,12 @@ PermissionGuard`) — one key per handler, no OR widening, no declared `manage`.
 
 ### Exact recommended next task
 
-**Merge decisions for F5.4 and F5.5.** Both branches are complete, validated and
-pushed; `dev` is still at `edd7f03`. Merge them the way F5.3 was merged
-(`git checkout dev && git merge --no-ff feature/f5-4-examination-guard-migration`,
-then the same for `feature/f5-5-remaining-surface-guard-migration` — F5.5 is
-branched off the `dev` that already contains F5.4's parent, so check for overlap
-first), then re-run `test:examination-practice-authz`, `test:mod-3-export-scope` and
+**Merge decision for F5.5.** The branch is complete, validated and pushed.
+Local `dev` is `edd7f03`, which **already contains the F5.4 merge**; only
+`origin/dev` (`50d6c78`) lags behind, so F5.4 does not need merging again.
+Sequence: `git checkout dev && git push origin dev` (publishes the F5.4 merge),
+then `git merge --no-ff feature/f5-5-remaining-surface-guard-migration`, then
+`git push origin dev`, and re-run `test:examination-practice-authz`, `test:mod-3-export-scope` and
 `test:phase-m-remediation` post-merge — plus the F5.5 suite, which has no npm
 script by design (a `package.json` edit busts the Docker install layer and the
 builder is offline), so run it as
@@ -441,8 +441,9 @@ decisions must be reflected).
 ### Latest checkpoint
 
 **F5.4 is IMPLEMENTED + VALIDATED on `feature/f5-4-examination-guard-migration`**
-(branched from `dev` `50d6c78`, one commit, pushed, **NOT merged** — `dev` and
-`main` are untouched). The F5.3 record follows below as the previous checkpoint.
+(branched from `dev` `50d6c78`, pushed, and **merged into local `dev` as
+`edd7f03`** — which is still unpushed, so `origin/dev` remains `50d6c78`;
+`main` untouched). The F5.3 record follows below as the previous checkpoint.
 
 32 routes audited across `ExaminationsController` (15), `AttemptsController` (9)
 and `PracticeController` (5), plus F5.3's three deferrals: **30 migrated, 2
@@ -545,9 +546,9 @@ deliberately role-gated**. Migrated from `@RequiredRoles` to single-key
 ### Exact recommended next task
 
 **Merge decision for F5.4.** The branch is complete, validated and pushed;
-`dev` is still at `50ab83a`. Merge it the same way F5.3 was merged
-(`git checkout dev && git merge --no-ff feature/f5-4-examination-guard-migration`),
-then re-run `test:examination-practice-authz` + `test:question-paper-authz`
+`dev` is now at `edd7f03`, which **already contains this merge** (F5.4 is
+integrated locally; `origin/dev` still lags at `50d6c78`). Push `dev`, then
+re-run `test:examination-practice-authz` + `test:question-paper-authz`
 post-merge and rebuild the API container. Only after that, start
 **F5.5 — Remaining Surface Guard Migration** (update its TODO items in
 `docs/tasks.md` first; the remaining `@RequiredRoles` surfaces are the academic
