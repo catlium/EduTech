@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { FileText, Upload, Library } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { SkeletonCards } from '@/components/app/loading';
@@ -41,7 +41,8 @@ type DialogMode = null | 'text' | 'upload';
 export default function SyllabusListPage() {
   const router = useRouter();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: POST /syllabus/text and POST /syllabus/upload are `syllabus.create`.
+  const canCreate = hasPermission(institute, 'syllabus.create');
   const [syllabi, setSyllabi] = useState<SyllabusResponse[]>([]);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,7 +158,7 @@ export default function SyllabusListPage() {
             : 'A subject never generates a syllabus — paste its text or upload the official document, extract the text, AI deep-analyzes it, and you confirm the structure.'
         }
         actions={
-          isTeacher &&
+          canCreate &&
           subjects.length > 0 && (
             <>
               <Button size="sm" variant="outline" onClick={() => setDialogMode('text')}>
@@ -177,7 +178,7 @@ export default function SyllabusListPage() {
           title="No syllabi yet"
           description="Paste the syllabus text or upload the official document. The file is processed to extract its text, then analyzed into a chapter structure you confirm."
         >
-          {isTeacher && subjects.length > 0 && (
+          {canCreate && subjects.length > 0 && (
             <Button size="sm" onClick={() => setDialogMode('text')}>
               Create Syllabus
             </Button>
@@ -220,7 +221,7 @@ export default function SyllabusListPage() {
             </Card>
           ))}
 
-          {isTeacher &&
+          {canCreate &&
             subjects
               .filter((subject) => !subjectsWithSyllabus.has(subject.id))
               .map((subject) => (

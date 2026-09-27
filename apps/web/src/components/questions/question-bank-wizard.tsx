@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { api, ApiError, downloadFile } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/app/empty-state';
@@ -167,6 +168,10 @@ export function QuestionBankWizard({
   topics,
   onChanged,
 }: WizardProps) {
+  const { institute } = useTenant();
+  // F5.6: every write this wizard performs is a question-bank generate
+  // (POST /questions/bank/generate, /questions/generate-more) = `questions.create`.
+  const canCreate = hasPermission(institute, 'questions.create');
   const [step, setStep] = useState(0);
   const [cascade, setCascade] = useState<ScopeCascade>({
     subjectId: '',
@@ -416,6 +421,8 @@ export function QuestionBankWizard({
 
   const batchStatus = batch?.status;
   const batchDone = batchStatus ? batchStatus.active === 0 : false;
+
+  if (!canCreate) return null;
 
   return (
     <>

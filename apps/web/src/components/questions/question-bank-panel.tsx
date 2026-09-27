@@ -6,7 +6,7 @@ import { FileText, Loader2, RefreshCw, Sparkles, CheckCircle2, Layers } from 'lu
 
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import type {
   SubjectResponse,
   ChapterResponse,
@@ -116,7 +116,10 @@ export function QuestionBankPanel({
   onChanged: () => void;
 }) {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: the starter seed (POST /questions/bank/starter) and the whole generate
+  // dialog (POST /questions/bank/generate) are `questions.create`; the stats read
+  // is `questions.read`, the route's own key.
+  const canCreate = hasPermission(institute, 'questions.create');
 
   const [stats, setStats] = useState<QuestionBankStats | null>(null);
   const [statsSubjectId, setStatsSubjectId] = useState('');
@@ -685,7 +688,7 @@ export function QuestionBankPanel({
             <p className="mt-3 text-xs text-muted-foreground">Could not load bank stats.</p>
           )}
 
-          {isTeacher && (
+          {canCreate && (
             <div className="mt-3 flex flex-wrap gap-2">
               {statsSubjectId && (
                 <Button

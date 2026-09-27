@@ -51,7 +51,10 @@ const CHUNK_STATUS_LABELS: Record<string, string> = {
 type Props = {
   materialId: string;
   processingStatus: MaterialProcessingStatus;
+  /** PUT .../ocr-pages/:page/correction — `materials.update`. */
   canEdit: boolean;
+  /** DELETE .../ocr-pages/:page/correction — `materials.delete`. */
+  canDelete: boolean;
   onRetry: () => void;
   onChanged: () => void;
 };
@@ -60,6 +63,7 @@ export function OcrInspection({
   materialId,
   processingStatus,
   canEdit,
+  canDelete,
   onRetry,
   onChanged,
 }: Props) {
@@ -401,19 +405,21 @@ export function OcrInspection({
                           <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
                             Cancel
                           </Button>
-                          {page.correctedText && currentDraftEqualsOriginal(draft, page.text) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={clearCorrection}
-                              disabled={saving}
-                            >
-                              Restore original OCR text
-                            </Button>
-                          )}
+                          {canDelete &&
+                            page.correctedText &&
+                            currentDraftEqualsOriginal(draft, page.text) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={clearCorrection}
+                                disabled={saving}
+                              >
+                                Restore original OCR text
+                              </Button>
+                            )}
                         </div>
                       )}
-                      {draft === null && page.correctedText && (
+                      {canDelete && draft === null && page.correctedText && (
                         <Button
                           variant="outline"
                           size="sm"

@@ -5,6 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { useAuth } from '@/lib/auth';
 import { useTenant, canManage, isInstituteAdmin, hasPermission } from '@/lib/tenant';
+import { FORBIDDEN_EVENT, isPrimaryForbiddenPath, type ForbiddenDetail } from '@/lib/api';
+import { workspaceRoute } from '@/lib/workspace-routes';
 import { AppSidebar, sideCrumb } from '@/components/app/app-sidebar';
 import { AppBreadcrumbs } from '@/components/app/app-breadcrumbs';
 import { Forbidden } from '@/components/app/forbidden';
@@ -13,38 +15,6 @@ import { UserMenu } from '@/components/app/user-menu';
 import { ThemeToggle } from '@/components/app/theme-toggle';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
-
-// Route → read permission (Phase J). The teaching workspace stays role-split
-// (canManage), then each route additionally requires its resource read key so
-// hidden/deep-linked surfaces meet the same decision the API applies. Keys
-// come straight from the backend catalogue; `manage` implies `read`.
-const TEACHER_RESOURCE_ROUTES = [
-  { prefix: '/subjects', key: 'subjects.read' },
-  { prefix: '/materials', key: 'materials.read' },
-  { prefix: '/content', key: 'content.read' },
-  { prefix: '/questions', key: 'questions.read' },
-  { prefix: '/assessments', key: 'assessments.read' },
-  { prefix: '/question-papers', key: 'question-papers.read' },
-  { prefix: '/paper-patterns', key: 'paper-patterns.read' },
-  { prefix: '/syllabus', key: 'syllabus.read' },
-  { prefix: '/jobs', key: 'jobs.read' },
-];
-
-const ADMIN_RESOURCE_ROUTES = [
-  // placed before /institute so the more specific prefix wins the match
-  { prefix: '/institute/academic', key: 'users.read' },
-  { prefix: '/institute', key: 'users.read' },
-  { prefix: '/users', key: 'users.read' },
-  // ocr-workers.* is platform-plane (D3/§15): no institute membership can hold
-  // it, so the route is unreachable here by design (Super Admin UI is Phase K+).
-  { prefix: '/ocr/workers', key: 'ocr-workers.read' },
-];
-
-function matchesPrefix(pathname: string, entries: { prefix: string; key: string }[]) {
-  return entries.find(
-    (entry) => pathname === entry.prefix || pathname.startsWith(entry.prefix + '/'),
-  );
-}
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -75,7 +45,6 @@ function RoleGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { institute } = useTenant();
   const teacher = canManage(institute);
-  const admin = isInstituteAdmin(institute);
 
   useEffect(() => {
     if (!teacher && pathname === '/dashboard') {
@@ -83,17 +52,12 @@ function RoleGuard({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, router, teacher]);
 
-  const adminRoute = matchesPrefix(pathname, ADMIN_RESOURCE_ROUTES);
-  if (adminRoute) {
-    if (!admin || !hasPermission(institute, adminRoute.key)) {
-      return <Forbidden />;
-    }
-    return <>{children}</>;
-  }
-
-  const teacherRoute = matchesPrefix(pathname, TEACHER_RESOURCE_ROUTES);
-  if (teacherRoute) {
-    if (!teacher || !hasPermission(institute, teacherRoute.key)) {
+  const gate = workspaceRoute(pathname);
+  if (gate) {
+    const roleOk =
+      gate.role === null ||
+      (gate.role === 'admin' ? isInstituteAdmin(institute) : teacher);
+    if (!roleOk || !hasPermission(institute, gate.key)) {
       return <Forbidden />;
     }
     return <>{children}</>;
@@ -105,27 +69,35 @@ function RoleGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Renders the shared access-denied view when a page-load GET answers 403
-// (authenticated but not permitted/scoped). Resets on navigation. A 403 here
-// never logs the user out — only the 401 refresh flow does that.
+// Renders the shared access-denied view when the page's OWN load answers 403
+// (authenticated but not permitted/scoped), and only then. F5.6/L-1: the event
+// carries the failing path, and a 403 on anything outside the current route's
+// primary reads (a background poll, a sidebar count, a sub-section's roster
+// fetch) is left to surface locally instead of blanking the whole workspace.
+// Resets on navigation. A 403 here never logs the user out — only the 401
+// refresh flow does that.
 function ForbiddenGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [forbidden, setForbidden] = useState(false);
+  const [forbiddenPath, setForbiddenPath] = useState<string | null>(null);
 
   useEffect(() => {
-    setForbidden(false);
+    setForbiddenPath(null);
   }, [pathname]);
 
   useEffect(() => {
-    const onForbidden = () => setForbidden(true);
-    window.addEventListener('catlium:forbidden', onForbidden);
-    return () => window.removeEventListener('catlium:forbidden', onForbidden);
+    const onForbidden = (event: Event) => {
+      const detail = (event as CustomEvent<ForbiddenDetail>).detail;
+      setForbiddenPath((prev) => prev ?? detail?.path ?? '');
+    };
+    window.addEventListener(FORBIDDEN_EVENT, onForbidden);
+    return () => window.removeEventListener(FORBIDDEN_EVENT, onForbidden);
   }, []);
 
-  if (forbidden) {
-    return <Forbidden />;
+  if (forbiddenPath === null) {
+    return <>{children}</>;
   }
-  return <>{children}</>;
+  const load = workspaceRoute(pathname)?.load ?? [];
+  return isPrimaryForbiddenPath(forbiddenPath, load) ? <Forbidden /> : <>{children}</>;
 }
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {

@@ -16,7 +16,7 @@ import {
 
 import { api, ApiError, downloadFile } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import type {
   ContentResponse,
   NotePayload,
@@ -52,7 +52,9 @@ import {
 export default function ContentDetailPage() {
   const { contentId } = useParams<{ contentId: string }>();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: editing the payload is PATCH /content/:id and activate/archive are
+  // POST /content/:id/{activate,archive} — all `content.update`.
+  const canUpdate = hasPermission(institute, 'content.update');
   const router = useRouter();
 
   const [content, setContent] = useState<ContentResponse | null>(null);
@@ -184,7 +186,7 @@ export default function ContentDetailPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              {isTeacher && (
+              {canUpdate && (
                 <>
                   <Button size="sm" variant="outline" onClick={() => setEditDraft(payload)}>
                     <Pencil className="mr-1 size-3.5" /> Edit

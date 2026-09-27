@@ -21,7 +21,7 @@ import {
 import { api, ApiError, isTerminalPollError, waitForJob } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
 import { hasValidQuestionAnswer, isSupportedQuestionAnswerFormat } from '@/lib/question-answer';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { ErrorState } from '@/components/app/error-state';
 import { SkeletonRows } from '@/components/app/loading';
@@ -179,7 +179,11 @@ export default function QuestionExtractionReviewPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = params.jobId;
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: reviewing an extraction edits/accepts/discards question candidates
+  // (PATCH/POST on /questions/extraction/**) = `questions.update`; importing the
+  // accepted candidates into the bank (POST .../import) = `questions.create`.
+  const canUpdate = hasPermission(institute, 'questions.update');
+  const canCreate = hasPermission(institute, 'questions.create');
 
   const [status, setStatus] = useState<QuestionExtractionStatus['extraction'] | null>(null);
   const [meta, setMeta] = useState<QuestionExtractionCandidatesResponse['extraction'] | null>(null);
@@ -568,10 +572,10 @@ export default function QuestionExtractionReviewPage() {
   const chapterName = useMemo(() => new Map(chapters.map((c) => [c.id, c.name])), [chapters]);
   const topicName = useMemo(() => new Map(topics.map((t) => [t.id, t.name])), [topics]);
 
-  if (!isTeacher) {
+  if (!canUpdate) {
     return (
       <ErrorState
-        description="You need a teacher role to review extracted questions."
+        description="You need permission to review extracted questions."
         onRetry={undefined}
       />
     );
@@ -601,19 +605,21 @@ export default function QuestionExtractionReviewPage() {
                 >
                   <Trash2 className="mr-1 size-3.5" /> Discard all
                 </Button>
-                <Button
-                  size="sm"
-                  disabled={busy || hasDirtyDrafts || candidates.length === 0}
-                  onClick={() => void importAll()}
-                  title={hasDirtyDrafts ? 'Save candidate edits before importing' : undefined}
-                >
-                  {importing ? (
-                    <Loader2 className="mr-1 size-3.5 animate-spin" />
-                  ) : (
-                    <Check className="mr-1 size-3.5" />
-                  )}
-                  Accept & import all
-                </Button>
+                {canCreate && (
+                  <Button
+                    size="sm"
+                    disabled={busy || hasDirtyDrafts || candidates.length === 0}
+                    onClick={() => void importAll()}
+                    title={hasDirtyDrafts ? 'Save candidate edits before importing' : undefined}
+                  >
+                    {importing ? (
+                      <Loader2 className="mr-1 size-3.5 animate-spin" />
+                    ) : (
+                      <Check className="mr-1 size-3.5" />
+                    )}
+                    Accept & import all
+                  </Button>
+                )}
               </>
             )}
           </>
