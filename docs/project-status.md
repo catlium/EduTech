@@ -27,8 +27,10 @@ is preserved byte-for-byte.
 
 ### Current phase
 
-F5. F5.0, F5.1, F5.2 and F5.3 are closed and merged into `dev`. **F5.4–F5.8 are
-unstarted** (F5.4 is the next task; no branch exists for it).
+F5. F5.0, F5.1, F5.2 and F5.3 are closed and merged into `dev`. **F5.4 is
+IMPLEMENTED + VALIDATED 2026-09-27** on
+`feature/f5-4-examination-guard-migration` (off `dev` `50d6c78`, pushed, **not
+merged** — merging is the caller's call). **F5.5–F5.8 are unstarted.**
 
 ### Completed work
 
@@ -216,7 +218,18 @@ unstarted** (F5.4 is the next task; no branch exists for it).
       (`POST /question-types` catalogue gap, two `assessment` bridges → F5.4).
       `test:question-paper-authz` 21/21 including a negative probe. See the
       Latest-checkpoint entry above and `docs/tasks.md`.
-- [ ] F5.4 — Examination + Attempt + Practice Guard Migration
+- [x] F5.4 — Examination + Attempt + Practice Guard Migration — **IMPLEMENTED +
+      VALIDATED** on `feature/f5-4-examination-guard-migration` (off `dev`
+      `50d6c78`), unmerged. 30 of 32 audited routes migrated to single-key
+      `@RequiredPermission`; 2 deliberately role-gated (attempt ledger +
+      analytics). Closed F5.3's three deferrals — `POST /question-types` →
+      `question-types.create` (new catalogue action, granted to TEACHER) and
+      both `assessment` bridges → `assessments.create`. TEACHER additionally
+      gains `practice.create`/`practice.update` to record a capability that
+      already existed (those two routes had **no** role gate before). New
+      `test:examination-practice-authz` 26/26 including a negative probe; live
+      401 probe 33/33 on the rebuilt image. See the Latest-checkpoint entry
+      below and `docs/tasks.md`.
 - [ ] F5.5 — Remaining Surface Guard Migration
 - [ ] F5.6 — Frontend Gate Alignment
 - [ ] F5.7 — Roles Console + User Role Management
@@ -279,6 +292,122 @@ port.
   itself was never recreated.
 
 ### Latest checkpoint
+
+**F5.4 is IMPLEMENTED + VALIDATED on `feature/f5-4-examination-guard-migration`**
+(branched from `dev` `50d6c78`, one commit, pushed, **NOT merged** — `dev` and
+`main` are untouched). The F5.3 record follows below as the previous checkpoint.
+
+32 routes audited across `ExaminationsController` (15), `AttemptsController` (9)
+and `PracticeController` (5), plus F5.3's three deferrals: **30 migrated, 2
+deliberately role-gated**. Migrated from `@RequiredRoles` to single-key
+`@RequiredPermission` with `PermissionGuard` added to the chain
+(`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`).
+
+- **The two role-gated routes** are `GET /assessments/:assessmentId/attempts`
+  (cohort ledger) and `GET /assessments/:assessmentId/analytics`. They keep
+  `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')` because a key could not honestly
+  express the distinction: STUDENT already holds `attempts.read`, and a
+  **placed** student resolves a `subject-set` academic scope covering the
+  assessed subject which MOD-4's `ExaminationsService.getAssessment` accepts —
+  so with only `attempts.read` on the route, a placed student could have read
+  the whole cohort's ledger and analytics. No new key was invented (the
+  catalogue rule is never to add a key before a real need exists, and
+  `RolesGuard` already means "staff only"). The suite pins the service-level
+  leak **and** the guard that closes it.
+- **The only behaviour changes** are two catalogue/default changes, both
+  forced by existing capability rather than chosen policy: (1) `question-types`
+  gains a **`create`** action granted to **TEACHER** — TEACHER already reached
+  `POST /question-types` through `@RequiredRoles` and the shipped teacher
+  custom-type panel calls it, so repointing at `manage` would have revoked a
+  live capability; (2) TEACHER gains **`practice.create`**/**`practice.update`**
+  — `/practice` is a shared teacher/student nav item and those two routes had
+  **no** role gate at all before this phase, so the keys had to record an
+  existing capability or teacher self-testing would break.
+- **F5.3's three deferrals are closed**: both `assessment` bridges declare
+  `assessments.create` (they insert `assessments` rows; declaring
+  `paper-patterns.create`/`question-papers.create` would let a pattern/paper
+  author mint examinations outside their academic scope). F5.3's matrix is now
+  65 migrated / 0 deferred.
+- **No schema change and no migration** — `assessments`, `attempts` and
+  `practice` were already catalogued, and `PermissionSyncService` inserted the
+  one new key on API boot. Verified in the running database: the
+  `question-types.create` row exists and is granted to `TEACHER`; STUDENT has
+  only `question-types.read`.
+- **Tests**: new `examination-practice-authz.integration.ts`
+  (`test:examination-practice-authz`) **26/26** against the real guard chain and
+  real PostgreSQL — route inventory (33 asserted = the 32-route F5.4 surface +
+  the F5.3-migrated `GET /question-types` re-asserted to prove the new `create`
+  grant stays isolated from it), 31 migrated / 2 role-gated, one-key metadata,
+  no OR widening / no explicit `manage`, catalogue membership,
+  `manage`-implied INSTITUTE_ADMIN, built-in TEACHER and STUDENT defaults,
+  zero-role default-deny, one single-action delegate per action,
+  cross-institute isolation, the question-type `create`/`read` split, both
+  bridges' `assessments.create` + scope + coverage gates, the attempt-ledger
+  leak, and a **negative probe** that deletes a real `RequiredPermission` entry,
+  observes the route stop being gated (a zero-role membership walks through),
+  restores it and observes it re-close. Retargeted the stale F5.3 deferred
+  assertions (65/0) — `question-paper-authz` 21/21.
+- **Regressions** (all `skipped: 0`, and the database was checked afterwards —
+  zero leftover test rows): `question-paper-authz` 21/21, `authz-regression` 8/8,
+  `academic-structure-authz` 9/9, teacher-assignments/placement/enrollments authz
+  5+8+6, `question-bank-sets` 4/4, `job-ownership` 14/14,
+  `question-extraction-resilience` 5/5, `question-answer-generation` 12/12,
+  `academic-scope`/`resource-scope`/`phase-m-remediation`/`mod-3`/`mod-4` 1/1
+  each. `TEST_DATABASE_URL` via the compose-bridge container IP `172.18.0.4:5432`
+  (the F5.0–F5.3 method; the running stack is never recreated for a test run).
+- **Validation**: API `tsc --noEmit` clean, `eslint src` clean, prettier clean
+  on every touched source file. `exports.*` (MOD-3), the frontend and the
+  workers were deliberately not touched.
+- **Runtime** (verified against the rebuilt image, not `Up (healthy)`):
+  `docker compose up -d --build api` recreated the container; `docker compose ps`
+  shows all 6 services present and healthy; `GET /api/v1/health` →
+  `{"status":"ok","service":"@catlium/api"}`. The **live compiled** artifacts in
+  `/app/apps/api/dist` were read out of the running container:
+  - `RequiredPermission` vs `RequiredRoles` counts —
+    `examinations.controller.js` 15/0, `attempts.controller.js` 7/2,
+    `practice.controller.js` 5/0, `question-types.controller.js` 2/0,
+    `paper-patterns.controller.js` 15/0, `question-papers.controller.js` 14/0;
+  - the F5.4 key histogram matches the audit exactly — `assessments.update` 8,
+    `assessments.read` 4, `assessments.create` 3 (1 create + 2 bridges),
+    `assessments.delete` 2, `attempts.read` 4, `attempts.create` 1,
+    `attempts.update` 2, `practice.create` 1, `practice.read` 2,
+    `practice.update` 2, `question-types.read` 1, `question-types.create` 1;
+  - **0** multi-argument `RequiredPermission(...)` (no OR widening) and **0**
+    explicit `*.manage` on any of the six controllers;
+  - the two survivors are still role-gated verbatim:
+    `Get('assessments/:assessmentId/attempts')` and
+    `Get('assessments/:assessmentId/analytics')` each followed by
+    `RequiredRoles(...TEACHER_ROLES)`.
+- **Live 401 probes**: all **33** routes were probed unauthenticated from inside
+  the container — **33/33 returned 401**. No route 404s, so every audited route
+  is mounted and auth-gated in the rebuilt image. Read-only: `AccessTokenGuard`
+  rejects before any handler, so nothing was written to the database.
+- **Not done, deliberately**: no live HTTP *authorization* smoke with real
+  seeded users. The running stack is the base compose (no demo seed, no
+  host-published nginx), and proving live 403s would mean writing users/roles
+  into the running database. The permission behaviour itself is proven by the
+  26/26 real-guard-chain suite against real PostgreSQL, and the running image is
+  proven to carry the new metadata.
+- **Working tree**: the unrelated dirty state (blackbook/proposal/web work) is
+  preserved — every pre-existing dirty entry was sha256-hashed into
+  `/tmp/opencode/f54-pre-diff.patch` + `/tmp/opencode/f54-pre-untracked.tar` +
+  `/tmp/opencode/f54-pre-status.z` **before** the branch was cut, and
+  re-verified afterwards. `stash@{0}` is untouched. The F5.4 path set is
+  disjoint from the pre-existing dirty set. `dev`/`main` untouched.
+
+### Exact recommended next task
+
+**Merge decision for F5.4.** The branch is complete, validated and pushed;
+`dev` is still at `50ab83a`. Merge it the same way F5.3 was merged
+(`git checkout dev && git merge --no-ff feature/f5-4-examination-guard-migration`),
+then re-run `test:examination-practice-authz` + `test:question-paper-authz`
+post-merge and rebuild the API container. Only after that, start
+**F5.5 — Remaining Surface Guard Migration** (update its TODO items in
+`docs/tasks.md` first; the remaining `@RequiredRoles` surfaces are the academic
+*content* routes `subjects`/`chapters`/`topics` (`subjects.*`, `chapters.*`,
+`topics.*`) and anything F5.4 left behind).
+
+## Phase F5 — previous checkpoint (F5.3)
 
 `dev`/`origin/dev` is `50ab83a`. F5.0, F5.1, F5.2 and F5.3 are integrated into
 `dev` (merges `5230bf6`, `329fea8`, `c7a622d`, `50ab83a`).
@@ -386,11 +515,9 @@ only. `exports.*` (MOD-3) deliberately untouched.
 
 ### Exact recommended next task
 
-**F5.4 — Examination + Attempt + Practice Guard Migration** (next unstarted
-goal; nothing is in flight for it yet). F5.4 owns the two `assessment` bridges
-deferred in F5.3, and should settle the `question-types.create` catalogue
-question at the catalogue layer rather than working around it at the guard
-layer. Do not start F5.4 without updating its TODO items in `docs/tasks.md`.
+**F5.4 — done** (see the current Latest-checkpoint entry above). The
+`question-types.create` catalogue question was settled at the catalogue layer,
+and both `assessment` bridges were migrated to `assessments.create`.
 
 ## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, MERGED INTO dev)
 

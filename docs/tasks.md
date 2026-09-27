@@ -174,7 +174,81 @@
     1/1 each; API `tsc --noEmit` clean; `pnpm typecheck` 10/10;
     `turbo run lint --force` 9/9 uncached; `pnpm build` 7/7;
     `git diff --check` clean.
-- [ ] F5.4 — Examination + Attempt + Practice Guard Migration
+- [x] **F5.4 — Examination + Attempt + Practice Guard Migration.** **IMPLEMENTED +
+      VALIDATED 2026-09-27** on `feature/f5-4-examination-guard-migration` (off
+      `dev` `50d6c78`), unmerged — merging is the caller's decision. Audit first:
+      **32 routes** across `ExaminationsController` (15), `AttemptsController` (9)
+      and `PracticeController` (5) plus F5.3's three deferrals (question-type
+      creation + the two `assessment` bridges); **30 migrated, 2 deliberately
+      role-gated**.
+  - Migrated from `@RequiredRoles` to `@RequiredPermission` with
+    `PermissionGuard` added to each controller's chain
+    (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`): one key
+    per handler, no OR widening, no explicit `manage` (implied only).
+  - Verb mapping: create → `create`; list/detail/questions/pattern-coverage,
+    attempt available/history/detail/result, practice history/detail → `read`;
+    edit, scope change, publish/activate/complete/unpublish, add-question,
+    select-pattern, save-answer, submit, answer, complete → `update`; delete
+    **and remove-assessment-question** → `delete` (both remove the assessment
+    or part of it from the active surface). `attempts.create` and
+    `attempts.update` stay **STUDENT-only** in the built-in defaults.
+  - Two catalogue/default changes, the only behaviour changes in this phase,
+    both recorded in `authorization.md` §13 F5.4:
+    (1) `question-types` gains a **`create`** action granted to **TEACHER** —
+    TEACHER already reached `POST /question-types` through `@RequiredRoles` and
+    the shipped teacher custom-type panel calls it, so repointing at `manage`
+    would have revoked a live capability. (2) TEACHER gains **`practice.create`**
+    and **`practice.update`** — `/practice` is a shared teacher/student nav item
+    and those two routes had **no** role gate at all before, so the keys had to
+    record an existing capability rather than invent a restriction.
+  - Closed F5.3's three deferrals: `POST /question-types` →
+    `question-types.create`, and both `assessment` bridges →
+    **`assessments.create`** (they insert `assessments` rows; declaring the
+    parent resource's `create` would let a pattern/paper author mint
+    examinations outside their academic scope). F5.3's matrix is now 65
+    migrated / 0 deferred.
+  - Two routes stay role-gated, reasoning in `authorization.md` §13 F5.4:
+    `GET /assessments/:assessmentId/attempts` (cohort ledger) and
+    `GET /assessments/:assessmentId/analytics`. STUDENT already holds
+    `attempts.read`; a **placed** student resolves a `subject-set` scope
+    covering the assessed subject and MOD-4's `ExaminationsService.getAssessment`
+    accepts it, so with only `attempts.read` on the route a placed student
+    could read the whole cohort's ledger and analytics. No key was invented
+    (`RolesGuard` already means "staff only", and the catalogue rule is never
+    to add a key before a real need exists); the suite pins the service-level
+    leak *and* the guard that closes it.
+  - Preserved, not weakened: `x-institute-id` tenant scoping, institute scoping,
+    `requireWritableSubject` on assessment create, DRAFT creator-only editing,
+    the MOD-4 final-scope gate, `loadOwn` on attempts **and** practice
+    (self-scoped even holding the key), `gatePatternAccess`, `gatePaper`, and
+    both bridges' bank-coverage gate. A fully authorized delegate still gets
+    `NotFound` (never `Forbidden`) for a foreign institute, an out-of-scope
+    subject, or a foreign session.
+  - **No schema change and no migration** — `assessments`, `attempts` and
+    `practice` were already catalogued, and `PermissionSyncService` inserts the
+    one new key (`question-types.create`) plus its default grants on API boot.
+  - Tests: new `examination-practice-authz.integration.ts`
+    (`test:examination-practice-authz`, TEST_DATABASE_URL-gated) — **26/26**
+    against the real guard chain: route inventory (33 asserted = the 32-route
+    F5.4 surface + the F5.3-migrated `GET /question-types` re-asserted to prove
+    the new `create` grant stays isolated from it), 31 migrated / 2 role-gated,
+    one-key metadata, no OR widening/no explicit `manage`, catalogue
+    membership, `manage`-implied INSTITUTE_ADMIN, built-in TEACHER and STUDENT
+    defaults, zero-role default-deny, one single-action delegate per action,
+    cross-institute isolation, question-type create/read split, both bridges'
+    `assessments.create` + scope + coverage gates, the attempt-ledger leak, and
+    a **negative probe** that deletes a real decorator, watches the route stop
+    being gated, restores it and watches it re-close.
+  - Retargeted the stale F5.3 `question-paper-authz.integration.ts` deferred
+    assertions: 65 migrated / 0 deferred (21/21).
+  - Validation: new suite 26/26; `question-paper-authz` 21/21,
+    `authz-regression` 8/8, `academic-structure-authz` 9/9,
+    teacher-assignments/placement/enrollments authz 5+8+6, `question-bank-sets`
+    4/4, `job-ownership` 14/14, `question-extraction-resilience` 5/5,
+    `question-answer-generation` 12/12, `academic-scope`/`resource-scope`/
+    `phase-m-remediation`/`mod-3`/`mod-4` 1/1 each — all `skipped: 0`, no test
+    rows left in the database; API `tsc --noEmit` clean; `eslint src` clean;
+    prettier clean on every touched source file.
 - [ ] F5.5 — Remaining Surface Guard Migration
 - [ ] F5.6 — Frontend Gate Alignment
 - [ ] F5.7 — Roles Console + User Role Management

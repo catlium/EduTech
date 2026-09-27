@@ -40,7 +40,11 @@ export const INSTITUTE_RESOURCES = {
   materials: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   syllabus: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   questions: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
-  'question-types': { actions: ['read', 'manage'] },
+  // F5.4 adds `create`: the resource performs exactly one mutation (POST
+  // /question-types) and the teacher custom-type panel already exercised it, so
+  // `read` may not imply it (§13 granularity) and `manage` would have revoked
+  // TEACHER. No `update`/`delete` — no such endpoint exists.
+  'question-types': { actions: ['read', 'create', 'manage'] },
   'paper-patterns': { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   'question-papers': { actions: ['read', 'create', 'update', 'delete', 'manage'] },
   assessments: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
@@ -69,7 +73,8 @@ type ResourceKeys<T extends ResourceMap> = {
 }[keyof T];
 
 /** Compile-time union of every supported permission key. */
-export type PermissionKey = ResourceKeys<typeof INSTITUTE_RESOURCES> | ResourceKeys<typeof PLATFORM_RESOURCES>;
+export type PermissionKey =
+  ResourceKeys<typeof INSTITUTE_RESOURCES> | ResourceKeys<typeof PLATFORM_RESOURCES>;
 
 export interface PermissionDefinition {
   key: string;
@@ -202,7 +207,8 @@ export const BUILT_IN_ROLE_DEFINITIONS: readonly BuiltinRoleDefinition[] = [
   {
     key: INSTITUTE_ADMIN,
     name: 'Institute Admin',
-    description: 'Institute-wide administration. Holds the manage key for every institute resource.',
+    description:
+      'Institute-wide administration. Holds the manage key for every institute resource.',
     kind: 'system',
     domain: 'institute',
     permissionKeys: Object.keys(INSTITUTE_RESOURCES).map((resource) => `${resource}.manage`),
@@ -210,7 +216,8 @@ export const BUILT_IN_ROLE_DEFINITIONS: readonly BuiltinRoleDefinition[] = [
   {
     key: TEACHER,
     name: 'Teacher',
-    description: 'Teaching staff. Full read/create/update/delete over academic structure and content.',
+    description:
+      'Teaching staff. Full read/create/update/delete over academic structure and content.',
     kind: 'system',
     domain: 'institute',
     permissionKeys: [
@@ -230,8 +237,19 @@ export const BUILT_IN_ROLE_DEFINITIONS: readonly BuiltinRoleDefinition[] = [
         READ_WRITE_DELETE,
       ),
       'question-types.read',
+      'question-types.create',
       'attempts.read',
+      // F5.4: practice is a self-scoped learning surface on the SHARED nav
+      // (`sharedNav` in app-sidebar.tsx serves /practice to teachers too), and
+      // PracticeController carried no role gate at all — a teacher could start,
+      // answer and complete a session. Declaring practice.create/update without
+      // these defaults would have 403'd that shipped teacher capability; STUDENT
+      // already held both, so nothing else moves. `attempts.create`/`update` are
+      // deliberately NOT here: the attempt lifecycle is STUDENT-only and no
+      // teacher nav surface offers it.
       'practice.read',
+      'practice.create',
+      'practice.update',
       'exports.read',
       'jobs.read',
       'jobs.update',
@@ -241,7 +259,8 @@ export const BUILT_IN_ROLE_DEFINITIONS: readonly BuiltinRoleDefinition[] = [
   {
     key: STUDENT,
     name: 'Student',
-    description: 'Learning surface. Reads academic structure and content; self-scoped attempts and practice.',
+    description:
+      'Learning surface. Reads academic structure and content; self-scoped attempts and practice.',
     kind: 'system',
     domain: 'institute',
     permissionKeys: [
@@ -269,7 +288,8 @@ export const BUILT_IN_ROLE_DEFINITIONS: readonly BuiltinRoleDefinition[] = [
   {
     key: SUPER_ADMIN,
     name: 'Super Admin',
-    description: 'CatLium platform authority (D3). All platform-domain permissions; not an institute role.',
+    description:
+      'CatLium platform authority (D3). All platform-domain permissions; not an institute role.',
     kind: 'system',
     domain: 'platform',
     permissionKeys: allKeys(PLATFORM_RESOURCES),
