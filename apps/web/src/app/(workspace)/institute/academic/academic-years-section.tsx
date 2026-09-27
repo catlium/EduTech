@@ -50,11 +50,13 @@ const DEFAULT_VALUES: NamedStructureValues = { name: '', sortOrder: '', status: 
 
 export function AcademicYearsSection({
   years,
-  admin,
+  canCreate,
+  canUpdate,
   onChange,
 }: {
   years: AcademicYear[];
-  admin: boolean;
+  canCreate: boolean;
+  canUpdate: boolean;
   onChange: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -114,7 +116,7 @@ export function AcademicYearsSection({
         title="Academic Years"
         description="Define the institute's academic calendar years. Years are never deleted — a future year may be added and an obsolete one archived."
         actions={
-          admin && (
+          canCreate && (
             <Button onClick={() => { setTarget(null); setOpen(true); }}>
               <Plus className="mr-1.5 size-4" /> Add year
             </Button>
@@ -128,7 +130,7 @@ export function AcademicYearsSection({
           title="No academic years"
           description="Add the first academic year (for example “2026-27”) to start building the academic structure."
         >
-          {admin && (
+          {canCreate && (
             <Button size="sm" onClick={() => setOpen(true)}>
               <Plus className="mr-1.5 size-4" /> Add year
             </Button>
@@ -156,7 +158,7 @@ export function AcademicYearsSection({
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(year.updatedAt)}</TableCell>
                   <TableCell className="text-right">
-                    {admin && (
+                    {canUpdate && (
                       <Button
                         variant="outline"
                         size="sm"

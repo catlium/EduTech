@@ -2,11 +2,10 @@
 // academic-structure backend returns directly (no zod schemas exist yet for
 // these in @catlium/contracts); the helpers below are the pure, testable slice
 // of the UI. Authorization stays backend-authoritative: writes are gated by
-// the INSTITUTE_ADMIN role only (the backend has no catalogue keys for
-// academic structure — see docs/architecture/institute-operations-audit.md
-// §11), so the UI mirrors that decision and never invents grant keys.
+// the `academic-structure.{create,update,delete}` catalogue keys, so the UI
+// mirrors those keys per action and never invents grant keys.
 
-import type { InstituteUser, MembershipListItem, SubjectResponse } from '@catlium/contracts';
+import type { InstituteUser, SubjectResponse } from '@catlium/contracts';
 import { canUse } from './permissions.ts';
 
 export interface AcademicYear {
@@ -96,10 +95,14 @@ export function byClassSubjectName(a: TeacherAssignment, b: TeacherAssignment): 
 }
 
 /** UI mirror of the backend write gate: academic-structure mutations are
- *  INSTITUTE_ADMIN role-only. UX visibility only — never an enforcement
- *  boundary, and never weaker than what the API allows. */
-export function canWriteAcademicStructure(institute: MembershipListItem | null): boolean {
-  return institute?.roles.includes('INSTITUTE_ADMIN') ?? false;
+ *  permission-gated per action (@RequiredPermission on
+ *  academic-structure.create|update|delete). UX visibility only — never an
+ *  enforcement boundary, and never weaker than what the API allows. */
+export function canWriteAcademicStructure(
+  permissions: readonly string[],
+  action: 'create' | 'update' | 'delete',
+): boolean {
+  return canUse(permissions, `academic-structure.${action}`);
 }
 
 /** Warning text for the destructive class delete. The backend hard-deletes the

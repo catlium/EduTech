@@ -29,8 +29,10 @@ import { StudentPlacementsSection } from './placements-section';
 
 export default function AcademicConsolePage() {
   const { institute } = useTenant();
-  const admin = canWriteAcademicStructure(institute);
   const grants = institute?.permissions ?? [];
+  const canCreateStructure = canWriteAcademicStructure(grants, 'create');
+  const canUpdateStructure = canWriteAcademicStructure(grants, 'update');
+  const canDeleteStructure = canWriteAcademicStructure(grants, 'delete');
   const canReadAssignments = canAssignPermission(grants, 'read');
   const canCreateAssignments = canAssignPermission(grants, 'create');
   const canDeleteAssignments = canAssignPermission(grants, 'delete');
@@ -123,7 +125,12 @@ export default function AcademicConsolePage() {
             )}
           </TabsList>
           <TabsContent value="years" className="pt-4">
-            <AcademicYearsSection years={years} admin={admin} onChange={() => void load()} />
+            <AcademicYearsSection
+              years={years}
+              canCreate={canCreateStructure}
+              canUpdate={canUpdateStructure}
+              onChange={() => void load()}
+            />
           </TabsContent>
           <TabsContent value="classes" className="pt-4">
             <ClassesSection
@@ -131,7 +138,9 @@ export default function AcademicConsolePage() {
               divisions={divisions}
               subjects={subjects}
               offeredByClass={offeredByClass}
-              admin={admin}
+              canCreate={canCreateStructure}
+              canUpdate={canUpdateStructure}
+              canDelete={canDeleteStructure}
               onChange={() => void load()}
             />
           </TabsContent>
@@ -140,7 +149,9 @@ export default function AcademicConsolePage() {
               divisions={divisions}
               years={[...years].sort(bySortOrder)}
               classes={[...classes].sort(bySortOrder)}
-              admin={admin}
+              canCreate={canCreateStructure}
+              canUpdate={canUpdateStructure}
+              canDelete={canDeleteStructure}
               onChange={() => void load()}
             />
           </TabsContent>

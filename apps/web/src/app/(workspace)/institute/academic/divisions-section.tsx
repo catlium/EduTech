@@ -58,13 +58,17 @@ export function DivisionsSection({
   divisions,
   years,
   classes,
-  admin,
+  canCreate,
+  canUpdate,
+  canDelete,
   onChange,
 }: {
   divisions: DivisionRow[];
   years: AcademicYear[];
   classes: ClassRow[];
-  admin: boolean;
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
   onChange: () => void;
 }) {
   const [yearFilter, setYearFilter] = useState('');
@@ -186,7 +190,7 @@ export function DivisionsSection({
         title="Divisions"
         description="Year-bound student groups inside a class (for example Class X — 2026-27 — Section A). Deleting a division permanently removes its placements and enrollments."
         actions={
-          admin && (
+          canCreate && (
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="mr-1.5 size-4" /> Add division
             </Button>
@@ -234,7 +238,7 @@ export function DivisionsSection({
           title="No divisions"
           description="Add academic years and classes first, then create this class's first division (for example “A”)."
         >
-          {admin && (
+          {canCreate && (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="mr-1.5 size-4" /> Add division
             </Button>
@@ -281,22 +285,26 @@ export function DivisionsSection({
                     <TableCell className="text-muted-foreground">{division.sortOrder}</TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(division.updatedAt)}</TableCell>
                     <TableCell className="text-right">
-                      {admin && (
+                      {(canUpdate || canDelete) && (
                         <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setEditTarget(division)}
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDeleteTarget(division)}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
+                          {canUpdate && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditTarget(division)}
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeleteTarget(division)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          )}
                         </div>
                       )}
                     </TableCell>
