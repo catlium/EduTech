@@ -30,16 +30,23 @@ import { buildBankBuckets, QUESTION_TYPES } from './build-bank-buckets.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
-
+// Question Bank surface. F5.3: authorization is the permission catalogue's
+// `questions` resource, not roles — INSTITUTE_ADMIN holds `questions.manage`
+// through the built-in mapping (implying every action) and TEACHER holds
+// read/create/update/delete, so both keep the whole surface. Every bank,
+// generation, batch and extraction-candidate operation below declares exactly
+// one key by operation, with no OR widening and no explicit `manage`.
+// The service keeps institute + academic-scope + staging-ownership checks on
+// every query; the permission check authorizes the operation, never replaces it.
 @Controller('questions')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class QuestionsController {
   constructor(
     private readonly questionsService: QuestionsService,
@@ -50,7 +57,7 @@ export class QuestionsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   async create(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -66,7 +73,7 @@ export class QuestionsController {
   }
 
   @Get()
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async list(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -101,7 +108,7 @@ export class QuestionsController {
   }
 
   @Get(':questionId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async get(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -117,7 +124,7 @@ export class QuestionsController {
   }
 
   @Patch(':questionId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async update(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -136,7 +143,7 @@ export class QuestionsController {
 
   @Delete(':questionId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.delete')
   async delete(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -154,7 +161,7 @@ export class QuestionsController {
 
   @Post('generate')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   async generate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -170,7 +177,7 @@ export class QuestionsController {
   }
 
   @Get('generate/:jobId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async getGeneration(
     @Tenant() tenant: TenantContext,
     @Param('jobId', ParseUUIDPipe) jobId: string,
@@ -193,7 +200,7 @@ export class QuestionsController {
 
   @Post('bank/generate')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   async bankGenerate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -233,7 +240,7 @@ export class QuestionsController {
   // ── Bank batch monitor (Goal E): one batch per generation request ──
 
   @Get('bank/batches/:batchId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async bankBatch(
     @Tenant() tenant: TenantContext,
     @Param('batchId', ParseUUIDPipe) batchId: string,
@@ -243,7 +250,7 @@ export class QuestionsController {
 
   @Post('bank/batches/:batchId/cancel')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async cancelBankBatch(
     @Tenant() tenant: TenantContext,
     @Param('batchId', ParseUUIDPipe) batchId: string,
@@ -253,7 +260,7 @@ export class QuestionsController {
 
   @Post('bank/batches/:batchId/retry-failed')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async retryFailedBankBatch(
     @Tenant() tenant: TenantContext,
     @Param('batchId', ParseUUIDPipe) batchId: string,
@@ -262,13 +269,13 @@ export class QuestionsController {
   }
 
   @Get('bank/sets')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async bankSets(@Tenant() tenant: TenantContext) {
     return this.generationService.listBankSets(tenant.instituteId);
   }
 
   @Get('bank/stats')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async bankStats(
     @Tenant() tenant: TenantContext,
     @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
@@ -285,7 +292,7 @@ export class QuestionsController {
 
   @Post('generate-more')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   async generateMore(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -308,7 +315,7 @@ export class QuestionsController {
 
   @Post('bank/starter')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   async bankStarter(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -328,7 +335,7 @@ export class QuestionsController {
 
   @Post('bank/derive')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async deriveDistribution(@Tenant() tenant: TenantContext, @Body() dto: DeriveDistributionDto) {
     return this.generationService.deriveDistribution(
       tenant.instituteId,
@@ -340,7 +347,7 @@ export class QuestionsController {
 
   @Post('bank/generate-blueprint')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   async bankGenerateFromBlueprint(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -363,7 +370,7 @@ export class QuestionsController {
   // ── Approval actions ───────────────────────────────────────────────
 
   @Post('batch-approve')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async batchApprove(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser, @Body() dto: BatchQuestionActionDto) {
     const updated = await this.questionsService.batchSetApprovalStatus(
       tenant.instituteId,
@@ -376,7 +383,7 @@ export class QuestionsController {
   }
 
   @Post('batch-reject')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async batchReject(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser, @Body() dto: BatchQuestionActionDto) {
     const updated = await this.questionsService.batchSetApprovalStatus(
       tenant.instituteId,
@@ -389,7 +396,7 @@ export class QuestionsController {
   }
 
   @Post(':questionId/approve')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async approve(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -406,7 +413,7 @@ export class QuestionsController {
   }
 
   @Post(':questionId/reject')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async reject(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -423,7 +430,7 @@ export class QuestionsController {
   }
 
   @Post(':questionId/archive')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.delete')
   async archive(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -440,7 +447,7 @@ export class QuestionsController {
   }
 
   @Post(':questionId/activate')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async activate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,

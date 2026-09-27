@@ -25,13 +25,12 @@ import { MAX_FILE_SIZE } from '../materials/materials.constants.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
-
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
 
 /** The extraction status poll shape (mirrors paper-pattern extraction). */
 function toStatus(job: {
@@ -56,8 +55,17 @@ function toStatus(job: {
   };
 }
 
+// Extraction/review sub-surface of the Question Bank. F5.3: the catalogue's
+// `questions` vocabulary, per §13 — enqueue→create, candidate review/accept/
+// import→update, discard→delete, status poll→read. The four extraction-source
+// routes fill the Bank with REVIEW candidates (no question paper is created:
+// `requestTextExtraction`/`requestFileExtraction` are called without `paperId`),
+// so they are `questions.create` like every other enqueue.
+// The F3 subject-scope + run-ownership gates in `QuestionExtractionService`
+// (`gateCandidateJob`, `requireWritableSubject`) are untouched and still run
+// behind the permission check.
 @Controller('questions')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class QuestionExtractionController {
   constructor(
     private readonly extractionService: QuestionExtractionService,
@@ -67,7 +75,7 @@ export class QuestionExtractionController {
 
   @Post('extract-from-material')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   async extract(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -87,7 +95,7 @@ export class QuestionExtractionController {
    *  (no Question Paper is created). */
   @Post('extract-source-text')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   async extractSourceText(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -105,7 +113,7 @@ export class QuestionExtractionController {
   /** Independent Question Bank extraction from an uploaded paper PDF/image. */
   @Post('extract-source-file')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.create')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
   async extractSourceFile(
     @Tenant() tenant: TenantContext,
@@ -140,7 +148,7 @@ export class QuestionExtractionController {
   }
 
   @Get('extraction/:jobId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async status(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -157,7 +165,7 @@ export class QuestionExtractionController {
   }
 
   @Get('extraction/:jobId/candidates')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.read')
   async candidates(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -176,7 +184,7 @@ export class QuestionExtractionController {
   }
 
   @Patch('extraction/:jobId/candidates/:questionId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async updateCandidate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -199,7 +207,7 @@ export class QuestionExtractionController {
   }
 
   @Post('extraction/:jobId/candidates/:questionId/accept')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async acceptCandidate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -221,7 +229,7 @@ export class QuestionExtractionController {
    *  completed generation for the same question; a failed one is retried fresh. */
   @Post('extraction/:jobId/candidates/:questionId/generate-answer')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async generateAnswer(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -241,7 +249,7 @@ export class QuestionExtractionController {
 
   @Post('extraction/:jobId/candidates/:questionId/discard')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.delete')
   async discardCandidate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -258,7 +266,7 @@ export class QuestionExtractionController {
   }
 
   @Post('extraction/:jobId/import')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.update')
   async importAll(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -273,7 +281,7 @@ export class QuestionExtractionController {
   }
 
   @Post('extraction/:jobId/discard')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('questions.delete')
   async discardAll(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
