@@ -62,14 +62,18 @@ export function ClassesSection({
   divisions,
   subjects,
   offeredByClass,
-  admin,
+  canCreate,
+  canUpdate,
+  canDelete,
   onChange,
 }: {
   classes: ClassRow[];
   divisions: DivisionRow[];
   subjects: SubjectResponse[];
   offeredByClass: Record<string, SubjectResponse[]>;
-  admin: boolean;
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
   onChange: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -152,7 +156,7 @@ export function ClassesSection({
         title="Classes"
         description="Stable curriculum levels shared across years. Offerings and divisions hang off a class, and deleting one cascades them away."
         actions={
-          admin && (
+          canCreate && (
             <Button onClick={() => { setTarget(null); setOpen(true); }}>
               <Plus className="mr-1.5 size-4" /> Add class
             </Button>
@@ -166,7 +170,7 @@ export function ClassesSection({
           title="No classes"
           description="Add the institute's first class (for example “Class X”) to begin defining curriculum levels."
         >
-          {admin && (
+          {canCreate && (
             <Button size="sm" onClick={() => setOpen(true)}>
               <Plus className="mr-1.5 size-4" /> Add class
             </Button>
@@ -199,21 +203,27 @@ export function ClassesSection({
                     </TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(klass.updatedAt)}</TableCell>
                     <TableCell className="text-right">
-                      {admin && (
+                      {(canCreate || canUpdate || canDelete) && (
                         <div className="flex items-center justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => setManageClass(klass)}>
-                            <BookOpen className="mr-1.5 size-3.5" /> Subjects
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => { setTarget(klass); setOpen(true); }}
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => startDelete(klass)}>
-                            <Trash2 className="size-3.5" />
-                          </Button>
+                          {(canCreate || canDelete) && (
+                            <Button variant="outline" size="sm" onClick={() => setManageClass(klass)}>
+                              <BookOpen className="mr-1.5 size-3.5" /> Subjects
+                            </Button>
+                          )}
+                          {canUpdate && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => { setTarget(klass); setOpen(true); }}
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button variant="outline" size="sm" onClick={() => startDelete(klass)}>
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          )}
                         </div>
                       )}
                     </TableCell>
@@ -288,6 +298,8 @@ export function ClassesSection({
           klass={manageClass}
           allSubjects={subjects}
           open={manageClass !== null}
+          canCreate={canCreate}
+          canDelete={canDelete}
           onOpenChange={(o) => !o && setManageClass(null)}
           onChanged={() => onChange()}
         />
@@ -317,12 +329,16 @@ function ManageSubjectsDialog({
   klass,
   allSubjects,
   open,
+  canCreate,
+  canDelete,
   onOpenChange,
   onChanged,
 }: {
   klass: ClassRow;
   allSubjects: SubjectResponse[];
   open: boolean;
+  canCreate: boolean;
+  canDelete: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: () => void;
 }) {
@@ -403,26 +419,28 @@ function ManageSubjectsDialog({
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="flex items-end gap-2">
-            <div className="flex-1 space-y-1.5">
-              <Label>Add a subject</Label>
-              <Select value={selected} onValueChange={setSelected}>
-                <SelectTrigger>
-                  <SelectValue placeholder={available.length ? 'Select a subject' : 'All subjects offered'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {available.map((subject) => (
-                    <SelectItem key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {canCreate && (
+            <div className="flex items-end gap-2">
+              <div className="flex-1 space-y-1.5">
+                <Label>Add a subject</Label>
+                <Select value={selected} onValueChange={setSelected}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={available.length ? 'Select a subject' : 'All subjects offered'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {available.map((subject) => (
+                      <SelectItem key={subject.id} value={subject.id}>
+                        {subject.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={() => void addSubject()} disabled={!selected || busy}>
+                <Plus className="mr-1.5 size-4" /> Add
+              </Button>
             </div>
-            <Button onClick={() => void addSubject()} disabled={!selected || busy}>
-              <Plus className="mr-1.5 size-4" /> Add
-            </Button>
-          </div>
+          )}
 
           {loading ? (
             <div className="flex justify-center py-8">
@@ -437,15 +455,17 @@ function ManageSubjectsDialog({
               {offered.map((subject) => (
                 <Badge key={subject.id} variant="secondary" className="gap-1.5 py-1 pr-1 pl-2.5 font-medium">
                   {subject.name}
-                  <button
-                    type="button"
-                    aria-label={`Remove ${subject.name}`}
-                    disabled={busy}
-                    className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                    onClick={() => void removeSubject(subject)}
-                  >
-                    <Trash2 className="size-3" />
-                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${subject.name}`}
+                      disabled={busy}
+                      className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      onClick={() => void removeSubject(subject)}
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  )}
                 </Badge>
               ))}
             </div>

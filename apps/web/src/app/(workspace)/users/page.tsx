@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Search, Users as UsersIcon } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import {
   CreateInstituteUserRequestSchema,
   type CreateInstituteUserRequest,
@@ -58,6 +59,11 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function UsersPage() {
   const { user } = useAuth();
+  const { institute } = useTenant();
+  // F5.6: POST /users = `users.create`; PATCH /users/:id/status = `users.update`.
+  // Role assignment is not on this page, so no role check is added.
+  const canCreate = hasPermission(institute, 'users.create');
+  const canUpdate = hasPermission(institute, 'users.update');
   const searchParams = useSearchParams();
   const [members, setMembers] = useState<InstituteUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,8 +75,8 @@ export default function UsersPage() {
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get('create') === '1') setCreateOpen(true);
-  }, [searchParams]);
+    if (canCreate && searchParams.get('create') === '1') setCreateOpen(true);
+  }, [canCreate, searchParams]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -143,9 +149,11 @@ export default function UsersPage() {
         title="Users"
         description="Manage the teacher and student accounts for this institute. Administrators provision accounts — there is no public self-registration."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1.5 size-4" /> Add user
-          </Button>
+          canCreate && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1.5 size-4" /> Add user
+            </Button>
+          )
         }
       />
 
@@ -169,9 +177,11 @@ export default function UsersPage() {
           title="No users yet"
           description="Create the first teacher or student account for your institute."
         >
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1.5 size-4" /> Add user
-          </Button>
+          {canCreate && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1.5 size-4" /> Add user
+            </Button>
+          )}
         </EmptyState>
       ) : (
         <div className="rounded-xl border bg-card">
@@ -216,7 +226,7 @@ export default function UsersPage() {
                       {formatDate(member.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {!self && (
+                      {!self && canUpdate && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -242,7 +252,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={(o) => setCreateOpen(o)}>
+      <Dialog open={createOpen && canCreate} onOpenChange={(o) => setCreateOpen(o)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add user</DialogTitle>

@@ -1,7 +1,13 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { api, ApiError, isTerminalPollError, setActiveInstituteId } from './api.ts';
+import {
+  api,
+  ApiError,
+  isPrimaryForbiddenPath,
+  isTerminalPollError,
+  setActiveInstituteId,
+} from './api.ts';
 
 // api.ts reads lazy globals (document/window/fetch) at call time, so we can
 // script them per test. KEY invariant under test:
@@ -14,6 +20,7 @@ let data401sLeft = 0;
 let refreshStatus = 200;
 let dataStatus = 200;
 const events: string[] = [];
+const forbiddenDetails: { method: string; path: string }[] = [];
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -28,11 +35,17 @@ beforeEach(() => {
   refreshStatus = 200;
   dataStatus = 200;
   events.length = 0;
+  forbiddenDetails.length = 0;
   setActiveInstituteId(null);
 
   globalThis.document = { cookie: 'csrf_token=abc' } as unknown as Document;
   globalThis.window = {
-    dispatchEvent: (e: Event) => events.push(e.type),
+    dispatchEvent: (e: Event) => {
+      events.push(e.type);
+      if (e.type === 'catlium:forbidden') {
+        forbiddenDetails.push((e as CustomEvent<{ method: string; path: string }>).detail);
+      }
+    },
   } as unknown as Window & typeof globalThis;
 
   const dataBody = { user: { id: 'u1' } };
@@ -160,4 +173,37 @@ test('isTerminalPollError keeps 5xx and transport errors retryable', () => {
   }
   assert.equal(isTerminalPollError(new TypeError('fetch failed')), false);
   assert.equal(isTerminalPollError(undefined), false);
+});
+
+// F5.6/L-1: the 403 event must carry enough context for the layout to tell the
+// page's own load apart from a background poll, and must stay GET-only.
+test('a 403 GET reports the failing path, a 403 mutation does not report at all', async () => {
+  dataStatus = 403;
+  await assert.rejects(api('/materials?status=ACTIVE'), (e: unknown) => e instanceof ApiError);
+  await assert.rejects(
+    api('/materials/1', { method: 'DELETE' }),
+    (e: unknown) => e instanceof ApiError,
+  );
+  assert.deepEqual(events, ['catlium:forbidden']);
+  assert.deepEqual(forbiddenDetails, [{ method: 'GET', path: '/materials?status=ACTIVE' }]);
+});
+
+test('a 401 never reports forbidden', async () => {
+  dataStatus = 401;
+  data401sLeft = 5;
+  await assert.rejects(api('/materials'), (e: unknown) => e instanceof ApiError);
+  assert.deepEqual(forbiddenDetails, []);
+});
+
+test('isPrimaryForbiddenPath matches only the page own reads', () => {
+  const load = ['/academic/academic-years', '/academic/classes'];
+  assert.equal(isPrimaryForbiddenPath('/academic/academic-years', load), true);
+  assert.equal(isPrimaryForbiddenPath('/academic/academic-years/2026', load), true);
+  assert.equal(isPrimaryForbiddenPath('/academic/academic-years?year=2026', load), true);
+  // The roster is a secondary read on the same page (F5.6/H-2).
+  assert.equal(isPrimaryForbiddenPath('/users', load), false);
+  assert.equal(isPrimaryForbiddenPath('/jobs/123', load), false);
+  // Boundary-safe: a sibling resource sharing a prefix is not the page load.
+  assert.equal(isPrimaryForbiddenPath('/academic/classes-archive', load), false);
+  assert.equal(isPrimaryForbiddenPath('/anything', []), false);
 });

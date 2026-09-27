@@ -25,7 +25,7 @@ import {
 
 import { api, ApiError, jobDone, waitForJob } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import type {
   MaterialResponse,
   MaterialProcessingStatus,
@@ -83,7 +83,10 @@ function formatBytes(bytes: number): string {
 export default function MaterialDetailPage() {
   const { materialId } = useParams<{ materialId: string }>();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: edit/process/retry/archive/activate and the OCR-correction save are all
+  // `materials.update`; clearing a correction (DELETE) is `materials.delete`.
+  const canUpdate = hasPermission(institute, 'materials.update');
+  const canDelete = hasPermission(institute, 'materials.delete');
   const router = useRouter();
 
   const [material, setMaterial] = useState<MaterialResponse | null>(null);
@@ -305,44 +308,51 @@ export default function MaterialDetailPage() {
         <PageHeader
           title={material.title}
           actions={
-            isTeacher && (
-              <div className="flex flex-wrap gap-2">
-                {material.topicId && material.subjectId && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      router.push(`/subjects/${material.subjectId}/topics/${material.topicId}`)
-                    }
-                  >
-                    <ArrowUpRight className="mr-1 size-3.5" /> Open Topic workspace
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-                  <Pencil className="mr-1 size-3.5" /> Edit
+            <div className="flex flex-wrap gap-2">
+              {material.topicId && material.subjectId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    router.push(`/subjects/${material.subjectId}/topics/${material.topicId}`)
+                  }
+                >
+                  <ArrowUpRight className="mr-1 size-3.5" /> Open Topic workspace
                 </Button>
-                {material.sourceType === 'UPLOAD' && material.processingStatus === 'UPLOADED' && (
-                  <Button size="sm" onClick={processMaterial}>
-                    <Play className="mr-1 size-3.5" /> Process
+              )}
+              {canUpdate && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+                    <Pencil className="mr-1 size-3.5" /> Edit
                   </Button>
-                )}
-                {(material.processingStatus === 'FAILED' ||
-                  material.processingStatus === 'QUEUED') && (
-                  <Button size="sm" variant="outline" onClick={retryMaterial}>
-                    <RefreshCw className="mr-1 size-3.5" /> Retry
-                  </Button>
-                )}
-                {material.status === 'ACTIVE' ? (
-                  <Button size="sm" variant="outline" onClick={() => setConfirmAction('archive')}>
-                    <Archive className="mr-1 size-3.5" /> Archive
-                  </Button>
-                ) : (
-                  <Button size="sm" onClick={() => setConfirmAction('activate')}>
-                    <CheckCircle2 className="mr-1 size-3.5" /> Activate
-                  </Button>
-                )}
-              </div>
-            )
+                  {material.sourceType === 'UPLOAD' &&
+                    material.processingStatus === 'UPLOADED' && (
+                      <Button size="sm" onClick={processMaterial}>
+                        <Play className="mr-1 size-3.5" /> Process
+                      </Button>
+                    )}
+                  {(material.processingStatus === 'FAILED' ||
+                    material.processingStatus === 'QUEUED') && (
+                    <Button size="sm" variant="outline" onClick={retryMaterial}>
+                      <RefreshCw className="mr-1 size-3.5" /> Retry
+                    </Button>
+                  )}
+                  {material.status === 'ACTIVE' ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setConfirmAction('archive')}
+                    >
+                      <Archive className="mr-1 size-3.5" /> Archive
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={() => setConfirmAction('activate')}>
+                      <CheckCircle2 className="mr-1 size-3.5" /> Activate
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
           }
         />
         <div className="mt-1 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-muted-foreground">
@@ -428,7 +438,8 @@ export default function MaterialDetailPage() {
             <OcrInspection
               materialId={material.id}
               processingStatus={material.processingStatus}
-              canEdit={isTeacher}
+              canEdit={canUpdate}
+              canDelete={canDelete}
               onRetry={retryMaterial}
               onChanged={refresh}
             />
@@ -443,7 +454,7 @@ export default function MaterialDetailPage() {
         segmentsOpen={segmentsOpen}
         onToggleSegments={() => setSegmentsOpen((o) => !o)}
         onEnhance={enhanceMaterial}
-        isTeacher={isTeacher}
+        canEnhance={canUpdate}
       />
 
       <Card>
@@ -962,7 +973,7 @@ function MaterialIntelligenceCard({
   segmentsOpen,
   onToggleSegments,
   onEnhance,
-  isTeacher,
+  canEnhance,
 }: {
   material: MaterialResponse;
   enhancement: MaterialEnhancementResponse | null;
@@ -970,7 +981,7 @@ function MaterialIntelligenceCard({
   segmentsOpen: boolean;
   onToggleSegments: () => void;
   onEnhance: () => void;
-  isTeacher: boolean;
+  canEnhance: boolean;
 }) {
   const router = useRouter();
   const ready = material.processingStatus === 'READY' && material.status === 'ACTIVE';
@@ -1011,7 +1022,7 @@ function MaterialIntelligenceCard({
               issues, and syllabus relevance as a versioned artifact — the
               source material is never modified.
             </span>
-            {isTeacher && (
+            {canEnhance && (
               <Button size="sm" onClick={onEnhance}>
                 <Sparkles className="size-3.5" /> Enhance Material
               </Button>
@@ -1040,30 +1051,26 @@ function MaterialIntelligenceCard({
               <span>{segCount} segments</span>
             </div>
 
-            {isTeacher && (
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={onEnhance} disabled={enhancing}>
-                  <RefreshCw className="size-3.5" /> Re-enhance
-                </Button>
-                <Button size="sm" variant="outline" onClick={onToggleSegments}>
-                  {segmentsOpen ? (
-                    <ChevronUp className="size-3.5" />
-                  ) : (
-                    <ChevronDown className="size-3.5" />
-                  )}{' '}
-                  {segmentsOpen ? 'Hide segments' : `View segments (${segCount})`}
-                </Button>
-                {topicPath && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => router.push(topicPath)}
-                  >
-                    <ArrowUpRight className="size-3.5" /> Generate Derived Content
-                  </Button>
-                )}
-              </div>
+            {canEnhance && (
+              <Button size="sm" variant="outline" onClick={onEnhance} disabled={enhancing}>
+                <RefreshCw className="size-3.5" /> Re-enhance
+              </Button>
             )}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={onToggleSegments}>
+                {segmentsOpen ? (
+                  <ChevronUp className="size-3.5" />
+                ) : (
+                  <ChevronDown className="size-3.5" />
+                )}{' '}
+                {segmentsOpen ? 'Hide segments' : `View segments (${segCount})`}
+              </Button>
+              {topicPath && (
+                <Button size="sm" variant="outline" onClick={() => router.push(topicPath)}>
+                  <ArrowUpRight className="size-3.5" /> Generate Derived Content
+                </Button>
+              )}
+            </div>
 
             {segmentsOpen && (
               <ul className="divide-y rounded-lg border">

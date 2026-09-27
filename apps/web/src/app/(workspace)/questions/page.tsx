@@ -28,7 +28,7 @@ import {
 
 import { api, ApiError } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
 import { AnswerText } from '@/components/export/answer-text';
 import { QuestionBankWizard } from '@/components/questions/question-bank-wizard';
@@ -403,7 +403,14 @@ function FibEditor({
 
 export default function QuestionsListPage() {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: exact backend keys. POST /questions, /questions/generate,
+  // /questions/bank/* and the extraction sources are `questions.create`;
+  // edit/approve/reject/activate and batch-approve/reject are
+  // `questions.update`; archive and delete are `questions.delete`.
+  const canCreate = hasPermission(institute, 'questions.create');
+  const canUpdate = hasPermission(institute, 'questions.update');
+  const canDelete = hasPermission(institute, 'questions.delete');
+  const canReadPapers = hasPermission(institute, 'question-papers.read');
 
   const [questions, setQuestions] = useState<QuestionListItem[]>([]);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
@@ -808,6 +815,17 @@ export default function QuestionsListPage() {
       onClick: () => void;
       destructive?: boolean;
     }[] = [];
+    if (!canUpdate) {
+      if (canDelete) {
+        actions.push({
+          label: 'Delete',
+          icon: <Trash2 className="size-4" />,
+          onClick: () => setDeleteTarget(q),
+          destructive: true,
+        });
+      }
+      return actions;
+    }
     actions.push({
       label: 'Edit',
       icon: <Pencil className="size-4" />,
@@ -827,11 +845,13 @@ export default function QuestionsListPage() {
       });
       actions.push({ label: 'Reject', icon: <X className="size-4" />, onClick: () => onReject(q) });
     } else if (q.approvalStatus === 'APPROVED') {
-      actions.push({
-        label: 'Archive',
-        icon: <Archive className="size-4" />,
-        onClick: () => onArchive(q),
-      });
+      if (canDelete) {
+        actions.push({
+          label: 'Archive',
+          icon: <Archive className="size-4" />,
+          onClick: () => onArchive(q),
+        });
+      }
     } else {
       // REJECTED and not archived: re-[approve] via the review action rather
       // than an Activate that would fabricate an active+rejected state.
@@ -841,12 +861,14 @@ export default function QuestionsListPage() {
         onClick: () => onApprove(q),
       });
     }
-    actions.push({
-      label: 'Delete',
-      icon: <Trash2 className="size-4" />,
-      onClick: () => setDeleteTarget(q),
-      destructive: true,
-    });
+    if (canDelete) {
+      actions.push({
+        label: 'Delete',
+        icon: <Trash2 className="size-4" />,
+        onClick: () => setDeleteTarget(q),
+        destructive: true,
+      });
+    }
     return actions;
   };
 
@@ -865,7 +887,7 @@ export default function QuestionsListPage() {
         title="Question Bank"
         description={`${questions.length} question${questions.length !== 1 ? 's' : ''} · ${pending} pending`}
         actions={
-          isTeacher && (
+          canCreate && (
             <>
               <Button size="sm" onClick={() => setExtractionOpen(true)}>
                 <FileSearch className="mr-1 size-3.5" /> Extract
@@ -922,7 +944,7 @@ export default function QuestionsListPage() {
         <QuestionBankSets />
       </div>
 
-      {isTeacher && (
+      {canReadPapers && (
         <div className="mb-4 flex flex-wrap items-center justify-between rounded-lg border border-dashed bg-muted/20 px-4 py-3 text-sm">
           <span>Build a Question Paper from a Paper Pattern.</span>
           <Button size="sm" variant="ghost" asChild>
@@ -976,7 +998,7 @@ export default function QuestionsListPage() {
             ))}
           </SelectContent>
         </Select>
-        {isTeacher && visible.length > 0 && (
+        {canUpdate && visible.length > 0 && (
           <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={toggleAllVisible}>
             {selected.size > 0 && selected.size < visible.length
               ? 'Clear visible'
@@ -1075,7 +1097,7 @@ export default function QuestionsListPage() {
         <p className="text-sm text-muted-foreground">No questions match the current filters.</p>
       ) : (
         <div className="space-y-3">
-          {isTeacher && selected.size > 0 && (
+          {canUpdate && selected.size > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-4 py-2.5">
               <p className="text-sm">
                 <span className="font-medium">{selected.size}</span> selected
@@ -1109,7 +1131,7 @@ export default function QuestionsListPage() {
               <Card key={q.id}>
                 <CardContent className="pt-5">
                   <div className="flex items-start gap-3">
-                    {isTeacher && (
+                    {canUpdate && (
                       <Checkbox
                         className="mt-2 shrink-0"
                         checked={selected.has(q.id)}
@@ -1142,7 +1164,7 @@ export default function QuestionsListPage() {
                         {expanded ? 'Hide answer' : 'Show answer'}
                       </span>
                     </button>
-                    {isTeacher && (
+                    {(canUpdate || canDelete) && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="size-8 shrink-0">

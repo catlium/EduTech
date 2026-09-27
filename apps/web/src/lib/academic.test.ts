@@ -47,26 +47,53 @@ const baseMembership = {
   slug: 'demo',
   status: 'active',
   instituteStatus: 'active',
-  permissions: [],
+  permissions: [] as string[],
   roles: [] as Role[],
 };
 
-const adminMembership: MembershipListItem = {
+/** The console page's own derivation (page.tsx): a missing membership carries
+ *  no grants at all. */
+const grantsOf = (membership: MembershipListItem | null): readonly string[] =>
+  membership?.permissions ?? [];
+
+const teacherMembership: MembershipListItem = { ...baseMembership, roles: ['TEACHER'] };
+const studentMembership: MembershipListItem = {
   ...baseMembership,
-  roles: ['INSTITUTE_ADMIN'],
+  roles: ['TEACHER', 'STUDENT'],
 };
 
-test('canWriteAcademicStructure mirrors the backend INSTITUTE_ADMIN role gate', () => {
-  assert.equal(canWriteAcademicStructure(adminMembership), true);
-  assert.equal(
-    canWriteAcademicStructure({ ...baseMembership, roles: ['TEACHER'] }),
-    false,
-  );
-  assert.equal(
-    canWriteAcademicStructure({ ...baseMembership, roles: ['TEACHER', 'STUDENT'] }),
-    false,
-  );
-  assert.equal(canWriteAcademicStructure(null), false);
+const writeActions = ['create', 'update', 'delete'] as const;
+
+test('canWriteAcademicStructure denies a role that holds no academic-structure grant', () => {
+  for (const action of writeActions) {
+    assert.equal(canWriteAcademicStructure(grantsOf(teacherMembership), action), false);
+    assert.equal(canWriteAcademicStructure(grantsOf(studentMembership), action), false);
+    assert.equal(canWriteAcademicStructure(grantsOf(null), action), false);
+  }
+});
+
+test('canWriteAcademicStructure grants every write action to academic-structure.manage', () => {
+  for (const action of writeActions) {
+    assert.equal(canWriteAcademicStructure(['academic-structure.manage'], action), true);
+  }
+});
+
+test('canWriteAcademicStructure honours a delegated per-action grant only', () => {
+  assert.equal(canWriteAcademicStructure(['academic-structure.create'], 'create'), true);
+  assert.equal(canWriteAcademicStructure(['academic-structure.create'], 'update'), false);
+  assert.equal(canWriteAcademicStructure(['academic-structure.create'], 'delete'), false);
+
+  assert.equal(canWriteAcademicStructure(['academic-structure.update'], 'update'), true);
+  assert.equal(canWriteAcademicStructure(['academic-structure.update'], 'create'), false);
+  assert.equal(canWriteAcademicStructure(['academic-structure.update'], 'delete'), false);
+
+  assert.equal(canWriteAcademicStructure(['academic-structure.delete'], 'delete'), true);
+  assert.equal(canWriteAcademicStructure(['academic-structure.delete'], 'create'), false);
+  assert.equal(canWriteAcademicStructure(['academic-structure.delete'], 'update'), false);
+
+  // read is not a write grant, and another resource's manage is not this one
+  assert.equal(canWriteAcademicStructure(['academic-structure.read'], 'create'), false);
+  assert.equal(canWriteAcademicStructure(['assignments.manage'], 'create'), false);
 });
 
 const klass: ClassRow = {

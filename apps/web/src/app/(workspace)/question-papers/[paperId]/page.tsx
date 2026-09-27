@@ -22,7 +22,7 @@ import {
   type ExportPreviewValue,
 } from '@/components/export/export-preview-dialog';
 import { formatDate } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { ErrorState } from '@/components/app/error-state';
@@ -85,7 +85,14 @@ export default function QuestionPaperDetailPage() {
   const router = useRouter();
   const params = useParams<{ paperId: string }>();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: generate-missing / select-from-pattern / PATCH scope are
+  // `question-papers.update`; DELETE is `question-papers.delete`; turning the
+  // paper into an assessment is `assessments.create`; the export download is
+  // `exports.read`.
+  const canUpdate = hasPermission(institute, 'question-papers.update');
+  const canDelete = hasPermission(institute, 'question-papers.delete');
+  const canCreateAssessment = hasPermission(institute, 'assessments.create');
+  const canExport = hasPermission(institute, 'exports.read');
 
   const [paper, setPaper] = useState<PaperWithSubjects | null>(null);
   const [questions, setQuestions] = useState<QuestionPaperQuestion[]>([]);
@@ -462,43 +469,45 @@ export default function QuestionPaperDetailPage() {
           ) : null
         }
         actions={
-          isTeacher && (
-            <div className="flex flex-wrap gap-2">
-              {isPatternBased && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setGenPreview(null);
-                    setGenEffect(null);
-                    setGenOpen(true);
-                  }}
-                  disabled={coverage === null || patternSections.length === 0 || !hasScope}
-                  title={hasScope ? undefined : 'Set a question scope first'}
-                >
-                  <Wand2 className="mr-1 size-3.5" /> Generate Missing
-                </Button>
-              )}
-              {isPatternBased && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void onAutoSelect()}
-                  disabled={autoSelecting || !hasScope}
-                  title={hasScope ? undefined : 'Set a question scope first'}
-                >
-                  <Wand2 className="mr-1 size-3.5" />
-                  {autoSelecting ? 'Shuffling…' : 'Shuffle / Regenerate'}
-                </Button>
-              )}
-              {!hasScope && (
-                <Button variant="outline" size="sm" onClick={() => void openSetScope()}>
-                  <Wand2 className="mr-1 size-3.5" /> Set Question Scope
-                </Button>
-              )}
+          <div className="flex flex-wrap gap-2">
+            {canUpdate && isPatternBased && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setGenPreview(null);
+                  setGenEffect(null);
+                  setGenOpen(true);
+                }}
+                disabled={coverage === null || patternSections.length === 0 || !hasScope}
+                title={hasScope ? undefined : 'Set a question scope first'}
+              >
+                <Wand2 className="mr-1 size-3.5" /> Generate Missing
+              </Button>
+            )}
+            {canUpdate && isPatternBased && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void onAutoSelect()}
+                disabled={autoSelecting || !hasScope}
+                title={hasScope ? undefined : 'Set a question scope first'}
+              >
+                <Wand2 className="mr-1 size-3.5" />
+                {autoSelecting ? 'Shuffling…' : 'Shuffle / Regenerate'}
+              </Button>
+            )}
+            {canUpdate && !hasScope && (
+              <Button variant="outline" size="sm" onClick={() => void openSetScope()}>
+                <Wand2 className="mr-1 size-3.5" /> Set Question Scope
+              </Button>
+            )}
+            {canExport && (
               <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
                 <Download className="mr-1 size-3.5" /> Export
               </Button>
+            )}
+            {canCreateAssessment && (
               <Button
                 size="sm"
                 onClick={() => setCreateAssessOpen(true)}
@@ -507,6 +516,8 @@ export default function QuestionPaperDetailPage() {
               >
                 <ClipboardList className="mr-1 size-3.5" /> Create Assessment
               </Button>
+            )}
+            {canDelete && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -515,8 +526,8 @@ export default function QuestionPaperDetailPage() {
               >
                 <Trash2 className="size-3.5" />
               </Button>
-            </div>
-          )
+            )}
+          </div>
         }
       />
 

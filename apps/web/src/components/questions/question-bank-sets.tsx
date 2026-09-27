@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, History, Loader2, RefreshCw } from 'lucide-react';
 
 import { api } from '@/lib/api';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { cn } from '@/lib/utils';
 import type { QuestionBankBatchResponse } from '@catlium/contracts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +24,11 @@ interface BankSet {
 }
 
 export function QuestionBankSets() {
+  const { institute } = useTenant();
+  // F5.6: this card is pure read — GET /questions/bank/sets and
+  // GET /questions/bank/batches/:id are both `questions.read`, so the local
+  // gate stops the read before it can 403 rather than hiding a write.
+  const canRead = hasPermission(institute, 'questions.read');
   const [sets, setSets] = useState<BankSet[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [batch, setBatch] = useState<QuestionBankBatchResponse | null>(null);
@@ -33,8 +39,12 @@ export function QuestionBankSets() {
   }, []);
 
   useEffect(() => {
+    if (!canRead) {
+      setSets([]);
+      return;
+    }
     void load().catch(() => setSets([]));
-  }, [load]);
+  }, [canRead, load]);
 
   async function toggle(batchId: string) {
     if (open === batchId) {
@@ -48,7 +58,7 @@ export function QuestionBankSets() {
     setBatch(res);
   }
 
-  if (sets === null) return null;
+  if (!canRead || sets === null) return null;
   if (sets.length === 0) return null;
 
   return (

@@ -35,12 +35,37 @@ function onUnauthorized() {
   }
 }
 
-function onForbidden() {
+/** Context carried by the `catlium:forbidden` window event. F5.6: a bare event
+ *  made ANY GET 403 blank the whole workspace, so a secondary/background read
+ *  (a poll, a sidebar count, a roster fetch) destroyed an otherwise usable
+ *  page. The layout scopes the access-denied view to the failing request's own
+ *  path — the page's primary load — and lets every other 403 surface locally. */
+export interface ForbiddenDetail {
+  method: string;
+  path: string;
+}
+
+export const FORBIDDEN_EVENT = 'catlium:forbidden';
+
+/** True when a 403'd GET path is one of the reads the current page performs to
+ *  render itself. Anything else (a poll, a sidebar count, a sub-section's own
+ *  fetch) is a background/secondary denial and must not blank the page. */
+export function isPrimaryForbiddenPath(path: string, primaryPaths: readonly string[]): boolean {
+  const target = path.split('?')[0] ?? path;
+  return primaryPaths.some((p) => {
+    const base = p.endsWith('/') ? p.slice(0, -1) : p;
+    return target === base || target.startsWith(`${base}/`);
+  });
+}
+
+function onForbidden(method: string, path: string) {
   // Authenticated-but-not-authorized (403), distinct from a dead session
-  // (401). The workspace layout renders an access-denied view; no logout, no
-  // refresh loop — mutating requests keep their normal error toast instead.
+  // (401). No logout, no refresh loop — mutating requests never get here, and
+  // user-initiated ones keep their normal error toast instead.
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('catlium:forbidden'));
+    window.dispatchEvent(
+      new CustomEvent<ForbiddenDetail>(FORBIDDEN_EVENT, { detail: { method, path } }),
+    );
   }
 }
 
@@ -141,11 +166,13 @@ export async function api<T>(
     onUnauthorized();
   }
 
-  // Authenticated-but-not-authorized page-load denial (401 flow already
-  // handled above, so this also fires when a refreshed session is still
-  // denied). Surface the Forbidden view; never a logout or refresh loop.
+  // Authenticated-but-not-authorized denial (401 flow already handled above, so
+  // this also fires when a refreshed session is still denied). Only a GET is
+  // reported: it may be the page's own load, which the layout renders as an
+  // access-denied view. Mutations and downloads keep their error toast — never
+  // a logout, never a refresh loop, never a whole-page failure.
   if (response.status === 403 && method.toUpperCase() === 'GET') {
-    onForbidden();
+    onForbidden(method, path);
   }
 
   if (!response.ok) {
