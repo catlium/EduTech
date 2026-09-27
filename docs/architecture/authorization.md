@@ -808,12 +808,12 @@ there is no wildcard.
 | `materials` | read, create, update, delete, manage | upload→create; process/retry/cancel/enhance → update |
 | `syllabus` | read, create, update, delete, manage | syllabus CRUD + upload |
 | `questions` | read, create, update, delete, manage | bank CRUD; extraction enqueue→create; candidate review/accept→update; discard→delete. **F5.3 (2026-09-27) guard-migrated** — 34 routes across `QuestionsController` + `QuestionExtractionController`; no `@RequiredRoles` remains on either. |
-| `question-types` | read, manage | static config; admin manage. **F5.3 (2026-09-27)** guard-migrates `list` → `question-types.read`; `create` stays `@RequiredRoles` (no `create` action exists — see F5.3 enforcement). |
-| `paper-patterns` | read, create, update, delete, manage | CRUD + source extraction→create. **F5.3 (2026-09-27) guard-migrated** — 14 of 15 routes; the `/:patternId/assessment` bridge stays role-based (F5.4). |
-| `question-papers` | read, create, update, delete, manage | CRUD; generate/shuffle/publish/scope → update. **F5.3 (2026-09-27) guard-migrated** — 13 of 14 routes; the `/:paperId/assessment` bridge stays role-based (F5.4). |
-| `assessments` | read, create, update, delete, manage | examinations module CRUD |
-| `attempts` | read, create, update, manage | no delete endpoint exists; self actions + admin oversight |
-| `practice` | read, create, update, manage | no delete endpoint exists; self actions + admin oversight |
+| `question-types` | read, create, manage | static config; admin manage. **F5.3 (2026-09-27)** guard-migrated `list` → `question-types.read`; **F5.4 (2026-09-27)** added the `create` action and guard-migrated `POST /question-types` → `question-types.create`, granted to TEACHER. No `@RequiredRoles` remains. |
+| `paper-patterns` | read, create, update, delete, manage | CRUD + source extraction→create. **F5.3 (2026-09-27) guard-migrated** 14 of 15 routes; **F5.4 (2026-09-27)** migrated the `/:patternId/assessment` bridge to `assessments.create` (it mints an `assessments` row). Fully migrated. |
+| `question-papers` | read, create, update, delete, manage | CRUD; generate/shuffle/publish/scope → update. **F5.3 (2026-09-27) guard-migrated** 13 of 14 routes; **F5.4 (2026-09-27)** migrated the `/:paperId/assessment` bridge to `assessments.create`. Fully migrated. |
+| `assessments` | read, create, update, delete, manage | examinations module CRUD. **F5.4 (2026-09-27) guard-migrated** — all 15 `ExaminationsController` routes plus the two pattern/paper `assessment` bridges; no `@RequiredRoles` remains. |
+| `attempts` | read, create, update, manage | no delete endpoint exists; self actions + admin oversight. **F5.4 (2026-09-27) guard-migrated** — 7 of 9 routes; the attempt **ledger** and **analytics** reads stay `@RequiredRoles` (admin/teacher oversight, see F5.4 enforcement). |
+| `practice` | read, create, update, manage | no delete endpoint exists; self actions + admin oversight. **F5.4 (2026-09-27) guard-migrated** — all 5 routes; no `@RequiredRoles` remains. |
 | `exports` | read, manage | export doc preview/generation |
 | `jobs` | read, update, manage | cancel/retry → update |
 | `users` | read, create, update, manage | institute user + membership provisioning (create); status/role changes (update) |
@@ -845,10 +845,14 @@ Notes:
   controller (`subjects`/`chapters`/`topics`) are a different resource
   (`subjects.*`/`chapters.*`/`topics.*`, D-F5.5) and stay role-based until
   their own phase. **F5.3 (2026-09-27) guard-migrated the question + paper
-  surface** — 62 of 65 audited routes now declare a `questions.*`,
-  `question-types.read`, `paper-patterns.*` or `question-papers.*` key; the
-  three exceptions (question-type creation and the two `assessment` bridges)
-  stay role-based with the reasoning recorded in the F5.3 enforcement note.
+  surface** — 62 of 65 audited routes declare a `questions.*`,
+  `question-types.read`, `paper-patterns.*` or `question-papers.*` key, and
+  **F5.4 (2026-09-27) guard-migrated the examination + attempt + practice
+  surface** — 30 of 32 audited routes declare an `assessments.*`, `attempts.*`,
+  `practice.*` or `question-types.create` key, which also closed F5.3's three
+  deferrals (question-type creation and the two `assessment` bridges). The only
+  routes F5.4 left role-based are the attempt ledger and analytics reads, with
+  the reasoning recorded in the F5.4 enforcement note.
 - Permission keys are explicit and listed; **no wildcard keys (`*`,
   `resources.*`) are stored or checked anywhere.**
 
@@ -1005,7 +1009,7 @@ only route in this phase a STUDENT may reach: TEACHER and STUDENT both hold
 existing defaults exactly while moving enforcement from role names to grants.
 STUDENT is denied all 61 other migrated routes.
 
-**Three routes stay role-gated, and why:**
+**Three routes were role-gated in F5.3 and resolved by F5.4; the reasoning:**
 
 1. `POST /question-types` — the catalogue defines `question-types` as
    *read, manage*; there is no `create` action. Mapping it to
@@ -1014,15 +1018,17 @@ STUDENT is denied all 61 other migrated routes.
    the teacher-facing custom question-type panel calls this endpoint. Adding a
    `create` key, or repointing the route at `manage`, are both F5.4+ catalogue
    decisions with product consequences — not a guard-migration detail, so the
-   route keeps `@RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')` and behaviour is
-   bit-for-bit unchanged.
+   route kept `@RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')` in F5.3.
+   **Resolved in F5.4:** the `create` action was added, so the route now declares
+   `question-types.create` and TEACHER keeps the capability.
 2. `POST /paper-patterns/:patternId/assessment` and
 3. `POST /question-papers/:paperId/assessment` — both bridges create an
    `assessments` row, so the honest key is `assessments.create`, not
    `paper-patterns.create`/`question-papers.create`. Declaring the parent
    resource's `create` would let a pattern/paper author mint examinations they
    have no right to create; declaring `assessments.create` pulls the
-   examination surface into F5.3. Both stay role-gated and are F5.4's job.
+   examination surface into F5.3. Both stayed role-gated in F5.3.
+   **Resolved in F5.4:** both now declare `assessments.create`.
 
 **The permission check authorizes the operation; it never substitutes for it.**
 Every existing service gate is unchanged and still runs after the guard:
@@ -1051,9 +1057,130 @@ observes that the route stops being gated (a zero-role membership walks
 through), restores it, and observes the route is guarded again — so the matrix
 above cannot pass vacuously.
 
+### F5.4 (2026-09-27) enforcement — examination + attempt + practice surface
+
+F5.4 migrates the examination, attempt and practice surfaces off `RolesGuard` on
+the same single-key-per-route contract F5.2/F5.3 established, and it also closes
+F5.3's three deferrals. **32 routes were audited across four controllers; 30
+migrated, 2 deliberately role-gated.** The suite additionally re-asserts
+`GET /question-types` (already migrated by F5.3) to prove the new
+`question-types.create` grant stays isolated from that read, so 33 routes are
+asserted in total.
+
+| controller | routes | migrated | role-gated |
+|---|---|---|---|
+| `ExaminationsController` | 15 | 15 | 0 |
+| `AttemptsController` | 9 | 7 | 2 (ledger, analytics) |
+| `PracticeController` | 5 | 5 | 0 |
+| `POST /question-types` (F5.3 deferral) | 1 | 1 | 0 |
+| both `assessment` bridges (F5.3 deferrals) | 2 | 2 | 0 |
+
+Every migrated handler declares **exactly one** key, with no OR widening and no
+explicit `manage`:
+
+- **assessments** — create → `assessments.create`;
+  list/detail/questions/pattern-coverage → `assessments.read`; edit,
+  subject-scope change and every lifecycle transition (publish, activate,
+  complete, unpublish) plus add-question and select-pattern →
+  `assessments.update`; delete **and remove-assessment-question** →
+  `assessments.delete`. Both deletions remove the assessment or part of it from
+  the active surface, so an actor who may not delete an assessment must not be
+  able to strip questions out of it.
+- **attempts** — start → `attempts.create`; available/history/detail/result →
+  `attempts.read`; save-answer and submit → `attempts.update`. `attempts.create`
+  and `attempts.update` stay **STUDENT-only** in the built-in defaults.
+- **practice** — start → `practice.create`; history/detail → `practice.read`;
+  answer and complete → `practice.update`.
+
+**Two catalogue/default changes were required**, and they are the only behaviour
+changes in this phase:
+
+1. `question-types` gains a **`create`** action, granted to **TEACHER**
+   (INSTITUTE_ADMIN receives it through the existing `question-types.manage`
+   implication; STUDENT stays read-only). TEACHER already reached
+   `POST /question-types` through `@RequiredRoles`, and the shipped teacher
+   custom question-type panel calls this endpoint, so repointing the route at
+   `manage` instead would have revoked a live capability. This closes the F5.3
+   deferral.
+2. TEACHER gains **`practice.create`** and **`practice.update`**. `/practice` is
+   a **shared** teacher/student navigation item and these two routes had **no**
+   role gate at all before this phase — they were open to any authenticated
+   member. Mapping them onto keys therefore had to record the capability that
+   already existed rather than invent a restriction, or self-testing practice
+   would break for teachers.
+
+Both `assessment` bridges now declare `assessments.create` (the F5.3 deferral)
+because they insert an `assessments` row; declaring the parent resource's
+`create` would let a pattern or paper author mint examinations outside their
+academic scope. Their source-read gate, writable-subject check and
+bank-coverage validation are unchanged and still run.
+
+**No new permission key was invented for the two role-gated routes.** Both
+`GET /assessments/:assessmentId/attempts` (the cohort ledger) and
+`GET /assessments/:assessmentId/analytics` are oversight reads, and they keep
+`@RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')` because a key could not honestly
+express the distinction:
+
+- STUDENT already holds `attempts.read`, so `attempts.read` is the *right* key
+  for the self-scoped routes — a student reading their own history is not a
+  permission violation.
+- A **placed** student resolves a `subject-set` academic scope covering their
+  subjects, and MOD-4's `ExaminationsService.getAssessment` accepts that scope
+  for a finalized assessment. `AttemptsService.listForAssessment` and
+  `getAnalytics` call exactly that. With only `attempts.read` on the route, a
+  placed student in the assessed subject would therefore have been able to read
+  the **whole cohort's** attempt ledger and analytics.
+- Splitting oversight into a second key (e.g. `attempts.oversight`) would be a
+  new catalogue concept covering two routes, and the catalogue's own rule is
+  that keys are never added before a real need exists. `RolesGuard` already
+  expresses "staff only" exactly, so it stays — and the suite pins both the
+  service-level leak and the guard that closes it.
+
+**Student-reachable surface is unchanged in substance, and larger than in F5.3,
+by design.** STUDENT reaches the available/history/detail/result attempt reads
+plus `attempts.create` and `attempts.update`, the whole practice surface, and
+`GET /question-types`; STUDENT is denied all 15 assessment routes,
+`question-types.create`, both bridges, and the two ledger routes. TEACHER
+reaches everything except the three STUDENT-only attempt mutations.
+
+**The permission check authorizes the operation; it never substitutes for it.**
+Every service gate is unchanged and still runs after the guard:
+`ExaminationsService` keeps tenant scoping, the writable-subject check, DRAFT
+creator-only editing and the final-scope gate; `AttemptsService` keeps
+`loadOwn` (a member sees only their own sessions even holding the key) and the
+MOD-4 resolution path; `PracticeService` keeps `loadOwn`;
+`PaperPatternsService`/`QuestionPapersService` keep `gatePatternAccess`,
+`gatePaper`, `requireWritableSubject` and the coverage gate. A fully authorized
+delegate still gets `NotFound` — never `Forbidden` — for a foreign institute, an
+out-of-scope subject, or a foreign session.
+
+**`exports.*` stays out of scope** (MOD-3), unchanged.
+
+**No schema change and no migration.** `assessments`, `attempts` and `practice`
+were already catalogued; the only new key is `question-types.create`, and
+`PermissionSyncService` inserts missing catalogue permissions and default grants
+on API boot.
+
+Validation:
+`apps/api/src/authorization/examination-practice-authz.integration.ts`
+(`test:examination-practice-authz`, TEST_DATABASE_URL-gated) runs the real
+`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain against
+PostgreSQL for all 33 asserted routes: route inventory, one-key metadata, no OR
+widening, no explicit `manage`, catalogue membership, the role-gated set, the
+`manage`-implied INSTITUTE_ADMIN path, built-in TEACHER and STUDENT defaults, a
+zero-role membership, one single-action delegate per action, cross-institute
+isolation, the question-type `create`/`read` split, both bridges'
+`assessments.create` + scope + coverage gates, and the attempt-ledger
+service-level leak with the guard that closes it. It carries a **negative
+probe**: it deletes a real `RequiredPermission` metadata entry, observes that
+the route stops being gated (a zero-role membership walks through), restores it,
+and observes the route is guarded again — so the matrix cannot pass
+vacuously.
+
 ---
 
 ## 14. D2 — Role and permission storage (DECIDED, not implemented)
+
 
 Recorded 2026-09-20. Applies to Phase C. Not yet implemented.
 
