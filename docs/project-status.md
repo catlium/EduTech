@@ -27,7 +27,9 @@ is preserved byte-for-byte.
 
 ### Current phase
 
-F5. F5.0, F5.1 and F5.2 are closed and merged into `dev`. F5.3–F5.8 are
+F5. F5.0, F5.1 and F5.2 are closed and merged into `dev`. **F5.3 is
+implemented, validated, committed and pushed on
+`feature/f5-3-question-paper-guard-migration`, awaiting merge.** F5.4–F5.8 are
 unstarted.
 
 ### Completed work
@@ -208,7 +210,13 @@ unstarted.
       `academic-structure.read/create/update/delete`; no `@RequiredRoles`
       remains on the controller. See the F5.2 entry above and
       `docs/tasks.md`.
-- [ ] F5.3 — Question + Paper Surface Guard Migration
+- [x] F5.3 — Question + Paper Surface Guard Migration — **IMPLEMENTED +
+      VALIDATED** on `feature/f5-3-question-paper-guard-migration` (off `dev`
+      `1a86859`), committed and pushed, **not yet merged**. 62 of 65 audited
+      routes migrated to single-key `@RequiredPermission`; 3 deferred
+      (`POST /question-types` catalogue gap, two `assessment` bridges → F5.4).
+      `test:question-paper-authz` 21/21 including a negative probe. See the
+      Latest-checkpoint entry above and `docs/tasks.md`.
 - [ ] F5.4 — Examination + Attempt + Practice Guard Migration
 - [ ] F5.5 — Remaining Surface Guard Migration
 - [ ] F5.6 — Frontend Gate Alignment
@@ -273,19 +281,81 @@ port.
 
 ### Latest checkpoint
 
-`dev`/`origin/dev` is `c7a622d` — `Merge branch
-'feature/f5-2-structure-guard-migration' into dev`, carrying the F5.1 merge
-`329fea8` (and the F5.0 merge `5230bf6`, F4 merge `7805814`, F2 merge `26f0540`)
-underneath. F5.0, F5.1 and F5.2 are therefore integrated into `dev`, not
-branch-only; the API container was rebuilt and verified against the running
-code, not just `Up (healthy)`. `main`/`origin/main` is `ef4de7e` and
-`stash@{0}` were not touched.
+`dev`/`origin/dev` is `1a86859`. F5.0, F5.1 and F5.2 are integrated into `dev`
+(merges `5230bf6`, `329fea8`, `c7a622d`).
+
+**F5.3 is IMPLEMENTED + VALIDATED on `feature/f5-3-question-paper-guard-migration`
+(branched from `dev` `1a86859`), committed and pushed, NOT yet merged.** 65
+audited routes across five controllers: **62 migrated** to single-key
+`@RequiredPermission` with `PermissionGuard` added to the chain
+(`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`),
+**3 deliberately role-deferred** — `POST /question-types` (catalogue has no
+`create`; `manage` would revoke TEACHER's existing capability that the teacher
+custom-type panel depends on) and the two `assessment` bridges on
+patterns/papers (they create `assessments` rows, so the honest key is
+`assessments.create` → F5.4). No schema change, no migration, no new
+permission key. STUDENT's reachable surface is unchanged: `GET /question-types`
+only. `exports.*` (MOD-3) deliberately untouched.
+
+- **Tests**: new `question-paper-authz.integration.ts` (`test:question-paper-authz`)
+  **21/21** against the real guard chain and real PostgreSQL — route inventory
+  (65/62/3), one-key metadata, deferred set, catalogue membership, no OR
+  widening/no explicit `manage`, the single student-readable route,
+  INSTITUTE_ADMIN-via-`manage`, TEACHER defaults, STUDENT + zero-role
+  default-deny, one single-action delegate per action, sibling-resource
+  isolation, `questions.manage` implication, cross-institute custom-role
+  isolation, service-level O1/O2 institute + academic-scope + staging-ownership
+  checks, question-type institute scoping, and a **negative probe** that deletes
+  a real `RequiredPermission` entry, observes the route stop being gated (a
+  zero-role membership walks through), restores it, and observes it re-close —
+  so the matrix cannot pass vacuously. Retargeted the stale
+  `paper-pattern-policy.test.ts` source-scan assertions from the old
+  `@RequiredRoles` contract to `@RequiredPermission` (18/18).
+- **Regressions**: `authz-regression` 8/8, `academic-structure-authz` 9/9,
+  teacher-assignments/placement/enrollments authz 5+8+6, `question-bank-sets`
+  4/4, `job-ownership` 14/14, `question-extraction-resilience` 5/5,
+  `question-answer-generation` 12/12, `paper-patterns` 15/15,
+  `paper-pattern-subjects` 6/6, `paper-pattern-policy` 18/18, `export` 10/10,
+  `paper-pattern-export` 5/5, `academic-scope`/`resource-scope`/
+  `phase-m-remediation`/`mod-3`/`mod-4` 1/1 each — all green.
+- **Validation**: API `tsc --noEmit` clean, `pnpm typecheck` 10/10,
+  `turbo run lint --force` 9/9 uncached, `pnpm build` 7/7,
+  `git diff --check` clean.
+- **Runtime**: API container rebuilt; `docker compose ps` shows every service
+  healthy; `GET /api/v1/health` → `{"status":"ok"}`. The **live compiled**
+  artifact was inspected inside `catlium-api`, not just `Up (healthy)`:
+  `questions.controller.js` and `question-extraction.controller.js` carry 24/12
+  `RequiredPermission` references and **0** `RequiredRoles`; the three
+  controllers with a deferred route still carry exactly one; all five have
+  `PermissionGuard` in their `UseGuards` chain. Unauthenticated HTTP probes
+  from the nginx container return **401** on `/api/v1/questions`,
+  `/question-types`, `/paper-patterns`, `/question-papers` and
+  `/questions/extraction/:jobId`, confirming all five surfaces are mounted and
+  guarded in the rebuilt image.
+- **Working tree**: the unrelated dirty state (blackbook/proposal/web work) is
+  preserved byte-for-byte — the pre-existing tracked-diff subset still hashes to
+  the pre-change `96a657fa…`, all 150 pre-existing untracked files re-hash
+  identically, the index is empty, `HEAD` is unmoved and `stash@{0}`
+  (`fbca44c8`) is untouched. The F5.3 paths are provably disjoint from the
+  pre-existing dirty set. `main`/`origin/main` (`ef4de7e`) untouched.
+- **Not done**: no live HTTP *authorization* smoke with real seeded users. The
+  running stack is the base compose (no demo seed, no host-published nginx), and
+  proving live 403s would mean writing users/roles into the running database.
+  Skipped deliberately — the permission behaviour itself is proven by the 21/21
+  real-guard-chain suite against real PostgreSQL, and the running image is
+  proven to carry the new metadata. If a live smoke is wanted, bring up the dev
+  overlay (`docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+  -d`) so nginx listens on 127.0.0.1:8080 for `scripts/e2e/*_e2e.sh`.
+- **Not done**: no merge into `dev` — that is a separate, explicit step.
 
 ### Exact recommended next task
 
-Begin **F5.3 — Question + Paper Surface Guard Migration** (the next unstarted F5
-phase), mirroring the Q.3/F5.2 pattern. Do not start it without a tracked phase
-in `docs/tasks.md`.
+Merge `feature/f5-3-question-paper-guard-migration` into `dev` `--no-ff` (after
+re-validating post-merge, as F5.2 did), then begin **F5.4 — Examination +
+Attempt + Practice Guard Migration**. F5.4 owns the two `assessment` bridges
+deferred here, and should decide the `question-types.create` catalogue question
+rather than working around it at the guard layer. Do not start F5.4 without
+updating its TODO items in `docs/tasks.md`.
 
 ## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, MERGED INTO dev)
 

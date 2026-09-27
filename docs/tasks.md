@@ -110,7 +110,67 @@
     mod-3/mod-4 all green; API unit 238/238; web `test:academic` 28/28;
     API `tsc --noEmit` clean; `pnpm typecheck` 10/10; `turbo run lint` 9/9;
     `pnpm build` 7/7; `git diff --check` clean.
-- [ ] F5.3 — Question + Paper Surface Guard Migration
+- [x] **F5.3 — Question + Paper Surface Guard Migration.** **IMPLEMENTED +
+      VALIDATED 2026-09-27** on `feature/f5-3-question-paper-guard-migration`
+      (off `dev` `1a86859`). Audit first: **65 routes** across five controllers
+      enumerated, **62 migrated, 3 deliberately role-deferred**.
+  - Migrated from `@RequiredRoles` to `@RequiredPermission` with `PermissionGuard`
+    added to each controller's chain
+    (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`):
+    `QuestionsController` 23/23, `QuestionExtractionController` 11/11,
+    `PaperPatternsController` 14/15, `QuestionPapersController` 13/14,
+    `QuestionTypesController` 1/2. One key per handler, no OR widening, no
+    explicit `manage` (implied only).
+  - Verb mapping: enqueue/starter/blueprint/source-extraction/creation →
+    `create`; reads, plus `POST /questions/bank/derive` (pure derivation) and
+    `POST /paper-patterns/:id/validate` (pure validation) → `read`;
+    batch cancel/retry/approve/reject, per-question approve/reject/activate,
+    candidate edit/accept/generate-answer, extraction import, pattern
+    analyze/approve/lock/unlock, paper rename/select/scope/generate-missing →
+    `update`; delete, **archive**, and **discard** → `delete`. Job-shaped
+    mutations are `update` on the owning resource, not `jobs.update`.
+  - Three routes stay role-based, reasoning recorded in `authorization.md`
+    §13 F5.3: `POST /question-types` (catalogue has no `create`; `manage`
+    would revoke TEACHER's existing capability, and the teacher custom-type
+    panel calls it) and the two `assessment` bridges on patterns/papers (they
+    create `assessments` rows, so the honest key is `assessments.create` —
+    F5.4).
+  - Preserved, not weakened: `x-institute-id` tenant scoping, institute scoping,
+    academic subject/chapter/topic scoping, O1/O2 staging ownership
+    (`QuestionsService`), `gateCandidateJob` + subject re-checks,
+    `gatePatternAccess`, `gatePaper`, extraction job ownership. A fully
+    authorized delegate still gets `NotFound` (never `Forbidden`) for a foreign
+    institute, an out-of-scope subject, or another teacher's staged row.
+  - **No behaviour change for STUDENT**: `GET /question-types` is still the only
+    reachable route in this phase; STUDENT is denied all 61 other migrated
+    routes. `exports.*` (MOD-3) was deliberately not touched.
+  - **No schema change and no migration** — the four resources were already
+    catalogued and their `permissions` rows already exist.
+  - Tests: new `question-paper-authz.integration.ts`
+    (`test:question-paper-authz`, TEST_DATABASE_URL-gated) — **21/21** against
+    the real guard chain: route inventory (65/62/3), one-key metadata, deferred
+    set, catalogue membership, no OR widening/no explicit `manage`, the
+    single student-readable route, INSTITUTE_ADMIN-via-`manage`, TEACHER
+    defaults, STUDENT and zero-role default-deny, one single-action delegate per
+    action, sibling-resource isolation, `questions.manage` implication,
+    cross-institute custom-role isolation, service-level O1/O2 scope, and
+    question-type institute scoping. Carries a **negative probe** that deletes a
+    real decorator, watches the route stop being gated (zero-role membership
+    walks through), restores it and watches the route re-close — so the matrix
+    cannot pass vacuously.
+  - Retargeted the stale `paper-pattern-policy.test.ts` source-scan assertions
+    from the old `@RequiredRoles` contract to `@RequiredPermission` (18/18);
+    its policy/FK assertions were already correct and are unchanged.
+  - Validation: new suite 21/21; `authz-regression` 8/8,
+    `academic-structure-authz` 9/9, teacher-assignments/placement/enrollments
+    authz 5+8+6, `question-bank-sets` 4/4, `job-ownership` 14/14,
+    `question-extraction-resilience` 5/5, `question-answer-generation` 12/12,
+    `paper-patterns` 15/15, `paper-pattern-subjects` 6/6,
+    `paper-pattern-policy` 18/18, `export` 10/10, `paper-pattern-export` 5/5,
+    `academic-scope`/`resource-scope`/`phase-m-remediation`/`mod-3`/`mod-4`
+    1/1 each; API `tsc --noEmit` clean; `pnpm typecheck` 10/10;
+    `turbo run lint --force` 9/9 uncached; `pnpm build` 7/7;
+    `git diff --check` clean.
 - [ ] F5.4 — Examination + Attempt + Practice Guard Migration
 - [ ] F5.5 — Remaining Surface Guard Migration
 - [ ] F5.6 — Frontend Gate Alignment

@@ -807,10 +807,10 @@ there is no wildcard.
 | `content` | read, create, update, delete, manage | content items + versions; generation → create/update |
 | `materials` | read, create, update, delete, manage | upload→create; process/retry/cancel/enhance → update |
 | `syllabus` | read, create, update, delete, manage | syllabus CRUD + upload |
-| `questions` | read, create, update, delete, manage | bank CRUD; extraction enqueue→create; candidate review/accept→update; discard→delete |
-| `question-types` | read, manage | static config; admin manage |
-| `paper-patterns` | read, create, update, delete, manage | CRUD + source extraction→create |
-| `question-papers` | read, create, update, delete, manage | CRUD; generate/shuffle/publish/scope → update |
+| `questions` | read, create, update, delete, manage | bank CRUD; extraction enqueue→create; candidate review/accept→update; discard→delete. **F5.3 (2026-09-27) guard-migrated** — 34 routes across `QuestionsController` + `QuestionExtractionController`; no `@RequiredRoles` remains on either. |
+| `question-types` | read, manage | static config; admin manage. **F5.3 (2026-09-27)** guard-migrates `list` → `question-types.read`; `create` stays `@RequiredRoles` (no `create` action exists — see F5.3 enforcement). |
+| `paper-patterns` | read, create, update, delete, manage | CRUD + source extraction→create. **F5.3 (2026-09-27) guard-migrated** — 14 of 15 routes; the `/:patternId/assessment` bridge stays role-based (F5.4). |
+| `question-papers` | read, create, update, delete, manage | CRUD; generate/shuffle/publish/scope → update. **F5.3 (2026-09-27) guard-migrated** — 13 of 14 routes; the `/:paperId/assessment` bridge stays role-based (F5.4). |
 | `assessments` | read, create, update, delete, manage | examinations module CRUD |
 | `attempts` | read, create, update, manage | no delete endpoint exists; self actions + admin oversight |
 | `practice` | read, create, update, manage | no delete endpoint exists; self actions + admin oversight |
@@ -844,7 +844,11 @@ Notes:
   merely catalogued. The academic *content* routes on the same `/academic`
   controller (`subjects`/`chapters`/`topics`) are a different resource
   (`subjects.*`/`chapters.*`/`topics.*`, D-F5.5) and stay role-based until
-  their own phase.
+  their own phase. **F5.3 (2026-09-27) guard-migrated the question + paper
+  surface** — 62 of 65 audited routes now declare a `questions.*`,
+  `question-types.read`, `paper-patterns.*` or `question-papers.*` key; the
+  three exceptions (question-type creation and the two `assessment` bridges)
+  stay role-based with the reasoning recorded in the F5.3 enforcement note.
 - Permission keys are explicit and listed; **no wildcard keys (`*`,
   `resources.*`) are stored or checked anywhere.**
 
@@ -956,6 +960,96 @@ widening and no explicit `manage` decorator. The consequences are deliberate:
   fully-authorized delegate cannot reach across institutes.
 - Staffing is untouched: `assignments.*` (Q.3/Q.4) and the D-Q3.3/G3 boundary
   are unchanged.
+
+### F5.3 (2026-09-27) enforcement — question + paper surface
+
+F5.3 migrates the question and paper surfaces off `RolesGuard` onto the same
+single-key-per-route permission contract F5.2 established. **65 routes were
+audited across five controllers; 62 migrated, 3 deliberately deferred.**
+
+| controller | routes | migrated | deferred |
+|---|---|---|---|
+| `QuestionsController` | 23 | 23 | 0 |
+| `QuestionExtractionController` | 11 | 11 | 0 |
+| `PaperPatternsController` | 15 | 14 | 1 (`POST /:patternId/assessment`) |
+| `QuestionPapersController` | 14 | 13 | 1 (`POST /:paperId/assessment`) |
+| `QuestionTypesController` | 2 | 1 | 1 (`POST /question-types`) |
+
+Every migrated handler declares **exactly one** key by operation, with no OR
+widening and no explicit `manage` decorator. The non-CRUD verbs are mapped
+onto the existing CRUD vocabulary rather than extending it:
+
+- **→ `create`**: bank/generation enqueue and starter/blueprint creation,
+  extraction enqueue (material, source text, source file), pattern and paper
+  source extraction, pattern/paper creation.
+- **→ `read`**: bank list/detail/batch/blueprint reads, extraction status and
+  candidate reads, `POST /questions/bank/derive` (a pure deterministic
+  derivation — it mutates nothing, so it is a read despite the verb), pattern
+  and paper list/detail/scope reads, and `POST /paper-patterns/:patternId/
+  validate` (pure validation, service re-checks the read gate).
+- **→ `update`**: batch cancel/retry, batch approve/reject, per-question
+  approve/reject/activate, candidate edit/accept/generate-answer, extraction
+  import, pattern analyze/approve/lock/unlock, paper rename/select-from-pattern/
+  scope/generate-missing. Job-shaped mutations on a resource route are `update`
+  on **that** resource, not `jobs.update` — the guard answers "may this actor
+  operate on questions", the service still answers "is this job theirs".
+- **→ `delete`**: question delete, question archive, candidate discard,
+  extraction discard, pattern and paper delete. **Archive and discard are
+  `delete`**, not `update`: the catalogue defines `delete` as
+  "remove/discard from the active surface", so an actor who may not delete a
+  question must not be able to archive it out of sight.
+
+**Student-reachable surface is unchanged.** `GET /question-types` remains the
+only route in this phase a STUDENT may reach: TEACHER and STUDENT both hold
+`question-types.read` and nothing else here, so declaring the key preserves the
+existing defaults exactly while moving enforcement from role names to grants.
+STUDENT is denied all 61 other migrated routes.
+
+**Three routes stay role-gated, and why:**
+
+1. `POST /question-types` — the catalogue defines `question-types` as
+   *read, manage*; there is no `create` action. Mapping it to
+   `question-types.manage` would have revoked an existing capability, because
+   TEACHER holds `question-types.read` but **not** `question-types.manage`, and
+   the teacher-facing custom question-type panel calls this endpoint. Adding a
+   `create` key, or repointing the route at `manage`, are both F5.4+ catalogue
+   decisions with product consequences — not a guard-migration detail, so the
+   route keeps `@RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')` and behaviour is
+   bit-for-bit unchanged.
+2. `POST /paper-patterns/:patternId/assessment` and
+3. `POST /question-papers/:paperId/assessment` — both bridges create an
+   `assessments` row, so the honest key is `assessments.create`, not
+   `paper-patterns.create`/`question-papers.create`. Declaring the parent
+   resource's `create` would let a pattern/paper author mint examinations they
+   have no right to create; declaring `assessments.create` pulls the
+   examination surface into F5.3. Both stay role-gated and are F5.4's job.
+
+**The permission check authorizes the operation; it never substitutes for it.**
+Every existing service gate is unchanged and still runs after the guard:
+`QuestionsService` keeps institute scoping, academic subject/chapter/topic
+scoping, and the O1/O2 staging rules (a PENDING row is visible only to its
+owner or an admin; REJECTED rows are never listed); extraction keeps
+`gateCandidateJob` and its subject re-checks; `PaperPatternsService` keeps
+`gatePatternAccess`; `QuestionPapersService` keeps `gatePaper`. A fully
+authorized delegate therefore still gets `NotFound` — never `Forbidden` — for
+another institute's question, an out-of-scope subject, or another teacher's
+staged row, so the permission layer leaks no existence information.
+
+**`exports.*` is out of scope.** `ExportController` is the separate MOD-3 export
+surface and was deliberately not touched; its content/pattern/paper scope gates
+are unchanged and still covered by `test:mod-3-export-scope`.
+
+Validation: `apps/api/src/questions/question-paper-authz.integration.ts` runs
+the real `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain
+against PostgreSQL for all 65 routes, asserting the route inventory, one-key
+metadata, the deferred set, catalogue membership, no OR widening and no
+explicit `manage`, plus allow/deny matrices for INSTITUTE_ADMIN, TEACHER,
+STUDENT, a zero-role membership, one single-action delegate per action, a
+cross-institute delegate, and the service-level O1/O2 scope checks. It carries
+a **negative probe**: it deletes a real `RequiredPermission` metadata entry,
+observes that the route stops being gated (a zero-role membership walks
+through), restores it, and observes the route is guarded again — so the matrix
+above cannot pass vacuously.
 
 ---
 
