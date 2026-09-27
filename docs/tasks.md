@@ -249,7 +249,94 @@
     `phase-m-remediation`/`mod-3`/`mod-4` 1/1 each — all `skipped: 0`, no test
     rows left in the database; API `tsc --noEmit` clean; `eslint src` clean;
     prettier clean on every touched source file.
-- [ ] F5.5 — Remaining Surface Guard Migration
+- [x] **F5.5 — Remaining Surface Guard Migration.** **IMPLEMENTED + VALIDATED
+      2026-09-27** on `feature/f5-5-remaining-surface-guard-migration` (off `dev`
+      `edd7f03`), unmerged — merging is the caller's decision. Audit first: a
+      whole-controller audit counted **250** application routes, of which **83** on
+      nine controllers were the last permission-eligible surface; **80 migrated,
+      3 deliberately role-gated**, plus 2 identity routes left out of scope.
+      This closes the migration: every permission-eligible route is now gated
+      by the `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`
+      chain with a `RequiredPermission` key (identity, health, worker and
+      platform-plane routes keep their own guards by design).
+  - Migrated from `@RequiredRoles` to `@RequiredPermission` with
+    `PermissionGuard` added to each controller's chain, one key per handler, no
+    OR widening, no explicit `manage` (implied only).
+  - Verb mapping: academic `subjects`/`chapters`/`topics` create→`create`,
+    list/detail/dependents→`read`, update→`update`, `deleteSubject`→`delete`,
+    `restoreSubject`→**`update`** (clears `deletedAt` on the existing row);
+    `content` create→`create`, list/detail/versions→`read`,
+    update/archive/activate→`update`; AI generation → `content.create`,
+    `regenerateResource`→`content.update`, `getGenerationStatus`/`getBatch`→
+    **`jobs.read`** (job state, and STUDENT keeps `content.read`), `cancelBatch`→
+    `jobs.update`; `materials` create→`create`, reads→`read`, lifecycle→
+    `update`, `clearCorrection`→**`delete`**; `syllabus` create→`create`,
+    reads→`read`, lifecycle→`update`, remove→`delete`; ten document/paper/pattern
+    exports→`exports.read`; `jobs` insert→**`jobs.create`**, list/detail→`read`,
+    retry/cancel→`update`; enhancement reads→`materials.read`,
+    enhance→`materials.update`; `users` list→`read`, create→`create`,
+    status→`update`.
+  - One catalogue change, the only behaviour change: `jobs` gains a **`create`**
+    action (97 → **98** live keys) granted to **TEACHER**, which already reached
+    `POST /jobs` through the role gate and whose UI calls it;
+    `INSTITUTE_ADMIN` satisfies it via `jobs.manage`. `jobs.delete` stays
+    uncatalogued (no route deletes a job). No built-in role loses a capability.
+  - One deliberate widening: `GET /users` → `users.read`, and TEACHER already
+    holds `users.read` in the built-in map, so TEACHER gains a route it lacked.
+    The web app already gates `/users` on that key, so the shipped teacher
+    roster/assignment pickers were being 403'd. STUDENT gains nothing
+    (`users.read` is not in its map), and the two user **mutations** stay
+    admin-only.
+  - Three routes stay role-gated, reasoning in `authorization.md` §13 F5.5: the
+    two assessment **results** exports (cohort ledger + analytics — a *placed*
+    student resolves a `subject-set` scope that MOD-4's `getAssessment` accepts,
+    and STUDENT must keep `content.read`, so no `exports.*` key can express
+    "results are staff-only") and `PUT /users/:userId/roles` (handing out a role
+    hands out a permission bundle, so it stays `INSTITUTE_ADMIN` **and** keeps
+    `users.update` as an AND requirement).
+  - Two routes stay outside the migration by design: `GET /memberships` and
+    `GET /memberships/scope` are **identity** endpoints (the first must run before
+    an `x-institute-id` is chosen), so no `R.action` key applies and
+    `MembershipsController` keeps `AccessTokenGuard` only. The suite pins that
+    residue.
+  - Preserved, not weakened: tenant/institute scoping, academic scope, teacher
+    assignment, student placement, job ownership, MOD-3's authoritative
+    export-scope builders, MOD-4's attempt gates, `requireWritableSubject`,
+    DRAFT creator-only content editing and the role-assignment self/last-admin
+    guards. A fully authorized delegate still gets `NotFound` (never
+    `Forbidden`) for a foreign institute, an out-of-scope subject or a foreign
+    session. Recorded pre-existing gap, not fixed here:
+    `MaterialEnhancementService` checks institute only, so a teacher can enhance
+    any material in their own institute — a service-layer fix.
+  - **No schema change and no migration**; `PermissionSyncService` inserts
+    `jobs.create` plus its default grant on API boot (verified live: 98
+    permission rows, `jobs.delete` absent, TEACHER holding
+    `jobs.create`/`read`/`update`).
+  - Tests: new `remaining-surface-authz.integration.ts`
+    (TEST_DATABASE_URL-gated) — **22/22** against
+    the real guard chain over all 83 routes: 80/3 inventory, one-key metadata,
+    no OR widening/no explicit `manage`, guard-chain order per controller,
+    catalogue delta + TEACHER grant, `manage`-implied INSTITUTE_ADMIN across all
+    83, built-in TEACHER and STUDENT reach, the `GET /users` widening, zero-role
+    default-deny, unauthenticated 401, one single-action custom delegate per
+    action (no sibling, no cross-resource leakage), cross-institute refusal for
+    a full-permission admin of another institute, the results-export and
+    role-assignment exceptions, the service-layer scope (404-not-403) and
+    DRAFT-creator ownership probes, and the memberships residue.
+  - Retargeted `mod-3-export-scope` and `phase-m-remediation` onto the
+    production `RolesGuard → PermissionGuard` chain (both previously exercised
+    `RolesGuard` alone, which no longer decides the document exports).
+  - Validation: new suite 22/22 `skipped: 0` with no test rows left in the
+    database; whole-API suite **466 tests / 455 pass / 0 skipped**, the 11
+    failures all in `platform/institute-crud` + `platform/platform-user-lifecycle`
+    and **reproduced unchanged on a pristine worktree of `dev` `edd7f03`** —
+    pre-existing, unrelated to F5.5, not fixed here. API `tsc --noEmit` clean;
+    `eslint src` clean; prettier clean on every file F5.5 introduced or changed
+    (the four controllers with pre-existing prettier drift at `dev` were left
+    alone). Live: `docker compose up -d --build api` healthy, compiled
+    `dist` carries the new metadata, and **all 83 routes enumerated from the
+    running image return `401` without a token (83/83)** — none 404s, so the
+    whole F5.5 surface is mounted and gated.
 - [ ] F5.6 — Frontend Gate Alignment
 - [ ] F5.7 — Roles Console + User Role Management
 - [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation

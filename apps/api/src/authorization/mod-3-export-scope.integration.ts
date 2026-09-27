@@ -33,6 +33,9 @@ import {
 import { AccessTokenGuard } from '../common/guards/access-token.guard.ts';
 import { TenantGuard } from '../common/guards/tenant.guard.ts';
 import { RolesGuard } from '../common/guards/roles.guard.ts';
+import { PermissionGuard } from './permissions.guard.ts';
+import { PermissionCheckService } from './permission-check.service.ts';
+import { PermissionSyncService } from './permission-sync.service.ts';
 import { TenancyService } from '../tenancy/tenancy.service.ts';
 import { AcademicScopeService } from './academic-scope.service.ts';
 import { ContentService } from '../content/content.service.ts';
@@ -90,6 +93,9 @@ test('MOD-3: export builders reuse the authoritative academic-scope gates', {
   skip: testDbUrl ? false : 'TEST_DATABASE_URL not set',
 }, async () => {
   const svc = db as unknown as Database;
+  // Idempotent; keeps the suite self-contained now that the export gate is
+  // permission-based rather than role-based.
+  await new PermissionSyncService(svc).sync();
   const scope = new AcademicScopeService(svc);
   const examsSvc = new ExaminationsService(svc, scope);
   const contentSvc = new ContentService(svc, scope);
@@ -272,7 +278,13 @@ test('MOD-3: export builders reuse the authoritative academic-scope gates', {
     await assert.rejects(exportSvc.buildAssessmentResultsDoc(instA, t1Mem.id, t1User.id, aT2DraftS1), NotFoundException);
 
     // ── MOD-3 Test 4: STUDENT is refused every export route with a role gate.
-    const roles = new RolesGuard(new Reflector());
+    //    F5.5 moved the document exports onto `exports.read` and left the two
+    //    results routes role-gated, so the production chain runs in order and
+    //    one assertion covers both gates.
+    const chain = async (ctx: ExecutionContext) => {
+      new RolesGuard(new Reflector()).canActivate(ctx);
+      await new PermissionGuard(new Reflector(), new PermissionCheckService(db as unknown as Database)).canActivate(ctx);
+    };
     const asStudent = async (handler: AnyHandler) =>
       authnAuthz(handler, {
         headers: { 'x-institute-id': instA },
@@ -294,10 +306,8 @@ test('MOD-3: export builders reuse the authoritative academic-scope gates', {
       ExportController.prototype.previewAssessmentResults as AnyHandler,
     ];
     for (const handler of gatedRoutes) {
-      const studentCtx = await asStudent(handler);
-      assert.throws(() => roles.canActivate(studentCtx), ForbiddenException, `${handler.name} refused to student`);
-      const adminCtx = await asAdmin(handler);
-      assert.equal(roles.canActivate(adminCtx), true, `${handler.name} allowed for admin`);
+      await assert.rejects(chain(await asStudent(handler)), ForbiddenException, `${handler.name} refused to student`);
+      await chain(await asAdmin(handler));
     }
 
     // ── MOD-3 Test 5: results/analytics cannot cross teacher academic scope

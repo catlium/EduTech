@@ -24,26 +24,43 @@ import {
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
-
+/**
+ * F5.5 — subject / chapter / topic guard migration (§13). This controller
+ * shares the `academic` prefix with `AcademicStructureController` (F5.2,
+ * `academic-structure.*`) but owns a different surface, so it keys on the
+ * `subjects` / `chapters` / `topics` resources the catalogue already defines,
+ * and both TEACHER and STUDENT already hold at the recorded defaults.
+ *
+ * Nothing is widened: the eight reads that carried NO role gate were reachable
+ * by every member, and all three resources grant `read` to TEACHER and STUDENT,
+ * so each read still resolves exactly as before. The eight writes that required
+ * the legacy `INSTITUTE_ADMIN`/`TEACHER` gate map one-to-one onto
+ * create/update/delete — which TEACHER holds and STUDENT does not. No `manage`
+ * is declared; a `R.manage` grantee is satisfied by implication in the grant
+ * layer. `AcademicService` still answers institute scoping on every query; this
+ * layer only says "may this role perform the action at all".
+ */
 @Controller('academic')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class AcademicController {
   constructor(private readonly academicService: AcademicService) {}
 
   // ── Subjects ─────────────────────────────
 
   @Get('subjects')
+  @RequiredPermission('subjects.read')
   async listSubjects(@Tenant() tenant: TenantContext) {
     const subjects = await this.academicService.listSubjects(tenant.instituteId);
     return { subjects };
   }
 
   @Get('subjects/deleted')
+  @RequiredPermission('subjects.read')
   async listDeletedSubjects(@Tenant() tenant: TenantContext) {
     const subjects = await this.academicService.listDeletedSubjects(tenant.instituteId);
     return { subjects };
@@ -51,13 +68,14 @@ export class AcademicController {
 
   @Post('subjects')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('subjects.create')
   async createSubject(@Tenant() tenant: TenantContext, @Body() dto: CreateSubjectDto) {
     const subject = await this.academicService.createSubject(tenant.instituteId, dto);
     return { subject };
   }
 
   @Get('subjects/:subjectId')
+  @RequiredPermission('subjects.read')
   async getSubject(
     @Tenant() tenant: TenantContext,
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
@@ -67,7 +85,7 @@ export class AcademicController {
   }
 
   @Patch('subjects/:subjectId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('subjects.update')
   async updateSubject(
     @Tenant() tenant: TenantContext,
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
@@ -79,7 +97,7 @@ export class AcademicController {
 
   @Delete('subjects/:subjectId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('subjects.delete')
   async deleteSubject(
     @Tenant() tenant: TenantContext,
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
@@ -88,7 +106,7 @@ export class AcademicController {
   }
 
   @Post('subjects/:subjectId/restore')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('subjects.update')
   async restoreSubject(
     @Tenant() tenant: TenantContext,
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
@@ -98,6 +116,7 @@ export class AcademicController {
   }
 
   @Get('subjects/:subjectId/dependents')
+  @RequiredPermission('subjects.read')
   async getDependents(
     @Tenant() tenant: TenantContext,
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
@@ -112,6 +131,7 @@ export class AcademicController {
   // ── Chapters ─────────────────────────────
 
   @Get('subjects/:subjectId/chapters')
+  @RequiredPermission('chapters.read')
   async listChapters(
     @Tenant() tenant: TenantContext,
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
@@ -122,7 +142,7 @@ export class AcademicController {
 
   @Post('subjects/:subjectId/chapters')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('chapters.create')
   async createChapter(
     @Tenant() tenant: TenantContext,
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
@@ -133,6 +153,7 @@ export class AcademicController {
   }
 
   @Get('chapters/:chapterId')
+  @RequiredPermission('chapters.read')
   async getChapter(
     @Tenant() tenant: TenantContext,
     @Param('chapterId', ParseUUIDPipe) chapterId: string,
@@ -142,7 +163,7 @@ export class AcademicController {
   }
 
   @Patch('chapters/:chapterId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('chapters.update')
   async updateChapter(
     @Tenant() tenant: TenantContext,
     @Param('chapterId', ParseUUIDPipe) chapterId: string,
@@ -155,6 +176,7 @@ export class AcademicController {
   // ── Topics ───────────────────────────────
 
   @Get('chapters/:chapterId/topics')
+  @RequiredPermission('topics.read')
   async listTopics(
     @Tenant() tenant: TenantContext,
     @Param('chapterId', ParseUUIDPipe) chapterId: string,
@@ -165,7 +187,7 @@ export class AcademicController {
 
   @Post('chapters/:chapterId/topics')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('topics.create')
   async createTopic(
     @Tenant() tenant: TenantContext,
     @Param('chapterId', ParseUUIDPipe) chapterId: string,
@@ -176,6 +198,7 @@ export class AcademicController {
   }
 
   @Get('topics/:topicId')
+  @RequiredPermission('topics.read')
   async getTopic(
     @Tenant() tenant: TenantContext,
     @Param('topicId', ParseUUIDPipe) topicId: string,
@@ -185,7 +208,7 @@ export class AcademicController {
   }
 
   @Patch('topics/:topicId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('topics.update')
   async updateTopic(
     @Tenant() tenant: TenantContext,
     @Param('topicId', ParseUUIDPipe) topicId: string,

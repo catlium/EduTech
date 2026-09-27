@@ -16,22 +16,39 @@ import { CreateJobDto } from './dto/create-job.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
+/**
+ *  * F5.5 — job monitor guard migration (§13 `jobs`). `GET /jobs` and
+ * `GET /jobs/:jobId` take `jobs.read`; retry and cancel take `jobs.update`; and
+ * the insert takes the `jobs.create` action F5.5 added to the catalogue,
+ * because `update` cannot honestly express "no job is being updated" and an
+ * explicit `manage` decorator on ordinary CRUD is forbidden by §13 (it would
+ * also have silently revoked TEACHER). TEACHER already reaches all five through
+ * the legacy `INSTITUTE_ADMIN`/`TEACHER` gate and still does, because
+ * `jobs.create` is granted to TEACHER and INSTITUTE_ADMIN satisfies it through
+ * `jobs.manage` implication; STUDENT holds nothing on `jobs` and is still
+ * denied all five.
+ *
+ * Job OWNERSHIP is deliberately unchanged: `JobsService` still scopes every
+ * query by `jobs.instituteId` and the existing `job-ownership` regression suite
+ * still covers the service rules. F5.5 did not narrow the monitor to a
+ * caller's own jobs — that would be a behaviour change, not a migration.
 
+ */
 @Controller('jobs')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('jobs.create')
   async create(
     @CurrentUser() user: AuthenticatedUser,
     @Tenant() tenant: TenantContext,
@@ -49,7 +66,7 @@ export class JobsController {
   }
 
   @Get()
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('jobs.read')
   async list(
     @CurrentUser() _user: AuthenticatedUser,
     @Tenant() tenant: TenantContext,
@@ -72,7 +89,7 @@ export class JobsController {
   }
 
   @Get(':jobId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('jobs.read')
   async findOne(
     @CurrentUser() _user: AuthenticatedUser,
     @Tenant() tenant: TenantContext,
@@ -84,7 +101,7 @@ export class JobsController {
 
   @Post(':jobId/retry')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('jobs.update')
   async retry(
     @CurrentUser() _user: AuthenticatedUser,
     @Tenant() tenant: TenantContext,
@@ -96,7 +113,7 @@ export class JobsController {
 
   @Post(':jobId/cancel')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('jobs.update')
   async cancel(
     @CurrentUser() _user: AuthenticatedUser,
     @Tenant() tenant: TenantContext,

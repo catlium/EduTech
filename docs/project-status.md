@@ -29,8 +29,15 @@ is preserved byte-for-byte.
 
 F5. F5.0, F5.1, F5.2 and F5.3 are closed and merged into `dev`. **F5.4 is
 IMPLEMENTED + VALIDATED 2026-09-27** on
-`feature/f5-4-examination-guard-migration` (off `dev` `50d6c78`, pushed, **not
-merged** — merging is the caller's call). **F5.5–F5.8 are unstarted.**
+`feature/f5-4-examination-guard-migration` (off `dev` `50d6c78`, **not
+merged** — merging is the caller's call). **F5.5 is IMPLEMENTED + VALIDATED
+2026-09-27** on `feature/f5-5-remaining-surface-guard-migration` (off `dev`
+`edd7f03`, **pushed, not merged**). **F5.6–F5.8 are unstarted.** With F5.5 the
+permission migration is complete: every permission-eligible route now runs the
+`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain with a
+`RequiredPermission` key, with role gating left only where it is the correct
+primitive (identity, health, worker and platform-plane routes keep their own
+guards by design) — recorded in `authorization.md` §13.
 
 ### Completed work
 
@@ -230,7 +237,14 @@ merged** — merging is the caller's call). **F5.5–F5.8 are unstarted.**
       `test:examination-practice-authz` 26/26 including a negative probe; live
       401 probe 33/33 on the rebuilt image. See the Latest-checkpoint entry
       below and `docs/tasks.md`.
-- [ ] F5.5 — Remaining Surface Guard Migration
+- [x] F5.5 — Remaining Surface Guard Migration — **IMPLEMENTED + VALIDATED** on
+      `feature/f5-5-remaining-surface-guard-migration` (off `dev` `edd7f03`),
+      not merged. 83 audited routes across nine controllers: 80 migrated to
+      single-key `@RequiredPermission`, 3 deliberately role-gated (2 results
+      exports, 1 role assignment), 2 membership identity routes out of scope.
+      One new key (`jobs.create` → TEACHER, catalogue 97 → 98), one deliberate
+      widening (`GET /users` for TEACHER), no schema change, no migration.
+      New `remaining-surface-authz` suite 22/22. See the Latest-checkpoint entry.
 - [ ] F5.6 — Frontend Gate Alignment
 - [ ] F5.7 — Roles Console + User Role Management
 - [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
@@ -293,9 +307,143 @@ port.
 
 ### Latest checkpoint
 
+**F5.5 is IMPLEMENTED + VALIDATED on `feature/f5-5-remaining-surface-guard-migration`**
+(branched from `dev` `edd7f03`, pushed, **NOT merged** — `dev` and `main` are
+untouched; implementation commit `97a0534` plus a documentation-accuracy
+follow-up). This **closes the permission migration**. The F5.4 record follows
+below as the previous checkpoint.
+
+A whole-controller audit counted **250** application routes. **83** of them, on
+nine controllers, were the last permission-eligible surface: **80 migrated, 3
+deliberately role-gated**, plus 2 identity routes left out of scope. Migrated
+from `@RequiredRoles` to single-key `@RequiredPermission` with `PermissionGuard`
+added to the chain (`AccessTokenGuard → TenantGuard → RolesGuard →
+PermissionGuard`) — one key per handler, no OR widening, no declared `manage`.
+
+| controller | routes | migrated | role-gated |
+|---|---|---|---|
+| `AcademicController` | 16 | 16 | 0 |
+| `ContentController` | 8 | 8 | 0 |
+| `GenerationController` | 8 | 8 | 0 |
+| `MaterialsController` | 12 | 12 | 0 |
+| `SyllabusController` | 14 | 14 | 0 |
+| `ExportController` | 12 | 10 | 2 (results ledger + preview) |
+| `JobsController` | 5 | 5 | 0 |
+| `MaterialEnhancementController` | 4 | 4 | 0 |
+| `UsersController` | 4 | 3 | 1 (role assignment) |
+
+- **One catalogue change, the only behaviour change**: `jobs` gains a
+  **`create`** action (97 → **98** live keys) granted to **TEACHER**. TEACHER
+  already reached `POST /jobs` through `@RequiredRoles` and the shipped UI calls
+  it, so repointing the route at `manage` would have revoked a live capability;
+  `INSTITUTE_ADMIN` satisfies it through `jobs.manage`. `jobs.delete` stays
+  uncatalogued — no route deletes a job. No built-in role loses a capability.
+- **One deliberate widening**: `GET /users` → `users.read`, which TEACHER already
+  holds in the built-in map, so TEACHER gains a route it did not have. Not an
+  accident: the web app already gates `/users` on `users.read` for teachers and
+  the shipped roster/assignment pickers call it, so they were being 403'd. The
+  widening stops at TEACHER (STUDENT has no `users.read`) and the two user
+  **mutations** stay admin-only.
+- **Three routes stay role-gated**, reasoning in `authorization.md` §13 F5.5:
+  the two assessment **results** exports (a *placed* student resolves a
+  `subject-set` scope that MOD-4's `getAssessment` accepts, so a key cannot
+  express "cohort ledger is staff-only" while STUDENT keeps `content.read` for
+  its own material) and `PUT /users/:userId/roles` (handing out a role hands out
+  a permission bundle, so it stays `INSTITUTE_ADMIN` **and** keeps `users.update`
+  as an AND requirement — the suite pins that a `users.update`-only custom role
+  is still refused, or a delegate could grant itself `INSTITUTE_ADMIN`).
+- **Two routes stay out of scope by design**: `GET /memberships` and
+  `GET /memberships/scope` are **identity** endpoints (the first must run before
+  an `x-institute-id` is chosen), so no `R.action` key applies and
+  `MembershipsController` keeps `AccessTokenGuard` only. The suite pins that
+  residue.
+- **No schema change and no migration**; `PermissionSyncService` inserted
+  `jobs.create` plus its default grant on API boot. Verified in the running
+  database: **98** permission rows, `jobs.create` seeded, `jobs.delete` absent,
+  TEACHER holding `jobs.create`/`read`/`update`.
+- **Preserved, not weakened**: tenant/institute scoping, academic scope, teacher
+  assignment, student placement, job ownership, MOD-3's authoritative export-scope
+  builders, MOD-4's attempt gates, `requireWritableSubject`, DRAFT creator-only
+  content editing, and the role-assignment self/last-admin guards. A fully
+  authorized delegate still gets `NotFound` (never `Forbidden`) for a foreign
+  institute, an out-of-scope subject or a foreign session. Recorded
+  pre-existing gap, **not** fixed here: `MaterialEnhancementService` checks
+  institute only, so a teacher can enhance any material in their own institute
+  regardless of academic scope — a service-layer fix.
+- **Tests**: new `remaining-surface-authz.integration.ts`
+  (TEST_DATABASE_URL-gated) **22/22** against the real guard chain and
+  real PostgreSQL over all 83 routes — the 80/3 inventory, one-key metadata, no
+  OR widening/no declared `manage`, guard-chain order per controller, the
+  catalogue delta and TEACHER grant, `manage`-implied INSTITUTE_ADMIN across all
+  83, built-in TEACHER and STUDENT reach, the `GET /users` widening, zero-role
+  default-deny, unauthenticated 401, **one single-action custom delegate per
+  action** (reaching only its own sub-action; refused on every sibling
+  sub-action and every other resource), cross-institute refusal for a
+  full-permission admin of another institute, the results-export and
+  role-assignment exceptions, the service-layer scope (404-not-403) and
+  DRAFT-creator ownership probes, and the memberships residue. No test rows left
+  in the database. `mod-3-export-scope` and `phase-m-remediation` were retargeted
+  onto the production chain — both previously exercised `RolesGuard` alone,
+  which no longer decides the document exports.
+- **Regressions**: whole-API suite **466 tests / 455 pass / 0 skipped**. The 11
+  failures are all in `platform/institute-crud` and
+  `platform/platform-user-lifecycle`, and they **reproduce unchanged on a
+  pristine `git worktree` of `dev` `edd7f03`** — pre-existing, unrelated to
+  F5.5, and deliberately not fixed in this phase. API `tsc --noEmit` clean;
+  `eslint src` clean; prettier clean on every file F5.5 introduced or changed
+  (four controllers already carried prettier drift at `dev` and were left alone
+  rather than mixing unrelated reformatting into the diff).
+- **Live**: `docker compose up -d --build api` → healthy,
+  `GET /api/v1/health` ok, the running image's compiled `dist` carries the new
+  `RequiredPermission('jobs.create')` metadata and the catalogue comment, and
+  all **83 routes enumerated from the running image return `401`** without a
+  token (83/83, none 404). Note for the next
+  session: the **Docker build network cannot reach registry.npmjs.org**, so any
+  `package.json` edit busts the manifest-first install layer and the corepack
+  `pnpm` download then fails offline. F5.5 therefore does **not** add an npm
+  script for the new suite; run it as
+  `pnpm --filter @catlium/api exec tsx --test src/authorization/remaining-surface-authz.integration.ts`
+  (or add the script once the build host has registry access).
+- **Working tree**: the unrelated dirty state (blackbook/proposal/web work) is
+  preserved — every pre-existing dirty entry was captured before the branch was
+  cut (`/tmp/opencode/f55-dirty-baseline.txt` +
+  `/tmp/opencode/f55-dirty-baseline.patch`, patch md5
+  `97787fbfb273b6c3659580b3881af23d`) and re-verified after. `stash@{0}`
+  (`bacf0ca`) untouched, `dev`/`main` untouched. The F5.5 path set is disjoint
+  from the pre-existing dirty set.
+- **Not done, deliberately**: no live HTTP *authorization* smoke with real seeded
+  users — proving live 403s would mean writing users/roles into the running
+  database, and the running stack is the base compose. Skipped for the same
+  reason as F5.3/F5.4: the behaviour is proven by the 22/22 real-guard-chain
+  suite against real PostgreSQL, and the running image is proven to carry the
+  new metadata.
+
+### Exact recommended next task
+
+**Merge decision for F5.5.** The branch is complete, validated and pushed.
+Local `dev` is `edd7f03`, which **already contains the F5.4 merge**; only
+`origin/dev` (`50d6c78`) lags behind, so F5.4 does not need merging again.
+Sequence: `git checkout dev && git push origin dev` (publishes the F5.4 merge),
+then `git merge --no-ff feature/f5-5-remaining-surface-guard-migration`, then
+`git push origin dev`, and re-run `test:examination-practice-authz`, `test:mod-3-export-scope` and
+`test:phase-m-remediation` post-merge — plus the F5.5 suite, which has no npm
+script by design (a `package.json` edit busts the Docker install layer and the
+builder is offline), so run it as
+`pnpm --filter @catlium/api exec tsx --test src/authorization/remaining-surface-authz.integration.ts`
+— then rebuild the API container. Only after
+that, start **F5.6 — Frontend Gate Alignment** (update its TODO items in
+`docs/tasks.md` first; F5.5 widened TEACHER's `GET /users` reach and F5.4 moved
+the practice/attempt surface, so the web app's gate map is the next place those
+decisions must be reflected).
+
+## Phase F5 — previous checkpoint (F5.4)
+
+### Latest checkpoint
+
 **F5.4 is IMPLEMENTED + VALIDATED on `feature/f5-4-examination-guard-migration`**
-(branched from `dev` `50d6c78`, one commit, pushed, **NOT merged** — `dev` and
-`main` are untouched). The F5.3 record follows below as the previous checkpoint.
+(branched from `dev` `50d6c78`, pushed, and **merged into local `dev` as
+`edd7f03`** — which is still unpushed, so `origin/dev` remains `50d6c78`;
+`main` untouched). The F5.3 record follows below as the previous checkpoint.
 
 32 routes audited across `ExaminationsController` (15), `AttemptsController` (9)
 and `PracticeController` (5), plus F5.3's three deferrals: **30 migrated, 2
@@ -398,9 +546,9 @@ deliberately role-gated**. Migrated from `@RequiredRoles` to single-key
 ### Exact recommended next task
 
 **Merge decision for F5.4.** The branch is complete, validated and pushed;
-`dev` is still at `50ab83a`. Merge it the same way F5.3 was merged
-(`git checkout dev && git merge --no-ff feature/f5-4-examination-guard-migration`),
-then re-run `test:examination-practice-authz` + `test:question-paper-authz`
+`dev` is now at `edd7f03`, which **already contains this merge** (F5.4 is
+integrated locally; `origin/dev` still lags at `50d6c78`). Push `dev`, then
+re-run `test:examination-practice-authz` + `test:question-paper-authz`
 post-merge and rebuild the API container. Only after that, start
 **F5.5 — Remaining Surface Guard Migration** (update its TODO items in
 `docs/tasks.md` first; the remaining `@RequiredRoles` surfaces are the academic

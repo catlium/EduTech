@@ -51,7 +51,12 @@ export const INSTITUTE_RESOURCES = {
   attempts: { actions: ['read', 'create', 'update', 'manage'] },
   practice: { actions: ['read', 'create', 'update', 'manage'] },
   exports: { actions: ['read', 'manage'] },
-  jobs: { actions: ['read', 'update', 'manage'] },
+  // F5.5 adds `create`: `POST /jobs` is the one insert on this resource, and
+  // `update` cannot honestly express it (nothing is being updated) while
+  // `manage` would be an explicit manage decorator on ordinary CRUD and would
+  // silently revoke TEACHER. Same shape as F5.4's `question-types.create`. No
+  // `delete` — jobs are cancelled/retryed, never deleted.
+  jobs: { actions: ['read', 'create', 'update', 'manage'] },
   users: { actions: ['read', 'create', 'update', 'manage'] },
   roles: { actions: ['read', 'create', 'update', 'delete', 'manage'] },
 } as const satisfies ResourceMap;
@@ -253,6 +258,11 @@ export const BUILT_IN_ROLE_DEFINITIONS: readonly BuiltinRoleDefinition[] = [
       'exports.read',
       'jobs.read',
       'jobs.update',
+      // F5.5: `POST /jobs` was already reachable by TEACHER through the legacy
+      // `@RequiredRoles(WRITE_ROLES)` gate, so granting `jobs.create` preserves
+      // that capability exactly — it is a migration, not a widening. STUDENT
+      // still holds nothing on `jobs`.
+      'jobs.create',
       'users.read',
     ],
   },
