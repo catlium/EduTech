@@ -255,8 +255,10 @@
       whole-controller audit counted **250** application routes, of which **83** on
       nine controllers were the last permission-eligible surface; **80 migrated,
       3 deliberately role-gated**, plus 2 identity routes left out of scope.
-      This closes the migration: every route is now authorized by the
-      `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain.
+      This closes the migration: every permission-eligible route is now gated
+      by the `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`
+      chain with a `RequiredPermission` key (identity, health, worker and
+      platform-plane routes keep their own guards by design).
   - Migrated from `@RequiredRoles` to `@RequiredPermission` with
     `PermissionGuard` added to each controller's chain, one key per handler, no
     OR widening, no explicit `manage` (implied only).
@@ -311,7 +313,7 @@
     permission rows, `jobs.delete` absent, TEACHER holding
     `jobs.create`/`read`/`update`).
   - Tests: new `remaining-surface-authz.integration.ts`
-    (`test:remaining-surface-authz`, TEST_DATABASE_URL-gated) — **22/22** against
+    (TEST_DATABASE_URL-gated) — **22/22** against
     the real guard chain over all 83 routes: 80/3 inventory, one-key metadata,
     no OR widening/no explicit `manage`, guard-chain order per controller,
     catalogue delta + TEACHER grant, `manage`-implied INSTITUTE_ADMIN across all
@@ -332,8 +334,9 @@
     `eslint src` clean; prettier clean on every file F5.5 introduced or changed
     (the four controllers with pre-existing prettier drift at `dev` were left
     alone). Live: `docker compose up -d --build api` healthy, compiled
-    `dist` carries the new metadata, and all nine controller prefixes answer
-    `401` without a token.
+    `dist` carries the new metadata, and **all 83 routes enumerated from the
+    running image return `401` without a token (83/83)** — none 404s, so the
+    whole F5.5 surface is mounted and gated.
 - [ ] F5.6 — Frontend Gate Alignment
 - [ ] F5.7 — Roles Console + User Role Management
 - [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation

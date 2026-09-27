@@ -32,11 +32,12 @@ IMPLEMENTED + VALIDATED 2026-09-27** on
 `feature/f5-4-examination-guard-migration` (off `dev` `50d6c78`, **not
 merged** — merging is the caller's call). **F5.5 is IMPLEMENTED + VALIDATED
 2026-09-27** on `feature/f5-5-remaining-surface-guard-migration` (off `dev`
-`edd7f03`, **not merged**). **F5.6–F5.8 are unstarted.** With F5.5 the
-permission migration is complete: every application route runs the
-`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain, with
-role gating left only where it is the correct primitive and recorded in
-`authorization.md` §13.
+`edd7f03`, **pushed, not merged**). **F5.6–F5.8 are unstarted.** With F5.5 the
+permission migration is complete: every permission-eligible route now runs the
+`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain with a
+`RequiredPermission` key, with role gating left only where it is the correct
+primitive (identity, health, worker and platform-plane routes keep their own
+guards by design) — recorded in `authorization.md` §13.
 
 ### Completed work
 
@@ -308,7 +309,8 @@ port.
 
 **F5.5 is IMPLEMENTED + VALIDATED on `feature/f5-5-remaining-surface-guard-migration`**
 (branched from `dev` `edd7f03`, pushed, **NOT merged** — `dev` and `main` are
-untouched). This **closes the permission migration**. The F5.4 record follows
+untouched; implementation commit `97a0534` plus a documentation-accuracy
+follow-up). This **closes the permission migration**. The F5.4 record follows
 below as the previous checkpoint.
 
 A whole-controller audit counted **250** application routes. **83** of them, on
@@ -369,7 +371,7 @@ PermissionGuard`) — one key per handler, no OR widening, no declared `manage`.
   institute only, so a teacher can enhance any material in their own institute
   regardless of academic scope — a service-layer fix.
 - **Tests**: new `remaining-surface-authz.integration.ts`
-  (`test:remaining-surface-authz`) **22/22** against the real guard chain and
+  (TEST_DATABASE_URL-gated) **22/22** against the real guard chain and
   real PostgreSQL over all 83 routes — the 80/3 inventory, one-key metadata, no
   OR widening/no declared `manage`, guard-chain order per controller, the
   catalogue delta and TEACHER grant, `manage`-implied INSTITUTE_ADMIN across all
@@ -393,8 +395,9 @@ PermissionGuard`) — one key per handler, no OR widening, no declared `manage`.
   rather than mixing unrelated reformatting into the diff).
 - **Live**: `docker compose up -d --build api` → healthy,
   `GET /api/v1/health` ok, the running image's compiled `dist` carries the new
-  `RequiredPermission('jobs.create')` metadata and the catalogue comment, and all
-  nine controller prefixes answer `401` without a token. Note for the next
+  `RequiredPermission('jobs.create')` metadata and the catalogue comment, and
+  all **83 routes enumerated from the running image return `401`** without a
+  token (83/83, none 404). Note for the next
   session: the **Docker build network cannot reach registry.npmjs.org**, so any
   `package.json` edit busts the manifest-first install layer and the corepack
   `pnpm` download then fails offline. F5.5 therefore does **not** add an npm
@@ -422,9 +425,12 @@ pushed; `dev` is still at `edd7f03`. Merge them the way F5.3 was merged
 (`git checkout dev && git merge --no-ff feature/f5-4-examination-guard-migration`,
 then the same for `feature/f5-5-remaining-surface-guard-migration` — F5.5 is
 branched off the `dev` that already contains F5.4's parent, so check for overlap
-first), then re-run `test:examination-practice-authz`,
-`test:remaining-surface-authz`, `test:mod-3-export-scope` and
-`test:phase-m-remediation` post-merge and rebuild the API container. Only after
+first), then re-run `test:examination-practice-authz`, `test:mod-3-export-scope` and
+`test:phase-m-remediation` post-merge — plus the F5.5 suite, which has no npm
+script by design (a `package.json` edit busts the Docker install layer and the
+builder is offline), so run it as
+`pnpm --filter @catlium/api exec tsx --test src/authorization/remaining-surface-authz.integration.ts`
+— then rebuild the API container. Only after
 that, start **F5.6 — Frontend Gate Alignment** (update its TODO items in
 `docs/tasks.md` first; F5.5 widened TEACHER's `GET /users` reach and F5.4 moved
 the practice/attempt surface, so the web app's gate map is the next place those

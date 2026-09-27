@@ -1183,9 +1183,12 @@ vacuously.
 
 F5.5 migrates the last permission-eligible routes off `RolesGuard` on the same
 single-key-per-route contract F5.2–F5.4 established. It closes the migration:
-after this phase every route in the API is authorized by the
-`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain, with
-role gating left only where it is the correct primitive and recorded below.
+from this phase on, **every permission-eligible route** in the API is gated by
+the `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain
+carrying a `RequiredPermission` key, with role gating left only where it is the
+correct primitive and recorded below. Identity, health, worker and
+platform-plane routes are out of scope by design and keep their own guards —
+this phase does not claim to have converted them.
 
 **83 routes were audited across nine controllers; 80 migrated, 3 deliberately
 role-gated.** A whole-controller audit counted 250 application routes: the other
@@ -1298,7 +1301,7 @@ rows, `jobs.create` seeded, `jobs.delete` absent, TEACHER holding
 
 Validation:
 `apps/api/src/authorization/remaining-surface-authz.integration.ts`
-(`test:remaining-surface-authz`, TEST_DATABASE_URL-gated) runs the real
+(TEST_DATABASE_URL-gated) runs the real
 `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain against
 PostgreSQL for all 83 routes: the 80/3 inventory, one-key metadata with no OR
 widening and no declared `manage`, guard-chain order per controller, the
