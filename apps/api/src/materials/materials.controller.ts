@@ -30,16 +30,30 @@ import type { CreateOcrPageCorrectionRequest } from '@catlium/contracts';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
+/**
+ *  * F5.5 — material guard migration (§13 `materials`). Reads take `materials.read`
+ * (TEACHER + STUDENT, so the four ungated reads stay open to every member);
+ * creates take `materials.create`; the remaining mutations take
+ * `materials.update`; and clearing an OCR page correction takes
+ * `materials.delete`, because it removes that correction from the active
+ * surface — the same §13 "remove one record" rule F5.4 applied to
+ * `assessments.delete`. TEACHER holds all four and STUDENT only `read`, so the
+ * legacy write gate is preserved exactly.
+ *
+ * `MaterialsService` / `OcrCoordinatorService` keep `requireWritableSubject`,
+ * `requireReadableSubject` and `assertMaterialScoped`; nothing here replaces a
+ * scope check.
 
+ */
 @Controller('materials')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class MaterialsController {
   constructor(
     private readonly materialsService: MaterialsService,
@@ -49,7 +63,7 @@ export class MaterialsController {
 
   @Post('text')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('materials.create')
   async createText(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -66,7 +80,6 @@ export class MaterialsController {
 
   @Post('upload')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: MAX_FILE_SIZE },
@@ -79,6 +92,7 @@ export class MaterialsController {
       },
     }),
   )
+  @RequiredPermission('materials.create')
   async upload(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -115,6 +129,7 @@ export class MaterialsController {
   }
 
   @Get()
+  @RequiredPermission('materials.read')
   async list(
     @Tenant() tenant: TenantContext,
     @Query(
@@ -152,6 +167,7 @@ export class MaterialsController {
   }
 
   @Get(':materialId/ocr-pages')
+  @RequiredPermission('materials.read')
   async ocrPages(
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
@@ -160,7 +176,7 @@ export class MaterialsController {
   }
 
   @Put(':materialId/ocr-pages/:page/correction')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('materials.update')
   async saveCorrection(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -179,7 +195,7 @@ export class MaterialsController {
   }
 
   @Delete(':materialId/ocr-pages/:page/correction')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('materials.delete')
   async clearCorrection(
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
@@ -189,6 +205,7 @@ export class MaterialsController {
   }
 
   @Get(':materialId')
+  @RequiredPermission('materials.read')
   async get(
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
@@ -198,7 +215,7 @@ export class MaterialsController {
   }
 
   @Patch(':materialId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('materials.update')
   async update(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -217,7 +234,7 @@ export class MaterialsController {
 
   @Post(':materialId/process')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('materials.update')
   async process(
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
@@ -227,7 +244,7 @@ export class MaterialsController {
 
   @Post(':materialId/retry')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('materials.update')
   async retry(
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
@@ -236,7 +253,7 @@ export class MaterialsController {
   }
 
   @Post(':materialId/archive')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('materials.update')
   async archive(
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,
@@ -251,7 +268,7 @@ export class MaterialsController {
   }
 
   @Post(':materialId/activate')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('materials.update')
   async activate(
     @Tenant() tenant: TenantContext,
     @Param('materialId', ParseUUIDPipe) materialId: string,

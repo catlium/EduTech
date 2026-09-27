@@ -1179,6 +1179,142 @@ vacuously.
 
 ---
 
+### F5.5 (2026-09-27) enforcement — remaining surface
+
+F5.5 migrates the last permission-eligible routes off `RolesGuard` on the same
+single-key-per-route contract F5.2–F5.4 established. It closes the migration:
+after this phase every route in the API is authorized by the
+`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain, with
+role gating left only where it is the correct primitive and recorded below.
+
+**83 routes were audited across nine controllers; 80 migrated, 3 deliberately
+role-gated.** A whole-controller audit counted 250 application routes: the other
+167 are the identity, health, worker, platform-plane, tenancy-admin, academic
+structure, examination/attempt/practice, question, paper-pattern, OCR and
+question-extraction surfaces already covered by earlier phases (or explicitly
+out of scope), and none of them is left on a legacy role gate.
+
+| controller | routes | migrated | role-gated |
+|---|---|---|---|
+| `AcademicController` (`/academic`) | 16 | 16 | 0 |
+| `ContentController` (`/content`) | 8 | 8 | 0 |
+| `GenerationController` (AI generation) | 8 | 8 | 0 |
+| `MaterialsController` (`/materials`) | 12 | 12 | 0 |
+| `SyllabusController` (`/syllabus`) | 14 | 14 | 0 |
+| `ExportController` (`/export`) | 12 | 10 | 2 (results ledger + preview) |
+| `JobsController` (`/jobs`) | 5 | 5 | 0 |
+| `MaterialEnhancementController` (`/materials`) | 4 | 4 | 0 |
+| `UsersController` (`/users`) | 4 | 3 | 1 (role assignment) |
+
+Verb mapping, per the §4 catalogue:
+
+- `subjects` / `chapters` / `topics`: list, deleted-list, detail and dependents →
+  `read`; create → `create`; update → `update`; `deleteSubject` → `delete`;
+  **`restoreSubject` → `update`** (restore clears `deletedAt` on the existing row,
+  the exact inverse of delete — it is not a new row and not a delete).
+- `content`: list, detail, version list and version detail → `read`; create →
+  `create`; update, archive and activate → `update`.
+- AI generation: `generate`, `generateStarterMaterial`, `generatePackage` and
+  `generateBatch` → `content.create` (they create content); `regenerateResource`
+  → `content.update`; `getGenerationStatus` and `getBatch` → **`jobs.read`**;
+  `cancelBatch` → `jobs.update`. The two status reads take `jobs.read` rather
+  than `content.read` because they report **job** state, and STUDENT must keep
+  `content.read` for its own material — declaring `content.read` there would
+  hand every student the generation-status endpoint.
+- `materials`: create-text and upload → `create`; list, detail and OCR pages →
+  `read`; correction save, update, process, retry, archive and activate →
+  `update`; **`clearCorrection` → `delete`** (it removes one correction from the
+  active surface).
+- `syllabus`: create-text and upload → `create`; list, detail and versions →
+  `read`; update, process, retry, analyze, confirm, unlock, lock and archive →
+  `update`; remove → `delete`.
+- `export`: all ten document/paper/pattern exports and previews → `exports.read`.
+- `jobs`: insert → `jobs.create`; list and detail → `read`; retry and cancel →
+  `update`.
+- material enhancement: latest, versions and segments → `materials.read`;
+  enhance → `materials.update`.
+- `users`: list → `read`; create → `create`; status update → `update`.
+
+**One catalogue change, and it is the only one.** `jobs` gains a **`create`**
+action (97 → 98 live keys), granted to **TEACHER**. TEACHER already reached
+`POST /jobs` through `@RequiredRoles` and the shipped UI calls it, so repointing
+the route at `manage` would have revoked a live capability; `INSTITUTE_ADMIN`
+satisfies it through the existing `jobs.manage` implication. No route deletes a
+job, so `jobs.delete` stays uncatalogued. No built-in role loses a capability.
+
+**One deliberate widening.** `GET /users` now needs `users.read`, and TEACHER
+already holds `users.read` in the built-in map — so TEACHER gains a route it did
+not have. This is not an accident: the web app already gates `/users` on
+`users.read` for teachers, and the shipped teacher roster/assignment pickers call
+this endpoint, so under the old `@RequiredRoles('INSTITUTE_ADMIN')` they were
+being refused. The widening stops at TEACHER — STUDENT holds no `users.read`.
+The two user *mutations* stay admin-only: `POST /users` and the status update are
+the only migrated routes TEACHER is denied.
+
+**Three routes stay role-gated**, because the boundary is not an institute
+resource action and no key can express it:
+
+- `GET /assessments/:assessmentId/results` and its preview (`/export`). These are
+  the **cohort attempt ledger** and the aggregate analytics over it. F5.4 already
+  recorded why the same reasoning applies to the assessment ledger and analytics
+  routes: a *placed* student resolves a `subject-set` scope covering the assessed
+  subject, and MOD-4's `ExaminationsService.getAssessment` accepts it, so a
+  `exports.read`-only gate would let a placed student read the whole cohort's
+  results. STUDENT must keep `content.read` for its own material, so the
+  `exports.*` family cannot be used to express "results are staff-only".
+  `RolesGuard` already means exactly "staff only", so it stays.
+- `PUT /users/:userId/roles`. Handing out a role hands out a permission bundle,
+  so this stays `INSTITUTE_ADMIN` **and** keeps `users.update` as an AND
+  requirement — never a substitute. The suite pins the escalation path: a custom
+  institute role holding `users.update` and nothing else is still refused, or a
+  delegate could grant itself `INSTITUTE_ADMIN` and take the whole institute.
+
+**Two routes stay outside the migration by design.** `GET /memberships` and
+`GET /memberships/scope` are **identity** endpoints, not institute resources:
+the first must run before an `x-institute-id` is chosen (it lists the caller's
+own institutes), and the second returns the caller's own scope. Neither maps to
+an `R.action` key, so `MembershipsController` keeps `AccessTokenGuard` only
+(`TenantGuard` on the scope route) and no `RequiredPermission`. The suite pins
+that residue so a later phase cannot quietly gate them.
+
+**The permission check authorizes the operation; it never substitutes for it.**
+Every service gate is unchanged and still runs after the guard: institute and
+tenant scoping, teacher-assignment and placement scope, job ownership, the
+academic-structure service gates, MOD-3's authoritative export-scope builders and
+MOD-4's attempt gates, `requireWritableSubject`, DRAFT creator-only content
+editing, and the role-assignment self/last-admin guards. A fully authorized
+delegate still gets `NotFound` — never `Forbidden` — for a foreign institute, an
+out-of-scope subject, or a foreign session. One pre-existing gap is recorded
+rather than fixed here: `MaterialEnhancementService` checks institute only, so a
+teacher can enhance any material in their own institute regardless of academic
+scope. That predates F5.5, is unchanged by it, and is a service-layer fix.
+
+**No schema change and no migration.** `subjects`, `chapters`, `topics`,
+`content`, `materials`, `syllabus`, `exports`, `jobs` and `users` were already
+catalogued; the only new key is `jobs.create`, and `PermissionSyncService`
+inserts it plus its default grant on API boot (verified live: 98 permission
+rows, `jobs.create` seeded, `jobs.delete` absent, TEACHER holding
+`jobs.create`/`read`/`update`).
+
+Validation:
+`apps/api/src/authorization/remaining-surface-authz.integration.ts`
+(`test:remaining-surface-authz`, TEST_DATABASE_URL-gated) runs the real
+`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain against
+PostgreSQL for all 83 routes: the 80/3 inventory, one-key metadata with no OR
+widening and no declared `manage`, guard-chain order per controller, the
+catalogue delta and the TEACHER grant, `manage`-implied INSTITUTE_ADMIN across
+all 83 routes, built-in TEACHER and STUDENT reach, the zero-role default-deny,
+one **single-action custom delegate per action** (each reaching only its own
+sub-action, refused on every sibling sub-action and every other resource),
+cross-institute refusal for a full-permission admin of another institute, the
+results-export and role-assignment exceptions, the service-layer scope
+(404-not-403) and DRAFT-creator ownership probes, and the memberships residue.
+`mod-3-export-scope` and `phase-m-remediation` were retargeted onto the
+production chain (they previously exercised `RolesGuard` alone, which no longer
+decides the document exports). No test rows are left behind.
+
+---
+
 ## 14. D2 — Role and permission storage (DECIDED, not implemented)
 
 
