@@ -27,10 +27,8 @@ is preserved byte-for-byte.
 
 ### Current phase
 
-F5. F5.0, F5.1 and F5.2 are closed and merged into `dev`. **F5.3 is
-implemented, validated, committed and pushed on
-`feature/f5-3-question-paper-guard-migration`, awaiting merge.** F5.4–F5.8 are
-unstarted.
+F5. F5.0, F5.1, F5.2 and F5.3 are closed and merged into `dev`. **F5.4–F5.8 are
+unstarted** (F5.4 is the next task; no branch exists for it).
 
 ### Completed work
 
@@ -211,8 +209,9 @@ unstarted.
       remains on the controller. See the F5.2 entry above and
       `docs/tasks.md`.
 - [x] F5.3 — Question + Paper Surface Guard Migration — **IMPLEMENTED +
-      VALIDATED** on `feature/f5-3-question-paper-guard-migration` (off `dev`
-      `1a86859`), committed and pushed, **not yet merged**. 62 of 65 audited
+      VALIDATED and MERGED into `dev` as `50ab83a`** (from
+      `feature/f5-3-question-paper-guard-migration` `ab1e382`, off `dev`
+      `1a86859`, `--no-ff`, conflict-free). 62 of 65 audited
       routes migrated to single-key `@RequiredPermission`; 3 deferred
       (`POST /question-types` catalogue gap, two `assessment` bridges → F5.4).
       `test:question-paper-authz` 21/21 including a negative probe. See the
@@ -281,12 +280,15 @@ port.
 
 ### Latest checkpoint
 
-`dev`/`origin/dev` is `1a86859`. F5.0, F5.1 and F5.2 are integrated into `dev`
-(merges `5230bf6`, `329fea8`, `c7a622d`).
+`dev`/`origin/dev` is `50ab83a`. F5.0, F5.1, F5.2 and F5.3 are integrated into
+`dev` (merges `5230bf6`, `329fea8`, `c7a622d`, `50ab83a`).
 
-**F5.3 is IMPLEMENTED + VALIDATED on `feature/f5-3-question-paper-guard-migration`
-(branched from `dev` `1a86859`), committed and pushed, NOT yet merged.** 65
-audited routes across five controllers: **62 migrated** to single-key
+**F5.3 is MERGED into `dev` as `50ab83a`** (`git merge --no-ff
+feature/f5-3-question-paper-guard-migration`, ort strategy, **conflict-free**;
+the branch tip `ab1e382` is unchanged and still at `origin/...`). The merge
+touched exactly the 11 files F5.3 committed; its path set is provably disjoint
+from the pre-existing dirty working set, so no conflict touched unrelated work.
+65 audited routes across five controllers: **62 migrated** to single-key
 `@RequiredPermission` with `PermissionGuard` added to the chain
 (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`),
 **3 deliberately role-deferred** — `POST /question-types` (catalogue has no
@@ -318,26 +320,56 @@ only. `exports.*` (MOD-3) deliberately untouched.
   `paper-pattern-subjects` 6/6, `paper-pattern-policy` 18/18, `export` 10/10,
   `paper-pattern-export` 5/5, `academic-scope`/`resource-scope`/
   `phase-m-remediation`/`mod-3`/`mod-4` 1/1 each — all green.
-- **Validation**: API `tsc --noEmit` clean, `pnpm typecheck` 10/10,
-  `turbo run lint --force` 9/9 uncached, `pnpm build` 7/7,
-  `git diff --check` clean.
-- **Runtime**: API container rebuilt; `docker compose ps` shows every service
-  healthy; `GET /api/v1/health` → `{"status":"ok"}`. The **live compiled**
-  artifact was inspected inside `catlium-api`, not just `Up (healthy)`:
-  `questions.controller.js` and `question-extraction.controller.js` carry 24/12
-  `RequiredPermission` references and **0** `RequiredRoles`; the three
-  controllers with a deferred route still carry exactly one; all five have
-  `PermissionGuard` in their `UseGuards` chain. Unauthenticated HTTP probes
-  from the nginx container return **401** on `/api/v1/questions`,
-  `/question-types`, `/paper-patterns`, `/question-papers` and
-  `/questions/extraction/:jobId`, confirming all five surfaces are mounted and
-  guarded in the rebuilt image.
+  **Re-run in full after the `50ab83a` merge, same numbers, 130 cases, 0
+  skipped across all 19 suites.** `TEST_DATABASE_URL` is set by pointing the
+  `.env` `DATABASE_URL` at the compose-bridge container IP (`172.18.0.4:5432`,
+  the F5.0/F5.1 method — the base compose publishes no PG port, and the running
+  stack is never recreated for a test run). Every suite reported a real
+  `pass`/`fail`/`skipped` triple and each `skipped` count was **0**, so no
+  suite silently no-opped on a missing database.
+- **Validation**: API `tsc --noEmit` clean, `pnpm typecheck` 10/10 (re-run
+  `--force`, 10/10 uncached), `turbo run lint --force` 9/9 uncached,
+  `pnpm build` 7/7 (`--force`, uncached), `git diff --check` clean.
+  Workspace unit tests `pnpm -r test` → `apps/api` **238/238**. NOTE: the root
+  `package.json` has **no `test` script**, so a bare `pnpm test` at the repo
+  root exits 1 with no output — pre-existing, unrelated to this merge; the
+  workspace-equivalent `pnpm -r test` is what ran.
+- **Runtime** (re-verified after the merge): API container rebuilt
+  (`docker compose up -d --build api`, image created `01:23:16Z`, container
+  started `01:23:40Z` — genuinely newer than the merge, not a cached "Running");
+  `docker compose ps` shows all 6 services present and healthy (api
+  `Up (healthy)`, no absent/exited/unhealthy container); `GET /api/v1/health` →
+  `{"status":"ok","service":"@catlium/api"}`. The **live compiled** artifacts
+  were read out of `/app/apps/api/dist` inside the running container, not
+  inferred from `Up (healthy)`:
+  - all five controllers carry the 4-guard chain
+    `UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)`;
+  - `RequiredPermission` vs `RequiredRoles` counts —
+    `questions.controller.js` 23/0, `question-extraction.controller.js` 11/0,
+    `paper-patterns.controller.js` 14/1, `question-papers.controller.js` 13/1,
+    `question-types.controller.js` 1/1 — i.e. **62 migrated / 3 role-gated**,
+    matching the audit exactly;
+  - keys are single-key, drawn from `questions.*`, `question-types.read`,
+    `paper-patterns.*`, `question-papers.*`; **0** multi-argument
+    `RequiredPermission(...)` (no OR widening) and **0** explicit `*.manage`;
+  - the three deferrals are still role-gated verbatim:
+    `Post()` + `RequiredRoles(...WRITE_ROLES)` on `create`,
+    `Post(':patternId/assessment')` + `RequiredRoles(...WRITE_ROLES)`,
+    `Post(':paperId/assessment')` + `RequiredRoles(...WRITE_ROLES)`.
+- **Live 401 probes**: all **65** routes were enumerated from the running
+  container's own Nest metadata (not from source) and probed unauthenticated —
+  **65/65 returned 401**, split **62 permission-gated / 3 role-gated**. No
+  route 404s, so every audited route is mounted and auth-gated in the rebuilt
+  image. Read-only: `AccessTokenGuard` rejects before any handler, so nothing
+  was written to the database and no users/roles were created.
 - **Working tree**: the unrelated dirty state (blackbook/proposal/web work) is
-  preserved byte-for-byte — the pre-existing tracked-diff subset still hashes to
-  the pre-change `96a657fa…`, all 150 pre-existing untracked files re-hash
-  identically, the index is empty, `HEAD` is unmoved and `stash@{0}`
-  (`fbca44c8`) is untouched. The F5.3 paths are provably disjoint from the
-  pre-existing dirty set. `main`/`origin/main` (`ef4de7e`) untouched.
+  preserved byte-for-byte — all **175** pre-existing dirty entries (25 tracked
+  modified/deleted + 150 untracked) were sha256-hashed **before** the checkout
+  and re-hashed after the merge, the rebuild and the whole validation run:
+  every hash is identical and no entry appeared or disappeared. `stash@{0}`
+  (`fbca44c8`) is untouched and still holds the same subject. The F5.3 path set
+  is provably disjoint from the pre-existing dirty set (empty intersection).
+  `main`/`origin/main` (`ef4de7e`) untouched.
 - **Not done**: no live HTTP *authorization* smoke with real seeded users. The
   running stack is the base compose (no demo seed, no host-published nginx), and
   proving live 403s would mean writing users/roles into the running database.
@@ -346,16 +378,19 @@ only. `exports.*` (MOD-3) deliberately untouched.
   proven to carry the new metadata. If a live smoke is wanted, bring up the dev
   overlay (`docker compose -f docker-compose.yml -f docker-compose.dev.yml up
   -d`) so nginx listens on 127.0.0.1:8080 for `scripts/e2e/*_e2e.sh`.
-- **Not done**: no merge into `dev` — that is a separate, explicit step.
+- **Not done, deliberately**: F5.4 has **not** started. No F5.4 branch was
+  created, `question-types.create` was **not** added to the catalogue, the two
+  `assessment` bridges were **not** migrated, and
+  examination/attempt/practice authorization is untouched. F5.3 changed no
+  frontend, worker or migration behaviour.
 
 ### Exact recommended next task
 
-Merge `feature/f5-3-question-paper-guard-migration` into `dev` `--no-ff` (after
-re-validating post-merge, as F5.2 did), then begin **F5.4 — Examination +
-Attempt + Practice Guard Migration**. F5.4 owns the two `assessment` bridges
-deferred here, and should decide the `question-types.create` catalogue question
-rather than working around it at the guard layer. Do not start F5.4 without
-updating its TODO items in `docs/tasks.md`.
+**F5.4 — Examination + Attempt + Practice Guard Migration** (next unstarted
+goal; nothing is in flight for it yet). F5.4 owns the two `assessment` bridges
+deferred in F5.3, and should settle the `question-types.create` catalogue
+question at the catalogue layer rather than working around it at the guard
+layer. Do not start F5.4 without updating its TODO items in `docs/tasks.md`.
 
 ## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, IMPLEMENTED + VALIDATED, MERGED INTO dev)
 

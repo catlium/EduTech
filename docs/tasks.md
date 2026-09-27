@@ -112,8 +112,11 @@
     `pnpm build` 7/7; `git diff --check` clean.
 - [x] **F5.3 — Question + Paper Surface Guard Migration.** **IMPLEMENTED +
       VALIDATED 2026-09-27** on `feature/f5-3-question-paper-guard-migration`
-      (off `dev` `1a86859`). Audit first: **65 routes** across five controllers
-      enumerated, **62 migrated, 3 deliberately role-deferred**.
+      (off `dev` `1a86859`), and **integrated into `dev` as `50ab83a`**
+      (`--no-ff`, conflict-free) with the post-merge re-validation and the live
+      API verification recorded in `docs/project-status.md`. Audit first: **65
+      routes** across five controllers enumerated, **62 migrated, 3
+      deliberately role-deferred**.
   - Migrated from `@RequiredRoles` to `@RequiredPermission` with `PermissionGuard`
     added to each controller's chain
     (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`):
