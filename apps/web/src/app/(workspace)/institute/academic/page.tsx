@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, GraduationCap, Layers, School, UserRoundCheck, Users } from 'lucide-react';
 
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTenant } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
@@ -12,6 +12,7 @@ import { ErrorState } from '@/components/app/error-state';
 import {
   canWriteAcademicStructure,
   bySortOrder,
+  resolveConsoleLoad,
   canAssign as canAssignPermission,
   canTransfer as canTransferPermission,
   type AcademicYear,
@@ -27,9 +28,13 @@ import { DivisionsSection } from './divisions-section';
 import { TeacherAssignmentsSection } from './assignments-section';
 import { StudentPlacementsSection } from './placements-section';
 
+// Stable identity so a missing membership cannot change the loader's identity
+// and re-trigger its effect on every render.
+const NO_GRANTS: readonly string[] = [];
+
 export default function AcademicConsolePage() {
   const { institute } = useTenant();
-  const grants = institute?.permissions ?? [];
+  const grants = institute?.permissions ?? NO_GRANTS;
   const canCreateStructure = canWriteAcademicStructure(grants, 'create');
   const canUpdateStructure = canWriteAcademicStructure(grants, 'update');
   const canDeleteStructure = canWriteAcademicStructure(grants, 'delete');
@@ -43,46 +48,84 @@ export default function AcademicConsolePage() {
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
   const [divisions, setDivisions] = useState<DivisionRow[]>([]);
   const [offeredByClass, setOfferedByClass] = useState<Record<string, Offering[]>>({});
+  const [subjectsDenied, setSubjectsDenied] = useState(false);
+  const [subjectsFailed, setSubjectsFailed] = useState(false);
   const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setState('loading');
-    try {
-      const [yearsData, classesData, subjectsData, divisionsData] = await Promise.all([
-        api<{ academicYears: AcademicYear[] }>('/academic/academic-years', { signal }),
-        api<{ classes: ClassRow[] }>('/academic/classes', { signal }),
-        api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal }),
-        api<{ divisions: DivisionRow[] }>('/academic/divisions', { signal }),
-      ]);
-      const nextClasses = classesData.classes ?? [];
-      setYears(yearsData.academicYears ?? []);
-      setClasses(nextClasses);
-      setSubjects(subjectsData.subjects ?? []);
-      setDivisions(divisionsData.divisions ?? []);
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      setState('loading');
+      // The four reads are settled INDEPENDENTLY. The structural three
+      // (academic-structure.read) are page-critical, but the subject catalogue is
+      // `subjects.read` — a different key from the one that gates this page — so
+      // a role can reach the console and still be refused the catalogue. Before
+      // F5.9 one Promise.all let that single 403 reject and blank the whole
+      // console; now it degrades (see resolveConsoleLoad).
+      const settle = async <T,>(
+        request: Promise<T>,
+      ): Promise<{ ok: true; data: T } | { ok: false; denied: boolean }> => {
+        try {
+          return { ok: true, data: await request };
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') throw err;
+          return { ok: false, denied: err instanceof ApiError && err.status === 403 };
+        }
+      };
 
-      // Per-class offerings drive the table's subject column and the delete
-      // confirm's exact impact. Reads are open to members, so a failure here
-      // degrades to empty instead of failing the whole console.
       try {
-        const offerings = await Promise.all(
-          nextClasses.map(async (klass) => {
-            const { subjects: offered } = await api<{ subjects: Offering[] }>(
-              `/academic/classes/${klass.id}/subjects`,
-              { signal },
-            );
-            return [klass.id, offered ?? []] as const;
-          }),
-        );
-        setOfferedByClass(Object.fromEntries(offerings));
-      } catch {
-        setOfferedByClass({});
+        const [yearsR, classesR, subjectsR, divisionsR] = await Promise.all([
+          settle(api<{ academicYears: AcademicYear[] }>('/academic/academic-years', { signal })),
+          settle(api<{ classes: ClassRow[] }>('/academic/classes', { signal })),
+          settle(api<{ subjects: SubjectResponse[] }>('/academic/subjects', { signal })),
+          settle(api<{ divisions: DivisionRow[] }>('/academic/divisions', { signal })),
+        ]);
+
+        const decision = resolveConsoleLoad(grants, {
+          academicYears: yearsR.ok ? 'ok' : 'failed',
+          classes: classesR.ok ? 'ok' : 'failed',
+          divisions: divisionsR.ok ? 'ok' : 'failed',
+          subjects: subjectsR.ok ? 'ok' : subjectsR.denied ? 'denied' : 'failed',
+        });
+        setSubjectsDenied(decision.subjectsDenied);
+        setSubjectsFailed(decision.subjectsFailed);
+        if (decision.status === 'error') {
+          setState('error');
+          return;
+        }
+
+        const nextClasses = classesR.ok ? (classesR.data.classes ?? []) : [];
+        setYears(yearsR.ok ? (yearsR.data.academicYears ?? []) : []);
+        setClasses(nextClasses);
+        // Empty here only because the catalogue is unavailable — the sections
+        // are told so, so none of them renders it as a genuinely empty one.
+        setSubjects(subjectsR.ok ? (subjectsR.data.subjects ?? []) : []);
+        setDivisions(divisionsR.ok ? (divisionsR.data.divisions ?? []) : []);
+
+        // Per-class offerings are `academic-structure.read` (the page's own
+        // key), so they load whenever the console does; a failure still
+        // degrades to empty rather than failing the whole console.
+        try {
+          const offerings = await Promise.all(
+            nextClasses.map(async (klass) => {
+              const { subjects: offered } = await api<{ subjects: Offering[] }>(
+                `/academic/classes/${klass.id}/subjects`,
+                { signal },
+              );
+              return [klass.id, offered ?? []] as const;
+            }),
+          );
+          setOfferedByClass(Object.fromEntries(offerings));
+        } catch {
+          setOfferedByClass({});
+        }
+        setState('ready');
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setState('error');
       }
-      setState('ready');
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      setState('error');
-    }
-  }, []);
+    },
+    [grants],
+  );
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -138,6 +181,8 @@ export default function AcademicConsolePage() {
               divisions={divisions}
               subjects={subjects}
               offeredByClass={offeredByClass}
+              subjectsDenied={subjectsDenied}
+              subjectsFailed={subjectsFailed}
               canCreate={canCreateStructure}
               canUpdate={canUpdateStructure}
               canDelete={canDeleteStructure}
@@ -155,7 +200,7 @@ export default function AcademicConsolePage() {
               onChange={() => void load()}
             />
           </TabsContent>
-        <TabsContent value="assignments" className="pt-4">
+          <TabsContent value="assignments" className="pt-4">
             <TeacherAssignmentsSection
               classes={[...classes].sort(bySortOrder)}
               offeredByClass={offeredByClass}
@@ -171,6 +216,8 @@ export default function AcademicConsolePage() {
               years={[...years].sort(bySortOrder)}
               subjects={subjects}
               offeredByClass={offeredByClass}
+              subjectsDenied={subjectsDenied}
+              subjectsFailed={subjectsFailed}
               canCreate={canCreateAssignments}
               canDelete={canDeleteAssignments}
               canTransfer={canTransferPlacements}
@@ -181,9 +228,11 @@ export default function AcademicConsolePage() {
       )}
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <School className="size-3.5" />
-        Reads are available to every institute member; management actions are
-        reserved for institute admins or explicitly granted permissions (the
-        backend authorizes every write).
+        Every section needs its own read permission — academic years, classes and divisions need{' '}
+        <code>academic-structure.read</code>, the subject catalogue needs <code>subjects.read</code>
+        , assignments and placements need <code>assignments.read</code>. A section your role cannot
+        read is marked unavailable, never shown as empty. Management actions need the matching write
+        key; the backend authorizes every write.
       </p>
     </div>
   );

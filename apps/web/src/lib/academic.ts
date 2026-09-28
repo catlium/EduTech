@@ -534,3 +534,60 @@ export function filterDivisions(
       (!classId || d.classId === classId),
   );
 }
+
+// ── F5.9 — partial-permission academic console ────────────────────────────
+//
+// The console's page-critical reads (academic years, classes, divisions) are
+// `academic-structure.read`, but the subject CATALOGUE the same page needs is a
+// different key: `GET /academic/subjects` asks for `subjects.read`. A custom
+// role can hold the first and not the second, so the catalogue is an OPTIONAL
+// dependency of the console — a 403 on it must degrade, never fail the page,
+// and a denied catalogue must never render as a successfully-loaded empty one.
+// The backend decision is unchanged; this is the UI mirroring it.
+
+/** UI mirror of the backend `GET /academic/subjects` gate. */
+export function canReadSubjects(permissions: readonly string[]): boolean {
+  return canUse(permissions, 'subjects.read');
+}
+
+/** The console page's own state — `loading` until the reads settle, then
+ *  `ready` or `error` (see `resolveConsoleLoad`). */
+export type ConsoleLoadStatus = 'loading' | 'error' | 'ready';
+
+/** Outcome of each of the console's four independent reads. `subjects` also
+ *  distinguishes a 403 (`denied`) from any other failure (`failed`) so the UI
+ *  can say which happened instead of claiming the catalogue is empty. */
+export interface ConsoleLoadResult {
+  academicYears: 'ok' | 'failed';
+  classes: 'ok' | 'failed';
+  divisions: 'ok' | 'failed';
+  subjects: 'ok' | 'denied' | 'failed';
+}
+
+export interface ConsoleLoadDecision {
+  status: ConsoleLoadStatus;
+  /** The catalogue cannot be read (403, or no `subjects.read` grant at all). */
+  subjectsDenied: boolean;
+  /** The catalogue read failed for a reason other than authorization. */
+  subjectsFailed: boolean;
+}
+
+/** The page-critical decision, pure so it can be pinned by `academic.test.ts`:
+ *  a failed structural read fails the console, while the subject catalogue only
+ *  degrades. A missing `subjects.read` grant is treated exactly like the 403 it
+ *  would produce, so a stale grant set cannot resurrect a catalogue the API
+ *  refuses to serve. Never called while still loading. */
+export function resolveConsoleLoad(
+  permissions: readonly string[],
+  result: ConsoleLoadResult,
+): ConsoleLoadDecision {
+  if (result.academicYears !== 'ok' || result.classes !== 'ok' || result.divisions !== 'ok') {
+    return { status: 'error', subjectsDenied: false, subjectsFailed: false };
+  }
+  const subjectsDenied = !canReadSubjects(permissions) || result.subjects === 'denied';
+  return {
+    status: 'ready',
+    subjectsDenied,
+    subjectsFailed: !subjectsDenied && result.subjects === 'failed',
+  };
+}

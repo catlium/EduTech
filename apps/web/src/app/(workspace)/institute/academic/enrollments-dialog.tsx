@@ -80,6 +80,8 @@ export function EnrollmentOverridesDialog({
   subjects,
   divisions,
   offeredByClass,
+  subjectsDenied,
+  subjectsFailed,
   canCreate,
   canDelete,
   open,
@@ -90,6 +92,11 @@ export function EnrollmentOverridesDialog({
   subjects: SubjectResponse[];
   divisions: DivisionRow[];
   offeredByClass: Record<string, Offering[]>;
+  /** F5.9: the subject catalogue is unavailable (403 / no subjects.read grant),
+   *  so `subjects` is empty because it could not be read — NOT because the
+   *  institute defines no subjects. */
+  subjectsDenied: boolean;
+  subjectsFailed: boolean;
   canCreate: boolean;
   canDelete: boolean;
   open: boolean;
@@ -100,6 +107,7 @@ export function EnrollmentOverridesDialog({
   const [state, setState] = useState<'loading' | 'error' | 'forbidden' | 'ready'>('loading');
   const [busy, setBusy] = useState(false);
   const [electiveId, setElectiveId] = useState('');
+  const catalogueUnavailable = subjectsDenied || subjectsFailed;
 
   const offered = useMemo(
     () => offeredSubjectIdsForDivision(placement.divisionId, divisions, offeredByClass),
@@ -192,6 +200,18 @@ export function EnrollmentOverridesDialog({
           />
         ) : state === 'error' ? (
           <ErrorState onRetry={() => void load()} />
+        ) : catalogueUnavailable ? (
+          /* F5.9: the catalogue could not be read, so this is NOT an institute
+             with no subjects — the existing "No subjects" copy would lie. */
+          <EmptyState
+            icon={<BookOpenCheck className="size-5" />}
+            title="Subject catalogue unavailable"
+            description={
+              subjectsDenied
+                ? 'Subject overrides need the subjects.read permission. Run this from a subjects.read account.'
+                : 'The subject catalogue could not be loaded, so per-student overrides cannot be shown. Retry once the API is healthy.'
+            }
+          />
         ) : subjects.length === 0 ? (
           <EmptyState
             icon={<BookOpenCheck className="size-5" />}

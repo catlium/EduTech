@@ -62,6 +62,8 @@ export function ClassesSection({
   divisions,
   subjects,
   offeredByClass,
+  subjectsDenied,
+  subjectsFailed,
   canCreate,
   canUpdate,
   canDelete,
@@ -71,6 +73,12 @@ export function ClassesSection({
   divisions: DivisionRow[];
   subjects: SubjectResponse[];
   offeredByClass: Record<string, SubjectResponse[]>;
+  /** F5.9: the subject catalogue could not be read (403, or no subjects.read
+   *  grant). `subjects` is then empty because it is UNAVAILABLE, not because the
+   *  institute has no subjects — never render it as a successful empty one. */
+  subjectsDenied: boolean;
+  /** F5.9: the catalogue read failed for a non-permission reason. */
+  subjectsFailed: boolean;
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
@@ -82,6 +90,7 @@ export function ClassesSection({
   const [manageClass, setManageClass] = useState<ClassRow | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const catalogueUnavailable = subjectsDenied || subjectsFailed;
 
   const form = useForm<NamedStructureValues>({
     resolver: zodResolver(namedStructureSchema),
@@ -163,6 +172,18 @@ export function ClassesSection({
           )
         }
       />
+
+      {/* F5.9: the per-class offerings dialog is gated on create/delete, so a
+          read-only role never reaches its copy — say it here, where every
+          holder of academic-structure.read can see it. The counts below are
+          real (they come from the class's own academic-structure.read read). */}
+      {catalogueUnavailable && (
+        <p className="text-xs text-muted-foreground">
+          {subjectsDenied
+            ? 'The subject catalogue is unavailable to your role — the offered-subject counts below are real, but adding a new offering needs the subjects.read permission.'
+            : 'The subject catalogue could not be loaded, so offered-subject counts below may be lower than reality.'}
+        </p>
+      )}
 
       {classes.length === 0 ? (
         <EmptyState
@@ -298,6 +319,8 @@ export function ClassesSection({
           klass={manageClass}
           allSubjects={subjects}
           open={manageClass !== null}
+          subjectsDenied={subjectsDenied}
+          subjectsFailed={subjectsFailed}
           canCreate={canCreate}
           canDelete={canDelete}
           onOpenChange={(o) => !o && setManageClass(null)}
@@ -329,6 +352,8 @@ function ManageSubjectsDialog({
   klass,
   allSubjects,
   open,
+  subjectsDenied,
+  subjectsFailed,
   canCreate,
   canDelete,
   onOpenChange,
@@ -337,6 +362,8 @@ function ManageSubjectsDialog({
   klass: ClassRow;
   allSubjects: SubjectResponse[];
   open: boolean;
+  subjectsDenied: boolean;
+  subjectsFailed: boolean;
   canCreate: boolean;
   canDelete: boolean;
   onOpenChange: (open: boolean) => void;
@@ -346,6 +373,7 @@ function ManageSubjectsDialog({
   const [selected, setSelected] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const catalogueUnavailable = subjectsDenied || subjectsFailed;
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -423,9 +451,21 @@ function ManageSubjectsDialog({
             <div className="flex items-end gap-2">
               <div className="flex-1 space-y-1.5">
                 <Label>Add a subject</Label>
-                <Select value={selected} onValueChange={setSelected}>
+                <Select
+                  value={selected}
+                  onValueChange={setSelected}
+                  disabled={catalogueUnavailable}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder={available.length ? 'Select a subject' : 'All subjects offered'} />
+                    <SelectValue
+                      placeholder={
+                        catalogueUnavailable
+                          ? 'Subject catalogue unavailable'
+                          : available.length
+                            ? 'Select a subject'
+                            : 'All subjects offered'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {available.map((subject) => (
@@ -436,10 +476,23 @@ function ManageSubjectsDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={() => void addSubject()} disabled={!selected || busy}>
+              <Button
+                onClick={() => void addSubject()}
+                disabled={!selected || busy || catalogueUnavailable}
+              >
                 <Plus className="mr-1.5 size-4" /> Add
               </Button>
             </div>
+          )}
+
+          {/* F5.9: the rosterUnavailable pattern. A denied or failed catalogue
+              must never read as "this institute offers no subjects". */}
+          {catalogueUnavailable && (
+            <p className="text-xs text-muted-foreground">
+              {subjectsDenied
+                ? 'The subject catalogue is unavailable to your role — it needs the subjects.read permission. Add offerings from a subjects.read account.'
+                : 'The subject catalogue could not be loaded, so no subject can be offered here. Existing offerings below are unaffected.'}
+            </p>
           )}
 
           {loading ? (
@@ -448,7 +501,9 @@ function ManageSubjectsDialog({
             </div>
           ) : offered.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No subjects offered yet. Add one from the select above.
+              {catalogueUnavailable
+                ? 'No subjects are offered to this class yet.'
+                : 'No subjects offered yet. Add one from the select above.'}
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
