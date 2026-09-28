@@ -340,6 +340,60 @@
 - [ ] F5.6 — Frontend Gate Alignment
 - [ ] F5.7 — Roles Console + User Role Management
 - [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+- [x] F5.9 — Partial-Permission Academic Console
+  - IMPLEMENTED + VALIDATED 2026-09-28 on
+    `feature/f5-9-academic-console-graceful-degradation` (off `dev` `3f51e2d`),
+    **pushed, not merged**. 6 files, `apps/web` only — no backend, catalogue,
+    role-grant, schema or migration change (`git diff --stat -- apps/api
+    packages` is empty), and no permission widened.
+  - **Delivered** (`apps/web/`): the academic console no longer collapses
+    because one unread collection is a 403. Structural reads (years, classes,
+    divisions — `academic-structure.read`) and the subject catalogue
+    (`subjects.read`) settle independently; a structural failure still shows the
+    page error, while a catalogue 403 keeps the console usable and an
+    unavailable catalogue is labelled honestly instead of masquerading as
+    "All subjects offered" — on the class tab, the offering dialog and the
+    enrollment overrides. The footer now states that access depends on each
+    section's read permission instead of claiming every member can read
+    everything. `ForbiddenGate`, `isPrimaryForbiddenPath()` and
+    `workspace-routes.ts` were audited and left unchanged.
+  - **Valid** (run directly, not through the flaky `pnpm` wrapper):
+    `test:academic` 35/35, `test:workspace-routes` 6/6, `test:api` 15/15,
+    `tsc --noEmit` clean. The DB-gated API suites
+    (`test:academic-structure-authz`, `test:academic-scope`,
+    `test:student-placements-authz`) **skip without `TEST_DATABASE_URL`** and
+    are not reported as passing; the backend is byte-identical, so its gate is
+    unchanged by construction. **Browser, real Chrome over CDP
+    (`scripts/e2e/lib/browser.mjs`), 6 scenarios, 39 assertions, 0 failures**
+    against the dockerized stack, with a per-request log per scenario: a
+    read-only delegate; the reported case (structure manager without
+    `subjects.read` — console intact, existing offerings still listed, degraded
+    dialog and enrollment overrides, `/academic/subjects` requested **exactly
+    once**); the same manager with `subjects.read` (no degradation);
+    `assignments.read` without `users.read` (roster-unavailable copy); a role
+    with no structural read (Forbidden view, zero console fetches); and
+    `INSTITUTE_ADMIN` (unchanged).
+  - The browser run also caught a gap in the fix: the per-class offerings
+    dialog is gated on `academic-structure.create|delete`, so a read-only
+    delegate could never open it, which made the in-dialog denial copy
+    unreachable for exactly the least-privileged role. The Classes tab now
+    carries the note itself and states that the offered-subject counts remain
+    real (they come from the class's own `academic-structure.read` read, not
+    from the catalogue).
+  - **Fixtures only for that browser run** (demo institute): custom roles
+    `f59-struct-read`, `f59-struct-manage`, `f59-full`, `f59-manage-assign`,
+    `f59-no-struct` and members `f59.{read,manage,full,manageassign,
+    nostruct}@catlium.dev`, each holding only its custom role. **All removed
+    afterwards** — the five roles deleted outright, the six members deactivated
+    (the API exposes no hard user delete); the demo institute is as it was
+    found.
+  - Not done here, deliberately: the `/institute/academic` sidebar link is keyed
+    `users.read` while the route gate needs `academic-structure.read`
+    (`app-sidebar.tsx:73`), and `/institute` + `/users` still carry a
+    `role: 'admin'` residual on top of `users.read`. Both are UX alignment, not
+    enforcement, and neither may widen a permission — they belong with the
+    Roles Console work.
+
 
 ## Phase F1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
 

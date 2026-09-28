@@ -99,6 +99,8 @@ export function StudentPlacementsSection({
   years,
   subjects,
   offeredByClass,
+  subjectsDenied,
+  subjectsFailed,
   canCreate,
   canDelete,
   canTransfer,
@@ -109,6 +111,10 @@ export function StudentPlacementsSection({
   years: AcademicYear[];
   subjects: SubjectResponse[];
   offeredByClass: Record<string, Offering[]>;
+  /** F5.9: forwarded to the enrollment-override dialog so a subject catalogue
+   *  the role cannot read is shown as unavailable, never as an empty one. */
+  subjectsDenied: boolean;
+  subjectsFailed: boolean;
   canCreate: boolean;
   canDelete: boolean;
   canTransfer: boolean;
@@ -739,6 +745,8 @@ export function StudentPlacementsSection({
           subjects={subjects}
           divisions={divisions}
           offeredByClass={offeredByClass}
+          subjectsDenied={subjectsDenied}
+          subjectsFailed={subjectsFailed}
           canCreate={canCreate}
           canDelete={canDelete}
           open={overrideTarget !== null}

@@ -436,6 +436,46 @@ that, start **F5.6 — Frontend Gate Alignment** (update its TODO items in
 the practice/attempt surface, so the web app's gate map is the next place those
 decisions must be reflected).
 
+## Phase F5.9 — Partial-Permission Academic Console (2026-09-28, IMPLEMENTED + VALIDATED, BRANCH ONLY)
+
+### Latest checkpoint
+
+**F5.9 is IMPLEMENTED + VALIDATED on `feature/f5-9-academic-console-graceful-degradation`**, branched from `dev` `3f51e2d`, **pushed, NOT merged** — `dev` and `origin/dev` untouched. **6 files changed, all under `apps/web`; the backend, permission catalogue, role grants, schema and migrations are byte-identical** (`git diff --stat -- apps/api packages` is empty). Nothing was renumbered and no permission was widened.
+
+The defect: `institute/academic/page.tsx` loaded academic years, classes, divisions **and** the subject catalogue through one `Promise.all`. The first three need `academic-structure.read`; `GET /academic/subjects` needs `subjects.read`. One 403 therefore rejected the whole load and drove the **entire** console to `ErrorState`, destroying work the role is authorized to do.
+
+| area | before | after |
+|---|---|---|
+| console load | one `Promise.all` over four reads | the reads settle independently (`settle()` per read) |
+| structural read failure | page error | page error — unchanged |
+| catalogue 403 | page error | page stays ready, `subjectsDenied` (`subjectsFailed` for a non-403 failure) |
+| unavailable-catalogue copy | "All subjects offered" / "No subjects" | "Subject catalogue unavailable" + why, on the class tab, the offering dialog and the enrollment overrides |
+| footer | "reads are available to every institute member" (false) | each section needs its own read permission |
+| `ForbiddenGate`, `isPrimaryForbiddenPath()`, `workspace-routes.ts` | already correct | audited, untouched |
+
+**Validation.** Web `test:academic` 35/35, `test:workspace-routes` 6/6, `test:api` 15/15, `tsc --noEmit` clean (run directly; see the environment note). The DB-gated API suites (`test:academic-structure-authz`, `test:academic-scope`, `test:student-placements-authz`) **skip without `TEST_DATABASE_URL`** and are explicitly not reported as passing. **Browser, real Chrome over the repo's CDP driver: 6 scenarios, 39 assertions, 0 failures**, each with its own per-request log — a read-only delegate, the reported case (structure manager without `subjects.read`: console intact, dialog and overrides degraded, existing offerings still listed, `/academic/subjects` requested **exactly once**), the same manager with `subjects.read` (no degradation), `assignments.read` without `users.read` (roster-unavailable copy), a role with no structural read (Forbidden view, zero console fetches), and `INSTITUTE_ADMIN` (unchanged).
+
+One gap was found by the browser run and fixed: the per-class offerings dialog is gated on `academic-structure.create|delete`, so a read-only delegate could never open it, which made the in-dialog denial copy unreachable for exactly the least-privileged role. The Classes tab now carries the note itself and states that the offered-subject counts remain real (they come from the class's own `academic-structure.read` read, not from the catalogue).
+
+**Fixtures** were created only for that browser run in the demo institute (custom roles `f59-struct-read`, `f59-struct-manage`, `f59-full`, `f59-manage-assign`, `f59-no-struct`, members `f59.{read,manage,full,manageassign,nostruct}@catlium.dev`, each holding only its custom role) and **all removed afterwards** — five roles deleted outright, six members deactivated (the API exposes no hard user delete).
+
+**Known environment notes (pre-existing, not F5.9).** The `pnpm` CLI intermittently aborts with `TypeError: Cannot set property message of … at RetryOperation._fn`; the underlying scripts pass when invoked directly. An anonymous `/auth/me` 401 dispatches `catlium:unauthorized` and redirects `/login` back to `/`, so a browser must sign in from the landing page's "Sign in" link. Radix tabs activate on `mousedown`, so a synthetic `.click()` does not switch tabs. The auth route allows 5 logins/min per IP. The base `docker-compose.yml` publishes **no** host ports, so a browser run needs the dev override; port 8080 on this host is held by an unrelated process, so confirm which server answers before trusting a result.
+
+### Exact recommended next task
+
+**Review and merge F5.9**, then start F5.7. The working tree carries unrelated uncommitted changes, so merge from a scratch worktree rather than switching branches in place:
+
+```
+git worktree add /tmp/catlium-f59-integration dev
+git -C /tmp/catlium-f59-integration merge --no-ff feature/f5-9-academic-console-graceful-degradation
+git -C /tmp/catlium-f59-integration push origin dev
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build web
+```
+
+Re-run `test:academic`, `test:workspace-routes`, `test:api` and `pnpm --filter @catlium/web typecheck` after the merge. The merge is low-risk by construction: web-only, and the backend diff is empty.
+
+**Then F5.7 (Roles Console + User Role Management)**, the first open item. Two findings recorded during F5.6/F5.9 belong to that decision rather than to F5.9: the `/institute/academic` sidebar link is keyed `users.read` while the route gate needs `academic-structure.read` (`app-sidebar.tsx:73`), and `/institute` + `/users` still carry a `role: 'admin'` residual on top of `users.read`. Both are UX alignment, not enforcement, and neither may widen a permission.
+
 ## Phase F5 — previous checkpoint (F5.4)
 
 ### Latest checkpoint

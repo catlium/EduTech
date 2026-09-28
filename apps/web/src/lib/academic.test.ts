@@ -30,6 +30,8 @@ import {
   enrollmentState,
   canCreateEnrollmentOverride,
   canRemoveEnrollmentOverride,
+  canReadSubjects,
+  resolveConsoleLoad,
   type AcademicYear,
   type CarryForwardDecision,
   type CarryForwardProposal,
@@ -463,4 +465,93 @@ test('canRemoveEnrollmentOverride only when overridden', () => {
   assert.equal(canRemoveEnrollmentOverride('DEFAULT'), false);
   assert.equal(canRemoveEnrollmentOverride('ENROLLED'), true);
   assert.equal(canRemoveEnrollmentOverride('EXCLUDED'), true);
+});
+
+// ── F5.9 — partial-permission console load ───────────────────────────────
+
+test('canReadSubjects mirrors subjects.read and nothing else', () => {
+  assert.equal(canReadSubjects(['subjects.read']), true);
+  assert.equal(canReadSubjects(['subjects.manage']), true);
+  assert.equal(canReadSubjects([]), false);
+  // The catalogue is a DIFFERENT key family from the structural reads that gate
+  // the console itself — academic-structure.manage must not imply it.
+  assert.equal(canReadSubjects(['academic-structure.manage']), false);
+  assert.equal(canReadSubjects(['academic-structure.read', 'academic-structure.create']), false);
+  assert.equal(canReadSubjects(['assignments.manage']), false);
+  assert.equal(canReadSubjects(['subjects.create']), false);
+});
+
+const structureOk = {
+  academicYears: 'ok',
+  classes: 'ok',
+  divisions: 'ok',
+} as const;
+
+test('resolveConsoleLoad keeps the console ready and marks subjects denied on a 403', () => {
+  assert.deepEqual(
+    resolveConsoleLoad(['academic-structure.read'], { ...structureOk, subjects: 'denied' }),
+    { status: 'ready', subjectsDenied: true, subjectsFailed: false },
+  );
+  // Same outcome when the grant set never claimed subjects.read — the 403 and
+  // the missing grant are the same situation.
+  assert.deepEqual(
+    resolveConsoleLoad(['academic-structure.manage'], { ...structureOk, subjects: 'denied' }),
+    { status: 'ready', subjectsDenied: true, subjectsFailed: false },
+  );
+  // A stale/over-broad grant cannot resurrect a catalogue the API refuses.
+  assert.equal(
+    resolveConsoleLoad(['subjects.read'], { ...structureOk, subjects: 'denied' }).subjectsDenied,
+    true,
+  );
+  // ...and the reverse: no 403 + no grant is still reported as denied.
+  assert.equal(
+    resolveConsoleLoad(['academic-structure.read'], { ...structureOk, subjects: 'ok' }).subjectsDenied,
+    true,
+  );
+});
+
+test('resolveConsoleLoad is a plain ready load when the catalogue is readable', () => {
+  assert.deepEqual(
+    resolveConsoleLoad(['academic-structure.read', 'subjects.read'], {
+      ...structureOk,
+      subjects: 'ok',
+    }),
+    { status: 'ready', subjectsDenied: false, subjectsFailed: false },
+  );
+  assert.deepEqual(resolveConsoleLoad(['subjects.manage'], { ...structureOk, subjects: 'ok' }), {
+    status: 'ready',
+    subjectsDenied: false,
+    subjectsFailed: false,
+  });
+});
+
+test('resolveConsoleLoad represents a non-403 catalogue failure as failed, never empty-ok', () => {
+  assert.deepEqual(
+    resolveConsoleLoad(['subjects.read'], { ...structureOk, subjects: 'failed' }),
+    { status: 'ready', subjectsDenied: false, subjectsFailed: true },
+  );
+});
+
+test('resolveConsoleLoad fails the console on ANY structural read failure', () => {
+  const structuralGrants = ['academic-structure.read', 'subjects.read'];
+  for (const failed of ['academicYears', 'classes', 'divisions'] as const) {
+    assert.deepEqual(
+      resolveConsoleLoad(structuralGrants, { ...structureOk, [failed]: 'failed', subjects: 'ok' }),
+      { status: 'error', subjectsDenied: false, subjectsFailed: false },
+    );
+    // A broken structural read is a page error even when subjects are readable.
+    assert.equal(
+      resolveConsoleLoad(structuralGrants, { ...structureOk, [failed]: 'failed', subjects: 'ok' }).status,
+      'error',
+    );
+  }
+  // …and the subject catalogue alone can never reach 'error'.
+  assert.notEqual(
+    resolveConsoleLoad([], { ...structureOk, subjects: 'denied' }).status,
+    'error',
+  );
+  assert.notEqual(
+    resolveConsoleLoad([], { ...structureOk, subjects: 'failed' }).status,
+    'error',
+  );
 });
