@@ -42,6 +42,8 @@
     "test:examination-practice-authz": "tsx --test src/authorization/examination-practice-authz.integration.ts",
     "test:mod-3-export-scope": "tsx --test src/authorization/mod-3-export-scope.integration.ts",
     "test:mod-4-attempts-scope": "tsx --test src/authorization/mod-4-attempts-scope.integration.ts",
+    "test:roles-guard-matrix": "tsx --test src/authorization/roles-guard-matrix.integration.ts",
+    "test:roles-self-escalation": "tsx --test src/authorization/roles-self-escalation.integration.ts",
     "test:institute-lifecycle": "tsx --test src/platform/institute-lifecycle.integration.ts",
     "test:plan-subscription": "tsx --test src/platform/plan-subscription.integration.ts",
     "test:institute-crud": "tsx --test src/platform/institute-crud.integration.ts",

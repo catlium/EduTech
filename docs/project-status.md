@@ -32,7 +32,10 @@ IMPLEMENTED + VALIDATED 2026-09-27** on
 `feature/f5-4-examination-guard-migration` (off `dev` `50d6c78`, **not
 merged** — merging is the caller's call). **F5.5 is IMPLEMENTED + VALIDATED
 2026-09-27** on `feature/f5-5-remaining-surface-guard-migration` (off `dev`
-`edd7f03`, **pushed, not merged**). **F5.6–F5.8 are unstarted.** With F5.5 the
+`edd7f03`, **pushed, not merged**). **F5.7 — Roles Console + User Role
+Management is COMPLETE 2026-09-30** on
+`feature/f5-7-roles-console-user-role-management` (off `dev` `2a86984`),
+**unmerged and unpushed**; **F5.8 is NOT started.** With F5.5 the
 permission migration is complete: every permission-eligible route now runs the
 `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain with a
 `RequiredPermission` key, with role gating left only where it is the correct
@@ -246,8 +249,17 @@ guards by design) — recorded in `authorization.md` §13.
       widening (`GET /users` for TEACHER), no schema change, no migration.
       New `remaining-surface-authz` suite 22/22. See the Latest-checkpoint entry.
 - [ ] F5.6 — Frontend Gate Alignment
-- [ ] F5.7 — Roles Console + User Role Management
-- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+- [x] F5.7 — Roles Console + User Role Management — **COMPLETE 2026-09-30** on
+      `feature/f5-7-roles-console-user-role-management` (off `dev` `2a86984`),
+      unmerged and unpushed. Five phases: capability library, contract role-key
+      widening, route + navigation, Roles Console + permission matrix, and user
+      role assignment (commit `50ef20d`) saving through the existing
+      `PUT /users/:userId/roles` as a full replacement. Security gate unchanged:
+      **`users.update` AND `INSTITUTE_ADMIN`**, API authoritative. Browser 17/17
+      assertions and the DB-backed validation 30/30 passed. See the F5.7 entry
+      below for the checkpoint, the recovery note and the deferred list.
+- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation —
+      **NOT STARTED**
 
 ### Deferred work
 
@@ -435,6 +447,62 @@ that, start **F5.6 — Frontend Gate Alignment** (update its TODO items in
 `docs/tasks.md` first; F5.5 widened TEACHER's `GET /users` reach and F5.4 moved
 the practice/attempt surface, so the web app's gate map is the next place those
 decisions must be reflected).
+
+## Phase F5.7 — Roles Console + User Role Management (2026-09-30, COMPLETE, BRANCH ONLY)
+
+### Latest checkpoint
+
+**F5.7 is COMPLETE on `feature/f5-7-roles-console-user-role-management`**, branched from `dev` `2a86984`, **unmerged and unpushed** — merging/pushing is the caller's decision. **Phase 5 (User Role Assignment) passed validation and is committed as `50ef20d`** (`feat(web): add user role assignment`, 5 files, `apps/web` only). **F5.8 has not started.** The main project tree, `dev`, `main` and `stash@{0}` are untouched, and nothing was committed, merged, pushed, stashed, reset or cleaned during this documentation pass.
+
+| phase | content | state |
+|---|---|---|
+| 1 | capability library (`apps/web/src/lib/roles-console.ts` + test) | complete |
+| 2 | contract role-key widening (`RoleKeySchema` on membership/institute-user role arrays and `RoleResponseSchema.key`) | complete |
+| 3 | route + navigation: `/institute/roles` on `roles.read`, sidebar link, route tests | **UI absent** (not recovered) |
+| 4 | Roles Console + permission matrix; backend `GET /roles/catalogue`, `listPermissionCatalogue()`, self-held-role guard on `deleteRole` | backend complete + tested; **console UI absent** (not recovered) |
+| 5 | user role assignment on the users console (`50ef20d`) | complete, validated |
+| R | 2026-09-30 reconciliation: the two orphaned `test:roles-*` suites, written fresh; reproducible validation DB | complete, validated |
+
+**Phase 5, in short.** A role-assignment dialog on the users console saves through the **existing** `PUT /users/:userId/roles` with a UUID `roleIds[]` payload that **replaces the complete set** (unticking removes a role). The dialog keeps a draft, so Cancel is a true no-op and a failed save keeps the selection. Role names come from `GET /roles`, replacing the hardcoded `ROLE_LABELS` map, so a custom institute role renders under its own name; the catalogue is not needed and **this surface never requests `/roles/catalogue`**. The role list is fetched only for an actor who may assign (it needs `roles.read`) and is keyed on the active institute, cleared on switch. Targets are limited to **other active** members: the current user shows `(you)` with no control, a deactivated member has none. **No backend authorization, contract, schema, catalogue or migration change in Phase 5.**
+
+**Security — unchanged, and the backend remains authoritative.** `PUT /users/:userId/roles` is privilege-granting and still carries **`@RequiredPermission('users.update')` AND `@RequiredRoles('INSTITUTE_ADMIN')`** — an AND, never an OR. The frontend mirrors it exactly (`canAssignUserRoles = isInstituteAdmin && canUse(permissions, 'users.update')`), so an actor holding `users.update` **without** `INSTITUTE_ADMIN` gets no assignment control at all; browser-verified. The client gate is UX only.
+
+**Validation — the authoritative F5.7 checkpoint.**
+
+| check | result |
+|---|---|
+| web suites | **8/8 suites, 79 passing** |
+| API `authz-regression` | **8 passing** |
+| remaining-surface authz | **22 passing** |
+| DB-backed API validation | **30/30, 0 skipped** |
+| browser assertions | **17/17** |
+| static contracts/shared/auth/AI/database builds, API build | clean |
+| API + web `tsc --noEmit` | clean |
+| server contract | verified (self-role 400, non-UUID/extra-property 400, empty role set 200, non-admin 403) |
+| PostgreSQL round-trip | verified (custom roles institute-scoped, system roles NULL-scoped, memberships as expected) |
+| responsive ~390px | verified (no page-level overflow, table scrolls in-container, dialog fits, role list scrollable) |
+
+A 500 leaves the error in the dialog, the draft intact and Save available again. Two harness mistakes occurred during the run (a capture of the response body instead of the request payload, and one probe read against leftover state) — both were re-run independently and passed; they are **not** application failures and nothing is claimed on their basis.
+
+**Recovery (2026-09-30).** Phases 1–4 were originally uncommitted and that worktree was lost; they were **recovered from OpenCode session history and revalidated before Phase 5 closure**. **Not recovered:** the 35 tests in the two lost untracked backend integration suites, and two Phase 1–4 web module/test artifacts. Phase 1's capability library, Phase 2's contract widening and `GET /roles/catalogue` are present. The **Phase 3–4 Roles Console UI is still absent** (verified: no `apps/web/src/app/(workspace)/institute/roles/`, no Roles sidebar link, no permission-matrix symbol under `apps/web/src`) — the phase rows above say so rather than claiming a complete console. Rebuilding it is outstanding work.
+
+**Reconciliation 2026-09-30 (F5.8 P0, this branch).** `apps/api/package.json` declared `test:roles-guard-matrix` and `test:roles-self-escalation` with **no suite files** — both scripts failed on a missing path. Both were **written from scratch against the code present here**, not recovered from the lost originals, and the validation database is now reproducible from a committed `docker-compose.validation.yml` (loopback `127.0.0.1:55432`, `val/val`, `catlium_val`, throwaway `tmpfs`, `down -v` teardown) so `TEST_DATABASE_URL` is never a silent skip.
+
+| new check | result |
+|---|---|
+| `test:roles-guard-matrix` | **8/8 passing, 0 skipped** |
+| `test:roles-self-escalation` | **7/7 passing, 0 skipped** |
+| API `tsc --noEmit`, `eslint apps/api/src`, prettier | clean |
+
+Both suites are deliberately **negative-probed** so they cannot pass vacuously: the matrix removes the permission decorator and asserts the route reopens, the self-hold suite asserts the refused delete leaves the role, its grants and its membership binding **intact** (a cascade would be the real hazard) and that the system-role immutability check fires *before* the self-hold check. The F5.7 validation numbers in the table above are **unchanged** — this is new coverage of the F5.7 backend, not a re-derivation of the lost 35.
+
+**Scope delivered by F5.7.** The user **role-assignment** surface (`50ef20d`), the role-key contract widening, `GET /roles/catalogue` with its guard, the `deleteRole` self-held-role guard, and now tested coverage for both guards. **Not delivered:** the Roles Console UI. The phase title is the original directive; rebuild the console when the Roles Console surface is scheduled.
+
+**Deferred — untouched, no code changed for any of it.** The stale `role: 'admin'` residual on `/institute` and `/users` (`workspace-routes.ts:49-50`) above `users.read`; the `PATCH /roles/:roleId` self-held-role guard (`DELETE /roles/:roleId` and `PUT /roles/:roleId/permissions` both refuse a role the actor holds, `PATCH` does not yet); and `POST /roles` remaining privilege-granting behind only `roles.create`, where the `INSTITUTE_ADMIN` decision is an open security follow-up.
+
+### Exact recommended next task
+
+Close F5.7 out of band, then start **F5.8 — Teacher "My Assignments" + Final Regression and Documentation** in a **fresh session** (nothing of F5.8 exists yet). Before merging this branch, resolve the two recovery consequences recorded above: restore or drop the two orphaned `test:roles-*` scripts in `apps/api/package.json`, and rebuild or recover the Phase 3–4 Roles Console UI. Do not widen any permission while doing so — the F5.7 gate (`users.update` AND `INSTITUTE_ADMIN`) must survive unchanged.
 
 ## Phase F5.9 — Partial-Permission Academic Console (2026-09-28, IMPLEMENTED + VALIDATED, BRANCH ONLY)
 

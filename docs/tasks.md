@@ -338,8 +338,136 @@
     running image return `401` without a token (83/83)** — none 404s, so the
     whole F5.5 surface is mounted and gated.
 - [ ] F5.6 — Frontend Gate Alignment
-- [ ] F5.7 — Roles Console + User Role Management
+- [x] **F5.7 — Roles Console + User Role Management.** **IMPLEMENTED +
+      VALIDATED 2026-09-30** on
+      `feature/f5-7-roles-console-user-role-management` (off `dev` `2a86984`),
+      **unmerged and unpushed** — merging/pushing is the caller's decision. Five
+      phases; **Phase 5 (User Role Assignment) is committed as `50ef20d`**
+      (`feat(web): add user role assignment`, 5 files, `apps/web` only). No
+      permission was widened and no migration was added anywhere in F5.7.
+  - **Phase 1 — capability library** (`apps/web/src/lib/roles-console.ts` +
+      `roles-console.test.ts`): the web-side roles vocabulary —
+      `canViewRoles`, `canCreateRole`, `canEditRole`, `canDeleteRole`,
+      `canAssignUserRoles`, `isSystemRole`, `actorHoldsRole`, `isRoleLocked`,
+      `roleLockReason`, `groupCatalogueByResource`,
+      `buildPermissionSelection`, `roleKeyToId`, `selectedRoleIds`.
+  - **Phase 2 — contract role-key widening** (`packages/contracts/src/index.ts`):
+      `RoleKeySchema` replaces `RoleEnum` in value position on
+      `MembershipListItemSchema.roles` and `InstituteUserSchema.roles`, so a
+      membership can carry a custom institute role key and not only the three
+      built-ins, and `RoleResponseSchema.key` is a role key for the same reason.
+  - **Phase 3 — route + navigation**: `/institute/roles` on `roles.read`, the
+      Roles sidebar link, and the route tests.
+  - **Phase 4 — Roles Console + permission matrix**: create/edit/delete of
+      institute custom roles, permission editing through the existing
+      `PUT /roles/:roleId/permissions`, system-role protection in the UI, and
+      stale-permission handling when the catalogue changes under an open form.
+      Backend side of the same phase: `GET /roles/catalogue` (declared **before**
+      `@Get(':roleId')` so `ParseUUIDPipe` cannot swallow the literal segment),
+      `RolesService.listPermissionCatalogue()` (institute-domain keys only) and a
+      new self-held-role guard on `deleteRole`.
+  - **Phase 5 — User Role Assignment** (`50ef20d`, `apps/web` only): a
+      role-assignment dialog on the users console. It saves through the
+      **existing** `PUT /users/:userId/roles` with a UUID `roleIds[]` payload that
+      **replaces the whole set** — unticking removes a role, and the dialog keeps
+      its own draft, so Cancel is a true no-op and a failed save preserves the
+      selection for a retry. Role names come from `GET /roles`, replacing the
+      hardcoded `ROLE_LABELS` map, so a custom institute role renders under its own
+      name; the permission catalogue is not needed, so **this surface never
+      requests `/roles/catalogue`**. The role list is fetched only for an actor
+      who may assign (that read needs `roles.read`) and is keyed on the active
+      institute and cleared on switch, so a tenant change can never leave the
+      previous institute's role names on screen. Targets are restricted to
+      **other active** members: the current user is shown as `(you)` with no
+      control and a deactivated member has none. **No backend authorization,
+      contract, schema, catalogue or migration change in Phase 5.**
+  - **Security — the gate is unchanged and the API stays authoritative.**
+      `PUT /users/:userId/roles` is a privilege-granting route and still carries
+      `@RequiredPermission('users.update')` **and** `@RequiredRoles
+      ('INSTITUTE_ADMIN')` — an **AND**, never an OR (`users.controller.ts`).
+      The frontend mirrors it exactly with `canAssignUserRoles(grants)` =
+      `isInstituteAdmin && canUse(permissions, 'users.update')`, so an actor holding
+      `users.update` **without** `INSTITUTE_ADMIN` gets no assignment control at
+      all (browser-verified). The client gate is UX only; the API decides.
+  - **Validation — this is the authoritative F5.7 checkpoint.** Web **8/8 suites,
+      79 passing**; API `authz-regression` **8 passing**; remaining-surface authz
+      **22 passing**; DB-backed API validation **30/30, 0 skipped**; browser
+      **17/17 assertions**; server contract verified; PostgreSQL round-trip
+      verified; mobile/390px verified. Contracts/shared/auth/AI/database static
+      builds clean, API build clean, API and web `tsc --noEmit` clean. Verified
+      behaviour: role changes persist across reload; system roles appear per
+      backend behaviour; a self-role attempt is 400, a non-UUID or extra-property
+      payload is 400, an empty role set is 200 and a non-admin is 403; custom
+      roles stay institute-scoped, system roles stay NULL-scoped and memberships
+      carry exactly the expected assignments. At ~390px there is no page-level
+      horizontal overflow, the table scrolls inside its container, the dialog fits
+      and the role list stays scrollable. A 500 shows the error in the dialog,
+      keeps the draft and re-enables Save.
+  - **Recovery (2026-09-30).** Phases 1–4 were originally uncommitted; that
+      worktree was lost and they were **recovered from OpenCode session history and
+      revalidated before Phase 5 closure**. **Not recovered:**
+      - the 35 tests in the two lost untracked backend integration suites, and
+      - two Phase 1–4 web module/test artifacts.
+      Phase 1's capability library, Phase 2's contract widening and
+      `GET /roles/catalogue` are present. The **Phase 3–4 Roles Console UI**
+      (route, sidebar link, permission matrix) is **still absent** — verified:
+      no `apps/web/src/app/(workspace)/institute/roles/`, no Roles sidebar link,
+      no permission-matrix symbol under `apps/web/src`. Rebuilding it is
+      outstanding work, not F5.7 residue; `GET /roles/catalogue` exists and is
+      tested purely for its API contract until that UI lands.
+  - **Reconciliation 2026-09-30 (F5.8 P0, this branch).** The two suites named
+      in `apps/api/package.json` had **no files**, so the declared
+      `test:roles-guard-matrix` / `test:roles-self-escalation` scripts failed on
+      a missing path. Both were **written from scratch against the code that is
+      present**, not reconstructed from the lost originals:
+      - `roles-guard-matrix.integration.ts` (**8/8, skipped 0**) —
+        `catalogue` declared **before** `:roleId` (source scan, so Nest's
+        declaration order and `ParseUUIDPipe` are proven); exactly one key
+        (`roles.read`) on both reads and **no** `@RequiredRoles` on the route or
+        controller; `listPermissionCatalogue()` returns exactly the catalogue's
+        institute slice, every key supported + institute-domain + individually
+        grantable + self-consistent (`key === resource.action`) with display
+        metadata; **no platform key is ever offered**; the real
+        AccessToken → Tenant → Roles → Permission chain admits an
+        INSTITUTE_ADMIN via `roles.manage` and a custom `roles.read` delegate,
+        and refuses TEACHER and a zero-role member; unauthenticated is 401; and a
+        **negative probe** deletes the decorator, watches the route reopen, and
+        restores it, so the matrix cannot pass vacuously.
+      - `roles-self-escalation.integration.ts` (**7/7, skipped 0**) — the new
+        `deleteRole` `actorRoleKeys` guard: a holder is refused **and the row,
+        its grants and its membership binding all survive** (the cascade is the
+        actual hazard); the key match is case-insensitive and position-agnostic;
+        a non-holder deletes successfully; an INSTITUTE_ADMIN is refused only when
+        they genuinely hold the role, so a custom admin is covered too; the
+        `kind === 'system'` immutability check fires **before** the self-hold
+        check (asserted through the message, so a reorder fails);
+        `setRolePermissions` refuses to widen a held role while a non-holder may;
+        a foreign institute gets **NotFound, never Forbidden**, on both read and
+        delete; `createRole` still refuses platform and reserved keys.
+      Both gate on `TEST_DATABASE_URL`, which is now reproducible from the
+      committed `docker-compose.validation.yml`. API `tsc --noEmit` clean,
+      `eslint apps/api/src` clean, prettier clean on both files. The number
+      claimed for F5.7's own validation above is unchanged — these suites are
+      **new** coverage of the F5.7 backend, not a re-derivation of the lost 35.
+  - **Scope correction — what F5.7 actually delivers.** Shipped and tested:
+      the user **role-assignment** surface (`50ef20d`), the role-key contract
+      widening, `GET /roles/catalogue` + its guard, and the `deleteRole`
+      self-held-role guard. **Not shipped:** the Roles Console UI (Phases 3–4).
+      The phase title is retained as the original directive; the delivered scope
+      is the assignment path plus its backend prerequisites.
+  - **Deferred — deliberately untouched by F5.7, no code changed for any of it:**
+      - the stale `role: 'admin'` residual on `/institute` and `/users`
+        (`workspace-routes.ts:49-50`) on top of `users.read` — route/navigation UX
+        residue recorded by F5.6/F5.9, still not aligned;
+      - the `PATCH /roles/:roleId` self-held-role guard — `DELETE /roles/:roleId`
+        and `PUT /roles/:roleId/permissions` both refuse a role the actor holds,
+        `PATCH` (name/description only) does not yet;
+      - `POST /roles` is privilege-granting but keeps only the `roles.create`
+        permission gate; whether it should also require `INSTITUTE_ADMIN` is an
+        **open, unimplemented security follow-up**;
+      - the F5.7 record above lists no other deferred item as closed.
 - [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+      — **NOT STARTED.** No F5.8 code, docs or test exists; use a fresh session.
 - [x] F5.9 — Partial-Permission Academic Console
   - IMPLEMENTED + VALIDATED 2026-09-28 on
     `feature/f5-9-academic-console-graceful-degradation` (off `dev` `3f51e2d`),
