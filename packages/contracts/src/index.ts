@@ -3,17 +3,27 @@ import { z } from 'zod';
 export const RoleEnum = z.enum(['INSTITUTE_ADMIN', 'TEACHER', 'STUDENT']);
 export type Role = z.infer<typeof RoleEnum>;
 
+/** A role's key as it appears on a membership or institute user. Built-in keys
+ *  are UPPERCASE; custom keys are lowercase, so the two are structurally
+ *  distinguishable. Declared above the membership schemas because they embed
+ *  it in VALUE position. */
+export const RoleKeySchema = z.string().min(1).max(64);
+export type RoleKey = z.infer<typeof RoleKeySchema>;
+
 // A user's membership in an institute, used by the institute picker.
 // `permissions` is the backend-resolved institute-domain grant set for that
 // membership (never from JWTs). UX-only on the client: the API remains the
 // authority. The frontend applies the `*.manage` implication rule against it.
+// `roles` holds DB role keys — built-in UPPERCASE keys OR custom institute
+// role keys (lowercase), never SUPER_ADMIN (platform roles have no institute
+// membership representation).
 export const MembershipListItemSchema = z.object({
   instituteId: z.string().uuid(),
   instituteName: z.string(),
   slug: z.string(),
   status: z.string(),
   instituteStatus: z.string(),
-  roles: z.array(RoleEnum),
+  roles: z.array(RoleKeySchema),
   permissions: z.array(z.string()),
 });
 export type MembershipListItem = z.infer<typeof MembershipListItemSchema>;
@@ -80,7 +90,9 @@ export const InstituteUserSchema = z.object({
   // The institute-local membership id — Q.3 teacher-assignment console targets
   // teacher-assignment rows by membershipId (the roster for the assign dialog).
   membershipId: z.string().uuid(),
-  roles: z.array(RoleEnum),
+  // DB role keys as on the membership: built-in UPPERCASE keys or custom
+  // institute role keys (lowercase); SUPER_ADMIN never appears here.
+  roles: z.array(RoleKeySchema),
   status: z.enum(['active', 'deactivated']),
   createdAt: z.string().datetime(),
 });
@@ -103,6 +115,79 @@ export const InstituteUsersResponseSchema = z.object({
   users: z.array(InstituteUserSchema),
 });
 export type InstituteUsersResponse = z.infer<typeof InstituteUsersResponseSchema>;
+
+// ── Role & Permission Contracts ────────────
+//
+// The institute role model as the API serves it. `kind` distinguishes a built-in
+// system role (immutable — never updated, never re-permissioned, never deleted)
+// from an institute-owned custom role; `domain` is always 'institute' on this
+// surface, because platform roles (SUPER_ADMIN) are never institute roles and a
+// custom role can never hold a platform permission.
+
+export const RoleKindEnum = z.enum(['system', 'institute']);
+export type RoleKind = z.infer<typeof RoleKindEnum>;
+
+export const RoleResponseSchema = z.object({
+  id: z.string().uuid(),
+  key: RoleKeySchema,
+  name: z.string(),
+  description: z.string().nullable(),
+  kind: RoleKindEnum,
+  domain: z.literal('institute'),
+  permissionKeys: z.array(z.string()),
+});
+export type RoleResponse = z.infer<typeof RoleResponseSchema>;
+
+export const InstituteRolesResponseSchema = z.object({
+  roles: z.array(RoleResponseSchema),
+});
+export type InstituteRolesResponse = z.infer<typeof InstituteRolesResponseSchema>;
+
+/** One entry of the institute permission catalogue (GET /roles/catalogue).
+ *  Never a platform-domain key. `resource` + `action` let the console group the
+ *  matrix; `name`/`description` are server-supplied labels. */
+export const PermissionCatalogueItemSchema = z.object({
+  key: z.string(),
+  resource: z.string(),
+  action: z.string(),
+  name: z.string(),
+  description: z.string(),
+});
+export type PermissionCatalogueItem = z.infer<typeof PermissionCatalogueItemSchema>;
+
+export const PermissionCatalogueResponseSchema = z.object({
+  permissions: z.array(PermissionCatalogueItemSchema),
+});
+export type PermissionCatalogueResponse = z.infer<typeof PermissionCatalogueResponseSchema>;
+
+export const CreateRoleRequestSchema = z.object({
+  key: z
+    .string()
+    .min(2)
+    .max(63)
+    .regex(/^[a-z][a-z0-9-]*$/, 'key must be lowercase kebab-case'),
+  name: z.string().min(1).max(255),
+  description: z.string().max(1000).optional(),
+  permissionKeys: z.array(z.string()).max(128),
+});
+export type CreateRoleRequest = z.infer<typeof CreateRoleRequestSchema>;
+
+export const UpdateRoleRequestSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  description: z.string().max(1000).optional(),
+});
+export type UpdateRoleRequest = z.infer<typeof UpdateRoleRequestSchema>;
+
+export const SetRolePermissionsRequestSchema = z.object({
+  permissionKeys: z.array(z.string()).max(128),
+});
+export type SetRolePermissionsRequest = z.infer<typeof SetRolePermissionsRequestSchema>;
+
+/** PUT /users/:userId/roles — the full replacement role set, by role id. */
+export const SetMembershipRolesRequestSchema = z.object({
+  roleIds: z.array(z.string().uuid()).max(64),
+});
+export type SetMembershipRolesRequest = z.infer<typeof SetMembershipRolesRequestSchema>;
 
 // ── Job Contracts ───────────────────────────
 

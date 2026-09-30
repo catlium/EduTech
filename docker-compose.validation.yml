@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────
+# CatLium EduTech - AUTHORIZATION VALIDATION DATABASE
+# ─────────────────────────────────────────────────────────────
+#
+# A THROWAWAY PostgreSQL for the DB-gated authorization/integration suites.
+# Those suites are the only real gate for the permission model: they run the
+# production guard chain (AccessToken → Tenant → Roles → Permission) against
+# live rows, and they SKIP SILENTLY when TEST_DATABASE_URL is unset. An
+# unreproducible scratch database made "skipped: 0" impossible to prove, so
+# this file owns one that anyone can recreate.
+#
+# STANDALONE — deliberately does NOT extend docker-compose.yml. It is NOT the
+# app stack: no api, no web, no nginx, no tunnel, no OmniRoute. The suites
+# under test import the NestJS guards and services directly and talk to this
+# database over loopback; they never go through HTTP.
+#
+# ⚠️  THROWAWAY. `down -v` deletes it. It holds no real data, and the suites
+#     are written to leave nothing behind.
+#
+# Usage (from the repo root):
+#   docker compose -f docker-compose.validation.yml up -d
+#   export TEST_DATABASE_URL=postgres://val:val@127.0.0.1:55432/catlium_val
+#   pnpm --filter @catlium/api run db:migrate        # schema, then run the suites
+#   docker compose -f docker-compose.validation.yml down -v
+#
+# `PermissionSyncService` seeds the permission + role rows idempotently on API
+# boot and at the top of every DB-gated suite, so a freshly migrated database
+# is sufficient — no seed script needed.
+
+services:
+  validation-postgres:
+    image: postgres:17-alpine
+    container_name: catlium-validation-postgres
+    # Loopback only. Never a host-reachable port, never in the base compose.
+    ports:
+      - '127.0.0.1:${VALIDATION_POSTGRES_PORT:-55432}:5432'
+    environment:
+      POSTGRES_USER: ${VALIDATION_POSTGRES_USER:-val}
+      POSTGRES_PASSWORD: ${VALIDATION_POSTGRES_PASSWORD:-val}
+      POSTGRES_DB: ${VALIDATION_POSTGRES_DB:-catlium_val}
+    tmpfs:
+      # The whole point is a throwaway: keep it off the disk entirely.
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${VALIDATION_POSTGRES_USER:-val} -d ${VALIDATION_POSTGRES_DB:-catlium_val}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: 'no'
