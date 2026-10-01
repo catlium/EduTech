@@ -52,6 +52,14 @@ test('teaching routes keep their role gate on top of the read key', () => {
   }
 });
 
+test('practice is permission-gated only — the shared nav serves teachers and students', () => {
+  const gate = workspaceRoute('/practice');
+  assert.equal(gate?.key, 'practice.read');
+  assert.equal(gate?.role, null, 'STUDENT and TEACHER both hold practice.read');
+  assert.deepEqual(gate?.load, ['/practice/sessions']);
+  assert.equal(workspaceRoute('/practice/sessions/abc')?.key, 'practice.read');
+});
+
 test('prefix matching is boundary-safe and every load path is non-empty', () => {
   assert.equal(workspaceRoute('/subjectsx'), undefined);
   assert.equal(workspaceRoute('/institute-of'), undefined);

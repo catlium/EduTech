@@ -7,8 +7,9 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, ApiError } from '@/lib/api';
-import { useTenant } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,9 @@ import type { SubjectResponse } from '@catlium/contracts';
 export default function NewPaperPatternPage() {
   const router = useRouter();
   const { institute } = useTenant();
+  // F5.8/X-3: POST /paper-patterns is `paper-patterns.create` — the same key the
+  // list page hides its "New Pattern" button behind.
+  const canCreate = hasPermission(institute, 'paper-patterns.create');
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
   const [subjectIds, setSubjectIds] = useState<string[]>([]);
   const [title, setTitle] = useState('');
@@ -41,7 +45,7 @@ export default function NewPaperPatternPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!institute || !title.trim()) return;
+    if (!institute || !canCreate || !title.trim()) return;
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = { subjectIds, title: title.trim() };
@@ -69,6 +73,12 @@ export default function NewPaperPatternPage() {
         </Button>
       </div>
       <PageHeader title="New Paper Pattern" description="Create a new exam blueprint." />
+      {!canCreate ? (
+        <EmptyState
+          title="You can't create paper patterns"
+          description="Creating a pattern needs the paper-patterns.create permission. Ask an institute admin to grant it."
+        />
+      ) : (
       <Card>
         <CardContent className="pt-6">
           <form onSubmit={onSubmit} className="space-y-6">
@@ -127,6 +137,7 @@ export default function NewPaperPatternPage() {
           </form>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { ArrowLeft, ArrowRight, Check, Eye, Pencil, RotateCcw, X } from 'lucide-
 
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useTenant } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import type { PracticeSessionDetail, PracticeSessionItem } from '@catlium/contracts';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
@@ -457,6 +457,13 @@ export default function PracticeSessionPage() {
 
   const allAnswered = answeredCount === items.length && items.length > 0;
   const completed = session.status === 'COMPLETED';
+  // F5.8/X-7: answering (`PUT /practice/sessions/:id/items/:itemId`) and
+  // completing (`POST /practice/sessions/:id/complete`) are `practice.update` on
+  // the backend, while opening a session is only `practice.read`. A
+  // read-only delegate therefore gets the same read-only review a completed
+  // session gets, instead of controls that would 403 on click. The API stays the
+  // boundary.
+  const canUpdate = hasPermission(institute, 'practice.update');
 
   return (
     <div>
@@ -465,7 +472,9 @@ export default function PracticeSessionPage() {
         description={
           session.completedAt
             ? `Completed on ${new Date(session.completedAt).toLocaleString()}`
-            : `${answeredCount} of ${items.length} answered · ${correctCount} correct`
+            : canUpdate
+              ? `${answeredCount} of ${items.length} answered · ${correctCount} correct`
+              : 'Read-only — you do not have permission to answer this session.'
         }
         actions={
           <Button variant="outline" size="sm" asChild>
@@ -476,7 +485,7 @@ export default function PracticeSessionPage() {
         }
       />
 
-      {completed ? (
+      {completed || !canUpdate ? (
         <div className="space-y-3">
           <StatusBadge status={session.status} />
           {items.map((item, i) => (

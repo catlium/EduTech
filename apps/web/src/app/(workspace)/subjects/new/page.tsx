@@ -7,8 +7,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 
 import { api, ApiError } from '@/lib/api';
-import { useTenant } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
+import { EmptyState } from '@/components/app/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -28,6 +29,9 @@ import { CreateSubjectRequestSchema } from '@catlium/contracts';
 export default function NewSubjectPage() {
   const router = useRouter();
   const { institute } = useTenant();
+  // F5.8/X-2: POST /academic/subjects is `subjects.create`. The list page only
+  // hides its "Create Subject" button, so this deep link needs its own gate.
+  const canCreate = hasPermission(institute, 'subjects.create');
   const [submitting, setSubmitting] = useState(false);
 
   const form = useForm<CreateSubjectRequest>({
@@ -48,7 +52,7 @@ export default function NewSubjectPage() {
   }, [name, form]);
 
   async function onSubmit(values: CreateSubjectRequest) {
-    if (!institute) return;
+    if (!institute || !canCreate) return;
     setSubmitting(true);
     try {
       const { subject } = await api<{ subject: { id: string } }>('/academic/subjects', {
@@ -70,6 +74,12 @@ export default function NewSubjectPage() {
         title="New Subject"
         description="Create a new subject to organize your curriculum."
       />
+      {!canCreate ? (
+        <EmptyState
+          title="You can't create subjects"
+          description="Creating a subject needs the subjects.create permission. Ask an institute admin to grant it."
+        />
+      ) : (
       <Card>
         <CardContent className="pt-6">
           <Form {...form}>
@@ -132,6 +142,7 @@ export default function NewSubjectPage() {
           </Form>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

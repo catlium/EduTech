@@ -45,6 +45,11 @@ export const WORKSPACE_ROUTES: readonly RouteGate[] = [
   },
   { prefix: '/syllabus', key: 'syllabus.read', role: 'teacher', load: ['/syllabus'] },
   { prefix: '/jobs', key: 'jobs.read', role: 'teacher', load: ['/jobs'] },
+  // F5.8/X-7: practice is a self-scoped surface on the SHARED nav — STUDENT and
+  // TEACHER both hold all three practice keys, so `role: null` lets the key alone
+  // decide. Without an entry here the layout gated nothing and /practice was
+  // reachable by anyone with any institute membership.
+  { prefix: '/practice', key: 'practice.read', role: null, load: ['/practice/sessions'] },
   // Institute console: the roster itself is `users.read` and stays admin-gated.
   { prefix: '/institute', key: 'users.read', role: 'admin', load: ['/users'] },
   { prefix: '/users', key: 'users.read', role: 'admin', load: ['/users'] },

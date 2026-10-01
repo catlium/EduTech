@@ -79,15 +79,22 @@ const studentNav = [
 
 const sharedNav = [{ href: '/practice', label: 'Practice', icon: Target }];
 
+// F5.8/X-4 + M-3: `role` mirrors `RouteGate.role` — the extra role an entry
+// still needs ON TOP of its catalogue key. Academic Structure is `role: null`
+// because the route gate (`/institute/academic` in workspace-routes.ts) is
+// permission-only: a structural delegate holding academic-structure.read but not
+// users.read must still see the link. `/institute` and `/users` keep the
+// INSTITUTE_ADMIN gate on purpose (X-5 — deliberate UX boundary, unchanged).
 const adminNav = [
-  { href: '/institute', label: 'Institute', icon: Building2, key: 'users.read' },
+  { href: '/institute', label: 'Institute', icon: Building2, key: 'users.read', role: 'admin' },
   {
     href: '/institute/academic',
     label: 'Academic Structure',
     icon: CalendarRange,
-    key: 'users.read',
+    key: 'academic-structure.read',
+    role: null,
   },
-  { href: '/users', label: 'Users', icon: Users, key: 'users.read' },
+  { href: '/users', label: 'Users', icon: Users, key: 'users.read', role: 'admin' },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -105,7 +112,9 @@ export function AppSidebar() {
   const primary = teacher
     ? teacherNav.filter((item) => !item.key || hasPermission(institute, item.key))
     : studentNav;
-  const adminLinks = adminNav.filter((item) => hasPermission(institute, item.key));
+  const adminLinks = adminNav.filter(
+    (item) => (item.role === null || admin) && hasPermission(institute, item.key),
+  );
 
   return (
     <Sidebar collapsible="icon">
@@ -165,7 +174,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {admin && adminLinks.length > 0 && (
+        {adminLinks.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Administration</SidebarGroupLabel>
             <SidebarGroupContent>
