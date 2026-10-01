@@ -42,6 +42,86 @@ permission migration is complete: every permission-eligible route now runs the
 primitive (identity, health, worker and platform-plane routes keep their own
 guards by design) — recorded in `authorization.md` §13.
 
+### F5.8 P0 checkpoint (2026-09-30) — F5.7 integrated, baseline recorded
+
+**F5.7 is now merged into `dev`.** Merged `--no-ff` as **`7fa1b93`** from
+`feature/f5-7-roles-console-user-role-management` (`7c828f2`), branched from
+`dev` `2a86984`; `origin/dev` is at `7fa1b93`. `main`/`origin/main` (`ef4de7e`),
+`stash@{0}` (`bacf0ca`) and the unrelated dirty working tree are untouched.
+
+The merge carried the F5.7 **reconciliation** (`7c828f2`), which closed the one
+thing that made the branch unmergeable: `apps/api/package.json` declared
+`test:roles-guard-matrix` and `test:roles-self-escalation` but **no suite files
+existed**, so both scripts failed on a missing path. Both were written fresh
+against the code that is present and are negative-probed so they cannot pass
+vacuously. `docker-compose.validation.yml` was added so the DB-gated suites have
+a **reproducible** `TEST_DATABASE_URL` — previously they depended on a
+hand-made scratch database and could silently skip.
+
+**Delivered vs not delivered by F5.7.** Shipped: the user role-assignment
+surface (`50ef20d`), the role-key contract widening, `GET /roles/catalogue` with
+its guard, the `deleteRole` self-held-role guard, and now-tested coverage for
+both guards. **Not delivered:** the Phase 3–4 **Roles Console UI** (route,
+sidebar link, permission matrix) — still absent and now documented as absent
+rather than complete. No permission was widened; no schema or migration change.
+
+**Pre-F5.8 baseline — exact counts.** Run on `dev` `7fa1b93` with the
+reproducible validation database (49/49 migrations applied):
+
+| suite group | runner | tests | pass | fail | skipped |
+|---|---|---|---|---|---|
+| DB-gated integration suites (32 files) | `tsx --test` + `TEST_DATABASE_URL` | **243** | **232** | **11** | **0** |
+| API unit suites (`src/**/*.test.ts`) | `node --test` | **238** | **238** | 0 | 0 |
+| web unit suites (`src/**/*.test.ts`) | `node --test` | **94** | **94** | 0 | 0 |
+| `pnpm typecheck` (turbo) | — | 10/10 tasks | — | 0 | — |
+| `pnpm lint` (turbo) | — | 9/9 tasks | — | 0 | — |
+
+**The 11 failures are pre-existing and were NOT fixed** — they are the known
+baseline, in exactly two platform-plane suites, and none is an F5.7 regression:
+
+| suite | tests | fail | cause |
+|---|---|---|---|
+| `platform/institute-crud.integration.ts` | 11 | 3 | the suite creates a **fixed** institute slug; the demo-seeded database already has it, so `create` throws `ConflictException: An institute with this slug already exists` (also breaks the duplicate-slug case) |
+| `platform/platform-user-lifecycle.integration.ts` | 10 | 8 | the suite asserts the platform user list is **exactly** its own fixtures; seeded demo users (e.g. `superadmin@catlium.dev`) and their lifecycle state leak into the assertions, and `suspend` → `reactivate` hits `ConflictException: User is already active` |
+
+Both are **test-fixture vs seeded-data collisions**, not product defects: on an
+unseeded database the same 32 suites are **243/243, 0 skipped**. Every one of the
+30 other DB-gated suites is green, including all six F5 authorization suites and
+both new F5.7 suites (8/8 and 7/7). Leave all 11 alone unless F5.8 is explicitly
+scoped to fix them.
+
+**Live stack verified after rebuild.** `api`, `web`, `worker-ai`,
+`worker-material`, `nginx`, `postgres`, `redis`, `rabbitmq`, `ocr`,
+`omniroute` all up and healthy; `migrate` exited 0. Checked against the running
+containers rather than `Up (healthy)` alone: `GET /api/v1/health` returns
+`{"status":"ok","service":"@catlium/api"}` both in-network and through nginx,
+nginx routes `/` to web (title renders) and `/api/` to the API, and the **compiled**
+`roles.controller.js` in the live API image contains the F5.7 `catalogue` route
+and its `roles.read` guard.
+
+**One infrastructure note, no repo change needed.** The first
+`docker compose build` attempt failed in **corepack** downloading
+`pnpm-11.1.2.tgz` — `UND_ERR_CONNECT_TIMEOUT` to `registry.npmjs.org` from
+inside the build container, while the host and a plain `docker run` reached it
+fine. It was transient: a probe image fetched the registry successfully under
+both BuildKit and the legacy builder, and the real build then succeeded with no
+override and no Dockerfile change. A scratch `build.network: host` override was
+tried and **deleted** — nothing in the repo was touched. If it recurs, suspect
+container egress to the registry rather than the project.
+
+**`pnpm format:check` is red repo-wide and pre-existing:** 222 files, none of
+them touched by F5.7 (both new suites and `docker-compose.validation.yml` are
+prettier-clean). The failure predates this work — it is a repo-wide formatting
+drift, not a regression, and was deliberately not mass-reformatted here.
+
+### Exact recommended next task
+
+Start **F5.8 — Teacher "My Assignments" + Final Regression and Documentation**.
+F5.7 is merged, so no F5.7 cleanup is owed. P0 is closed: branch integrated,
+containers rebuilt and verified, validation database reproducible, and the
+baseline above is the reference to compare F5.8 against (**232/243 DB-gated with
+the same 11 known failures, 238 API unit, 94 web unit, 0 skipped**).
+
 ### Completed work
 
 - [x] **F2 — React Hook Form + Zod v4 resolver compatibility**, merged `--no-ff`

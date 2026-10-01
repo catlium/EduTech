@@ -468,6 +468,35 @@
       - the F5.7 record above lists no other deferred item as closed.
 - [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
       — **NOT STARTED.** No F5.8 code, docs or test exists; use a fresh session.
+  - **P0 prerequisite closed 2026-09-30.** F5.7 is **merged into `dev`** as
+      `7fa1b93` (`--no-ff`, from `7c828f2`), and `origin/dev` is at `7fa1b93`.
+      The branch's one merge blocker is resolved: the two role suites
+      `apps/api/package.json` declared but that did not exist are now present
+      (`roles-guard-matrix` 8/8, `roles-self-escalation` 7/7, both
+      `skipped: 0`, both negative-probed), and `docker-compose.validation.yml`
+      makes `TEST_DATABASE_URL` reproducible instead of depending on a
+      hand-made scratch database.
+  - **Baseline to compare F5.8 against** (on `dev` `7fa1b93`, 49/49 migrations,
+      `tsx --test` + `node --test`, exact counts):
+      - DB-gated integration — **32 suites, 243 tests, 232 pass, 11 fail,
+        0 skipped**.
+      - API unit (`src/**/*.test.ts`) — **238/238**. Web unit — **94/94**.
+      - `pnpm typecheck` **10/10** tasks; `pnpm lint` **9/9** tasks.
+      - The **11 failures are pre-existing and must not be "fixed"** as a side
+        effect: 3 in `platform/institute-crud` and 8 in
+        `platform/platform-user-lifecycle`. Both are fixture-vs-seed collisions
+        (a fixed institute slug that the demo seed already holds; a platform
+        user list asserted to be exactly its own fixtures while seeded demo
+        users are present). On an **unseeded** database the same 32 suites are
+        **243/243** — so these are not product defects. See
+        `docs/project-status.md` §F5.8 P0 checkpoint for the per-failure causes.
+      - `pnpm format:check` is red repo-wide (222 files, pre-existing drift,
+        none of them F5.7 files) — not part of the baseline to hold F5.8 to.
+  - **Infrastructure note (no repo change).** The first rebuild failed in
+      corepack fetching `pnpm-11.1.2.tgz` (`UND_ERR_CONNECT_TIMEOUT` to the npm
+      registry from inside the build container). It was transient — the retry
+      built cleanly with no Dockerfile or compose change. Prefer rebuilding
+      normally; treat a repeat as container egress, not a project fault.
 - [x] F5.9 — Partial-Permission Academic Console
   - IMPLEMENTED + VALIDATED 2026-09-28 on
     `feature/f5-9-academic-console-graceful-degradation` (off `dev` `3f51e2d`),
