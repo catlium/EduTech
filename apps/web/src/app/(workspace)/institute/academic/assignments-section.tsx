@@ -312,8 +312,8 @@ export function TeacherAssignmentsSection({
               </Select>
               {rosterUnavailable && (
                 <p className="text-xs text-muted-foreground">
-                  Teacher roster is unavailable to your role — listable by institute
-                  admins only. Assign from a roster-holding account.
+                  Teacher roster is unavailable — reading it needs the
+                  <code className="mx-1">users.read</code> permission. Assign from an account that holds it.
                 </p>
               )}
             </div>

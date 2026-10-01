@@ -582,8 +582,8 @@ export function StudentPlacementsSection({
               )}
               {rosterUnavailable && (
                 <p className="text-xs text-muted-foreground">
-                  The student roster is unavailable to your role — listable by institute admins
-                  only. Place from a roster-holding account.
+                  Student roster is unavailable — reading it needs the
+                  <code className="mx-1">users.read</code> permission. Place from an account that holds it.
                 </p>
               )}
             </div>
