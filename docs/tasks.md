@@ -466,8 +466,10 @@
         permission gate; whether it should also require `INSTITUTE_ADMIN` is an
         **open, unimplemented security follow-up**;
       - the F5.7 record above lists no other deferred item as closed.
-- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
-      — **NOT STARTED.** No F5.8 code, docs or test exists; use a fresh session.
+- [~] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+      — **P1 IMPLEMENTED + VALIDATED** on
+      `feature/f5-8-teacher-my-assignments` (worktree off `dev` `6171805`),
+      **pushed, not merged**. No F5.8 code existed before this; P2 is next.
   - **P0 prerequisite closed 2026-09-30.** F5.7 is **merged into `dev`** as
       `7fa1b93` (`--no-ff`, from `7c828f2`), and `origin/dev` is at `7fa1b93`.
       The branch's one merge blocker is resolved: the two role suites
@@ -497,6 +499,47 @@
       registry from inside the build container). It was transient — the retry
       built cleanly with no Dockerfile or compose change. Prefer rebuilding
       normally; treat a repeat as container egress, not a project fault.
+  - **P1 — Teacher "My Assignments" surface.** The audit established the backend
+      already serves the correct self-scoped data
+      (`GET /memberships/scope` → `AcademicScopeService.describeScope()` →
+      the teacher's own active `teacher_assignments`), so P1 is frontend-only:
+      **no** new endpoint, service method, permission key, `assignments.read`
+      grant for TEACHER, `membershipId` parameter or authorization change, and
+      `git diff --stat -- apps/api packages` is empty. Four edits, all in
+      `apps/web/src`:
+      - `components/app/app-sidebar.tsx` — `My Assignments` entry in
+        `teacherNav`, `key: undefined` (the scope read carries no catalogue key
+        of its own), pointing at `/dashboard#my-assignments` rather than a new
+        page. It is a jump link into the existing dashboard surface.
+      - `components/app/academic-scope-card.tsx` — optional `id` so that anchor
+        resolves, plus the condition fix below.
+      - `app/(workspace)/dashboard/page.tsx` — passes `id="my-assignments"`.
+      - `app/(workspace)/institute/academic/assignments-section.tsx` — comment
+        only.
+      - Condition fix: the card decided "institute-wide" from the local
+        `isInstituteAdmin(institute)` role **or** `scope.kind`, so a custom
+        delegate could be shown differently from the API's own verdict. It now
+        reads `scope.kind === 'whole-institute'` alone, which is what
+        `describeScope()` returns for INSTITUTE_ADMIN.
+      - Comment fix: the header still claimed `GET /users` is
+        INSTITUTE_ADMIN-role-gated. Since F5.5 it is gated by `users.read` with
+        no role gate (`users.controller.ts`, and its own docblock records the
+        deliberate widening). The roster-unavailable **copy** below the teacher
+        picker still says "listable by institute admins only" — same stale
+        claim, but user-visible rather than a comment, so left for P2.
+      - **Valid:** `test:academic` 35/35, `test:workspace-routes` 6/6,
+        `test:api` 15/15, web `tsc --noEmit` clean, and browser validation
+        (see `docs/project-status.md` §F5.8 P1 checkpoint).
+      - **Deferred (M-2, deliberately not fixed here).** The teacher-assignment
+        *console* is inside `/institute/academic`, whose route gate is
+        `academic-structure.read`, while its own section reads
+        `assignments.read`. A custom role holding **only** `assignments.read`
+        therefore cannot reach the table that permission was written for. This
+        is a console-boundary/nav alignment problem, not an authorization
+        defect: the backend enforces each route correctly and no permission is
+        widened by changing the gate. Fixing it means deciding the section's
+        route key (split the route, or give the nav entry the union), which is
+        a P2+ decision. Carried forward unchanged.
 - [x] F5.9 — Partial-Permission Academic Console
   - IMPLEMENTED + VALIDATED 2026-09-28 on
     `feature/f5-9-academic-console-graceful-degradation` (off `dev` `3f51e2d`),

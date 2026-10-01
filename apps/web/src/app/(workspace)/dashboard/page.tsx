@@ -159,7 +159,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <AcademicScopeCard variant="teacher" />
+      <AcademicScopeCard variant="teacher" id="my-assignments" />
 
       <section>
         <SectionHeader title="Quick actions" />

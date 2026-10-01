@@ -50,9 +50,10 @@ import {
 // Phase Q.3.0 — teacher-assignment console. Which TEACHER membership teaches
 // which class-subject offering. Reads render for `assignments.read`; the assign
 // and unassign controls are gated by `assignments.create`/`assignments.delete`
-// (the backend enforces all of it). Roster comes from GET /users, which is
-// INSTITUTE_ADMIN-role-gated — a custom delegate without that role sees the
-// table but cannot enumerate teachers (roster degradation handled inline).
+// (the backend enforces all of it). Roster comes from GET /users, which since
+// F5.5 is gated by `users.read` (no role gate) — a delegate without that key
+// sees the table but cannot enumerate teachers (roster degradation handled
+// inline).
 
 interface AssignDraft {
   teacherId: string;

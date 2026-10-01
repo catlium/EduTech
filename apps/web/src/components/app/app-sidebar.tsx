@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   LogOut,
   CalendarRange,
+  UserRoundCheck,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -46,8 +47,19 @@ import {
 // permission check. /ocr/workers is intentionally absent from administration:
 // ocr-workers.* is platform-plane (D3/§15) and no institute membership can
 // hold it — the layout Forbids the route, and Super Admin UI is out of scope.
+// "My Assignments" is a jump link to the dashboard's own scope section
+// (`#my-assignments`), not a second page: the teacher's own active
+// teacher_assignments already arrive self-scoped from GET /memberships/scope,
+// so there is nothing extra to fetch. `key: undefined` because the scope read
+// needs no catalogue key of its own.
 const teacherNav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, key: undefined as string | undefined },
+  {
+    href: '/dashboard#my-assignments',
+    label: 'My Assignments',
+    icon: UserRoundCheck,
+    key: undefined as string | undefined,
+  },
   { href: '/subjects', label: 'Subjects', icon: BookOpen, key: 'subjects.read' },
   { href: '/syllabus', label: 'Syllabi', icon: Library, key: 'syllabus.read' },
   { href: '/materials', label: 'Materials', icon: FileText, key: 'materials.read' },
