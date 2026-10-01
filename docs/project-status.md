@@ -184,6 +184,95 @@ Proceed to **F5.8 P2** — decide and implement the M-2 console boundary
 regression pass and the F5.8 documentation close-out. P1 is a committed,
 pushed, unmerged branch; merging it into `dev` is the caller's call.
 
+### F5.8 P2 checkpoint (2026-10-01) — frontend/backend authorization mismatch closure
+
+**Branch `feature/f5-8-teacher-my-assignments`, two commits pushed, NOT merged:
+`955e249` (the mismatch closure, 11 files) and `8a46b25` (the roster copy, 2
+files). `main`, `dev` and the unrelated dirty main working tree are untouched.**
+
+**Every gate added here mirrors a requirement the backend already enforced.** No
+permission key, role, grant, schema, migration or backend behaviour changed;
+`git diff --stat -- apps/api packages` is empty across both commits.
+
+**Delivered** (`apps/web/src` only):
+
+- `components/app/app-sidebar.tsx` — the academic console keys off
+  `academic-structure.read` instead of the admin role, grouped under
+  Administration. `/institute` and `/users` deliberately keep `users.read` +
+  `role: 'admin'`.
+- `materials/[materialId]/page.tsx` — cancel hidden without `jobs.update`.
+- `subjects/new/page.tsx`, `paper-patterns/new/page.tsx` — deep links no longer
+  offer a create form without `subjects.create` / `paper-patterns.create`.
+- `assessments/[assessmentId]/page.tsx` + `.../results/page.tsx` — the Results
+  entry and page mirror the backend `INSTITUTE_ADMIN`/`TEACHER` role gate. No
+  catalogue key expresses "may read another student's attempt", so it mirrors the
+  role rather than inventing one. This also retires P1's stale header comment.
+- `practice/page.tsx` + `lib/workspace-routes.ts` — `/practice` added to
+  `WORKSPACE_ROUTES` behind `practice.read`, role-agnostic (the shared nav serves
+  teachers and students). Starting a session is `practice.create` and is gated.
+- `practice/sessions/[sessionId]/page.tsx` — **beyond the enumerated X-7 scope,
+  added because it is the same class of defect**: answering and completing are
+  `practice.update`, so a `practice.read`-only delegate was offered controls that
+  would 403. It now reuses the existing read-only review branch instead of
+  threading a flag through five child components.
+- `dashboard/page.tsx` — dropped the dead `isTeacher`/`canManage` import.
+- `institute/academic/assignments-section.tsx` + `placements-section.tsx` — the
+  copy P1 deferred. Both notices claimed the roster is "listable by institute
+  admins only"; since F5.5 `GET /users` is `users.read` with no role gate, so a
+  delegate *holding* `users.read` was being told it was refused. **Both** files
+  carried the claim — P1 recorded only the teacher one. Both now name
+  `users.read`.
+
+**Validation.** `test:workspace-routes` 7/7, `test:api` 15/15, `test:academic`
+35/35, `test:platform-scope` 10/10, `test:paper-pattern-builder` 6/6,
+`test:form-resolver` 2/2, `test:question-answer` 1/1 (76/76), and the complete
+web suite **95/95**. Web `tsc --noEmit` clean, `next lint --max-warnings=0`
+clean, `git diff --check` clean. Note `packages/contracts/dist` had to be built
+once: the form-resolver/question-answer scripts fail `ERR_MODULE_NOT_FOUND`
+without it. That is a pre-existing artifact-ordering quirk, not a source change.
+
+**Browser validation: 26/26 checks passed**, driven by the repo's own zero-dep
+CDP harness (`scripts/e2e/lib/browser.mjs`) against a web image rebuilt from this
+worktree, using custom roles/users created through the real API (never direct DB
+writes). Confirmed in the live UI: a delegate holding only
+`academic-structure.read` sees **Academic Structure** under Administration, opens
+the console, sees the Academic Year UI, and is refused `/institute` and `/users`;
+`/subjects/new`, `/paper-patterns/new` and `/materials` are refused for delegates
+without the respective key; the student reaches `/practice` with working actions;
+teacher/admin/student nav and create surfaces are unchanged (P1 regression);
+`GET /practice/sessions` returns 200 with the tenant header and 403 without it.
+
+**Known gaps, stated plainly.**
+
+- The `practice.update` session gate and the roster copy are verified by tsc,
+  lint, tests and by grepping the **live compiled chunks** out of the running
+  container — but **not** by a browser click-through. The box ran out of memory
+  (~520 MB free, multi-GB swap) and headless Chrome stopped launching reliably
+  after the 26/26 run. Both edits are small and their compiled output was
+  confirmed; a re-run of `/tmp/opencode/p2-journeys.mjs` (scenarios `s5`/`s6`)
+  should still be done when memory allows.
+- `GET /assessments/:id/attempts` for a teacher was asserted 403-for-student
+  directly, but the teacher's results **ledger render** was skipped because that
+  probe omitted the `x-institute-id` header. An assessment does exist
+  (`7ce844a4-…`); only the probe was wrong, and it is fixed in the script.
+- Negative rendering for X-1/X-2/X-3 is structurally unreachable in the browser:
+  the routes carry `role: 'teacher'` and the immutable TEACHER grant bundle
+  already contains those keys, so no user can hold the route without the
+  permission. Denial was proven at the route; the component gates were proven in
+  the compiled artifact. Route gates were deliberately not weakened to make this
+  testable.
+- **M-2 remains deferred** by explicit instruction, unchanged from P1.
+- `pnpm format:check` remains red repo-wide (pre-existing drift; every touched
+  file was already a Prettier warning at HEAD — deliberately not mass-formatted).
+
+### Exact recommended next task
+
+Re-run `/tmp/opencode/p2-journeys.mjs` for scenarios `s5`/`s6` once memory
+allows, to close the two click-through gaps above. Then decide **M-2**
+(`assignments.read` cannot reach the `/institute/academic` console) and the
+F5.8 merge into `dev` — both are the caller's call. P2 is committed, pushed and
+unmerged; **stopping here for P3 approval.**
+
 ### Completed work
 
 - [x] **F2 — React Hook Form + Zod v4 resolver compatibility**, merged `--no-ff`
