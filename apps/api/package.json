@@ -33,6 +33,7 @@
     "test:auth-session": "tsx --test src/identity/auth-session.integration.ts",
     "test:resource-scope": "tsx --test src/authorization/resource-scope.integration.ts",
     "test:authz-regression": "tsx --test src/authorization/authz-regression.integration.ts",
+    "test:remaining-surface-authz": "tsx --test src/authorization/remaining-surface-authz.integration.ts",
     "test:phase-m-remediation": "tsx --test src/authorization/phase-m-remediation.integration.ts",
     "test:job-ownership": "tsx --test src/authorization/job-ownership.integration.ts",
     "test:question-extraction-resilience": "tsx --test src/question-extraction/question-extraction-resilience.integration.ts",
