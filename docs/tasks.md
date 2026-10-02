@@ -466,8 +466,80 @@
         permission gate; whether it should also require `INSTITUTE_ADMIN` is an
         **open, unimplemented security follow-up**;
       - the F5.7 record above lists no other deferred item as closed.
-- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
-      — **NOT STARTED.** No F5.8 code, docs or test exists; use a fresh session.
+- [~] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+      — **P1 + P2 IMPLEMENTED + VALIDATED** on
+      `feature/f5-8-teacher-my-assignments` (worktree off `dev` `6171805`),
+      **pushed, not merged**. No F5.8 code existed before this.
+      P1 `8fed1c2`; P2 `955e249` (mismatch closure) + `8a46b25` (roster copy).
+      **Stopping for P3 approval; M-2 still deferred by instruction.**
+  - **P2 — frontend/backend authorization mismatch closure.** Every gate mirrors
+      a requirement the backend already enforced; no catalogue key, role, grant,
+      schema, migration or backend behaviour changed, and
+      `git diff --stat -- apps/api packages` is empty across both commits.
+      Thirteen files, all `apps/web/src`:
+      - `X-4/M-3` `components/app/app-sidebar.tsx` — academic console keys off
+        `academic-structure.read` instead of the admin role, grouped under
+        Administration. `/institute` and `/users` keep `users.read` +
+        `role: 'admin'` deliberately.
+      - `X-1` `materials/[materialId]/page.tsx` — cancel hidden without
+        `jobs.update`.
+      - `X-2` `subjects/new/page.tsx` — no create form without
+        `subjects.create`.
+      - `X-3` `paper-patterns/new/page.tsx` — no create form without
+        `paper-patterns.create`.
+      - `X-6` `assessments/[assessmentId]/page.tsx` + `.../results/page.tsx` —
+        Results entry and page mirror the backend `INSTITUTE_ADMIN`/`TEACHER`
+        role gate. No key expresses "may read another student's attempt", so it
+        mirrors the role instead of inventing one; the API stays the boundary.
+      - `X-7` `practice/page.tsx` + `lib/workspace-routes.ts` — `/practice`
+        added to `WORKSPACE_ROUTES` behind `practice.read`, role-agnostic;
+        starting a session is `practice.create` and is gated. Regression added to
+        `lib/workspace-routes.test.ts`.
+      - **Beyond the enumerated X-7 scope, same defect class:**
+        `practice/sessions/[sessionId]/page.tsx` — answering and completing are
+        `practice.update`, so a `practice.read`-only delegate was offered
+        controls that would 403. It reuses the existing read-only review branch
+        rather than threading a flag through five child components.
+      - `dashboard/page.tsx` — dead `isTeacher`/`canManage` import removed.
+      - **The copy P1 deferred:** `institute/academic/assignments-section.tsx`
+        *and* `placements-section.tsx` — both said the roster is "listable by
+        institute admins only". Since F5.5 `GET /users` is `users.read` with no
+        role gate, so a delegate *holding* `users.read` was told it was refused.
+        P1 recorded only the teacher one; **both** files carried it. Both now
+        name `users.read`.
+      - **Valid**: all seven required scripts 76/76 (`test:workspace-routes` 7/7
+        after the `/practice` addition, `test:api` 15/15, `test:academic` 35/35,
+        `test:platform-scope` 10/10, `test:paper-pattern-builder` 6/6,
+        `test:form-resolver` 2/2, `test:question-answer` 1/1) and the complete
+        web suite **95/95**; web `tsc --noEmit` clean, `next lint
+        --max-warnings=0` clean, `git diff --check` clean. **Browser validation
+        26/26** against a web image rebuilt from this worktree, with custom
+        roles/users created through the real API. Confirmed live: a
+        `academic-structure.read`-only delegate sees **Academic Structure** under
+        Administration, opens the console and sees the Academic Year UI, and is
+        refused `/institute` + `/users`; the three create/job pages are refused
+        for delegates without the key; the student reaches `/practice` with
+        working actions; teacher/admin/student nav and create surfaces unchanged
+        (P1 regression); `GET /practice/sessions` is 200 with the tenant header
+        and 403 without it.
+      - **Two gaps, both from the box running out of memory** (~520 MB free,
+        multi-GB swap) after that run: the `practice.update` session gate and
+        the roster copy are proven by tsc/lint/tests and by grepping the **live
+        compiled chunks** out of the running container, but **not** by a browser
+        click-through. Re-run `/tmp/opencode/p2-journeys.mjs` scenarios `s5`/`s6`
+        when memory allows. Also the teacher's results **ledger render** was
+        skipped by a probe that omitted `x-institute-id` — an assessment does
+        exist (`7ce844a4-…`); the probe is fixed in the script.
+      - **Negative rendering for X-1/X-2/X-3 is structurally unreachable** in a
+        browser: the routes carry `role: 'teacher'` and the immutable TEACHER
+        bundle already holds those keys, so nobody can hold the route without the
+        permission. Denial was proven at the route and the component gates in
+        the compiled artifact. Route gates were deliberately **not** weakened to
+        make this testable.
+      - `packages/contracts/dist` must be built once before
+        `test:form-resolver` / `test:question-answer`, which otherwise fail
+        `ERR_MODULE_NOT_FOUND`. Pre-existing artifact-ordering quirk, no source
+        change.
   - **P0 prerequisite closed 2026-09-30.** F5.7 is **merged into `dev`** as
       `7fa1b93` (`--no-ff`, from `7c828f2`), and `origin/dev` is at `7fa1b93`.
       The branch's one merge blocker is resolved: the two role suites
@@ -497,6 +569,49 @@
       registry from inside the build container). It was transient — the retry
       built cleanly with no Dockerfile or compose change. Prefer rebuilding
       normally; treat a repeat as container egress, not a project fault.
+  - **P1 — Teacher "My Assignments" surface.** The audit established the backend
+      already serves the correct self-scoped data
+      (`GET /memberships/scope` → `AcademicScopeService.describeScope()` →
+      the teacher's own active `teacher_assignments`), so P1 is frontend-only:
+      **no** new endpoint, service method, permission key, `assignments.read`
+      grant for TEACHER, `membershipId` parameter or authorization change, and
+      `git diff --stat -- apps/api packages` is empty. Four edits, all in
+      `apps/web/src`:
+      - `components/app/app-sidebar.tsx` — `My Assignments` entry in
+        `teacherNav`, `key: undefined` (the scope read carries no catalogue key
+        of its own), pointing at `/dashboard#my-assignments` rather than a new
+        page. It is a jump link into the existing dashboard surface.
+      - `components/app/academic-scope-card.tsx` — optional `id` so that anchor
+        resolves, plus the condition fix below.
+      - `app/(workspace)/dashboard/page.tsx` — passes `id="my-assignments"`.
+      - `app/(workspace)/institute/academic/assignments-section.tsx` — comment
+        only.
+      - Condition fix: the card decided "institute-wide" from the local
+        `isInstituteAdmin(institute)` role **or** `scope.kind`, so a custom
+        delegate could be shown differently from the API's own verdict. It now
+        reads `scope.kind === 'whole-institute'` alone, which is what
+        `describeScope()` returns for INSTITUTE_ADMIN.
+      - Comment fix: the header still claimed `GET /users` is
+        INSTITUTE_ADMIN-role-gated. Since F5.5 it is gated by `users.read` with
+        no role gate (`users.controller.ts`, and its own docblock records the
+        deliberate widening). The roster-unavailable **copy** below the teacher
+        picker still says "listable by institute admins only" — same stale
+        claim, but user-visible rather than a comment, so left for P2.
+        **[Closed in P2 `8a46b25`]** — and the same claim was in
+        `placements-section.tsx` too, which P1 had not recorded.
+      - **Valid:** `test:academic` 35/35, `test:workspace-routes` 6/6,
+        `test:api` 15/15, web `tsc --noEmit` clean, and browser validation
+        (see `docs/project-status.md` §F5.8 P1 checkpoint).
+      - **Deferred (M-2, deliberately not fixed here).** The teacher-assignment
+        *console* is inside `/institute/academic`, whose route gate is
+        `academic-structure.read`, while its own section reads
+        `assignments.read`. A custom role holding **only** `assignments.read`
+        therefore cannot reach the table that permission was written for. This
+        is a console-boundary/nav alignment problem, not an authorization
+        defect: the backend enforces each route correctly and no permission is
+        widened by changing the gate. Fixing it means deciding the section's
+        route key (split the route, or give the nav entry the union), which is
+        a P2+ decision. Carried forward unchanged.
 - [x] F5.9 — Partial-Permission Academic Console
   - IMPLEMENTED + VALIDATED 2026-09-28 on
     `feature/f5-9-academic-console-graceful-degradation` (off `dev` `3f51e2d`),

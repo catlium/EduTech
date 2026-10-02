@@ -87,6 +87,9 @@ export default function MaterialDetailPage() {
   // `materials.update`; clearing a correction (DELETE) is `materials.delete`.
   const canUpdate = hasPermission(institute, 'materials.update');
   const canDelete = hasPermission(institute, 'materials.delete');
+  // F5.8/X-1: cancelling here is `POST /jobs/:jobId/cancel` = `jobs.update`, the
+  // same key the Job Monitor gates on — not `materials.update`.
+  const canCancelJob = hasPermission(institute, 'jobs.update');
   const router = useRouter();
 
   const [material, setMaterial] = useState<MaterialResponse | null>(null);
@@ -413,6 +416,7 @@ export default function MaterialDetailPage() {
               isProcessing={isProcessing}
               enhanced={enhancement !== null}
               cancelling={cancelling}
+              canCancel={canCancelJob}
               onCancel={cancelProcessing}
               onResume={retryMaterial}
             />
@@ -503,6 +507,7 @@ function ProcessingLifecycle({
   isProcessing,
   enhanced,
   cancelling,
+  canCancel,
   onCancel,
   onResume,
 }: {
@@ -510,6 +515,7 @@ function ProcessingLifecycle({
   isProcessing: boolean;
   enhanced: boolean;
   cancelling: boolean;
+  canCancel: boolean;
   onCancel: () => void;
   onResume: () => void;
 }) {
@@ -566,7 +572,7 @@ function ProcessingLifecycle({
             )}
           </div>
           <Progress value={progress} />
-          {isProcessing && material.processJobId && (
+          {isProcessing && material.processJobId && canCancel && (
             <div className="flex items-center gap-2">
               {cancelling ? (
                 <Button size="sm" variant="outline" disabled>

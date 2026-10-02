@@ -16,7 +16,7 @@ import {
 
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { canManage, useTenant } from '@/lib/tenant';
+import { useTenant } from '@/lib/tenant';
 import { formatDateTime } from '@/lib/utils';
 import { PageHeader } from '@/components/app/page-header';
 import { SubjectCard } from '@/components/app/subject-card';
@@ -43,7 +43,6 @@ const PROCESSING_STATUSES = new Set(['UPLOADED', 'QUEUED', 'PROCESSING']);
 export default function DashboardPage() {
   const { institute } = useTenant();
   const { user } = useAuth();
-  const isTeacher = canManage(institute);
 
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
   const [materials, setMaterials] = useState<MaterialResponse[]>([]);
@@ -159,7 +158,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <AcademicScopeCard variant="teacher" />
+      <AcademicScopeCard variant="teacher" id="my-assignments" />
 
       <section>
         <SectionHeader title="Quick actions" />

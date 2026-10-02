@@ -8,7 +8,7 @@ import { BookOpen, ListChecks, Play } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import { useTenant } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import type {
   ChapterResponse,
   ContentListItem,
@@ -38,6 +38,9 @@ import {
 export default function PracticeHubPage() {
   const { institute } = useTenant();
   const router = useRouter();
+  // F5.8/X-7: the page's own load is `practice.read` (GET /practice/sessions);
+  // starting a session is `POST /practice/sessions` = `practice.create`.
+  const canCreate = hasPermission(institute, 'practice.create');
 
   const [sets, setSets] = useState<ContentListItem[]>([]);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
@@ -116,7 +119,7 @@ export default function PracticeHubPage() {
   );
 
   async function start(mode: 'FLASHCARD' | 'QUESTION') {
-    if (!institute) return;
+    if (!institute || !canCreate) return;
     setStarting(mode);
     try {
       const body =
@@ -151,8 +154,8 @@ export default function PracticeHubPage() {
     );
   }
 
-  const flashcardReady = sets.length > 0 && !!contentId;
-  const questionReady = wholeBank || (!!subjectId && !!chapterId && !!topicId);
+  const flashcardReady = canCreate && sets.length > 0 && !!contentId;
+  const questionReady = canCreate && (wholeBank || (!!subjectId && !!chapterId && !!topicId));
 
   return (
     <div>

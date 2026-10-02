@@ -10,7 +10,9 @@ export const PERMISSIONS_ALL_KEY = 'permissions-all';
 /**
  * Declares the permission an endpoint requires. Multiple keys are OR'd
  * (any grant satisfies the check). `R.manage` implies every action of R via
- * the grant layer. Absence of ANY declared grant denies by default.
+ * the grant layer. A declared key the caller holds no grant for is denied;
+ * a route that declares no permission at all is allowed through, so gating
+ * is opt-in per endpoint/controller.
  */
 export const RequiredPermission = (...permissions: readonly PermissionKey[]) =>
   SetMetadata(PERMISSIONS_KEY, permissions);

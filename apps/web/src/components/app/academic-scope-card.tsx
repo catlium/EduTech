@@ -3,7 +3,6 @@
 import { Compass, RefreshCw } from 'lucide-react';
 
 import { useMyScope } from '@/lib/use-my-scope';
-import { useTenant, isInstituteAdmin } from '@/lib/tenant';
 import { groupOfferingsByClass } from '@/lib/scope';
 import { SectionHeader } from '@/components/app/section-header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,15 +10,24 @@ import { Button } from '@/components/ui/button';
 
 // "My academic scope" — the actor's own Class → Subject / Year → Class →
 // Division scope from GET /memberships/scope. Presentation only; the API is
-// the authority.
-export function AcademicScopeCard({ variant }: { variant: 'teacher' | 'student' }) {
-  const { institute } = useTenant();
-  const isAdmin = isInstituteAdmin(institute);
+// the authority. `id` is the anchor the sidebar's "My Assignments" jump link
+// targets on the teacher dashboard.
+export function AcademicScopeCard({
+  variant,
+  id,
+}: {
+  variant: 'teacher' | 'student';
+  id?: string;
+}) {
   const { scope, error, refresh } = useMyScope();
-  const wholeInstitute = isAdmin || scope?.kind === 'whole-institute';
+  // `scope.kind` is the backend's own verdict (AcademicScopeService.describeScope
+  // returns 'whole-institute' for INSTITUTE_ADMIN and 'subject-set' otherwise).
+  // Deriving it again from the role would let a custom delegate holding the
+  // same effective rights read differently from the API, so trust the payload.
+  const wholeInstitute = scope?.kind === 'whole-institute';
 
   return (
-    <section>
+    <section id={id}>
       <SectionHeader title="My academic scope" />
       <Card>
         <CardContent className="px-4 py-4">

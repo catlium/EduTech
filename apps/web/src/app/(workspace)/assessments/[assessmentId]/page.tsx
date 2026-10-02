@@ -27,7 +27,7 @@ import {
   type ExportPreviewValue,
 } from '@/components/export/export-preview-dialog';
 import { formatDate, formatDuration } from '@/lib/utils';
-import { useTenant, hasPermission } from '@/lib/tenant';
+import { useTenant, hasPermission, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { ErrorState } from '@/components/app/error-state';
@@ -115,11 +115,17 @@ export default function AssessmentDetailPage() {
   // F5.6: PATCH /:id, the publish/activate/unpublish/complete transitions,
   // PATCH /:id/scope and the question add/remove/select calls are
   // `assessments.update`; DELETE /:id is `assessments.delete`; the export
-  // download is `exports.read`. Results + Preview stay ungated here so
-  // assessment results remain reachable for anyone with `assessments.read`.
+  // download is `exports.read`. Preview stays ungated for anyone with
+  // `assessments.read`; Results is role-gated below (F5.8/X-6).
   const canUpdate = hasPermission(institute, 'assessments.update');
   const canDelete = hasPermission(institute, 'assessments.delete');
   const canExport = hasPermission(institute, 'exports.read');
+  // F5.8/X-6: the Results surface is `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')`
+  // on the backend (attempts controller `assessments/:id/attempts` +
+  // `/analytics`, and the results export). No catalogue key expresses "may read
+  // another student's attempt", so the frontend mirrors that role gate instead of
+  // inventing one — the API stays the boundary.
+  const canViewResults = canManage(institute);
 
   const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
   const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
@@ -665,11 +671,13 @@ export default function AssessmentDetailPage() {
                 Complete
               </Button>
             )}
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/assessments/${assessment.id}/results`}>
-                <ClipboardList className="mr-1 size-3.5" /> Results
-              </Link>
-            </Button>
+            {canViewResults && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/assessments/${assessment.id}/results`}>
+                  <ClipboardList className="mr-1 size-3.5" /> Results
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" size="sm" asChild>
               <Link href={`/assessments/${assessment.id}/preview`}>
                 <Eye className="mr-1 size-3.5" /> Preview

@@ -35,7 +35,9 @@ merged** — merging is the caller's call). **F5.5 is IMPLEMENTED + VALIDATED
 `edd7f03`, **pushed, not merged**). **F5.7 — Roles Console + User Role
 Management is COMPLETE 2026-09-30** on
 `feature/f5-7-roles-console-user-role-management` (off `dev` `2a86984`),
-**unmerged and unpushed**; **F5.8 is NOT started.** With F5.5 the
+**unmerged and unpushed**; **F5.8 P1 (teacher "My Assignments" surface) is
+IMPLEMENTED + VALIDATED** on `feature/f5-8-teacher-my-assignments` (off `dev`
+`6171805`), **pushed, not merged** — P2 pending. With F5.5 the
 permission migration is complete: every permission-eligible route now runs the
 `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain with a
 `RequiredPermission` key, with role gating left only where it is the correct
@@ -114,13 +116,162 @@ them touched by F5.7 (both new suites and `docker-compose.validation.yml` are
 prettier-clean). The failure predates this work — it is a repo-wide formatting
 drift, not a regression, and was deliberately not mass-reformatted here.
 
+### F5.8 P1 checkpoint (2026-10-01) — teacher "My Assignments" surface
+
+**Branch `feature/f5-8-teacher-my-assignments`, off `dev` `6171805`, pushed, NOT
+merged. `main`/`origin/main`, `dev`/`origin/dev` and the unrelated dirty working
+tree (blackbook/proposal work) are untouched.**
+
+The work was done in a dedicated `git worktree` at `/tmp/opencode/f5-8` rather
+than by switching branches in place: the main working tree carries unrelated
+dirty edits to `docs/project-status.md` and `docs/tasks.md`, and both differ
+between `dev` and the checked-out F5.9 branch, so an in-place `checkout -b dev`
+would have been refused (and solving that would have meant stashing or committing
+someone else's work). The worktree branches from `dev` `6171805` and leaves every
+dirty file byte-for-byte in place.
+
+**The audit's conclusion drove the whole phase: the backend was already
+correct.** `GET /memberships/scope` → `AcademicScopeService.describeScope()`
+returns the actor's own active `teacher_assignments` joined to class/subject
+names, and admins get `kind: 'whole-institute'` from the same call. So P1 adds
+**no** endpoint, **no** service method, **no** permission key, **no**
+`assignments.read` grant for TEACHER, **no** `membershipId` parameter and **no**
+authorization change. `git diff --stat -- apps/api packages` is empty.
+
+**Delivered** (4 files, all `apps/web/src`, 3 behavioural lines + comments):
+
+- `components/app/app-sidebar.tsx` — a `My Assignments` entry in `teacherNav`
+  with `key: undefined` (the scope read carries no catalogue key), pointing at
+  `/dashboard#my-assignments`. It is a jump link into the existing dashboard
+  surface, not a duplicate page or a second fetch.
+- `components/app/academic-scope-card.tsx` — an optional `id` so that anchor
+  resolves, and the condition fix: institute-wide was decided from the local
+  `isInstituteAdmin(institute)` role **or** `scope.kind`, which let a custom
+  delegate be rendered differently from the API's own verdict. It now trusts
+  `scope.kind === 'whole-institute'` alone.
+- `app/(workspace)/dashboard/page.tsx` — passes `id="my-assignments"`.
+- `app/(workspace)/institute/academic/assignments-section.tsx` — comment only:
+  the header still claimed `GET /users` is INSTITUTE_ADMIN-role-gated; since F5.5
+  it is gated by `users.read` with no role gate.
+
+**Validation** (run directly in the worktree, not through the flaky `pnpm`
+wrapper): `test:academic` **35/35**, `test:workspace-routes` **6/6**, `test:api`
+**15/15**, web `tsc --noEmit` clean, `git diff --check` clean. The DB-gated API
+suites are unchanged by construction (backend byte-identical) and were not
+re-run as a P1 gate. Browser validation covered all five required assertions
+against the dockerized stack on a web image rebuilt from the F5.8 worktree.
+
+**Known issues / deferred**
+
+- **M-2 (deferred, deliberately not fixed in P1).** The teacher-assignment
+  console lives inside `/institute/academic`, whose route gate is
+  `academic-structure.read`, while its own section reads `assignments.read`. A
+  custom role holding **only** `assignments.read` cannot reach the table that
+  permission was written for. Not an authorization defect — each backend route
+  enforces its own key correctly and nothing is widened by touching the gate —
+  but a console-boundary/nav decision (split the route, or key the nav entry on
+  the union). P2+.
+- The roster-unavailable **copy** in `assignments-section.tsx` ("listable by
+  institute admins only") repeats the same stale `GET /users` claim as the fixed
+  comment. It is user-visible rather than a comment, so out of P1's scope.
+- `pnpm format:check` remains red repo-wide (pre-existing drift, 222 files, none
+  of them F5.8 files — deliberately not mass-reformatted).
+
 ### Exact recommended next task
 
-Start **F5.8 — Teacher "My Assignments" + Final Regression and Documentation**.
-F5.7 is merged, so no F5.7 cleanup is owed. P0 is closed: branch integrated,
-containers rebuilt and verified, validation database reproducible, and the
-baseline above is the reference to compare F5.8 against (**232/243 DB-gated with
-the same 11 known failures, 238 API unit, 94 web unit, 0 skipped**).
+Proceed to **F5.8 P2** — decide and implement the M-2 console boundary
+(`assignments.read` needing access to `/institute/academic`), plus the final
+regression pass and the F5.8 documentation close-out. P1 is a committed,
+pushed, unmerged branch; merging it into `dev` is the caller's call.
+
+### F5.8 P2 checkpoint (2026-10-01) — frontend/backend authorization mismatch closure
+
+**Branch `feature/f5-8-teacher-my-assignments`, two commits pushed, NOT merged:
+`955e249` (the mismatch closure, 11 files) and `8a46b25` (the roster copy, 2
+files). `main`, `dev` and the unrelated dirty main working tree are untouched.**
+
+**Every gate added here mirrors a requirement the backend already enforced.** No
+permission key, role, grant, schema, migration or backend behaviour changed;
+`git diff --stat -- apps/api packages` is empty across both commits.
+
+**Delivered** (`apps/web/src` only):
+
+- `components/app/app-sidebar.tsx` — the academic console keys off
+  `academic-structure.read` instead of the admin role, grouped under
+  Administration. `/institute` and `/users` deliberately keep `users.read` +
+  `role: 'admin'`.
+- `materials/[materialId]/page.tsx` — cancel hidden without `jobs.update`.
+- `subjects/new/page.tsx`, `paper-patterns/new/page.tsx` — deep links no longer
+  offer a create form without `subjects.create` / `paper-patterns.create`.
+- `assessments/[assessmentId]/page.tsx` + `.../results/page.tsx` — the Results
+  entry and page mirror the backend `INSTITUTE_ADMIN`/`TEACHER` role gate. No
+  catalogue key expresses "may read another student's attempt", so it mirrors the
+  role rather than inventing one. This also retires P1's stale header comment.
+- `practice/page.tsx` + `lib/workspace-routes.ts` — `/practice` added to
+  `WORKSPACE_ROUTES` behind `practice.read`, role-agnostic (the shared nav serves
+  teachers and students). Starting a session is `practice.create` and is gated.
+- `practice/sessions/[sessionId]/page.tsx` — **beyond the enumerated X-7 scope,
+  added because it is the same class of defect**: answering and completing are
+  `practice.update`, so a `practice.read`-only delegate was offered controls that
+  would 403. It now reuses the existing read-only review branch instead of
+  threading a flag through five child components.
+- `dashboard/page.tsx` — dropped the dead `isTeacher`/`canManage` import.
+- `institute/academic/assignments-section.tsx` + `placements-section.tsx` — the
+  copy P1 deferred. Both notices claimed the roster is "listable by institute
+  admins only"; since F5.5 `GET /users` is `users.read` with no role gate, so a
+  delegate *holding* `users.read` was being told it was refused. **Both** files
+  carried the claim — P1 recorded only the teacher one. Both now name
+  `users.read`.
+
+**Validation.** `test:workspace-routes` 7/7, `test:api` 15/15, `test:academic`
+35/35, `test:platform-scope` 10/10, `test:paper-pattern-builder` 6/6,
+`test:form-resolver` 2/2, `test:question-answer` 1/1 (76/76), and the complete
+web suite **95/95**. Web `tsc --noEmit` clean, `next lint --max-warnings=0`
+clean, `git diff --check` clean. Note `packages/contracts/dist` had to be built
+once: the form-resolver/question-answer scripts fail `ERR_MODULE_NOT_FOUND`
+without it. That is a pre-existing artifact-ordering quirk, not a source change.
+
+**Browser validation: 26/26 checks passed**, driven by the repo's own zero-dep
+CDP harness (`scripts/e2e/lib/browser.mjs`) against a web image rebuilt from this
+worktree, using custom roles/users created through the real API (never direct DB
+writes). Confirmed in the live UI: a delegate holding only
+`academic-structure.read` sees **Academic Structure** under Administration, opens
+the console, sees the Academic Year UI, and is refused `/institute` and `/users`;
+`/subjects/new`, `/paper-patterns/new` and `/materials` are refused for delegates
+without the respective key; the student reaches `/practice` with working actions;
+teacher/admin/student nav and create surfaces are unchanged (P1 regression);
+`GET /practice/sessions` returns 200 with the tenant header and 403 without it.
+
+**Known gaps, stated plainly.**
+
+- The `practice.update` session gate and the roster copy are verified by tsc,
+  lint, tests and by grepping the **live compiled chunks** out of the running
+  container — but **not** by a browser click-through. The box ran out of memory
+  (~520 MB free, multi-GB swap) and headless Chrome stopped launching reliably
+  after the 26/26 run. Both edits are small and their compiled output was
+  confirmed; a re-run of `/tmp/opencode/p2-journeys.mjs` (scenarios `s5`/`s6`)
+  should still be done when memory allows.
+- `GET /assessments/:id/attempts` for a teacher was asserted 403-for-student
+  directly, but the teacher's results **ledger render** was skipped because that
+  probe omitted the `x-institute-id` header. An assessment does exist
+  (`7ce844a4-…`); only the probe was wrong, and it is fixed in the script.
+- Negative rendering for X-1/X-2/X-3 is structurally unreachable in the browser:
+  the routes carry `role: 'teacher'` and the immutable TEACHER grant bundle
+  already contains those keys, so no user can hold the route without the
+  permission. Denial was proven at the route; the component gates were proven in
+  the compiled artifact. Route gates were deliberately not weakened to make this
+  testable.
+- **M-2 remains deferred** by explicit instruction, unchanged from P1.
+- `pnpm format:check` remains red repo-wide (pre-existing drift; every touched
+  file was already a Prettier warning at HEAD — deliberately not mass-formatted).
+
+### Exact recommended next task
+
+Re-run `/tmp/opencode/p2-journeys.mjs` for scenarios `s5`/`s6` once memory
+allows, to close the two click-through gaps above. Then decide **M-2**
+(`assignments.read` cannot reach the `/institute/academic` console) and the
+F5.8 merge into `dev` — both are the caller's call. P2 is committed, pushed and
+unmerged; **stopping here for P3 approval.**
 
 ### Completed work
 
@@ -338,8 +489,9 @@ the same 11 known failures, 238 API unit, 94 web unit, 0 skipped**).
       **`users.update` AND `INSTITUTE_ADMIN`**, API authoritative. Browser 17/17
       assertions and the DB-backed validation 30/30 passed. See the F5.7 entry
       below for the checkpoint, the recovery note and the deferred list.
-- [ ] F5.8 — Teacher "My Assignments" + Final Regression and Documentation —
-      **NOT STARTED**
+- [~] F5.8 — Teacher "My Assignments" + Final Regression and Documentation —
+      **P1 IMPLEMENTED + VALIDATED** (teacher "My Assignments" surface); P2
+      pending. See the F5.8 P1 checkpoint below.
 
 ### Deferred work
 
