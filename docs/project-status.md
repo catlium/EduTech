@@ -2,6 +2,34 @@
 
 ## Phase F5 — Permission Enforcement & Delegation on the Teaching/Examination Surface
 
+### F5.8 integration checkpoint (2026-10-02) — F5.8 MERGED INTO `dev`
+
+**F5.8 (teacher "My Assignments") is merged into `dev`** as **`d1e3d31`**
+(`Merge branch 'feature/f5-8-teacher-my-assignments' into dev`, `--no-ff`,
+parents `6171805` + `f51714d`), branched from `dev` `6171805`. **Conflict-free** —
+`6171805` is the exact merge base, so `git diff dev feature/f5-8-teacher-my-assignments`
+is **empty**: the merged `dev` tree is byte-identical to the P1/P2/P3-validated
+feature HEAD `f51714d`. Five F5.8 commits came across: `8fed1c2` (P1 My
+Assignments surface), `955e249` + `8a46b25` (P2 frontend/backend authorization
+alignment), `45cb3cd` (P2 checkpoint docs), `f51714d` (P3 follow-ups: the
+`RequiredPermission` doc comment corrected to match `PermissionGuard`'s real
+opt-in default, and the 22-assertion `remaining-surface` authz suite wired to a
+package script). Nothing else was merged. `main`/`origin/main` (`ef4de7e`),
+`stash@{0}` (`bacf0ca`) and the parent's unrelated dirty working tree
+(blackbook/proposal work) are untouched.
+
+Re-validated on the merged `dev` tree (dedicated clean worktree
+`.worktrees/f5-8-integration`, throwaway `docker-compose.validation.yml` DB,
+48 migrations applied): `test:authz-regression` **8/8** ·
+`test:remaining-surface-authz` **22/22** · API unit **238/238** · web unit
+**95/95** · typecheck **10/10** (forced, 0 cached) · API and web **build clean**
+· **0 skipped** across all 32 DB-gated suites. Baseline fixture collisions are
+preserved, not fixed: `test:institute-crud` 11/11 and
+`test:platform-user-lifecycle` 10/10 on a virgin DB (the documented 3 and 8
+collisions only appear against a shared/dirty DB). Browser re-validation was
+not required — the merged tree is provably identical to the tree P1/P2 validated
+in real Chrome, and the app stack is down (no live containers to be stale).
+
 **Status: F5.0 COMPLETE AND INTEGRATED INTO `dev`.** (Corrected 2026-09-26 at
 the start of F5.1: this entry previously said F5.0 lived on the feature branch
 only and was not merged. It was merged into `dev` as **`5230bf6`**
@@ -35,9 +63,11 @@ merged** — merging is the caller's call). **F5.5 is IMPLEMENTED + VALIDATED
 `edd7f03`, **pushed, not merged**). **F5.7 — Roles Console + User Role
 Management is COMPLETE 2026-09-30** on
 `feature/f5-7-roles-console-user-role-management` (off `dev` `2a86984`),
-**unmerged and unpushed**; **F5.8 P1 (teacher "My Assignments" surface) is
-IMPLEMENTED + VALIDATED** on `feature/f5-8-teacher-my-assignments` (off `dev`
-`6171805`), **pushed, not merged** — P2 pending. With F5.5 the
+**unmerged and unpushed**; **F5.8 (teacher "My Assignments" surface) is
+IMPLEMENTED + VALIDATED + INTEGRATED INTO `dev`** — P1/P2/P3 merged as
+**`d1e3d31`** on 2026-10-02 (see the F5.8 integration checkpoint above); P1
+was implemented on `feature/f5-8-teacher-my-assignments` (off `dev`
+`6171805`). With F5.5 the
 permission migration is complete: every permission-eligible route now runs the
 `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard` chain with a
 `RequiredPermission` key, with role gating left only where it is the correct
