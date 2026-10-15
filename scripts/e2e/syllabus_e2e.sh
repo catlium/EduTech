@@ -54,17 +54,22 @@ body_missing() { # body_missing <substring> <label>
   if ! grep -qF "$sub" "$BODY_FILE"; then PASS=$((PASS+1));
   else FAIL=$((FAIL+1)); FAILURES+=("$label: unexpected '$sub' in body"); echo "  FAIL $label (found '$sub')"; fi
 }
+csrf_of() { # csrf_of <jar> — the double-submit token cookie for state-changing calls
+  grep -P "\tcsrf_token\t" "$1" 2>/dev/null | tail -1 | awk '{print $NF}'
+}
 # req <method> <path> [curl args...] — writes body to $BODY_FILE, echoes http code
 req() {
   local method="$1" path="$2"; shift 2
-  local code
-  code=$(curl -s -b "$CJ" -X "$method" "$BASE$path" "$@" -o "$BODY_FILE" -w '%{http_code}')
+  local code csrf
+  csrf=$(csrf_of "$CJ")
+  code=$(curl -s -b "$CJ" -X "$method" "$BASE$path" ${csrf:+-H "x-csrf-token: $csrf"} "$@" -o "$BODY_FILE" -w '%{http_code}')
   echo "$code"
 }
 req_as() { # req_as <jar> <method> <path> [curl args...]
   local jar="$1" method="$2" path="$3"; shift 3
-  local code
-  code=$(curl -s -b "$jar" -X "$method" "$BASE$path" "$@" -o "$BODY_FILE" -w '%{http_code}')
+  local code csrf
+  csrf=$(csrf_of "$jar")
+  code=$(curl -s -b "$jar" -X "$method" "$BASE$path" ${csrf:+-H "x-csrf-token: $csrf"} "$@" -o "$BODY_FILE" -w '%{http_code}')
   echo "$code"
 }
 jget() { # jget <key> — reads $BODY_FILE, prints first value for key
@@ -181,13 +186,29 @@ body_has '"confirmedAt":' "SYL-06 confirmedAt set"
 CH=$(req GET "/academic/subjects/$SUBJ/chapters" -H "x-institute-id: $DEMO")
 ok "$CH" 200 "SYL-06 chapters list 200"
 body_has '"status":"active"' "SYL-06 chapters created active"
+# B1: confirmation must persist topic rows — verify the chapter-topics API.
+CH1=$(python3 -c "import json;d=json.load(open('$BODY_FILE'));print(d['chapters'][0]['id'] if d.get('chapters') else '')")
+if [ -n "$CH1" ]; then
+  TP=$(req GET "/academic/chapters/$CH1/topics" -H "x-institute-id: $DEMO")
+  ok "$TP" 200 "SYL-06 chapter topics 200"
+  TCOUNT=$(python3 -c "import json;d=json.load(open('$BODY_FILE'));print(len(d.get('topics',[])))")
+  if [ "$TCOUNT" -gt 0 ]; then PASS=$((PASS+1)); echo "  ok SYL-06 confirm persisted $TCOUNT topic row(s)";
+  else FAIL=$((FAIL+1)); FAILURES+=("SYL-06 confirm persisted no topic rows for chapter $CH1"); echo "  FAIL SYL-06 no topic rows persisted"; fi
+else
+  FAIL=$((FAIL+1)); FAILURES+=("SYL-06 no chapter row to inspect topics for"); echo "  FAIL SYL-06 no chapter to inspect"
+fi
 req GET "/syllabus/$SYL" -H "x-institute-id: $DEMO" >/dev/null
 body_has '"units"' "SYL-06 units present in detail"
 
 echo "== SYL-07 terminal-state guards (CONFIRMED) =="
-RP=$(req PATCH "/syllabus/$SYL" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" \
+# Title stays editable while locked (typo fixes don't need an unlock);
+# data fields are immutable on a locked CONFIRMED row.
+RT=$(req PATCH "/syllabus/$SYL" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" \
   -d '{"title":"nope"}')
-ok "$RP" 409 "SYL-07 patch after confirm -> 409"
+ok "$RT" 200 "SYL-07 title patch after confirm -> 200 (allowed while locked)"
+RP=$(req PATCH "/syllabus/$SYL" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO" \
+  -d '{"program":"nope"}')
+ok "$RP" 409 "SYL-07 data patch after confirm -> 409"
 RC=$(req POST "/syllabus/$SYL/confirm" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO")
 ok "$RC" 409 "SYL-07 confirm again -> 409"
 AR=$(req POST "/syllabus/$SYL/archive" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO")
@@ -201,7 +222,7 @@ CS2=$(req POST /academic/subjects -H 'Content-Type: application/json' -H "x-inst
   -d "{\"name\":\"Physics $RAND\",\"slug\":\"phy-$RAND\"}")
 ok "$CS2" 201 "SYL-08 create subject 201"
 SUBJ2=$(jget id)
-CU=$(curl -s -b "$CJ" -X POST "$BASE/syllabus/upload" -H "x-institute-id: $DEMO" \
+CU=$(curl -s -b "$CJ" -X POST "$BASE/syllabus/upload" -H "x-institute-id: $DEMO" -H "x-csrf-token: $(csrf_of "$CJ")" \
   -F "subjectId=$SUBJ2" -F "title=Physics syllabus $RAND" -F "file=@$TXT_FILE;type=text/plain" \
   -o "$BODY_FILE" -w '%{http_code}')
 ok "$CU" 201 "SYL-08 upload 201"
@@ -240,8 +261,10 @@ SA=$(req_as "$CJS" POST "/syllabus/$SYL2/analyze" -H 'Content-Type: application/
 ok "$SA" 403 "SYL-10 student analyze -> 403"
 SC=$(req_as "$CJS" POST "/syllabus/$SYL2/confirm" -H 'Content-Type: application/json' -H "x-institute-id: $DEMO")
 ok "$SC" 403 "SYL-10 student confirm -> 403"
+# Subject-scope reads 404 (not 403) for out-of-scope subjects — existence is
+# never leaked to a same-institute student without enrollment.
 SR=$(req_as "$CJS" GET "/syllabus/$SYL2" -H "x-institute-id: $DEMO")
-ok "$SR" 200 "SYL-10 student read -> 200"
+ok "$SR" 404 "SYL-10 student out-of-scope read -> 404"
 
 echo "== SYL-11 cross-tenant isolation =="
 XN=$(req GET "/syllabus/$SYL2" -H "x-institute-id: 11111111-1111-1111-1111-111111111111")

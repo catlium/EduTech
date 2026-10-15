@@ -394,6 +394,70 @@
     enforcement, and neither may widen a permission — they belong with the
     Roles Console work.
 
+## B1 — Syllabus Chapter/Topic Extraction Reliability (2026-10-15, IMPLEMENTED + VALIDATED, UNCOMMITTED)
+
+> Audit follow-up. F4 (`feature/fix-syllabus-topics`, merged `7805814`) put the
+> ≥1-topic-per-chapter invariant in the worker source, but the live `worker-ai`
+> image was stale (in-container schema still `default_factory=list`, prompt
+> without the topic rule), so syllabi analyzed through it carried topic-less
+> chapters into confirm; the audit also flagged two `applyStructure`
+> reconciliation defects. Scope: rebuild + live verification, the two
+> reconciliation fixes, a confirm-persists-topics regression test, and the
+> syllabus E2E extension. **No B2/B3; no data mutation.** Branch
+> `feature/b1-syllabus-topic-extraction-reliability` (off
+> `feature/f5-9-academic-console-graceful-degradation` `72dfd2a`, unrelated
+> working-tree changes preserved; `stash@{0} bacf0ca` untouched); prepared for
+> review — **not committed, not pushed, not merged**.
+
+- [x] **Live worker rebuilt + verified.** In-container check proved the running
+      `worker-ai` pre-rebuild carried the pre-F4 schema/prompt; rebuilt `api` +
+      `worker-ai` from current source
+      (`docker-compose.yml` + `docker-compose.dev.yml`), then re-verified inside
+      the containers: `SyllabusChapter.topics` is `Field(min_length=1)`, the
+      prompt contains the "at least one topic … empty topics list is invalid"
+      rule, and the API dist carries the fixes below.
+- [x] **`applyStructure` fix 1 — `usedChapterIds` consumption**
+      (`apps/api/src/syllabus/syllabus.service.ts`): the set was created and
+      consulted by `matchChapter`/`removedChapters` but never populated, so
+      every confirm archived **all** existing chapters (even reused ones) and
+      one existing chapter could be matched by two structure chapters. Fix: one
+      `usedChapterIds.add(chapterId)` on the reuse branch.
+- [x] **`applyStructure` fix 2 — archive topics of removed chapters**: topics
+      under a chapter archived by reconciliation stayed `active` (orphaned live
+      rows under a hidden parent). Fix: the removed-chapters block now archives
+      their active topics too, recorded in `report.removedTopics`. Status flips
+      only — no deletes, no destructive cleanup.
+- [x] **Regression test** `apps/api/src/syllabus/syllabus-confirm.integration.ts`
+      (`test:syllabus-confirm`, TEST_DATABASE_URL-gated, repo integration
+      convention): confirm persists chapter+topic rows; re-confirm reuses the
+      matched chapter (identity + active preserved); removed chapter and its
+      topics are archived. Verified to **fail** on the pre-fix service and pass
+      with it.
+- [x] **E2E** `scripts/e2e/syllabus_e2e.sh`: SYL-06 now fetches
+      `GET /academic/chapters/:id/topics` after confirm and asserts topic rows
+      exist. Harness fixes required to run at all against the current API:
+      pass the `csrf_token` cookie as `x-csrf-token` on state-changing calls
+      (global `CsrfGuard` since `c40e0dc`; the suite last ran against the
+      month-old API image), and two stale expectations corrected to the
+      intentional current contracts (title patch while locked → 200; subject-
+      scope read outside the student's scope → 404 existence non-leak). Full
+      suite **PASS=64 FAIL=0** on the rebuilt stack with real OmniRoute AI.
+- [x] **Topic-less data identified (read-only; repair pending approval).**
+      Demo institute: `993786df-…` "test 1" v2 CONFIRMED+locked (subject Maths
+      `18407940-…`, 9 topic-less chapters in the hierarchy) and `109abd37-…`
+      "Computer science" v2 PROPOSED (subject English, 7/8 chapters topic-less).
+      Repair procedure recorded in the session report — new-version re-analyze+
+      confirm for the confirmed row, structure PATCH or re-analysis for the
+      proposed one. **Not executed.**
+- [x] **Validation.** Worker `pytest tests/test_syllabus.py
+      tests/test_aggregation.py` 15/15; API `syllabus-validator.test.ts` 4/4;
+      new integration suite green (and red pre-fix); `tsc --noEmit` + eslint
+      clean on the changed files; `bash -n` on the E2E; E2E 64/0; running
+      containers verified, not merely image builds. Graphify graph updated.
+- [ ] Commit this checkpoint (pending reviewer approval of the diff),
+      then `docs` checkpoint + optional data repair under separate
+      authorization.
+
 
 ## Phase F1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
 
