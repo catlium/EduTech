@@ -1,5 +1,25 @@
 # Project Status
 
+## B2 — Question Bank extraction cleanup (2026-10-16, IMPLEMENTED + VALIDATED)
+
+### Latest checkpoint
+
+**B2 is IMPLEMENTED + VALIDATED on `feature/b2-question-bank-extraction-cleanup`** (clean worktree `/tmp/edutech-b2`, branched off verified `dev` `17dc44c`; the pre-existing dirty working tree and `stash@{0} bacf0ca` in the main checkout are preserved and were not touched; **not yet committed/pushed** at the time of writing). Directive: retire the obsolete material-driven "Extract" surface and make "Extract from Source" follow one consistent contract.
+
+| area | before | after |
+|---|---|---|
+| material-driven "Extract" | `QuestionExtractionDialog` + "Extract" button → `POST /questions/extract-from-material`, `requestExtraction` + `assertMaterial`, `ExtractQuestionsDto` | removed end-to-end (web caller, dialog file, API route, service method + guard, DTO). The stray-experiment deletion left uncommitted since F5.0 is now the authorized retirement |
+| `QUESTION_EXTRACT` sweep + REVIEW surface | owned the material-driven flow | **kept** — legacy/queued material jobs still drain; `list/update/accept/import/discard` + status poll unchanged |
+| "Extract from Source" mode | paper controllers called `requestTextExtraction`/`requestFileExtraction` with no mode flag → silently ran bank mode, so the paper page navigated to a paper that was never created | explicit `intoPaper` flag; question-papers controllers pass `true` (create + link a paper), Question Bank controllers default to bank mode |
+| result contract | bank responses **omitted** `paperId` while `ExtractQuestionPaperResponseSchema` declares it nullable | `ExtractionEnqueueResult.paperId: string \| null`, always emitted (`null` in bank mode) |
+| regression coverage | none at the controller boundary | new `question-extraction-mode.integration.ts` (5/5); `question-paper-authz.integration.ts` matrix 65 → 64 routes |
+
+**Validation.** `pnpm typecheck` 10/10; `pnpm lint` green (web has no lint script); API unit suite **238/238**; new mode test **5/5**; contracts/database built so the unit suite resolves `@catlium/*` dist. DB-backed integration suites **skip** here (`TEST_DATABASE_URL` unset and Postgres is not host-reachable), so the authz matrix edit is code-verified, not executed. Changed files: `question-extraction.controller.ts`, `question-extraction.service.ts`, `dto/question-extraction.dto.ts`, `question-paper-extraction.service.ts`, `question-papers.controller.ts`, `question-paper-authz.integration.ts`, new `question-extraction-mode.integration.ts`, `apps/api/package.json` (+1 script), `apps/web/src/app/(workspace)/questions/page.tsx`, deleted `apps/web/src/components/questions/question-extraction-dialog.tsx`, plus `question-lifecycle.md` §8a, `docs/tasks.md` and this file.
+
+### Exact recommended next task
+
+**Review the B2 diff and approve the checkpoint commit** on `feature/b2-question-bank-extraction-cleanup`, then push the branch. Do **not** merge into `dev`/`main` without explicit authorization; separately, `origin/dev` is divergent (`17dc44c` is not an ancestor of `origin/dev` `3d13b27…`), so publishing `dev` is its own blocked decision. B3 remains untouched and unauthorized.
+
 ## B1 — Syllabus Chapter/Topic Extraction Reliability (2026-10-15, IMPLEMENTED + VALIDATED, UNCOMMITTED)
 
 ### Latest checkpoint
@@ -376,7 +396,9 @@ unmerged; **stopping here for P3 approval.**
       the retained `QuestionSourceExtractionDialog` targets different
       endpoints. It is **left uncommitted and unstaged**; committing it would
       silently drop material-driven extraction. Recorded in
-      `question-lifecycle.md` §8a, pending an explicit decision.
+      `question-lifecycle.md` §8a, pending an explicit decision. **Superseded by
+      B2 (2026-10-16):** B2 is the directive that retires the material-driven
+      surface and removes the route + dialog together.
 - [x] **Label normalization:** `F.1` → `F1` (13 sites) so the track reads
       F1, F2, F3.1–F3.4, F4, F5.0–F5.8.
 - [x] **Stale "not merged" claims corrected.** F3.4 and F1 both still claimed

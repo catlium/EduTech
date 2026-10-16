@@ -666,6 +666,53 @@
     enforcement, and neither may widen a permission — they belong with the
     Roles Console work.
 
+## B2 — Question Bank extraction cleanup (2026-10-16, IMPLEMENTED + VALIDATED)
+
+> Directive: retire the obsolete material-driven "Extract" surface and make
+> "Extract from Source" follow one consistent contract. Branch
+> `feature/b2-question-bank-extraction-cleanup` (off verified `dev` `17dc44c`;
+> the pre-existing dirty working tree and `stash@{0} bacf0ca` were preserved
+> untouched — B2 was built in a separate worktree). The working-tree deletion
+> of the material dialog left uncommitted since the 2026-09-26 F5.0
+> reconciliation is now the authorized change (see `question-lifecycle.md` §8a).
+> **No schema/data mutation.** Do NOT merge to `dev`/`main` without
+> authorization. `origin/dev` was found divergent (`17dc44c` is not an ancestor
+> of `origin/dev` `3d13b27…`) — publishing `dev` is a separate, blocked decision.
+
+- [x] **Retired the material-driven surface (web + API together).**
+      Deleted `apps/web/src/components/questions/question-extraction-dialog.tsx`
+      and its "Extract" button / state / element in
+      `apps/web/src/app/(workspace)/questions/page.tsx`; removed
+      `POST /questions/extract-from-material` and its `ExtractQuestionsDto`
+      import (`question-extraction.controller.ts`), the `requestExtraction`
+      method and `assertMaterial` guard (`question-extraction.service.ts`), and
+      `ExtractQuestionsDto` (`dto/question-extraction.dto.ts`). The legacy
+      `QUESTION_EXTRACT` sweep + whole REVIEW surface (`list/update/accept/
+      import/discard`, status poll) are intentionally kept, so any
+      already-queued material job still drains and the mode-wiring test can
+      assert the handler is gone.
+- [x] **"Extract from Source" contract fixed.** `requestTextExtraction` /
+      `requestFileExtraction` now take an explicit `intoPaper` flag (default
+      `false`) instead of an ignored-in-practice `paperId?: string`. The
+      question-papers controllers pass `true` (paper mode → a Question Paper is
+      created and linked, so `…/:paperId?extraction=:jobId` resolves); the
+      Question Bank controllers default to bank mode.
+      `ExtractionEnqueueResult.paperId` is now `string | null` and always
+      emitted (`null` in bank mode), matching
+      `ExtractQuestionPaperResponseSchema`.
+- [x] **Regression test**
+      `apps/api/src/question-extraction/question-extraction-mode.integration.ts`
+      (`test:question-extraction-mode`, run via `tsx` because controllers use
+      TS parameter properties; no DB): asserts the retired handler is absent,
+      bank controllers call in bank mode, and both question-papers controllers
+      call in paper mode. Updated `question-paper-authz.integration.ts` route
+      matrix (65 → 64 audited routes; dropped `extract`).
+- [x] **Validation:** `pnpm typecheck` 10/10; `pnpm lint` green (web has no lint
+      script); API unit suite 238/238; new mode test 5/5. DB-backed integration
+      suites skip here (`TEST_DATABASE_URL` unset, no host-reachable Postgres).
+- [ ] Commit + push the feature branch, then docs checkpoint (this entry +
+      `project-status.md` + `question-lifecycle.md` §8a).
+
 ## B1 — Syllabus Chapter/Topic Extraction Reliability (2026-10-15, IMPLEMENTED + VALIDATED, UNCOMMITTED)
 
 > Audit follow-up. F4 (`feature/fix-syllabus-topics`, merged `7805814`) put the

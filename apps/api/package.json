@@ -38,6 +38,7 @@
     "test:phase-m-remediation": "tsx --test src/authorization/phase-m-remediation.integration.ts",
     "test:job-ownership": "tsx --test src/authorization/job-ownership.integration.ts",
     "test:question-extraction-resilience": "tsx --test src/question-extraction/question-extraction-resilience.integration.ts",
+    "test:question-extraction-mode": "tsx --test src/question-extraction/question-extraction-mode.integration.ts",
     "test:question-answer-generation": "tsx --test src/question-extraction/question-answer-generation.integration.ts",
     "test:question-bank-sets": "tsx --test src/questions/question-bank-sets.integration.ts",
     "test:question-paper-authz": "tsx --test src/questions/question-paper-authz.integration.ts",

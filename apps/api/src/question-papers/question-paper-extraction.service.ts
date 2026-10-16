@@ -83,14 +83,14 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
 
   /** Guard + queue extraction from pasted paper text. Idempotent: an active
    *  job is reused; an already-completed run for the same text (its SHA-256)
-   *  returns the existing run directly (COMPLETED). With `paperId` the
-   *  questions are linked into that paper; without it the extraction fills the
-   *  Question Bank (REVIEW candidates only, no paper). */
+   *  returns the existing run directly (COMPLETED). `intoPaper` selects the
+   *  mode: true creates a Question Paper and links the questions into it;
+   *  false/fills the Question Bank REVIEW tray only (no paper). */
   async requestTextExtraction(
     instituteId: string,
     text: string,
     userId: string,
-    paperId?: string,
+    intoPaper = false,
   ): Promise<ExtractionEnqueueResult> {
     const trimmed = text.trim();
     if (!trimmed) {
@@ -101,14 +101,14 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       kind: 'text',
       text: trimmed,
       sourceHash,
-    }, paperId);
+    }, intoPaper);
   }
 
   /** Guard + queue extraction from an uploaded paper file. The file is stored
    *  so the sweep can pass it to the OCR service; storage is transient and
-   *  removed after processing. Idempotent on the file's SHA-256. With `paperId`
-   *  questions are linked into that paper; without it they fill the Question
-   *  Bank. */
+   *  removed after processing. Idempotent on the file's SHA-256. `intoPaper`
+   *  selects the mode: true creates a Question Paper and links the questions
+   *  into it; false fills the Question Bank REVIEW tray only (no paper). */
   async requestFileExtraction(
     instituteId: string,
     file: {
@@ -117,7 +117,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       mimetype: string;
     },
     userId: string,
-    paperId?: string,
+    intoPaper = false,
   ): Promise<ExtractionEnqueueResult> {
     if (file.buffer.length === 0) {
       throw new BadRequestException('Uploaded file is empty');
@@ -133,7 +133,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
     }
     const sourceHash = sha256(file.buffer);
     const storageKey = `qp-extraction/${instituteId}/${createHash('sha256').update(sourceHash).digest('hex').slice(0, 12)}/source.${extOf(mimeType)}`;
-    const reused = await this.reuseFor(instituteId, sourceHash, paperId);
+    const reused = await this.reuseFor(instituteId, sourceHash, intoPaper);
     if (reused) return reused;
     await this.storage.save({ key: storageKey, data: file.buffer });
     try {
@@ -143,7 +143,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
         mimeType,
         fileName: file.originalname.slice(0, 255) || 'source',
         sourceHash,
-      }, paperId);
+      }, intoPaper);
     } catch (error) {
       await this.storage.delete(storageKey).catch(() => undefined);
       throw error;
@@ -421,7 +421,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
 
     await this.jobsService.updateJobStatus(jobId, 'completed', {
       status: candidateCount === 0 ? 'no-questions' : 'extracted',
-      ...(paperId ? { paperId } : {}),
+      paperId: paperId ?? null,
       source,
       candidateCount,
       reviewRequiredCount,
@@ -497,13 +497,13 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
     sourceHash: string,
     userId: string,
     payload: Record<string, unknown>,
-    paperId?: string,
+    intoPaper = false,
   ): Promise<ExtractionEnqueueResult> {
     // Reuse the QUEUED/processing run (or the completed one) that already
     // exists for the source in the same mode — never a duplicate resource.
     // A paper-mode reuse returns the existing paper; a bank-mode reuse returns
-    // a linkless run (paperId absent).
-    const reused = await this.reuseFor(instituteId, sourceHash, paperId);
+    // a linkless run (paperId null).
+    const reused = await this.reuseFor(instituteId, sourceHash, intoPaper);
     if (reused) {
       await this.dropStoredSource(payload);
       return reused;
@@ -513,12 +513,12 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
     // sweep fills it with extracted questions, so the teacher lands on a real
     // paper page (with live progress) the moment the request returns. Bank
     // mode has no resource to create; the sweep fills the REVIEW tray.
-    if (paperId) {
+    if (intoPaper) {
       return this.enqueueIntoPaper(instituteId, userId, payload);
     }
 
     const job = await this.jobsService.insertJob(instituteId, TYPE, payload, userId);
-    return { jobId: job.id, status: 'QUEUED', reused: false };
+    return { jobId: job.id, status: 'QUEUED', reused: false, paperId: null };
   }
 
   private async enqueueIntoPaper(
@@ -554,14 +554,14 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
 
   /** Reuse the QUEUED/processing run (or the completed extraction) that
    *  already exists for a source in the same mode → never a duplicate
-   *  resource. Paper runs need a paperId (a prior bank run of the same source
+   *  resource. Paper runs need a paper (a prior bank run of the same source
    *  must not short-circuit a paper extraction, and vice versa). */
   private async reuseFor(
     instituteId: string,
     sourceHash: string,
-    paperId?: string,
+    intoPaper: boolean,
   ): Promise<ExtractionEnqueueResult | null> {
-    const sameMode = paperId
+    const sameMode = intoPaper
       ? sql`${jobs.payload}->>'paperId' IS NOT NULL`
       : sql`${jobs.payload}->>'paperId' IS NULL`;
     const [active] = await this.db
@@ -579,7 +579,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       .orderBy(desc(jobs.createdAt))
       .limit(1);
     if (active?.id) {
-      return { jobId: active.id, status: 'QUEUED', reused: true, paperId: active.paperId ?? undefined };
+      return { jobId: active.id, status: 'QUEUED', reused: true, paperId: active.paperId ?? null };
     }
     const [completed] = await this.db
       .select({ id: jobs.id, paperId: sql<string | null>`${jobs.payload}->>'paperId'` })
@@ -596,7 +596,7 @@ export class QuestionPaperExtractionService implements OnApplicationBootstrap, O
       .orderBy(desc(jobs.createdAt))
       .limit(1);
     if (completed?.id) {
-      return { jobId: completed.id, status: 'COMPLETED', reused: true, paperId: completed.paperId ?? undefined };
+      return { jobId: completed.id, status: 'COMPLETED', reused: true, paperId: completed.paperId ?? null };
     }
     return null;
   }
@@ -615,9 +615,11 @@ export interface ExtractionEnqueueResult {
   jobId: string;
   status: 'QUEUED' | 'COMPLETED';
   reused: boolean;
-  /** Present in paper mode (an extraction always belongs to a question paper);
-   *  absent in bank mode where candidates land in the Question Bank tray. */
-  paperId?: string;
+  /** The created/reused Question Paper in paper mode; null in bank mode where
+   *  candidates land in the Question Bank REVIEW tray. Always present so the
+   *  response matches `ExtractQuestionPaperResponseSchema` (nullable, never
+   *  omitted). */
+  paperId: string | null;
 }
 
 function payloadOf(payload: unknown): Record<string, unknown> | null {

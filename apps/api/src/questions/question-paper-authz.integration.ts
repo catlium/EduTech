@@ -81,9 +81,10 @@ const JWT = new JwtService({
 });
 const sign = (sub: string, sid: string) => JWT.signAsync({ sub, sid }, { expiresIn: '15m' });
 
-// ── The audited surface: all 65 routes on the five controllers ──────────
+// ── The audited surface: all 64 routes on the five controllers ──────────
 // F5.4 closed the three routes this matrix originally deferred (question-type
-// creation + the two `assessment` bridges); all 65 now declare a permission.
+// creation + the two `assessment` bridges); all 64 now declare a permission.
+// (B2 retired the material-driven `QuestionExtractionController.extract`.)
 const PROTOS = {
   QuestionsController: QuestionsController.prototype,
   QuestionTypesController: QuestionTypesController.prototype,
@@ -149,7 +150,6 @@ const SURFACE: readonly Surface[] = [
   {
     label: 'QuestionExtractionController',
     routes: [
-      ['extract', 'questions.create'],
       ['extractSourceText', 'questions.create'],
       ['extractSourceFile', 'questions.create'],
       ['status', 'questions.read'],
@@ -566,9 +566,9 @@ test(
 
     // ── Metadata: the migration happened, and left exactly the intended residue ──
 
-    await t.test('all 65 audited routes are accounted for, and F5.4 left none deferred', () => {
-      assert.equal(ROWS.length, 65);
-      assert.equal(MIGRATED.length, 65);
+    await t.test('all 64 audited routes are accounted for, and F5.4 left none deferred', () => {
+      assert.equal(ROWS.length, 64);
+      assert.equal(MIGRATED.length, 64);
       // F5.4 (2026-09-27) resolved the F5.3 deferred trio: `question-types.create`
       // was catalogued, and both `assessment` bridges take `assessments.create`.
       assert.deepEqual(

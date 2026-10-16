@@ -1,18 +1,16 @@
 // Question Extraction into Question Bank (Phase 47) — coordinator-owned jobs.
 //
-// Mirrors PaperPatternExtractionService: QUESTION_EXTRACT jobs are inserted by
-// the API (POST /questions/extract-from-material), adopted by a sweep, and
-// never published to RabbitMQ. The extraction itself is deterministic
-// (question-extractor.ts), so it belongs in the API, not a worker.
+// The REVIEW candidates are produced by the source-driven
+// `QuestionPaperExtractionService` (QP_EXTRACT, bank mode) which stores them in
+// the same `questions` table; this service owns the sweep for legacy/queued
+// QUESTION_EXTRACT rows and the whole candidate review surface
+// (list/update/accept/import/discard, status poll). The extraction itself is
+// deterministic (question-extractor.ts), so it belongs in the API, not a worker.
 //
 // Candidates are stored directly in `questions` as status=REVIEW +
 // source=EXTRACTED (provenance->>'jobId' scopes the run — no extra entity).
 // Accepting a candidate validates the payload and flips it to ACTIVE/APPROVED,
 // so imported questions behave like any ordinary bank question.
-//
-// Idempotency: the enqueue reuses an active job for the same material+subject;
-// a completed run for the same (material, revision, subject) returns the
-// existing review (no duplicates). A material revision change frees re-running.
 
 import {
   BadRequestException,
@@ -104,80 +102,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     if (this.sweepTimer) clearInterval(this.sweepTimer);
   }
 
-  // ── Enqueue ──────────────────────────────────────────────────────
-
-  /** Guard + queue extraction. Idempotent: an active job for the material+
-   *  subject is reused; a completed run for the same (material, revision,
-   *  subject) returns the existing review directly (COMPLETED). */
-  async requestExtraction(
-    instituteId: string,
-    membershipId: string,
-    userId: string,
-    input: { materialId: string; subjectId: string; chapterId?: string; topicId?: string },
-  ): Promise<{ jobId: string; status: 'QUEUED' | 'COMPLETED'; reused: boolean }> {
-    const material = await this.assertMaterial(instituteId, input.materialId);
-    // Extraction only runs inside the actor's writable scope: the material and
-    // the target subject both must be writable (§18.5).
-    await this.scope.requireWritableSubject(instituteId, membershipId, material.subjectId);
-    await this.scope.requireWritableSubject(instituteId, membershipId, input.subjectId);
-    await resolveScopeChain(
-      { db: this.db, instituteId, requireSubject: true },
-      { subjectId: input.subjectId, chapterId: input.chapterId, topicId: input.topicId },
-    );
-
-    // Reuse: a completed run exists for this material+revision+subject.
-    const [existing] = await this.db
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.type, TYPE),
-          eq(jobs.instituteId, instituteId),
-          eq(jobs.status, 'completed'),
-          sql`${jobs.payload}->>'materialId' = ${material.id}`,
-          sql`${jobs.payload}->>'subjectId' = ${input.subjectId}`,
-        ),
-      )
-      .orderBy(desc(jobs.createdAt))
-      .limit(1);
-    if (existing) {
-      const completed = await this.db
-        .select({ revision: sql<number>`${jobs.result}->>'materialRevision'` })
-        .from(jobs)
-        .where(eq(jobs.id, existing.id))
-        .limit(1);
-      const revision = Number(completed[0]?.revision ?? -1);
-      if (revision === material.revision) {
-        return { jobId: existing.id, status: 'COMPLETED', reused: true };
-      }
-    }
-
-    // Reuse: an active job is already draining this material+subject.
-    const [active] = await this.db
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.type, TYPE),
-          eq(jobs.instituteId, instituteId),
-          sql`${jobs.status} IN ('queued', 'processing')`,
-          sql`${jobs.payload}->>'materialId' = ${material.id}`,
-          sql`${jobs.payload}->>'subjectId' = ${input.subjectId}`,
-        ),
-      )
-      .limit(1);
-    if (active) {
-      return { jobId: active.id, status: 'QUEUED', reused: true };
-    }
-
-    const job = await this.jobsService.insertJob(
-      instituteId,
-      TYPE,
-      { materialId: material.id, subjectId: input.subjectId, chapterId: input.chapterId ?? null, topicId: input.topicId ?? null },
-      userId,
-    );
-    return { jobId: job.id, status: 'QUEUED', reused: false };
-  }
+  // ── Status / review ──────────────────────────────────────────────
 
   /** Status read for the polling flow. */
   async getExtraction(
@@ -806,27 +731,6 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     } catch {
       return fallback(detected.format);
     }
-  }
-
-  async assertMaterial(instituteId: string, materialId: string) {
-    const [material] = await this.db
-      .select()
-      .from(materials)
-      .where(
-        and(
-          eq(materials.id, materialId),
-          eq(materials.instituteId, instituteId),
-          isNull(materials.deletedAt),
-        ),
-      )
-      .limit(1);
-    if (!material) throw new NotFoundException('Material not found');
-    if (material.processingStatus !== 'READY') {
-      throw new BadRequestException(
-        `Material cannot be extracted while ${material.processingStatus}`,
-      );
-    }
-    return material;
   }
 
   /** Extraction input — line-based, so the canonical raw text (real line

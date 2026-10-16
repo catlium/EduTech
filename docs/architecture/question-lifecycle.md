@@ -158,35 +158,35 @@ Two endpoints share one pipeline (`computeDeficitsAndGenerateMore`,
    selection.
 5. Cross-batch/question near-duplicate detection (beyond exact-stem + prompt).
 
-## 8a. Two distinct extraction surfaces — and an undecided deletion
+## 8a. Extraction surfaces — material-driven surface retired (B2)
 
-There are **two** question-extraction entry points. They are not redundant,
-and retiring one is a product decision, not a cleanup:
+The **material-driven** entry point ("Extract", `QuestionExtractionDialog` →
+`question-extraction-dialog.tsx` → `POST /questions/extract-from-material`) was
+**retired in B2 (2026-10-16)**. Its removal was left uncommitted as a stray
+experiment since the 2026-09-26 F5.0 reconciliation; B2 is the directive that
+made it official, and the API route, service method (`requestExtraction`),
+DTO (`ExtractQuestionsDto`) and web caller were removed together — not as
+drive-by cleanup.
 
-| Surface | Web entry | API | Input |
-| ------- | --------- | --- | ----- |
-| Material-driven ("Extract") | `QuestionExtractionDialog` → `question-extraction-dialog.tsx` | `POST /questions/extract-from-material` (`question-extraction.controller.ts:68`) | a **READY, processed/enhanced material** + required subject; the extractor reads raw `textContent` (real line breaks) and maps chapter/topic only on confident syllabus overlap |
-| Source-driven ("Extract from Source") | `QuestionSourceExtractionDialog` → `question-source-extraction-dialog.tsx` | `POST /questions/extract-source-text`, `POST /questions/extract-source-file` | pasted text or an uploaded PDF/image; no material, no `textContent` |
+Extraction is now **source-driven** only, with one shared extractor and two
+explicit modes:
 
-**Decision recorded 2026-09-26 (F5.0 reconciliation): there is NO directive to
-retire the material-driven surface.** The tracked history (project-status
-Phase 47 and Phase 48-B) treats the two as separate capabilities, the API
-route is still live, and `question-extraction-dialog.tsx` is its only web
-caller. Accordingly:
+| Surface | Web entry | API | Mode |
+| ------- | --------- | --- | ---- |
+| Bank source extraction ("Extract from Source") | `QuestionSourceExtractionDialog` (`basePath="/questions"`) | `POST /questions/extract-source-text`, `POST /questions/extract-source-file` | **bank** — candidates → REVIEW tray, no paper |
+| Paper source extraction ("Extract Question Paper") | question-papers page → same dialog (`basePath="/question-papers"`) | `POST /question-papers/extract-text`, `POST /question-papers/extract-file` | **paper** — a Question Paper is created and linked |
 
-- The working-tree deletion of `question-extraction-dialog.tsx` and the
-  matching "Extract" button removal in
-  `apps/web/src/app/(workspace)/questions/page.tsx` are an **unauthorized
-  stray experiment, not a documented retirement**.
-- That deletion is **deliberately left uncommitted and unstaged** so the
-  working tree is preserved byte-for-byte. It is NOT part of F5.0 and must not
-  be committed under F5.0.
-- Committing it would leave `POST /questions/extract-from-material` live in the
-  API with no UI caller, silently dropping material-driven extraction.
-- **Pending explicit user decision.** Either restore the two files, or issue a
-  directive that retires the material-driven surface — in which case the API
-  route and its documentation should be retired together, as its own tracked
-  item (not as drive-by cleanup).
+Both call `QuestionPaperExtractionService.requestTextExtraction` /
+`requestFileExtraction`; the mode is the explicit `intoPaper` flag. Paper mode
+is always requested by the question-papers controllers, so "Extract from
+Source" from that page creates the paper the UI navigates to
+(`/question-papers/:paperId?extraction=:jobId`). Bank mode is the default
+(`intoPaper = false`) and the result always carries `paperId: string | null`
+(never omitted), matching `ExtractQuestionPaperResponseSchema`.
+
+`QuestionExtractionService` keeps the legacy `QUESTION_EXTRACT` sweep (so any
+already-queued material-driven job still drains) plus the whole REVIEW
+candidate surface (list/update/accept/import/discard, status poll).
 
 ## 9. Related docs
 
