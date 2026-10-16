@@ -19,9 +19,48 @@
 
 **Validation.** `pnpm typecheck` **10/10**; `pnpm lint` **9/9** (web has no lint script); API unit **238/238**; web `node --test src/lib/*.test.ts` **107/107** (12 new); `pnpm --filter @catlium/web build` succeeds (all routes emitted). DB-backed integration suites **skip** here (`TEST_DATABASE_URL` unset, Postgres not host-reachable) and no live stack was built from this tree for browser E2E. Changed files: new `apps/web/src/lib/question-bank-batch.ts` + `.test.ts`, `apps/web/package.json` (+1 script), `apps/web/src/components/questions/question-bank-panel.tsx`, `question-bank-wizard.tsx`, `question-bank-sets.tsx`, `apps/web/src/app/(workspace)/questions/page.tsx`, `apps/api/src/questions/question-generation.service.ts` (+1 SQL predicate), plus `question-lifecycle.md` §4a, `docs/api/questions.md` batch section, `docs/tasks.md` and this file.
 
+### Integration checkpoint (2026-10-16) — B3 MERGED INTO `dev`
+
+**Merge:** `ff9a40a` = `Merge branch 'feature/b3-async-question-generation-ux'
+into dev`, parents `3eabc98` (dev) + `1f96c3d` (B3). Trees of the merge and the
+feature HEAD are **identical** (`git diff --quiet`), so no integration-only
+code fix was required; `git diff --check` clean. Verified before merging: B3
+HEAD = `1f96c3d` (implementation `6e28980`, docs `1f96c3d`) with only its two
+intended commits since `origin/dev`, `origin/dev` an ancestor of B3, and
+`dev` == `origin/dev` (`3eabc98`). The main checkout (branch
+`feature/b1-syllabus-topic-extraction-reliability` @ `35b336b`, 58 dirty files)
+and `stash@{0} bacf0ca` were preserved untouched; the merge ran in the
+pre-existing clean worktree `/tmp/opencode/b1-integration` (on `dev`).
+
+**Validation on the merged tree** (disposable scratch DB `catlium_test_b3` on
+the loopback Postgres, migrations applied): `pnpm typecheck` **10/10** ·
+`pnpm lint` **9/9** · API unit **238/238** · web
+`node --test src/lib/*.test.ts` **107/107** (incl. the 12 B3 state-machine
+tests) · `pnpm --filter @catlium/web build` **clean** ·
+`test:question-bank-sets` **4/4** · `test:question-paper-authz` **21/21**
+(64-route matrix) · `test:question-answer-generation` **12/12** ·
+`test:question-extraction-resilience` **5/5** · `test:question-extraction-mode`
+**5/5**. B3's specific API change was directly verified with a throwaway
+DB-backed check (not committed): a job in `cancelling` status is counted in
+`active` by `listBankSets` — the existing suite only covered `queued`.
+Cancel/retry wiring (all three web surfaces → `POST …/batches/:id/cancel` /
+`…/retry-failed` → `JobsService.cancelJob`/`retryJob`, gated by
+`questions.update`) and the panel's mount recovery + terminal-aware polling
+were code-verified. **Browser/E2E not run** — the `edutech` compose project has
+no web/api stack up (only `postgres` + `worker-ai`), and building one from the
+merged tree would recreate that project and depend on the external OmniRoute AI
+gateway; the separate `saher` project holds host :80. Deferred, not blocked.
+
+**Push:** published to `origin/dev` (fast-forward, no force) — the merge
+`ff9a40a` plus this documentation checkpoint. Remote HEAD verified equal to
+local `dev`; B1 (`17dc44c`/`35b336b`), B2 (`ebcecaf`) and B3
+(`1f96c3d`/`6e28980`) are all ancestors of it.
+
 ### Exact recommended next task
 
-**Review the B3 diff and approve the checkpoint commit** on `feature/b3-async-question-generation-ux` (B1's `feature/b1-…` branch and its uncommitted work in the main checkout must remain untouched). Do **not** touch `main`; the `dev → main` promotion is production-only. The B1 → `dev` integration and the `feature/b2`/B1 data repairs remain as recorded below.
+**B3 is integrated on `dev`.** Do **not** touch `main`; the `dev → main`
+promotion is production-only and not authorized. The B1 → `dev` integration and
+the `feature/b2`/B1 data repairs remain as recorded below.
 
 ## B2 — Question Bank extraction cleanup (2026-10-16, IMPLEMENTED + VALIDATED)
 

@@ -709,6 +709,19 @@
       `pnpm --filter @catlium/web build` clean. DB-backed integration suites skip
       here (`TEST_DATABASE_URL` unset, no host-reachable Postgres); no live stack
       built for browser E2E.
+- [x] Commit + push the feature branch (`6e28980` implementation, `1f96c3d`
+      docs), then this integration.
+- [x] **Integrated into `dev`** as merge `ff9a40a` (`--no-ff`, parents
+      `3eabc98` + `1f96c3d`); feature tree and merged tree identical. Merged-tree
+      validation (disposable `catlium_test_b3` DB, migrations applied): typecheck
+      10/10, lint 9/9, API unit 238/238, web node tests 107/107, web build
+      clean, `test:question-bank-sets` 4/4, `test:question-paper-authz` 21/21
+      (64-route matrix), `test:question-answer-generation` 12/12,
+      `test:question-extraction-resilience` 5/5, `test:question-extraction-mode`
+      5/5, plus a throwaway DB check proving `cancelling` counts as `active` in
+      `listBankSets`. Browser/E2E not run (no web/api stack up; building one
+      would recreate the `edutech` compose project). Pushed to `origin/dev`
+      fast-forward; B1/B2/B3 all ancestors of the remote HEAD.
 
 ## B2 — Question Bank extraction cleanup (2026-10-16, IMPLEMENTED + VALIDATED)
 
