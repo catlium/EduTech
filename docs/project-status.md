@@ -16,9 +16,36 @@
 
 **Validation.** `pnpm typecheck` 10/10; `pnpm lint` green (web has no lint script); API unit suite **238/238**; new mode test **5/5**; contracts/database built so the unit suite resolves `@catlium/*` dist. DB-backed integration suites **skip** here (`TEST_DATABASE_URL` unset and Postgres is not host-reachable), so the authz matrix edit is code-verified, not executed. Changed files: `question-extraction.controller.ts`, `question-extraction.service.ts`, `dto/question-extraction.dto.ts`, `question-paper-extraction.service.ts`, `question-papers.controller.ts`, `question-paper-authz.integration.ts`, new `question-extraction-mode.integration.ts`, `apps/api/package.json` (+1 script), `apps/web/src/app/(workspace)/questions/page.tsx`, deleted `apps/web/src/components/questions/question-extraction-dialog.tsx`, plus `question-lifecycle.md` §8a, `docs/tasks.md` and this file.
 
+### Integration checkpoint (2026-10-16) — B2 MERGED INTO `dev`
+
+**`origin/dev` discrepancy resolved — it was never divergent.** Fresh
+`git fetch origin --prune`: `origin/dev` = `3d13b27` ("docs: record the F5.8
+integration checkpoint on dev", 2026-10-02). `git merge-base --is-ancestor
+origin/dev dev` is **true**; `git rev-list --left-right --count dev...origin/dev`
+= **2 0**. Local `dev` (`17dc44c`) is simply `origin/dev` **plus B1** (the
+`35b336b` fix and the `17dc44c` B1 merge). No unexpected remote commits, no
+rewrite needed — publishing `dev` is a plain fast-forward.
+
+**Merge:** `ebcecaf` = `Merge branch 'feature/b2-question-bank-extraction-cleanup'
+into dev`, parents `17dc44c` (local dev) + `0cd7c38` (B2). Trees of the merge and
+the feature HEAD are **identical** (`git diff --quiet`), so no integration-only
+code fix was required; `git diff --check` clean.
+
+**Validation on the merged tree** (clean worktree `/tmp/opencode/b1-integration`,
+branch `dev`; fresh scratch PG17 `catlium_test_b2` on the loopback Postgres,
+migrations applied): `pnpm typecheck` **10/10** · `pnpm lint` **9/9** · API unit
+**238/238** · `test:question-paper-authz` **21/21, 0 skipped** (64-route matrix,
+real DB) · `test:question-extraction-mode` **5/5** ·
+`test:question-extraction-resilience` **5/5** ·
+`test:question-answer-generation` **12/12** · `test:question-bank-sets` **4/4**.
+Browser/E2E not run (no live stack built from the merged tree; the running
+containers serve the pre-merge checkout).
+
 ### Exact recommended next task
 
-**Review the B2 diff and approve the checkpoint commit** on `feature/b2-question-bank-extraction-cleanup`, then push the branch. Do **not** merge into `dev`/`main` without explicit authorization; separately, `origin/dev` is divergent (`17dc44c` is not an ancestor of `origin/dev` `3d13b27…`), so publishing `dev` is its own blocked decision. B3 remains untouched and unauthorized.
+**B2 is integrated on `dev`.** Do **not** touch `main`; the `dev → main`
+promotion is production-only and not authorized. B3 remains untouched and
+unauthorized.
 
 ## B1 — Syllabus Chapter/Topic Extraction Reliability (2026-10-15, IMPLEMENTED + VALIDATED, UNCOMMITTED)
 

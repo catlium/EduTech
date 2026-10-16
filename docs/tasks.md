@@ -713,6 +713,14 @@
 - [x] Commit + push the feature branch (`0b9e9f7`, pushed to
       `origin/feature/b2-question-bank-extraction-cleanup`), then this docs
       checkpoint (`project-status.md` + `question-lifecycle.md` §8a).
+- [x] **Integrated into `dev`** as merge `ebcecaf` (`--no-ff`, parents
+      `17dc44c` + `0cd7c38`); feature tree and merged tree identical.
+      `origin/dev` was verified **not** divergent (it is an ancestor of local
+      `dev`; local `dev` = `origin/dev` + B1), so the push is a fast-forward.
+      Merged-tree validation (clean worktree + fresh scratch `catlium_test_b2`
+      DB, migrations applied): typecheck 10/10, lint 9/9, API unit 238/238,
+      `test:question-paper-authz` (64-route matrix) green, mode test 5/5,
+      resilience 5/5, answer-generation 12/12, bank-sets 4/4.
 
 ## B1 — Syllabus Chapter/Topic Extraction Reliability (2026-10-15, IMPLEMENTED + VALIDATED, UNCOMMITTED)
 
