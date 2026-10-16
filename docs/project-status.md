@@ -4,7 +4,7 @@
 
 ### Latest checkpoint
 
-**B2 is IMPLEMENTED + VALIDATED on `feature/b2-question-bank-extraction-cleanup`** (clean worktree `/tmp/edutech-b2`, branched off verified `dev` `17dc44c`; the pre-existing dirty working tree and `stash@{0} bacf0ca` in the main checkout are preserved and were not touched; **not yet committed/pushed** at the time of writing). Directive: retire the obsolete material-driven "Extract" surface and make "Extract from Source" follow one consistent contract.
+**B2 is IMPLEMENTED + VALIDATED on `feature/b2-question-bank-extraction-cleanup`** (clean worktree `/tmp/edutech-b2`, branched off verified `dev` `17dc44c`; the pre-existing dirty working tree and `stash@{0} bacf0ca` in the main checkout are preserved and were not touched; **committed `0b9e9f7` and pushed** to `origin/feature/b2-question-bank-extraction-cleanup`, remote HEAD verified equal). Directive: retire the obsolete material-driven "Extract" surface and make "Extract from Source" follow one consistent contract.
 
 | area | before | after |
 |---|---|---|

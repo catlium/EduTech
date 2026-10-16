@@ -710,8 +710,9 @@
 - [x] **Validation:** `pnpm typecheck` 10/10; `pnpm lint` green (web has no lint
       script); API unit suite 238/238; new mode test 5/5. DB-backed integration
       suites skip here (`TEST_DATABASE_URL` unset, no host-reachable Postgres).
-- [ ] Commit + push the feature branch, then docs checkpoint (this entry +
-      `project-status.md` + `question-lifecycle.md` §8a).
+- [x] Commit + push the feature branch (`0b9e9f7`, pushed to
+      `origin/feature/b2-question-bank-extraction-cleanup`), then this docs
+      checkpoint (`project-status.md` + `question-lifecycle.md` §8a).
 
 ## B1 — Syllabus Chapter/Topic Extraction Reliability (2026-10-15, IMPLEMENTED + VALIDATED, UNCOMMITTED)
 
