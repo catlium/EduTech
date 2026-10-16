@@ -1,5 +1,28 @@
 # Project Status
 
+## B1 — Syllabus Chapter/Topic Extraction Reliability (2026-10-15, IMPLEMENTED + VALIDATED, UNCOMMITTED)
+
+### Latest checkpoint
+
+**B1 is IMPLEMENTED + VALIDATED on `feature/b1-syllabus-topic-extraction-reliability`** (branched from `feature/f5-9-academic-console-graceful-degradation` `72dfd2a`; unrelated working-tree changes and `stash@{0} bacf0ca` preserved; **not committed, not pushed, not merged** — prepared for review). Audit follow-up to F4: the live `worker-ai` image was stale (in-container schema still `default_factory=list`, prompt without the topic rule), and `applyStructure` had two reconciliation defects.
+
+| area | before | after |
+|---|---|---|
+| live worker | pre-F4 schema/prompt (empty topics accepted at analysis) | rebuilt from source; in-container verified `topics: Field(min_length=1)` + "empty topics list is invalid" prompt rule |
+| `applyStructure` `usedChapterIds` | created + consulted, never populated → every confirm archived **all** existing chapters and one chapter could be matched twice | populated on reuse — reused chapters keep identity and stay active |
+| topics of removed chapters | left `active` under an archived parent | archived in the same block, recorded in `removedTopics` (status flips only, no deletes) |
+| regression coverage | none for confirm persistence | `syllabus-confirm.integration.ts` (proven red pre-fix, green post-fix) + E2E SYL-06 chapter-topics assertion |
+| syllabus E2E | could not run against the current API (no `x-csrf-token`; two stale expectations) | CSRF pass-through + expectations corrected to the intentional contracts (title-while-locked 200; out-of-scope read 404); **PASS=64 FAIL=0** on the rebuilt stack with real OmniRoute AI |
+
+**Affected data identified read-only (repair NOT executed, needs approval):** demo-institute syllabus `993786df-…` "test 1" v2 CONFIRMED+locked (subject Maths `18407940-…`, 9 topic-less chapters live in the hierarchy) and `109abd37-…` "Computer science" v2 PROPOSED (subject English, 7/8 chapters topic-less). Preferred repair for the confirmed row: new syllabus version → analyze (F4-enforced worker) → confirm; for the proposed row: structure PATCH or discard + re-analyze.
+
+**Validation.** Worker pytest 15/15; API validator 4/4; new integration suite green (red pre-fix); `tsc --noEmit` + eslint clean; E2E 64/0; running containers verified in-image, not merely `Up (healthy)`; graphify graph updated. Changed files: `apps/api/src/syllabus/syllabus.service.ts` (+23/−2), new `apps/api/src/syllabus/syllabus-confirm.integration.ts`, `apps/api/package.json` (+1 script), `scripts/e2e/syllabus_e2e.sh` (+33/−6), plus this file and `docs/tasks.md` (B1 entries only — the files carry unrelated pre-existing modifications that stay uncommitted and were not disturbed).
+
+### Exact recommended next task
+
+**Review the B1 diff and approve the checkpoint commit** on `feature/b1-syllabus-topic-extraction-reliability` (stage only the six B1 files above; the pre-existing doc-file modifications must NOT be swept into the commit). Then, under separate authorization: the two data repairs above, and the `feature/f5-9 → dev → main` integration path for the still-uncommitted F5.9 web work. B2/B3 remain untouched and unauthorized.
+
+
 ## Phase F5 — Permission Enforcement & Delegation on the Teaching/Examination Surface
 
 ### F5.8 integration checkpoint (2026-10-02) — F5.8 MERGED INTO `dev`

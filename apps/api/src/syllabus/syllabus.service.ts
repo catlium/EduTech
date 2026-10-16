@@ -486,6 +486,9 @@ export class SyllabusService {
       let chapterId: string;
       if (match?.chapter) {
         chapterId = match.chapter.id;
+        // Consume the match: a later structure chapter must not map onto the
+        // same row, and a reused chapter is NOT "removed" below.
+        usedChapterIds.add(chapterId);
         report.reusedChapters.push(chapterId);
         await tx
           .update(chapters)
@@ -576,16 +579,34 @@ export class SyllabusService {
 
     const removedChapters = existingChapters.filter((c) => !usedChapterIds.has(c.id));
     if (removedChapters.length) {
+      const removedChapterIds = removedChapters.map((c) => c.id);
       await tx
         .update(chapters)
         .set({ status: 'archived', updatedAt: new Date() })
         .where(
           inArray(
             chapters.id,
-            removedChapters.map((c) => c.id),
+            removedChapterIds,
           ),
         );
-      report.removedChapters.push(...removedChapters.map((c) => c.id));
+      report.removedChapters.push(...removedChapterIds);
+      // A topic whose chapter is archived must not stay active — it would be
+      // an orphaned live row under a hidden parent.
+      const orphanTopics = existingTopics.filter(
+        (t) => t.status === 'active' && removedChapterIds.includes(t.chapterId),
+      );
+      if (orphanTopics.length) {
+        await tx
+          .update(topics)
+          .set({ status: 'archived', updatedAt: new Date() })
+          .where(
+            inArray(
+              topics.id,
+              orphanTopics.map((t) => t.id),
+            ),
+          );
+        report.removedTopics.push(...orphanTopics.map((t) => t.id));
+      }
     }
 
     await tx
