@@ -432,6 +432,9 @@ export default function QuestionsListPage() {
 
   const [createCascade, setCreateCascade] = useState<Cascade>(DEFAULT_CASCADE);
   const [wizardOpen, setWizardOpen] = useState(false);
+  // Bumped whenever a generation starts so the "Recent question sets" card
+  // reloads and shows the new batch immediately.
+  const [setsRefresh, setSetsRefresh] = useState(0);
   const [sourceExtractionOpen, setSourceExtractionOpen] = useState(false);
   const router = useRouter();
 
@@ -499,6 +502,11 @@ export default function QuestionsListPage() {
       .then(({ questions }) => setQuestions(questions))
       .catch(() => {});
   }, [institute]);
+
+  const onGenerationChanged = useCallback(() => {
+    refresh();
+    setSetsRefresh((n) => n + 1);
+  }, [refresh]);
 
   const updateCascade = useCallback((next: Cascade | ((prev: Cascade) => Cascade)) => {
     setListCascade(next);
@@ -906,7 +914,7 @@ export default function QuestionsListPage() {
           subjects={subjects}
           chapters={chapters}
           topics={topics}
-          onChanged={() => void refresh()}
+          onChanged={onGenerationChanged}
         />
       </div>
 
@@ -916,7 +924,7 @@ export default function QuestionsListPage() {
         subjects={subjects}
         chapters={chapters}
         topics={topics}
-        onChanged={() => void refresh()}
+        onChanged={onGenerationChanged}
       />
 
       <QuestionSourceExtractionDialog
@@ -927,7 +935,7 @@ export default function QuestionsListPage() {
       />
 
       <div className="mb-4">
-        <QuestionBankSets />
+        <QuestionBankSets refreshSignal={setsRefresh} />
       </div>
 
       {canReadPapers && (

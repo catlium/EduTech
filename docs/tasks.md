@@ -666,6 +666,50 @@
     enforcement, and neither may widen a permission — they belong with the
     Roles Console work.
 
+## B3 — Async question-generation UX (2026-10-16, IMPLEMENTED + VALIDATED)
+
+> Directive: make the async Question Bank generation flow correct end to end —
+> pending/running/completed/failed/retry/cancel, recovery across navigation, no
+> duplicate submits, no misleading messages. Branch
+> `feature/b3-async-question-generation-ux` (off verified `origin/dev`
+> `3eabc983074f1df259955ca2cf11e302f8043dc7`, which already contains B1 and B2;
+> built in a separate worktree `/tmp/edutech-b3`; the dirty main checkout and
+> `stash@{0} bacf0ca` were preserved untouched). **No schema/data mutation.**
+> Do NOT merge to `dev`/`main` without authorization.
+
+- [x] **Pure batch state machine + tests.** New
+      `apps/web/src/lib/question-bank-batch.ts`
+      (`questionBankBatchPhase` → pending/running/completed/partial/failed/
+      cancelled; `isTerminalBatchPhase` / `canCancelBatch` / `canRetryBatch`),
+      `question-bank-batch.test.ts` (12 cases), `test:question-bank-batch`
+      script in `apps/web/package.json`.
+- [x] **Panel (`question-bank-panel.tsx`).** Removed the `onOpenChange`
+      close-wipe of `batches`/`batchProgress`; added a mount recovery effect
+      seeding live batches from `GET /questions/bank/sets`; terminal-aware
+      `pollProgress`; `cancelBatch` + `cancellingBatch`; `writeInFlight` guard
+      on `checkDeficits`/`generateMissing`/`createNewSets`/`generateStarter`;
+      `createNewSet` returns `{ batchId, label }`; phase-aware progress grid with
+      Cancel/Retry gated by `canManage` (`questions.update`); truthful toasts.
+- [x] **Wizard (`question-bank-wizard.tsx`).** `reset()` no longer nulls
+      `batch`; `writeInFlight` guard added to `checkBank`/`generateMissing`;
+      terminal-aware `pollActive`; `retryBatch`/`cancelBatch` +
+      `busyBatch` state; batch render block uses `questionBankBatchPhase` with
+      Cancel/Retry and honest queued/running/cancelled/failed labels.
+- [x] **Sets card (`question-bank-sets.tsx`).** Polls only while a listed set
+      (or the expanded batch) is non-terminal; per-job error text; Cancel/Retry
+      per expanded batch; optional `refreshSignal` prop. `questions/page.tsx`
+      bumps `setsRefresh` in a new `onGenerationChanged` callback.
+- [x] **API.** `apps/api/src/questions/question-generation.service.ts`
+      `listBankSets` `active` count now includes `'cancelling'`, matching
+      `getBankBatch`/`ACTIVE_JOB_STATUSES`.
+- [x] **Docs.** `question-lifecycle.md` §4a, `docs/api/questions.md` batch
+      monitor section, this file, `project-status.md`.
+- [x] **Validation:** `pnpm typecheck` 10/10; `pnpm lint` 9/9 (web has no lint
+      script); API unit 238/238; web `node --test src/lib/*.test.ts` 107/107;
+      `pnpm --filter @catlium/web build` clean. DB-backed integration suites skip
+      here (`TEST_DATABASE_URL` unset, no host-reachable Postgres); no live stack
+      built for browser E2E.
+
 ## B2 — Question Bank extraction cleanup (2026-10-16, IMPLEMENTED + VALIDATED)
 
 > Directive: retire the obsolete material-driven "Extract" surface and make

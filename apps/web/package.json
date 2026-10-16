@@ -13,6 +13,7 @@
     "test:workspace-routes": "node --test src/lib/workspace-routes.test.ts",
     "test:academic": "node --test src/lib/academic.test.ts",
     "test:question-answer": "node --test src/lib/question-answer.test.ts",
+    "test:question-bank-batch": "node --test src/lib/question-bank-batch.test.ts",
     "test:api": "node --test src/lib/api.test.ts",
     "test:form-resolver": "node --test src/lib/form-resolver.test.ts",
     "clean": "rm -rf .next"

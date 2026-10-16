@@ -424,7 +424,7 @@ const job = await this.jobs.issueJob(instituteId, OPERATION, {
              count(*) FILTER (WHERE status = 'completed')::int AS completed,
              count(*) FILTER (WHERE status = 'failed')::int AS failed,
              count(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
-             count(*) FILTER (WHERE status IN ('queued', 'processing'))::int AS active,
+             count(*) FILTER (WHERE status IN ('queued', 'processing', 'cancelling'))::int AS active,
              COALESCE(sum(CASE WHEN status = 'completed' THEN (result ->> 'count')::int ELSE 0 END), 0)::int AS generated
       FROM ${jobs}
       WHERE institute_id = ${instituteId}

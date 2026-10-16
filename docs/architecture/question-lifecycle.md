@@ -116,6 +116,41 @@ Two endpoints share one pipeline (`computeDeficitsAndGenerateMore`,
 > PENDING is legacy-only (explicit reject → archive). See
 > `docs/api/questions.md` for the API contract.
 
+## 4a. Async generation UX — batch monitor, recovery, cancel/retry (B3)
+
+Bank generation is asynchronous (one `batchId` fanning out to many jobs). The
+web surfaces the live state through one shared, tested state machine and three
+endpoints, so a page refresh or navigation cannot lose an in-flight batch:
+
+- **Pure phase helper** — `apps/web/src/lib/question-bank-batch.ts` maps the
+  batch rollup (`active`/`completed`/`failed`/`cancelled`) to one phase
+  (`pending` → `running` → `completed` | `partial` | `failed` | `cancelled`)
+  and exposes `isTerminalBatchPhase` / `canCancelBatch` / `canRetryBatch`.
+  Unit-tested in `question-bank-batch.test.ts` (12 cases).
+- **Recovery** — `QuestionBankPanel` seeds its tracked batches from
+  `GET /questions/bank/sets` on mount and `QuestionBankSets` lists them
+  persistently; both re-poll only while a tracked batch is non-terminal, so an
+  idle page makes no requests and the count never goes stale.
+- **Cancel / retry** — `POST /questions/bank/batches/:batchId/cancel` and
+  `…/retry-failed` (both `questions.update`); retry re-enqueues only
+  failed/cancelled children, so completed work is never duplicated. Controls
+  are gated by `canManage` and the pure helpers.
+- **Honest status** — a `dryRun`/dedup `NO_ACTION` response (no `batchId`)
+  reports "the bank already covers these targets" instead of a false success,
+  and a `writeInFlight` guard blocks duplicate submits while one is queued.
+
+`GET /questions/bank/batches/:batchId` counts `active` as
+`queued + processing + cancelling` (`ACTIVE_JOB_STATUSES`); B3 made
+`GET /questions/bank/sets` use the same definition (it had omitted
+`cancelling`). See `docs/api/questions.md` for the wire contract.
+
+> KNOWN-GAP: `listBankSets` filters `type = AI_GENERATE_QUESTIONS`, so a batch
+> that is *waiting on starter-material generation* (only the STARTER job exists,
+> its children not yet released) is briefly absent from `/questions/bank/sets`.
+> In-session tracking is unaffected (the client holds the `batchId`); recovery
+> after navigating away during that window would miss it. Low impact; not
+> scheduled.
+
 ## 5. Question Paper semantics
 
 - `select-from-pattern` **replaces** the paper's question set (idempotent

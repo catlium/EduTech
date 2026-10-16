@@ -529,3 +529,97 @@ Body:
 Without `dryRun`: queues a job for the deficit buckets; returns the queued
 `generation` object. A duplicate active (queued/processing) non-dry run for the
 same scope returns `409`.
+
+## Batch monitor, cancel, retry (B3)
+
+Both `POST /questions/bank/generate` and `POST /questions/generate-more` fan a
+request out into many jobs that share a `batchId` (child `payload.batchId`).
+These three endpoints are the monitor for that batch.
+
+### Get a batch
+
+```
+GET /questions/bank/batches/:batchId
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER` (`questions.read`). Returns the rollup
+counts plus a per-job list. `active` counts `queued + processing + cancelling`
+(`ACTIVE_JOB_STATUSES`), so a batch being cancelled stays `active` until its
+cancels land.
+
+```json
+{
+  "batchId": "uuid",
+  "sourceType": "TOPIC | CHAPTER | SUBJECT",
+  "sourceId": "uuid",
+  "total": 6,
+  "completed": 4,
+  "failed": 1,
+  "cancelled": 0,
+  "active": 1,
+  "jobs": [
+    {
+      "jobId": "uuid",
+      "questionType": "MCQ",
+      "difficulty": "EASY",
+      "status": "queued | processing | cancelling | completed | failed | cancelled",
+      "error": "string | null",
+      "requested": 10,
+      "generated": 8
+    }
+  ]
+}
+```
+
+The batch is terminal when `active = 0`.
+
+### Cancel a batch
+
+```
+POST /questions/bank/batches/:batchId/cancel
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER` (`questions.update`). Returns `202` with the
+same batch shape; every active child is cancelled. Already-terminal children are
+untouched.
+
+### Retry failed jobs
+
+```
+POST /questions/bank/batches/:batchId/retry-failed
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER` (`questions.update`). Returns `202` with the
+batch shape plus `retried` / `skipped` job-id arrays. Re-enqueues only
+`failed`/`cancelled` children — completed children are never regenerated, so a
+retry cannot duplicate questions.
+
+### List recent batches
+
+```
+GET /questions/bank/sets
+```
+
+Roles: `INSTITUTE_ADMIN`, `TEACHER` (`questions.read`). Returns the institute's
+most recent generation batches (≤25), newest first — the recovery surface for a
+client that lost its in-page `batchId`.
+
+```json
+{
+  "sets": [
+    {
+      "batchId": "uuid",
+      "createdAt": "iso8601",
+      "total": 6,
+      "completed": 6,
+      "failed": 0,
+      "cancelled": 0,
+      "active": 0,
+      "generated": 42
+    }
+  ]
+}
+```
+
+`active` here uses the same `queued + processing + cancelling` definition as the
+single-batch endpoint (B3 corrected this; it previously omitted `cancelling`).
