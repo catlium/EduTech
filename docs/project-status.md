@@ -1,5 +1,28 @@
 # Project Status
 
+## B3 — Async question-generation UX (2026-10-16, IMPLEMENTED + VALIDATED)
+
+### Latest checkpoint
+
+**B3 is IMPLEMENTED + VALIDATED on `feature/b3-async-question-generation-ux`** (clean worktree `/tmp/edutech-b3`, branched off verified `origin/dev` `3eabc983074f1df259955ca2cf11e302f8043dc7`, which already contains the B1 `17dc44c` and B2 `ebcecaf` merges; the pre-existing dirty main checkout and its `stash@{0} bacf0ca` are preserved and were not touched). Directive: make the async bank-generation UX correct end to end — pending/running/completed/failed/retry/cancel, recovery across navigation, no duplicate submits, no misleading messages.
+
+| area | before | after |
+|---|---|---|
+| batch state | each surface re-derived "done" ad hoc; polling never stopped at terminal | one pure phase machine (`question-bank-batch.ts`: pending/running/completed/partial/failed/cancelled) with `isTerminalBatchPhase`/`canCancelBatch`/`canRetryBatch`, 12 unit tests |
+| recovery | `QuestionBankPanel.onOpenChange` **wiped** `batches`/`batchProgress`; wizard `reset()` nulled `batch` → a close/navigate lost the in-flight batch | panel no longer wipes on close and seeds live batches from `GET /questions/bank/sets` on mount; wizard reset keeps the batch |
+| polling | ran forever / stale "N running" in the sets card | panel + sets card poll only while a tracked batch is non-terminal |
+| cancel / retry | no controls anywhere | `Cancel` / `Retry failed` in panel, wizard, and sets card via `POST …/batches/:id/cancel` and `…/retry-failed`, gated by `canManage` (`questions.update`) |
+| duplicate submits | buttons could be double-fired | `writeInFlight` ref guards every generation/check action |
+| messages | success toast shown even for `NO_ACTION` / dedup (no `batchId`) | truthful toasts — success only when a `batchId` exists; `NO_ACTION` reports the bank already covers the targets |
+| sets `active` count | SQL `FILTER (status IN ('queued','processing'))` omitted `cancelling`, disagreeing with the single-batch endpoint | `apps/api/src/questions/question-generation.service.ts` adds `'cancelling'` |
+| sets refresh | card never updated after a new batch | page bumps `setsRefresh` in `onGenerationChanged`; card reloads |
+
+**Validation.** `pnpm typecheck` **10/10**; `pnpm lint` **9/9** (web has no lint script); API unit **238/238**; web `node --test src/lib/*.test.ts` **107/107** (12 new); `pnpm --filter @catlium/web build` succeeds (all routes emitted). DB-backed integration suites **skip** here (`TEST_DATABASE_URL` unset, Postgres not host-reachable) and no live stack was built from this tree for browser E2E. Changed files: new `apps/web/src/lib/question-bank-batch.ts` + `.test.ts`, `apps/web/package.json` (+1 script), `apps/web/src/components/questions/question-bank-panel.tsx`, `question-bank-wizard.tsx`, `question-bank-sets.tsx`, `apps/web/src/app/(workspace)/questions/page.tsx`, `apps/api/src/questions/question-generation.service.ts` (+1 SQL predicate), plus `question-lifecycle.md` §4a, `docs/api/questions.md` batch section, `docs/tasks.md` and this file.
+
+### Exact recommended next task
+
+**Review the B3 diff and approve the checkpoint commit** on `feature/b3-async-question-generation-ux` (B1's `feature/b1-…` branch and its uncommitted work in the main checkout must remain untouched). Do **not** touch `main`; the `dev → main` promotion is production-only. The B1 → `dev` integration and the `feature/b2`/B1 data repairs remain as recorded below.
+
 ## B2 — Question Bank extraction cleanup (2026-10-16, IMPLEMENTED + VALIDATED)
 
 ### Latest checkpoint
