@@ -9,11 +9,12 @@ import {
   invalidInstitutePermissionKeys,
   isBuiltinRoleKey,
   roleVisibleToInstitute,
+  PERMISSION_CATALOGUE,
   type PermissionDomain,
   type RoleKind,
   type RoleState,
 } from './permission-catalogue.js';
-import type { CreateRoleDto, UpdateRoleDto } from './roles.dto.js';
+import type { CreateRoleDto, PermissionCatalogueItemDto, UpdateRoleDto } from './roles.dto.js';
 
 export interface InstituteRoleView {
   id: string;
@@ -64,6 +65,24 @@ export class RolesService {
     return rows
       .map((r) => toView(r))
       .sort((a, b) => (a.kind === 'system' && b.kind !== 'system' ? -1 : b.kind === 'system' && a.kind !== 'system' ? 1 : a.key.localeCompare(b.key)));
+  }
+
+  /**
+   * The institute-domain permission catalogue (F5.7) — the exact key vocabulary a
+   * custom institute role may be granted. Platform-domain keys are never included:
+   * `invalidInstitutePermissionKeys` rejects them on every write path and the schema
+   * makes an institute role structurally unable to hold one, so offering them to
+   * the console would only ever offer a grant that fails. Authoritative
+   * server-side; the client renders exactly what it is given.
+   */
+  listPermissionCatalogue(): PermissionCatalogueItemDto[] {
+    return PERMISSION_CATALOGUE.filter((p) => p.domain === 'institute').map((p) => ({
+      key: p.key,
+      resource: p.resource,
+      action: p.action,
+      name: p.name,
+      description: p.description,
+    }));
   }
 
   /** One visible role with its current permission keys. */
@@ -119,10 +138,21 @@ export class RolesService {
     return { ...toView(row), name: dto.name ?? row.name, description: dto.description === undefined ? row.description : dto.description };
   }
 
-  /** Delete a custom role. Grants and membership bindings cascade. */
-  async deleteRole(instituteId: string, roleId: string): Promise<void> {
+  /** Delete a custom role. Grants and membership bindings cascade.
+   *
+   * The actor may never delete a role they currently hold — the same
+   * self-modification rule `setRolePermissions` already applies. `role_permissions`
+   * and `membership_roles` both cascade on role deletion, so deleting a role you
+   * hold would strip your own grants and bindings in the same statement, leaving
+   * a zero-grant membership with no self-repair. The `kind === 'system'` check
+   * stays first, so a built-in role always reports as immutable.
+   */
+  async deleteRole(instituteId: string, roleId: string, actorRoleKeys: string[]): Promise<void> {
     const row = await this.requireVisibleRole(instituteId, roleId);
     if (row.kind === 'system') throw new BadRequestException('System roles cannot be deleted');
+    if (actorRoleKeys.some((k) => k.toLowerCase() === row.key.toLowerCase())) {
+      throw new BadRequestException('You cannot delete a role you hold');
+    }
     await this.db.delete(roles).where(eq(roles.id, roleId));
   }
 

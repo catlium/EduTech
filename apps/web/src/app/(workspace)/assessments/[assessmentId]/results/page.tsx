@@ -8,9 +8,10 @@ import { toast } from 'sonner';
 
 import { api, ApiError, downloadFile } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import { useTenant } from '@/lib/tenant';
+import { useTenant, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { SkeletonCards } from '@/components/app/loading';
+import { Forbidden } from '@/components/app/forbidden';
 import { StatusBadge } from '@/components/app/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,13 +26,19 @@ function formatAccuracy(accuracy: number | null | undefined): string {
 export default function AssessmentResultsPage() {
   const params = useParams<{ assessmentId: string }>();
   const { institute } = useTenant();
+  // F5.8/X-6: mirrors the backend's `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')`
+  // on `GET /assessments/:id/attempts`, `/analytics` and the results export. The
+  // attempt ledger exposes other students' attempts and `attempts.read` is held by
+  // STUDENT too, so no catalogue key can replace the role gate — mirror it rather
+  // than invent one; the API remains the boundary.
+  const canViewResults = canManage(institute);
   const [attempts, setAttempts] = useState<AttemptListItem[] | null>(null);
   const [analytics, setAnalytics] = useState<AssessmentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<'pdf' | 'docx' | 'xlsx' | null>(null);
 
   async function onExport(format: 'pdf' | 'docx' | 'xlsx') {
-    if (!params.assessmentId) return;
+    if (!params.assessmentId || !canViewResults) return;
     try {
       setExporting(format);
       await downloadFile(
@@ -47,7 +54,7 @@ export default function AssessmentResultsPage() {
   }
 
   useEffect(() => {
-    if (!institute || !params.assessmentId) return;
+    if (!institute || !canViewResults || !params.assessmentId) return;
     const ctrl = new AbortController();
     Promise.all([
       api<{ attempts: AttemptListItem[] }>(`/assessments/${params.assessmentId}/attempts`, {
@@ -67,7 +74,9 @@ export default function AssessmentResultsPage() {
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [institute, params.assessmentId]);
+  }, [institute, canViewResults, params.assessmentId]);
+
+  if (!canViewResults) return <Forbidden />;
 
   const { summary } = analytics ?? { summary: null };
 

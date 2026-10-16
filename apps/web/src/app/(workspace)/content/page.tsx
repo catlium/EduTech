@@ -16,7 +16,7 @@ import {
 
 import { api, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import type {
   ContentListItem,
   SubjectResponse,
@@ -61,7 +61,10 @@ const contentTypeIcon: Record<string, React.ReactNode> = {
 
 export default function ContentListPage() {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: activate/archive are POST /content/:id/{activate,archive} =
+  // `content.update`. The row's open button is a `content.read` navigation, the
+  // route's own read key, so it is no longer hidden behind a role check.
+  const canUpdate = hasPermission(institute, 'content.update');
   const router = useRouter();
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('contentId');
@@ -312,35 +315,29 @@ export default function ContentListPage() {
                 </>
               }
               actions={
-                isTeacher && (
-                  <div className="flex items-center gap-1">
-                    {(c.status === 'DRAFT' || c.status === 'ARCHIVED') && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setConfirmAction({ type: 'activate', contentId: c.id })}
-                      >
-                        <CheckCircle2 className="size-3.5" />
-                      </Button>
-                    )}
-                    {c.status === 'ACTIVE' && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setConfirmAction({ type: 'archive', contentId: c.id })}
-                      >
-                        <Archive className="size-3.5" />
-                      </Button>
-                    )}
+                <div className="flex items-center gap-1">
+                  {canUpdate && (c.status === 'DRAFT' || c.status === 'ARCHIVED') && (
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => router.push(`/content/${c.id}`)}
+                      onClick={() => setConfirmAction({ type: 'activate', contentId: c.id })}
                     >
-                      <Eye className="size-3.5" />
+                      <CheckCircle2 className="size-3.5" />
                     </Button>
-                  </div>
-                )
+                  )}
+                  {canUpdate && c.status === 'ACTIVE' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setConfirmAction({ type: 'archive', contentId: c.id })}
+                    >
+                      <Archive className="size-3.5" />
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => router.push(`/content/${c.id}`)}>
+                    <Eye className="size-3.5" />
+                  </Button>
+                </div>
               }
               onClick={() => router.push(`/content/${c.id}`)}
               id={c.id}

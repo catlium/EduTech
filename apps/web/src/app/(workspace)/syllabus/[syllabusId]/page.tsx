@@ -20,7 +20,7 @@ import {
 
 import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import type {
   SyllabusResponse,
   SyllabusVersion,
@@ -156,7 +156,11 @@ export default function SyllabusDetailPage() {
   const { syllabusId } = useParams<{ syllabusId: string }>();
   const router = useRouter();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: every lifecycle action here except the hard delete is
+  // POST/PATCH /syllabus/:id* = `syllabus.update`; DELETE /syllabus/:id is
+  // `syllabus.delete`, so it keeps its own gate.
+  const canUpdate = hasPermission(institute, 'syllabus.update');
+  const canDelete = hasPermission(institute, 'syllabus.delete');
 
   const [syllabus, setSyllabus] = useState<SyllabusResponse | null>(null);
   const [versions, setVersions] = useState<SyllabusVersion[]>([]);
@@ -334,7 +338,7 @@ export default function SyllabusDetailPage() {
   }
 
   const locked = syllabus.isLocked;
-  const actionable = isTeacher && !locked;
+  const actionable = canUpdate && !locked;
 
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
@@ -376,12 +380,12 @@ export default function SyllabusDetailPage() {
             Analyze
           </Button>
         )}
-      {isTeacher && !locked && (syllabus.status === 'PROPOSED' || syllabus.status === 'CONFIRMED') && syllabus.analysisStatus === 'READY' && syllabus.structure && (
+      {canUpdate && !locked && (syllabus.status === 'PROPOSED' || syllabus.status === 'CONFIRMED') && syllabus.analysisStatus === 'READY' && syllabus.structure && (
         <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)}>
           <CheckCircle2 className="mr-1 size-3.5" /> Confirm structure
         </Button>
       )}
-      {isTeacher && locked && (
+      {canUpdate && locked && (
         <Button
           size="sm"
           onClick={() => void setLock(false)}
@@ -390,7 +394,7 @@ export default function SyllabusDetailPage() {
           <Unlock className="mr-1 size-3.5" /> Unlock
         </Button>
       )}
-      {isTeacher && !locked && !processing && !analyzing && (
+      {canUpdate && !locked && !processing && !analyzing && (
         <Button
           size="sm"
           variant="ghost"
@@ -400,7 +404,7 @@ export default function SyllabusDetailPage() {
           <Lock className="mr-1 size-3.5" /> Lock
         </Button>
       )}
-      {isTeacher && !processing && !analyzing && (
+      {canUpdate && !processing && !analyzing && (
         <Button size="sm" variant="outline" onClick={openEdit} disabled={busy !== null}>
           <Pencil className="mr-1 size-3.5" /> Edit
         </Button>
@@ -415,7 +419,7 @@ export default function SyllabusDetailPage() {
           <Archive className="mr-1 size-3.5" /> Archive
         </Button>
       )}
-      {actionable && (
+      {canDelete && !locked && (
         <Button
           size="sm"
           variant="ghost"
@@ -475,7 +479,7 @@ export default function SyllabusDetailPage() {
           This syllabus is locked — unlock it before editing, archiving or deleting.
         </div>
       )}
-      {syllabus.status === 'CONFIRMED' && !syllabus.isLocked && isTeacher && (
+      {syllabus.status === 'CONFIRMED' && !syllabus.isLocked && canUpdate && (
         <div className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm text-violet-700 dark:text-violet-400">
           <Unlock className="size-4 shrink-0" />
           Confirmed but unlocked — edits, archive and delete are allowed until you lock it again.

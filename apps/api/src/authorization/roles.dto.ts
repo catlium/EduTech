@@ -61,3 +61,13 @@ export class SetRolePermissionsDto {
   @ArrayMaxSize(128)
   permissionKeys!: string[];
 }
+
+// Response shape only — nothing is validated on the way out, so this stays an
+// interface (matching `InstituteRoleView`) rather than a class-validator DTO.
+export interface PermissionCatalogueItemDto {
+  key: string;
+  resource: string;
+  action: string;
+  name: string;
+  description: string;
+}

@@ -19,22 +19,37 @@ import { GenerateStarterMaterialDto } from './dto/generate-starter-material.dto.
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
+/**
+ *  * F5.5 — AI generation guard migration (§13 `content` + `jobs`). Every route
+ * here enqueues or inspects generation work, so the four that WRITE content
+ * take `content.create` / `content.update` and the three that only REPORT
+ * generation-job state (per-material status, batch progress, batch cancel) take
+ * `jobs.read` / `jobs.update`.
+ *
+ * `jobs.*` rather than `content.read` is deliberate and behaviour-preserving:
+ * these three routes carried the write role gate even though they are reads,
+ * and `content.read` is held by STUDENT — mapping them there would have handed
+ * students the institute-wide generation-job ledger. `jobs.read`/`jobs.update`
+ * are held by TEACHER and (implied) INSTITUTE_ADMIN only, so the reachable set
+ * is unchanged. `GenerationService` keeps its `requireWritableSubject` /
+ * `requireReadableSubject` checks per material, topic and batch source.
 
+ */
 @Controller('content')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class GenerationController {
   constructor(private readonly generationService: GenerationService) {}
 
   @Post('generate')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.create')
   async generate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -53,7 +68,7 @@ export class GenerationController {
 
   @Post('starter-material')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.create')
   async generateStarterMaterial(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -70,7 +85,7 @@ export class GenerationController {
 
   @Post('generate-package')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.create')
   async generatePackage(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -88,7 +103,7 @@ export class GenerationController {
   }
 
   @Get('generation-status')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('jobs.read')
   async getGenerationStatus(
     @Tenant() tenant: TenantContext,
     @Query('materialId', ParseUUIDPipe) materialId: string,
@@ -103,7 +118,7 @@ export class GenerationController {
 
   @Post('generate-batch')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.create')
   async generateBatch(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -123,7 +138,7 @@ export class GenerationController {
 
   @Post(':contentId/regenerate')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.update')
   async regenerateResource(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -139,7 +154,7 @@ export class GenerationController {
   }
 
   @Get('generation-batches/:batchId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('jobs.read')
   async getBatch(
     @Tenant() tenant: TenantContext,
     @Param('batchId', ParseUUIDPipe) batchId: string,
@@ -150,7 +165,7 @@ export class GenerationController {
 
   @Post('generation-batches/:batchId/cancel')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('jobs.update')
   async cancelBatch(
     @Tenant() tenant: TenantContext,
     @Param('batchId', ParseUUIDPipe) batchId: string,

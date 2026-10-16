@@ -21,7 +21,7 @@ import {
 import { api, ApiError, uploadFileWithChunks, optimizeImageFile } from '@/lib/api';
 import type { ChunkProgress } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import {
   CreateTextMaterialRequestSchema,
   type CreateTextMaterialRequest,
@@ -117,7 +117,10 @@ function materialsQuery(
 
 export default function MaterialsListPage() {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: POST /materials/text and POST /materials/upload are `materials.create`.
+  const canCreate = hasPermission(institute, 'materials.create');
+  // process/retry/archive/activate are POST /materials/:id* = `materials.update`.
+  const canUpdate = hasPermission(institute, 'materials.update');
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -564,7 +567,7 @@ export default function MaterialsListPage() {
         title="Materials"
         description={`${materials.length} material${materials.length !== 1 ? 's' : ''}`}
         actions={
-          isTeacher && (
+          canCreate && (
             <>
               <Button size="sm" variant="outline" onClick={() => setDialogMode('text')}>
                 <FileText className="mr-1 size-3.5" /> Text material
@@ -664,7 +667,7 @@ export default function MaterialsListPage() {
           title="No materials yet"
           description="Upload a learning material or paste text to get started."
         >
-          {isTeacher && (
+          {canCreate && (
             <>
               <Button size="sm" variant="outline" onClick={() => setDialogMode('text')}>
                 Text material
@@ -687,40 +690,42 @@ export default function MaterialsListPage() {
               destructive?: boolean;
             }[] = [];
 
-            if (
-              m.status === 'ACTIVE' &&
-              m.sourceType === 'UPLOAD' &&
-              m.processingStatus === 'UPLOADED'
-            ) {
-              menuItems.push({
-                label: 'Process',
-                icon: <Play className="size-4" />,
-                onClick: () => processMaterial(m.id),
-              });
-            }
-            if (
-              m.status === 'ACTIVE' &&
-              (m.processingStatus === 'FAILED' || m.processingStatus === 'QUEUED')
-            ) {
-              menuItems.push({
-                label: 'Retry',
-                icon: <RefreshCw className="size-4" />,
-                onClick: () => retryMaterial(m.id),
-              });
-            }
-            if (m.status === 'ACTIVE') {
-              menuItems.push({
-                label: 'Archive',
-                icon: <Archive className="size-4" />,
-                onClick: () => archiveMaterial(m.id),
-                destructive: true,
-              });
-            } else {
-              menuItems.push({
-                label: 'Activate',
-                icon: <CheckCircle2 className="size-4" />,
-                onClick: () => activateMaterial(m.id),
-              });
+            if (canUpdate) {
+              if (
+                m.status === 'ACTIVE' &&
+                m.sourceType === 'UPLOAD' &&
+                m.processingStatus === 'UPLOADED'
+              ) {
+                menuItems.push({
+                  label: 'Process',
+                  icon: <Play className="size-4" />,
+                  onClick: () => processMaterial(m.id),
+                });
+              }
+              if (
+                m.status === 'ACTIVE' &&
+                (m.processingStatus === 'FAILED' || m.processingStatus === 'QUEUED')
+              ) {
+                menuItems.push({
+                  label: 'Retry',
+                  icon: <RefreshCw className="size-4" />,
+                  onClick: () => retryMaterial(m.id),
+                });
+              }
+              if (m.status === 'ACTIVE') {
+                menuItems.push({
+                  label: 'Archive',
+                  icon: <Archive className="size-4" />,
+                  onClick: () => archiveMaterial(m.id),
+                  destructive: true,
+                });
+              } else {
+                menuItems.push({
+                  label: 'Activate',
+                  icon: <CheckCircle2 className="size-4" />,
+                  onClick: () => activateMaterial(m.id),
+                });
+              }
             }
             menuItems.push({
               label: 'View details',

@@ -7,6 +7,8 @@ extracted text) fails with a safe message and leaves an honest FAILED
 analysis state — never a stuck PROCESSING ghost.
 """
 
+from __future__ import annotations
+
 import json
 from unittest.mock import MagicMock
 
@@ -16,6 +18,17 @@ from worker.config import settings
 
 SYLLABUS_ID = "11111111-1111-1111-1111-111111111111"
 REQUESTED_BY = "22222222-2222-2222-2222-222222222222"
+
+CHAPTER_ONLY_OUTPUT = json.dumps(
+    {
+        "context": {"course": "AI"},
+        "structure": {
+            "chapters": [
+                {"name": "Introduction to AI", "description": None, "topics": []},
+            ]
+        },
+    }
+)
 
 ANALYSIS_OUTPUT = {
     "context": {
@@ -122,3 +135,44 @@ def test_not_ready_syllabus_fails_honestly(monkeypatch) -> None:
     assert (
         calls["job:job-2:failed"]["error"]["message"] == "Syllabus text is not ready for analysis"
     )
+
+
+def test_chapter_only_output_fails_validation_and_never_confirms(monkeypatch) -> None:
+    """F4: a chapter with an empty topics list must fail validation, retry
+    through the existing mechanism, and — after retry exhaustion — honestly
+    fail the job. Nothing is persisted: the invalid proposal never reaches the
+    teacher-confirm path."""
+    calls = _harness(monkeypatch)
+    completed: dict[str, object] = {}
+    failed: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        db,
+        "get_syllabus",
+        lambda _sid, _iid: {
+            "id": SYLLABUS_ID,
+            "version": 1,
+            "text_content": "Chapter one: fundamentals.",
+            "processing_status": "READY",
+        },
+    )
+    monkeypatch.setattr(db, "update_syllabus_analysis_processing", lambda *_: None)
+    monkeypatch.setattr(
+        db,
+        "complete_syllabus_analysis",
+        lambda syllabus_id, **kwargs: completed.update(kwargs) or None,
+    )
+    monkeypatch.setattr(
+        db,
+        "fail_syllabus_analysis",
+        lambda sid, message: failed.append((sid, message)),
+    )
+    provider = MagicMock()
+    provider.complete.return_value = CHAPTER_ONLY_OUTPUT
+    monkeypatch.setattr(service, "create_provider", lambda: provider)
+
+    service.generate("job-3", "inst-1", _payload())
+
+    assert provider.complete.call_count == settings.ai_validation_retries + 1
+    assert completed == {}
+    assert failed == [(SYLLABUS_ID, "AI output failed validation")]
+    assert calls["job:job-3:failed"]["error"]["message"] == "AI output failed validation"

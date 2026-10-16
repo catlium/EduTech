@@ -1,6 +1,1419 @@
 # Task Tracker
 
-## Phase P.2 — Platform User Lifecycle Implementation (2026-09-23, IMPLEMENTED)
+## F5 — Permission Enforcement & Delegation on the Teaching/Examination Surface
+
+> Directive track. The teaching and examination surfaces are authorized by
+> **role** (`@RequiredRoles`) rather than by the additive **permission
+> catalogue** (`@RequiredPermission` + `PermissionGuard`). Only
+> `users.controller.ts` has been migrated, so staffing delegation works
+> (`assignments.*`, D-Q3.1/D-Q3.8) but the rest of the teaching/exam surface
+> cannot delegate authority to a custom institute role. F5 closes that gap in
+> guarded increments — catalogue expansion first, then surface-by-surface guard
+> migration, then the frontend gates that mirror it, then the remaining console
+> work. `docs/architecture/authorization.md` §13/§18 and
+> `docs/architecture/academic-teacher-permissions.md` are the source of truth.
+
+- [x] **F5.0 — Integrate validated branches + documentation reconciliation.**
+      **COMPLETE 2026-09-26.** Merged the two validated feature branches into
+      `feature/f5-0-integrate-validated-branches` (off `dev` `77b6e05`, no
+      rebase/reset): F2 `feature/fix-form-validation` → `26f0540`, F4
+      `feature/fix-syllabus-topics` → `7805814`, both `--no-ff`. No
+      authorization code changes. Then reconciled the documentation (see the
+      `## Phase F5` entry in `docs/project-status.md` for the full list:
+      `AGENTS.md` §2, SA-F1…SA-F6 disambiguation, H5ten/SA-F4, the
+      institute-operations audit §16/§17, OmniRoute in `user-validation.md`,
+      `.planning/` superseded, the question-extraction deletion decision, the
+      F1/F3.4 "not merged" claims, and `F.1`→`F1`). Final validation: API
+      232/232, worker pytest 100/100 + ruff + mypy clean, web 15/15,
+      `pnpm typecheck` 10/10, `turbo run lint` 9/9, `pnpm build` 7/7,
+      `job-ownership` 14/14, `academic-scope` 1/1, `git diff --check` clean.
+      Checkpoint commit `docs(authz): integrate validated branches and record
+      F5 track`. **Corrected 2026-09-26 at the start of F5.1:** the entry
+      previously said "pushed to the feature branch only — **not** merged into
+      `dev`". It WAS merged into `dev` as **`5230bf6`**, and the API/web
+      containers were rebuilt afterwards, so the running dev stack serves
+      F2+F4. `main`/`origin/main` `ef4de7e` and `stash@{0}` untouched
+      throughout; the unrelated working tree preserved.
+- [x] **F5.1 — Academic-Structure Catalogue Expansion.** COMPLETE 2026-09-26 on
+      `feature/f5-1-academic-structure-catalogue` (off `dev` `5230bf6`), merged
+      into `dev` as `329fea8`. Catalogue only — **no controller/guard migration
+      (that was F5.2)**:
+      - `INSTITUTE_RESOURCES` gains `'academic-structure'` with the full
+        `read, create, update, delete, manage` set — the D4 structural layer
+        (academic years, classes, class↔subject offerings, divisions) as ONE
+        resource. It supersedes the four per-entity keys sketched in
+        `authorization.md` §13 (`academic-years`/`classes`/`divisions`/
+        `offerings`); those stay uncatalogued. Staffing remains the separate
+        `assignments` resource (D-Q3.3/G3 not reopened).
+      - Built-in defaults: INSTITUTE_ADMIN gets `academic-structure.manage`
+        automatically (the mapping is derived from `INSTITUTE_RESOURCES`, so no
+        per-key entry); TEACHER and STUDENT get **no** `academic-structure.*`
+        key. Institute-domain only — no platform permission introduced.
+      - Delegation uses the existing mechanism only: a custom institute role
+        receives the keys through `PUT /roles/:roleId/permissions`
+        (`invalidInstitutePermissionKeys` accepts them unchanged). No new grant
+        path, no schema change, no migration — `PermissionSyncService` inserts
+        the five missing `permissions` rows on the next API boot.
+      - Docs: `authorization.md` §13 (catalogue table, D4–D6 additions table,
+        built-in mapping), `institute-operations-audit.md` §16/§17,
+        `academic-teacher-permissions.md` §2 stale note.
+      - Tests: 7 focused cases in `permission-catalogue.test.ts` (key existence
+        + domain + metadata, §13 manage implication, built-in defaults, no
+        platform leakage, custom-role grant through the existing path, sync
+        insert set/idempotency). 42/42 in that file.
+- [x] **F5.2 — Structure Guard Migration.** **IMPLEMENTED + VALIDATED
+      2026-09-26** on `feature/f5-2-structure-guard-migration` (off `dev`
+      `329fea8`), and **integrated into `dev` as `c7a622d`** (`--no-ff`,
+      conflict-free) with the post-merge re-validation and the live API
+      verification recorded in `docs/project-status.md`.
+  - Migrated all **14** D4 structural routes on
+    `AcademicStructureController` from `@RequiredRoles('INSTITUTE_ADMIN')` to
+    `@RequiredPermission('academic-structure.*')` and added `PermissionGuard`
+    to the controller's guard chain
+    (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`, the
+    Q.3/Q.4 order). **Zero `@RequiredRoles` remains on the controller**;
+    `RolesGuard` is now a no-op for this surface.
+  - Mapping, one key per handler, no OR widening, no explicit `manage`:
+    `GET academic-years|classes|classes/:id/subjects|divisions` → `read`;
+    `POST academic-years|classes|divisions|classes/:id/subjects/:sid` →
+    `create`; `PATCH academic-years/:id|classes/:id|divisions/:id` → `update`;
+    `DELETE classes/:id|classes/:id/subjects/:sid|divisions/:id` → `delete`.
+    `manage` stays implied only.
+  - Preserved, not weakened: `TenantGuard` + `x-institute-id` scoping, the
+    service's per-query `instituteId` scoping (`NotFound` for a foreign
+    year/class/subject), and every existing ownership check. The permission
+    check authorizes the operation; it never replaces a scope check.
+  - Behaviour change, intended and documented in `authorization.md` §13:
+    structural **reads** were open to any active member and now require
+    `academic-structure.read`, which TEACHER/STUDENT do not hold — the D4 layer
+    is admin-only-or-delegated end to end, matching `roles.*`/`assignments.*`.
+    Only the institute academic console consumes these routes, so no student or
+    teacher surface is affected.
+  - Out of scope by design, confirmed in the audit: the `/academic`
+    subjects/chapters/topics routes are **academic content**, catalogued as
+    `subjects.*`/`chapters.*`/`topics.*`, and stay role-based for their own
+    phase (F5.5). Staffing/teacher-assignment and student placement/enrollment
+    (`assignments.*`, Q.3/Q.4, D-Q3.3/G3) were not touched.
+  - **No schema change and no migration** — `academic-structure` was
+    catalogued in F5.1 and its five `permissions` rows already exist.
+  - Tests: new `academic-structure-authz.integration.ts`
+    (`test:academic-structure-authz`, TEST_DATABASE_URL-gated) — 9/9. Metadata
+    assertions (exactly one `academic-structure.*` key per handler, no residual
+    `ROLES_KEY` on class or handler), INSTITUTE_ADMIN via `manage`, the four
+    single-action delegate roles plus a `manage` delegate, TEACHER/STUDENT/
+    zero-role default-deny, cross-institute custom-role isolation, and a
+    fully-authorized delegate still getting `NotFound` for another institute's
+    class. Verified to **fail** (5 sub-tests) when one decorator is reverted.
+  - Validation: new suite 9/9; Q.3/Q.4 authz 5+8+6, `authz-regression` 8/8,
+    `academic-scope` 1/1, `resource-scope` 1/1, `job-ownership` 14/14,
+    teacher-assignments/placement/placement-bulk/carry-forward/phase-m/
+    mod-3/mod-4 all green; API unit 238/238; web `test:academic` 28/28;
+    API `tsc --noEmit` clean; `pnpm typecheck` 10/10; `turbo run lint` 9/9;
+    `pnpm build` 7/7; `git diff --check` clean.
+- [x] **F5.3 — Question + Paper Surface Guard Migration.** **IMPLEMENTED +
+      VALIDATED 2026-09-27** on `feature/f5-3-question-paper-guard-migration`
+      (off `dev` `1a86859`), and **integrated into `dev` as `50ab83a`**
+      (`--no-ff`, conflict-free) with the post-merge re-validation and the live
+      API verification recorded in `docs/project-status.md`. Audit first: **65
+      routes** across five controllers enumerated, **62 migrated, 3
+      deliberately role-deferred**.
+  - Migrated from `@RequiredRoles` to `@RequiredPermission` with `PermissionGuard`
+    added to each controller's chain
+    (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`):
+    `QuestionsController` 23/23, `QuestionExtractionController` 11/11,
+    `PaperPatternsController` 14/15, `QuestionPapersController` 13/14,
+    `QuestionTypesController` 1/2. One key per handler, no OR widening, no
+    explicit `manage` (implied only).
+  - Verb mapping: enqueue/starter/blueprint/source-extraction/creation →
+    `create`; reads, plus `POST /questions/bank/derive` (pure derivation) and
+    `POST /paper-patterns/:id/validate` (pure validation) → `read`;
+    batch cancel/retry/approve/reject, per-question approve/reject/activate,
+    candidate edit/accept/generate-answer, extraction import, pattern
+    analyze/approve/lock/unlock, paper rename/select/scope/generate-missing →
+    `update`; delete, **archive**, and **discard** → `delete`. Job-shaped
+    mutations are `update` on the owning resource, not `jobs.update`.
+  - Three routes stay role-based, reasoning recorded in `authorization.md`
+    §13 F5.3: `POST /question-types` (catalogue has no `create`; `manage`
+    would revoke TEACHER's existing capability, and the teacher custom-type
+    panel calls it) and the two `assessment` bridges on patterns/papers (they
+    create `assessments` rows, so the honest key is `assessments.create` —
+    F5.4).
+  - Preserved, not weakened: `x-institute-id` tenant scoping, institute scoping,
+    academic subject/chapter/topic scoping, O1/O2 staging ownership
+    (`QuestionsService`), `gateCandidateJob` + subject re-checks,
+    `gatePatternAccess`, `gatePaper`, extraction job ownership. A fully
+    authorized delegate still gets `NotFound` (never `Forbidden`) for a foreign
+    institute, an out-of-scope subject, or another teacher's staged row.
+  - **No behaviour change for STUDENT**: `GET /question-types` is still the only
+    reachable route in this phase; STUDENT is denied all 61 other migrated
+    routes. `exports.*` (MOD-3) was deliberately not touched.
+  - **No schema change and no migration** — the four resources were already
+    catalogued and their `permissions` rows already exist.
+  - Tests: new `question-paper-authz.integration.ts`
+    (`test:question-paper-authz`, TEST_DATABASE_URL-gated) — **21/21** against
+    the real guard chain: route inventory (65/62/3), one-key metadata, deferred
+    set, catalogue membership, no OR widening/no explicit `manage`, the
+    single student-readable route, INSTITUTE_ADMIN-via-`manage`, TEACHER
+    defaults, STUDENT and zero-role default-deny, one single-action delegate per
+    action, sibling-resource isolation, `questions.manage` implication,
+    cross-institute custom-role isolation, service-level O1/O2 scope, and
+    question-type institute scoping. Carries a **negative probe** that deletes a
+    real decorator, watches the route stop being gated (zero-role membership
+    walks through), restores it and watches the route re-close — so the matrix
+    cannot pass vacuously.
+  - Retargeted the stale `paper-pattern-policy.test.ts` source-scan assertions
+    from the old `@RequiredRoles` contract to `@RequiredPermission` (18/18);
+    its policy/FK assertions were already correct and are unchanged.
+  - Validation: new suite 21/21; `authz-regression` 8/8,
+    `academic-structure-authz` 9/9, teacher-assignments/placement/enrollments
+    authz 5+8+6, `question-bank-sets` 4/4, `job-ownership` 14/14,
+    `question-extraction-resilience` 5/5, `question-answer-generation` 12/12,
+    `paper-patterns` 15/15, `paper-pattern-subjects` 6/6,
+    `paper-pattern-policy` 18/18, `export` 10/10, `paper-pattern-export` 5/5,
+    `academic-scope`/`resource-scope`/`phase-m-remediation`/`mod-3`/`mod-4`
+    1/1 each; API `tsc --noEmit` clean; `pnpm typecheck` 10/10;
+    `turbo run lint --force` 9/9 uncached; `pnpm build` 7/7;
+    `git diff --check` clean.
+- [x] **F5.4 — Examination + Attempt + Practice Guard Migration.** **IMPLEMENTED +
+      VALIDATED 2026-09-27** on `feature/f5-4-examination-guard-migration` (off
+      `dev` `50d6c78`), unmerged — merging is the caller's decision. Audit first:
+      **32 routes** across `ExaminationsController` (15), `AttemptsController` (9)
+      and `PracticeController` (5) plus F5.3's three deferrals (question-type
+      creation + the two `assessment` bridges); **30 migrated, 2 deliberately
+      role-gated**.
+  - Migrated from `@RequiredRoles` to `@RequiredPermission` with
+    `PermissionGuard` added to each controller's chain
+    (`AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`): one key
+    per handler, no OR widening, no explicit `manage` (implied only).
+  - Verb mapping: create → `create`; list/detail/questions/pattern-coverage,
+    attempt available/history/detail/result, practice history/detail → `read`;
+    edit, scope change, publish/activate/complete/unpublish, add-question,
+    select-pattern, save-answer, submit, answer, complete → `update`; delete
+    **and remove-assessment-question** → `delete` (both remove the assessment
+    or part of it from the active surface). `attempts.create` and
+    `attempts.update` stay **STUDENT-only** in the built-in defaults.
+  - Two catalogue/default changes, the only behaviour changes in this phase,
+    both recorded in `authorization.md` §13 F5.4:
+    (1) `question-types` gains a **`create`** action granted to **TEACHER** —
+    TEACHER already reached `POST /question-types` through `@RequiredRoles` and
+    the shipped teacher custom-type panel calls it, so repointing at `manage`
+    would have revoked a live capability. (2) TEACHER gains **`practice.create`**
+    and **`practice.update`** — `/practice` is a shared teacher/student nav item
+    and those two routes had **no** role gate at all before, so the keys had to
+    record an existing capability rather than invent a restriction.
+  - Closed F5.3's three deferrals: `POST /question-types` →
+    `question-types.create`, and both `assessment` bridges →
+    **`assessments.create`** (they insert `assessments` rows; declaring the
+    parent resource's `create` would let a pattern/paper author mint
+    examinations outside their academic scope). F5.3's matrix is now 65
+    migrated / 0 deferred.
+  - Two routes stay role-gated, reasoning in `authorization.md` §13 F5.4:
+    `GET /assessments/:assessmentId/attempts` (cohort ledger) and
+    `GET /assessments/:assessmentId/analytics`. STUDENT already holds
+    `attempts.read`; a **placed** student resolves a `subject-set` scope
+    covering the assessed subject and MOD-4's `ExaminationsService.getAssessment`
+    accepts it, so with only `attempts.read` on the route a placed student
+    could read the whole cohort's ledger and analytics. No key was invented
+    (`RolesGuard` already means "staff only", and the catalogue rule is never
+    to add a key before a real need exists); the suite pins the service-level
+    leak *and* the guard that closes it.
+  - Preserved, not weakened: `x-institute-id` tenant scoping, institute scoping,
+    `requireWritableSubject` on assessment create, DRAFT creator-only editing,
+    the MOD-4 final-scope gate, `loadOwn` on attempts **and** practice
+    (self-scoped even holding the key), `gatePatternAccess`, `gatePaper`, and
+    both bridges' bank-coverage gate. A fully authorized delegate still gets
+    `NotFound` (never `Forbidden`) for a foreign institute, an out-of-scope
+    subject, or a foreign session.
+  - **No schema change and no migration** — `assessments`, `attempts` and
+    `practice` were already catalogued, and `PermissionSyncService` inserts the
+    one new key (`question-types.create`) plus its default grants on API boot.
+  - Tests: new `examination-practice-authz.integration.ts`
+    (`test:examination-practice-authz`, TEST_DATABASE_URL-gated) — **26/26**
+    against the real guard chain: route inventory (33 asserted = the 32-route
+    F5.4 surface + the F5.3-migrated `GET /question-types` re-asserted to prove
+    the new `create` grant stays isolated from it), 31 migrated / 2 role-gated,
+    one-key metadata, no OR widening/no explicit `manage`, catalogue
+    membership, `manage`-implied INSTITUTE_ADMIN, built-in TEACHER and STUDENT
+    defaults, zero-role default-deny, one single-action delegate per action,
+    cross-institute isolation, question-type create/read split, both bridges'
+    `assessments.create` + scope + coverage gates, the attempt-ledger leak, and
+    a **negative probe** that deletes a real decorator, watches the route stop
+    being gated, restores it and watches it re-close.
+  - Retargeted the stale F5.3 `question-paper-authz.integration.ts` deferred
+    assertions: 65 migrated / 0 deferred (21/21).
+  - Validation: new suite 26/26; `question-paper-authz` 21/21,
+    `authz-regression` 8/8, `academic-structure-authz` 9/9,
+    teacher-assignments/placement/enrollments authz 5+8+6, `question-bank-sets`
+    4/4, `job-ownership` 14/14, `question-extraction-resilience` 5/5,
+    `question-answer-generation` 12/12, `academic-scope`/`resource-scope`/
+    `phase-m-remediation`/`mod-3`/`mod-4` 1/1 each — all `skipped: 0`, no test
+    rows left in the database; API `tsc --noEmit` clean; `eslint src` clean;
+    prettier clean on every touched source file.
+- [x] **F5.5 — Remaining Surface Guard Migration.** **IMPLEMENTED + VALIDATED
+      2026-09-27** on `feature/f5-5-remaining-surface-guard-migration` (off `dev`
+      `edd7f03`), unmerged — merging is the caller's decision. Audit first: a
+      whole-controller audit counted **250** application routes, of which **83** on
+      nine controllers were the last permission-eligible surface; **80 migrated,
+      3 deliberately role-gated**, plus 2 identity routes left out of scope.
+      This closes the migration: every permission-eligible route is now gated
+      by the `AccessTokenGuard → TenantGuard → RolesGuard → PermissionGuard`
+      chain with a `RequiredPermission` key (identity, health, worker and
+      platform-plane routes keep their own guards by design).
+  - Migrated from `@RequiredRoles` to `@RequiredPermission` with
+    `PermissionGuard` added to each controller's chain, one key per handler, no
+    OR widening, no explicit `manage` (implied only).
+  - Verb mapping: academic `subjects`/`chapters`/`topics` create→`create`,
+    list/detail/dependents→`read`, update→`update`, `deleteSubject`→`delete`,
+    `restoreSubject`→**`update`** (clears `deletedAt` on the existing row);
+    `content` create→`create`, list/detail/versions→`read`,
+    update/archive/activate→`update`; AI generation → `content.create`,
+    `regenerateResource`→`content.update`, `getGenerationStatus`/`getBatch`→
+    **`jobs.read`** (job state, and STUDENT keeps `content.read`), `cancelBatch`→
+    `jobs.update`; `materials` create→`create`, reads→`read`, lifecycle→
+    `update`, `clearCorrection`→**`delete`**; `syllabus` create→`create`,
+    reads→`read`, lifecycle→`update`, remove→`delete`; ten document/paper/pattern
+    exports→`exports.read`; `jobs` insert→**`jobs.create`**, list/detail→`read`,
+    retry/cancel→`update`; enhancement reads→`materials.read`,
+    enhance→`materials.update`; `users` list→`read`, create→`create`,
+    status→`update`.
+  - One catalogue change, the only behaviour change: `jobs` gains a **`create`**
+    action (97 → **98** live keys) granted to **TEACHER**, which already reached
+    `POST /jobs` through the role gate and whose UI calls it;
+    `INSTITUTE_ADMIN` satisfies it via `jobs.manage`. `jobs.delete` stays
+    uncatalogued (no route deletes a job). No built-in role loses a capability.
+  - One deliberate widening: `GET /users` → `users.read`, and TEACHER already
+    holds `users.read` in the built-in map, so TEACHER gains a route it lacked.
+    The web app already gates `/users` on that key, so the shipped teacher
+    roster/assignment pickers were being 403'd. STUDENT gains nothing
+    (`users.read` is not in its map), and the two user **mutations** stay
+    admin-only.
+  - Three routes stay role-gated, reasoning in `authorization.md` §13 F5.5: the
+    two assessment **results** exports (cohort ledger + analytics — a *placed*
+    student resolves a `subject-set` scope that MOD-4's `getAssessment` accepts,
+    and STUDENT must keep `content.read`, so no `exports.*` key can express
+    "results are staff-only") and `PUT /users/:userId/roles` (handing out a role
+    hands out a permission bundle, so it stays `INSTITUTE_ADMIN` **and** keeps
+    `users.update` as an AND requirement).
+  - Two routes stay outside the migration by design: `GET /memberships` and
+    `GET /memberships/scope` are **identity** endpoints (the first must run before
+    an `x-institute-id` is chosen), so no `R.action` key applies and
+    `MembershipsController` keeps `AccessTokenGuard` only. The suite pins that
+    residue.
+  - Preserved, not weakened: tenant/institute scoping, academic scope, teacher
+    assignment, student placement, job ownership, MOD-3's authoritative
+    export-scope builders, MOD-4's attempt gates, `requireWritableSubject`,
+    DRAFT creator-only content editing and the role-assignment self/last-admin
+    guards. A fully authorized delegate still gets `NotFound` (never
+    `Forbidden`) for a foreign institute, an out-of-scope subject or a foreign
+    session. Recorded pre-existing gap, not fixed here:
+    `MaterialEnhancementService` checks institute only, so a teacher can enhance
+    any material in their own institute — a service-layer fix.
+  - **No schema change and no migration**; `PermissionSyncService` inserts
+    `jobs.create` plus its default grant on API boot (verified live: 98
+    permission rows, `jobs.delete` absent, TEACHER holding
+    `jobs.create`/`read`/`update`).
+  - Tests: new `remaining-surface-authz.integration.ts`
+    (TEST_DATABASE_URL-gated) — **22/22** against
+    the real guard chain over all 83 routes: 80/3 inventory, one-key metadata,
+    no OR widening/no explicit `manage`, guard-chain order per controller,
+    catalogue delta + TEACHER grant, `manage`-implied INSTITUTE_ADMIN across all
+    83, built-in TEACHER and STUDENT reach, the `GET /users` widening, zero-role
+    default-deny, unauthenticated 401, one single-action custom delegate per
+    action (no sibling, no cross-resource leakage), cross-institute refusal for
+    a full-permission admin of another institute, the results-export and
+    role-assignment exceptions, the service-layer scope (404-not-403) and
+    DRAFT-creator ownership probes, and the memberships residue.
+  - Retargeted `mod-3-export-scope` and `phase-m-remediation` onto the
+    production `RolesGuard → PermissionGuard` chain (both previously exercised
+    `RolesGuard` alone, which no longer decides the document exports).
+  - Validation: new suite 22/22 `skipped: 0` with no test rows left in the
+    database; whole-API suite **466 tests / 455 pass / 0 skipped**, the 11
+    failures all in `platform/institute-crud` + `platform/platform-user-lifecycle`
+    and **reproduced unchanged on a pristine worktree of `dev` `edd7f03`** —
+    pre-existing, unrelated to F5.5, not fixed here. API `tsc --noEmit` clean;
+    `eslint src` clean; prettier clean on every file F5.5 introduced or changed
+    (the four controllers with pre-existing prettier drift at `dev` were left
+    alone). Live: `docker compose up -d --build api` healthy, compiled
+    `dist` carries the new metadata, and **all 83 routes enumerated from the
+    running image return `401` without a token (83/83)** — none 404s, so the
+    whole F5.5 surface is mounted and gated.
+- [ ] F5.6 — Frontend Gate Alignment
+- [x] **F5.7 — Roles Console + User Role Management.** **IMPLEMENTED +
+      VALIDATED 2026-09-30** on
+      `feature/f5-7-roles-console-user-role-management` (off `dev` `2a86984`),
+      **unmerged and unpushed** — merging/pushing is the caller's decision. Five
+      phases; **Phase 5 (User Role Assignment) is committed as `50ef20d`**
+      (`feat(web): add user role assignment`, 5 files, `apps/web` only). No
+      permission was widened and no migration was added anywhere in F5.7.
+  - **Phase 1 — capability library** (`apps/web/src/lib/roles-console.ts` +
+      `roles-console.test.ts`): the web-side roles vocabulary —
+      `canViewRoles`, `canCreateRole`, `canEditRole`, `canDeleteRole`,
+      `canAssignUserRoles`, `isSystemRole`, `actorHoldsRole`, `isRoleLocked`,
+      `roleLockReason`, `groupCatalogueByResource`,
+      `buildPermissionSelection`, `roleKeyToId`, `selectedRoleIds`.
+  - **Phase 2 — contract role-key widening** (`packages/contracts/src/index.ts`):
+      `RoleKeySchema` replaces `RoleEnum` in value position on
+      `MembershipListItemSchema.roles` and `InstituteUserSchema.roles`, so a
+      membership can carry a custom institute role key and not only the three
+      built-ins, and `RoleResponseSchema.key` is a role key for the same reason.
+  - **Phase 3 — route + navigation**: `/institute/roles` on `roles.read`, the
+      Roles sidebar link, and the route tests.
+  - **Phase 4 — Roles Console + permission matrix**: create/edit/delete of
+      institute custom roles, permission editing through the existing
+      `PUT /roles/:roleId/permissions`, system-role protection in the UI, and
+      stale-permission handling when the catalogue changes under an open form.
+      Backend side of the same phase: `GET /roles/catalogue` (declared **before**
+      `@Get(':roleId')` so `ParseUUIDPipe` cannot swallow the literal segment),
+      `RolesService.listPermissionCatalogue()` (institute-domain keys only) and a
+      new self-held-role guard on `deleteRole`.
+  - **Phase 5 — User Role Assignment** (`50ef20d`, `apps/web` only): a
+      role-assignment dialog on the users console. It saves through the
+      **existing** `PUT /users/:userId/roles` with a UUID `roleIds[]` payload that
+      **replaces the whole set** — unticking removes a role, and the dialog keeps
+      its own draft, so Cancel is a true no-op and a failed save preserves the
+      selection for a retry. Role names come from `GET /roles`, replacing the
+      hardcoded `ROLE_LABELS` map, so a custom institute role renders under its own
+      name; the permission catalogue is not needed, so **this surface never
+      requests `/roles/catalogue`**. The role list is fetched only for an actor
+      who may assign (that read needs `roles.read`) and is keyed on the active
+      institute and cleared on switch, so a tenant change can never leave the
+      previous institute's role names on screen. Targets are restricted to
+      **other active** members: the current user is shown as `(you)` with no
+      control and a deactivated member has none. **No backend authorization,
+      contract, schema, catalogue or migration change in Phase 5.**
+  - **Security — the gate is unchanged and the API stays authoritative.**
+      `PUT /users/:userId/roles` is a privilege-granting route and still carries
+      `@RequiredPermission('users.update')` **and** `@RequiredRoles
+      ('INSTITUTE_ADMIN')` — an **AND**, never an OR (`users.controller.ts`).
+      The frontend mirrors it exactly with `canAssignUserRoles(grants)` =
+      `isInstituteAdmin && canUse(permissions, 'users.update')`, so an actor holding
+      `users.update` **without** `INSTITUTE_ADMIN` gets no assignment control at
+      all (browser-verified). The client gate is UX only; the API decides.
+  - **Validation — this is the authoritative F5.7 checkpoint.** Web **8/8 suites,
+      79 passing**; API `authz-regression` **8 passing**; remaining-surface authz
+      **22 passing**; DB-backed API validation **30/30, 0 skipped**; browser
+      **17/17 assertions**; server contract verified; PostgreSQL round-trip
+      verified; mobile/390px verified. Contracts/shared/auth/AI/database static
+      builds clean, API build clean, API and web `tsc --noEmit` clean. Verified
+      behaviour: role changes persist across reload; system roles appear per
+      backend behaviour; a self-role attempt is 400, a non-UUID or extra-property
+      payload is 400, an empty role set is 200 and a non-admin is 403; custom
+      roles stay institute-scoped, system roles stay NULL-scoped and memberships
+      carry exactly the expected assignments. At ~390px there is no page-level
+      horizontal overflow, the table scrolls inside its container, the dialog fits
+      and the role list stays scrollable. A 500 shows the error in the dialog,
+      keeps the draft and re-enables Save.
+  - **Recovery (2026-09-30).** Phases 1–4 were originally uncommitted; that
+      worktree was lost and they were **recovered from OpenCode session history and
+      revalidated before Phase 5 closure**. **Not recovered:**
+      - the 35 tests in the two lost untracked backend integration suites, and
+      - two Phase 1–4 web module/test artifacts.
+      Phase 1's capability library, Phase 2's contract widening and
+      `GET /roles/catalogue` are present. The **Phase 3–4 Roles Console UI**
+      (route, sidebar link, permission matrix) is **still absent** — verified:
+      no `apps/web/src/app/(workspace)/institute/roles/`, no Roles sidebar link,
+      no permission-matrix symbol under `apps/web/src`. Rebuilding it is
+      outstanding work, not F5.7 residue; `GET /roles/catalogue` exists and is
+      tested purely for its API contract until that UI lands.
+  - **Reconciliation 2026-09-30 (F5.8 P0, this branch).** The two suites named
+      in `apps/api/package.json` had **no files**, so the declared
+      `test:roles-guard-matrix` / `test:roles-self-escalation` scripts failed on
+      a missing path. Both were **written from scratch against the code that is
+      present**, not reconstructed from the lost originals:
+      - `roles-guard-matrix.integration.ts` (**8/8, skipped 0**) —
+        `catalogue` declared **before** `:roleId` (source scan, so Nest's
+        declaration order and `ParseUUIDPipe` are proven); exactly one key
+        (`roles.read`) on both reads and **no** `@RequiredRoles` on the route or
+        controller; `listPermissionCatalogue()` returns exactly the catalogue's
+        institute slice, every key supported + institute-domain + individually
+        grantable + self-consistent (`key === resource.action`) with display
+        metadata; **no platform key is ever offered**; the real
+        AccessToken → Tenant → Roles → Permission chain admits an
+        INSTITUTE_ADMIN via `roles.manage` and a custom `roles.read` delegate,
+        and refuses TEACHER and a zero-role member; unauthenticated is 401; and a
+        **negative probe** deletes the decorator, watches the route reopen, and
+        restores it, so the matrix cannot pass vacuously.
+      - `roles-self-escalation.integration.ts` (**7/7, skipped 0**) — the new
+        `deleteRole` `actorRoleKeys` guard: a holder is refused **and the row,
+        its grants and its membership binding all survive** (the cascade is the
+        actual hazard); the key match is case-insensitive and position-agnostic;
+        a non-holder deletes successfully; an INSTITUTE_ADMIN is refused only when
+        they genuinely hold the role, so a custom admin is covered too; the
+        `kind === 'system'` immutability check fires **before** the self-hold
+        check (asserted through the message, so a reorder fails);
+        `setRolePermissions` refuses to widen a held role while a non-holder may;
+        a foreign institute gets **NotFound, never Forbidden**, on both read and
+        delete; `createRole` still refuses platform and reserved keys.
+      Both gate on `TEST_DATABASE_URL`, which is now reproducible from the
+      committed `docker-compose.validation.yml`. API `tsc --noEmit` clean,
+      `eslint apps/api/src` clean, prettier clean on both files. The number
+      claimed for F5.7's own validation above is unchanged — these suites are
+      **new** coverage of the F5.7 backend, not a re-derivation of the lost 35.
+  - **Scope correction — what F5.7 actually delivers.** Shipped and tested:
+      the user **role-assignment** surface (`50ef20d`), the role-key contract
+      widening, `GET /roles/catalogue` + its guard, and the `deleteRole`
+      self-held-role guard. **Not shipped:** the Roles Console UI (Phases 3–4).
+      The phase title is retained as the original directive; the delivered scope
+      is the assignment path plus its backend prerequisites.
+  - **Deferred — deliberately untouched by F5.7, no code changed for any of it:**
+      - the stale `role: 'admin'` residual on `/institute` and `/users`
+        (`workspace-routes.ts:49-50`) on top of `users.read` — route/navigation UX
+        residue recorded by F5.6/F5.9, still not aligned;
+      - the `PATCH /roles/:roleId` self-held-role guard — `DELETE /roles/:roleId`
+        and `PUT /roles/:roleId/permissions` both refuse a role the actor holds,
+        `PATCH` (name/description only) does not yet;
+      - `POST /roles` is privilege-granting but keeps only the `roles.create`
+        permission gate; whether it should also require `INSTITUTE_ADMIN` is an
+        **open, unimplemented security follow-up**;
+      - the F5.7 record above lists no other deferred item as closed.
+- [~] F5.8 — Teacher "My Assignments" + Final Regression and Documentation
+      — **P1 + P2 IMPLEMENTED + VALIDATED** on
+      `feature/f5-8-teacher-my-assignments` (worktree off `dev` `6171805`),
+      **pushed, not merged**. No F5.8 code existed before this.
+      P1 `8fed1c2`; P2 `955e249` (mismatch closure) + `8a46b25` (roster copy).
+      **Stopping for P3 approval; M-2 still deferred by instruction.**
+  - **P2 — frontend/backend authorization mismatch closure.** Every gate mirrors
+      a requirement the backend already enforced; no catalogue key, role, grant,
+      schema, migration or backend behaviour changed, and
+      `git diff --stat -- apps/api packages` is empty across both commits.
+      Thirteen files, all `apps/web/src`:
+      - `X-4/M-3` `components/app/app-sidebar.tsx` — academic console keys off
+        `academic-structure.read` instead of the admin role, grouped under
+        Administration. `/institute` and `/users` keep `users.read` +
+        `role: 'admin'` deliberately.
+      - `X-1` `materials/[materialId]/page.tsx` — cancel hidden without
+        `jobs.update`.
+      - `X-2` `subjects/new/page.tsx` — no create form without
+        `subjects.create`.
+      - `X-3` `paper-patterns/new/page.tsx` — no create form without
+        `paper-patterns.create`.
+      - `X-6` `assessments/[assessmentId]/page.tsx` + `.../results/page.tsx` —
+        Results entry and page mirror the backend `INSTITUTE_ADMIN`/`TEACHER`
+        role gate. No key expresses "may read another student's attempt", so it
+        mirrors the role instead of inventing one; the API stays the boundary.
+      - `X-7` `practice/page.tsx` + `lib/workspace-routes.ts` — `/practice`
+        added to `WORKSPACE_ROUTES` behind `practice.read`, role-agnostic;
+        starting a session is `practice.create` and is gated. Regression added to
+        `lib/workspace-routes.test.ts`.
+      - **Beyond the enumerated X-7 scope, same defect class:**
+        `practice/sessions/[sessionId]/page.tsx` — answering and completing are
+        `practice.update`, so a `practice.read`-only delegate was offered
+        controls that would 403. It reuses the existing read-only review branch
+        rather than threading a flag through five child components.
+      - `dashboard/page.tsx` — dead `isTeacher`/`canManage` import removed.
+      - **The copy P1 deferred:** `institute/academic/assignments-section.tsx`
+        *and* `placements-section.tsx` — both said the roster is "listable by
+        institute admins only". Since F5.5 `GET /users` is `users.read` with no
+        role gate, so a delegate *holding* `users.read` was told it was refused.
+        P1 recorded only the teacher one; **both** files carried it. Both now
+        name `users.read`.
+      - **Valid**: all seven required scripts 76/76 (`test:workspace-routes` 7/7
+        after the `/practice` addition, `test:api` 15/15, `test:academic` 35/35,
+        `test:platform-scope` 10/10, `test:paper-pattern-builder` 6/6,
+        `test:form-resolver` 2/2, `test:question-answer` 1/1) and the complete
+        web suite **95/95**; web `tsc --noEmit` clean, `next lint
+        --max-warnings=0` clean, `git diff --check` clean. **Browser validation
+        26/26** against a web image rebuilt from this worktree, with custom
+        roles/users created through the real API. Confirmed live: a
+        `academic-structure.read`-only delegate sees **Academic Structure** under
+        Administration, opens the console and sees the Academic Year UI, and is
+        refused `/institute` + `/users`; the three create/job pages are refused
+        for delegates without the key; the student reaches `/practice` with
+        working actions; teacher/admin/student nav and create surfaces unchanged
+        (P1 regression); `GET /practice/sessions` is 200 with the tenant header
+        and 403 without it.
+      - **Two gaps, both from the box running out of memory** (~520 MB free,
+        multi-GB swap) after that run: the `practice.update` session gate and
+        the roster copy are proven by tsc/lint/tests and by grepping the **live
+        compiled chunks** out of the running container, but **not** by a browser
+        click-through. Re-run `/tmp/opencode/p2-journeys.mjs` scenarios `s5`/`s6`
+        when memory allows. Also the teacher's results **ledger render** was
+        skipped by a probe that omitted `x-institute-id` — an assessment does
+        exist (`7ce844a4-…`); the probe is fixed in the script.
+      - **Negative rendering for X-1/X-2/X-3 is structurally unreachable** in a
+        browser: the routes carry `role: 'teacher'` and the immutable TEACHER
+        bundle already holds those keys, so nobody can hold the route without the
+        permission. Denial was proven at the route and the component gates in
+        the compiled artifact. Route gates were deliberately **not** weakened to
+        make this testable.
+      - `packages/contracts/dist` must be built once before
+        `test:form-resolver` / `test:question-answer`, which otherwise fail
+        `ERR_MODULE_NOT_FOUND`. Pre-existing artifact-ordering quirk, no source
+        change.
+  - **P0 prerequisite closed 2026-09-30.** F5.7 is **merged into `dev`** as
+      `7fa1b93` (`--no-ff`, from `7c828f2`), and `origin/dev` is at `7fa1b93`.
+      The branch's one merge blocker is resolved: the two role suites
+      `apps/api/package.json` declared but that did not exist are now present
+      (`roles-guard-matrix` 8/8, `roles-self-escalation` 7/7, both
+      `skipped: 0`, both negative-probed), and `docker-compose.validation.yml`
+      makes `TEST_DATABASE_URL` reproducible instead of depending on a
+      hand-made scratch database.
+  - **Baseline to compare F5.8 against** (on `dev` `7fa1b93`, 49/49 migrations,
+      `tsx --test` + `node --test`, exact counts):
+      - DB-gated integration — **32 suites, 243 tests, 232 pass, 11 fail,
+        0 skipped**.
+      - API unit (`src/**/*.test.ts`) — **238/238**. Web unit — **94/94**.
+      - `pnpm typecheck` **10/10** tasks; `pnpm lint` **9/9** tasks.
+      - The **11 failures are pre-existing and must not be "fixed"** as a side
+        effect: 3 in `platform/institute-crud` and 8 in
+        `platform/platform-user-lifecycle`. Both are fixture-vs-seed collisions
+        (a fixed institute slug that the demo seed already holds; a platform
+        user list asserted to be exactly its own fixtures while seeded demo
+        users are present). On an **unseeded** database the same 32 suites are
+        **243/243** — so these are not product defects. See
+        `docs/project-status.md` §F5.8 P0 checkpoint for the per-failure causes.
+      - `pnpm format:check` is red repo-wide (222 files, pre-existing drift,
+        none of them F5.7 files) — not part of the baseline to hold F5.8 to.
+  - **Infrastructure note (no repo change).** The first rebuild failed in
+      corepack fetching `pnpm-11.1.2.tgz` (`UND_ERR_CONNECT_TIMEOUT` to the npm
+      registry from inside the build container). It was transient — the retry
+      built cleanly with no Dockerfile or compose change. Prefer rebuilding
+      normally; treat a repeat as container egress, not a project fault.
+  - **P1 — Teacher "My Assignments" surface.** The audit established the backend
+      already serves the correct self-scoped data
+      (`GET /memberships/scope` → `AcademicScopeService.describeScope()` →
+      the teacher's own active `teacher_assignments`), so P1 is frontend-only:
+      **no** new endpoint, service method, permission key, `assignments.read`
+      grant for TEACHER, `membershipId` parameter or authorization change, and
+      `git diff --stat -- apps/api packages` is empty. Four edits, all in
+      `apps/web/src`:
+      - `components/app/app-sidebar.tsx` — `My Assignments` entry in
+        `teacherNav`, `key: undefined` (the scope read carries no catalogue key
+        of its own), pointing at `/dashboard#my-assignments` rather than a new
+        page. It is a jump link into the existing dashboard surface.
+      - `components/app/academic-scope-card.tsx` — optional `id` so that anchor
+        resolves, plus the condition fix below.
+      - `app/(workspace)/dashboard/page.tsx` — passes `id="my-assignments"`.
+      - `app/(workspace)/institute/academic/assignments-section.tsx` — comment
+        only.
+      - Condition fix: the card decided "institute-wide" from the local
+        `isInstituteAdmin(institute)` role **or** `scope.kind`, so a custom
+        delegate could be shown differently from the API's own verdict. It now
+        reads `scope.kind === 'whole-institute'` alone, which is what
+        `describeScope()` returns for INSTITUTE_ADMIN.
+      - Comment fix: the header still claimed `GET /users` is
+        INSTITUTE_ADMIN-role-gated. Since F5.5 it is gated by `users.read` with
+        no role gate (`users.controller.ts`, and its own docblock records the
+        deliberate widening). The roster-unavailable **copy** below the teacher
+        picker still says "listable by institute admins only" — same stale
+        claim, but user-visible rather than a comment, so left for P2.
+        **[Closed in P2 `8a46b25`]** — and the same claim was in
+        `placements-section.tsx` too, which P1 had not recorded.
+      - **Valid:** `test:academic` 35/35, `test:workspace-routes` 6/6,
+        `test:api` 15/15, web `tsc --noEmit` clean, and browser validation
+        (see `docs/project-status.md` §F5.8 P1 checkpoint).
+      - **Deferred (M-2, deliberately not fixed here).** The teacher-assignment
+        *console* is inside `/institute/academic`, whose route gate is
+        `academic-structure.read`, while its own section reads
+        `assignments.read`. A custom role holding **only** `assignments.read`
+        therefore cannot reach the table that permission was written for. This
+        is a console-boundary/nav alignment problem, not an authorization
+        defect: the backend enforces each route correctly and no permission is
+        widened by changing the gate. Fixing it means deciding the section's
+        route key (split the route, or give the nav entry the union), which is
+        a P2+ decision. Carried forward unchanged.
+- [x] F5.9 — Partial-Permission Academic Console
+  - IMPLEMENTED + VALIDATED 2026-09-28 on
+    `feature/f5-9-academic-console-graceful-degradation` (off `dev` `3f51e2d`),
+    **pushed, not merged**. 6 files, `apps/web` only — no backend, catalogue,
+    role-grant, schema or migration change (`git diff --stat -- apps/api
+    packages` is empty), and no permission widened.
+  - **Delivered** (`apps/web/`): the academic console no longer collapses
+    because one unread collection is a 403. Structural reads (years, classes,
+    divisions — `academic-structure.read`) and the subject catalogue
+    (`subjects.read`) settle independently; a structural failure still shows the
+    page error, while a catalogue 403 keeps the console usable and an
+    unavailable catalogue is labelled honestly instead of masquerading as
+    "All subjects offered" — on the class tab, the offering dialog and the
+    enrollment overrides. The footer now states that access depends on each
+    section's read permission instead of claiming every member can read
+    everything. `ForbiddenGate`, `isPrimaryForbiddenPath()` and
+    `workspace-routes.ts` were audited and left unchanged.
+  - **Valid** (run directly, not through the flaky `pnpm` wrapper):
+    `test:academic` 35/35, `test:workspace-routes` 6/6, `test:api` 15/15,
+    `tsc --noEmit` clean. The DB-gated API suites
+    (`test:academic-structure-authz`, `test:academic-scope`,
+    `test:student-placements-authz`) **skip without `TEST_DATABASE_URL`** and
+    are not reported as passing; the backend is byte-identical, so its gate is
+    unchanged by construction. **Browser, real Chrome over CDP
+    (`scripts/e2e/lib/browser.mjs`), 6 scenarios, 39 assertions, 0 failures**
+    against the dockerized stack, with a per-request log per scenario: a
+    read-only delegate; the reported case (structure manager without
+    `subjects.read` — console intact, existing offerings still listed, degraded
+    dialog and enrollment overrides, `/academic/subjects` requested **exactly
+    once**); the same manager with `subjects.read` (no degradation);
+    `assignments.read` without `users.read` (roster-unavailable copy); a role
+    with no structural read (Forbidden view, zero console fetches); and
+    `INSTITUTE_ADMIN` (unchanged).
+  - The browser run also caught a gap in the fix: the per-class offerings
+    dialog is gated on `academic-structure.create|delete`, so a read-only
+    delegate could never open it, which made the in-dialog denial copy
+    unreachable for exactly the least-privileged role. The Classes tab now
+    carries the note itself and states that the offered-subject counts remain
+    real (they come from the class's own `academic-structure.read` read, not
+    from the catalogue).
+  - **Fixtures only for that browser run** (demo institute): custom roles
+    `f59-struct-read`, `f59-struct-manage`, `f59-full`, `f59-manage-assign`,
+    `f59-no-struct` and members `f59.{read,manage,full,manageassign,
+    nostruct}@catlium.dev`, each holding only its custom role. **All removed
+    afterwards** — the five roles deleted outright, the six members deactivated
+    (the API exposes no hard user delete); the demo institute is as it was
+    found.
+  - Not done here, deliberately: the `/institute/academic` sidebar link is keyed
+    `users.read` while the route gate needs `academic-structure.read`
+    (`app-sidebar.tsx:73`), and `/institute` + `/users` still carry a
+    `role: 'admin'` residual on top of `users.read`. Both are UX alignment, not
+    enforcement, and neither may widen a permission — they belong with the
+    Roles Console work.
+
+## B3 — Async question-generation UX (2026-10-16, IMPLEMENTED + VALIDATED)
+
+> Directive: make the async Question Bank generation flow correct end to end —
+> pending/running/completed/failed/retry/cancel, recovery across navigation, no
+> duplicate submits, no misleading messages. Branch
+> `feature/b3-async-question-generation-ux` (off verified `origin/dev`
+> `3eabc983074f1df259955ca2cf11e302f8043dc7`, which already contains B1 and B2;
+> built in a separate worktree `/tmp/edutech-b3`; the dirty main checkout and
+> `stash@{0} bacf0ca` were preserved untouched). **No schema/data mutation.**
+> Do NOT merge to `dev`/`main` without authorization.
+
+- [x] **Pure batch state machine + tests.** New
+      `apps/web/src/lib/question-bank-batch.ts`
+      (`questionBankBatchPhase` → pending/running/completed/partial/failed/
+      cancelled; `isTerminalBatchPhase` / `canCancelBatch` / `canRetryBatch`),
+      `question-bank-batch.test.ts` (12 cases), `test:question-bank-batch`
+      script in `apps/web/package.json`.
+- [x] **Panel (`question-bank-panel.tsx`).** Removed the `onOpenChange`
+      close-wipe of `batches`/`batchProgress`; added a mount recovery effect
+      seeding live batches from `GET /questions/bank/sets`; terminal-aware
+      `pollProgress`; `cancelBatch` + `cancellingBatch`; `writeInFlight` guard
+      on `checkDeficits`/`generateMissing`/`createNewSets`/`generateStarter`;
+      `createNewSet` returns `{ batchId, label }`; phase-aware progress grid with
+      Cancel/Retry gated by `canManage` (`questions.update`); truthful toasts.
+- [x] **Wizard (`question-bank-wizard.tsx`).** `reset()` no longer nulls
+      `batch`; `writeInFlight` guard added to `checkBank`/`generateMissing`;
+      terminal-aware `pollActive`; `retryBatch`/`cancelBatch` +
+      `busyBatch` state; batch render block uses `questionBankBatchPhase` with
+      Cancel/Retry and honest queued/running/cancelled/failed labels.
+- [x] **Sets card (`question-bank-sets.tsx`).** Polls only while a listed set
+      (or the expanded batch) is non-terminal; per-job error text; Cancel/Retry
+      per expanded batch; optional `refreshSignal` prop. `questions/page.tsx`
+      bumps `setsRefresh` in a new `onGenerationChanged` callback.
+- [x] **API.** `apps/api/src/questions/question-generation.service.ts`
+      `listBankSets` `active` count now includes `'cancelling'`, matching
+      `getBankBatch`/`ACTIVE_JOB_STATUSES`.
+- [x] **Docs.** `question-lifecycle.md` §4a, `docs/api/questions.md` batch
+      monitor section, this file, `project-status.md`.
+- [x] **Validation:** `pnpm typecheck` 10/10; `pnpm lint` 9/9 (web has no lint
+      script); API unit 238/238; web `node --test src/lib/*.test.ts` 107/107;
+      `pnpm --filter @catlium/web build` clean. DB-backed integration suites skip
+      here (`TEST_DATABASE_URL` unset, no host-reachable Postgres); no live stack
+      built for browser E2E.
+- [x] Commit + push the feature branch (`6e28980` implementation, `1f96c3d`
+      docs), then this integration.
+- [x] **Integrated into `dev`** as merge `ff9a40a` (`--no-ff`, parents
+      `3eabc98` + `1f96c3d`); feature tree and merged tree identical. Merged-tree
+      validation (disposable `catlium_test_b3` DB, migrations applied): typecheck
+      10/10, lint 9/9, API unit 238/238, web node tests 107/107, web build
+      clean, `test:question-bank-sets` 4/4, `test:question-paper-authz` 21/21
+      (64-route matrix), `test:question-answer-generation` 12/12,
+      `test:question-extraction-resilience` 5/5, `test:question-extraction-mode`
+      5/5, plus a throwaway DB check proving `cancelling` counts as `active` in
+      `listBankSets`. Browser/E2E not run (no web/api stack up; building one
+      would recreate the `edutech` compose project). Pushed to `origin/dev`
+      fast-forward; B1/B2/B3 all ancestors of the remote HEAD.
+
+## B2 — Question Bank extraction cleanup (2026-10-16, IMPLEMENTED + VALIDATED)
+
+> Directive: retire the obsolete material-driven "Extract" surface and make
+> "Extract from Source" follow one consistent contract. Branch
+> `feature/b2-question-bank-extraction-cleanup` (off verified `dev` `17dc44c`;
+> the pre-existing dirty working tree and `stash@{0} bacf0ca` were preserved
+> untouched — B2 was built in a separate worktree). The working-tree deletion
+> of the material dialog left uncommitted since the 2026-09-26 F5.0
+> reconciliation is now the authorized change (see `question-lifecycle.md` §8a).
+> **No schema/data mutation.** Do NOT merge to `dev`/`main` without
+> authorization. `origin/dev` was found divergent (`17dc44c` is not an ancestor
+> of `origin/dev` `3d13b27…`) — publishing `dev` is a separate, blocked decision.
+
+- [x] **Retired the material-driven surface (web + API together).**
+      Deleted `apps/web/src/components/questions/question-extraction-dialog.tsx`
+      and its "Extract" button / state / element in
+      `apps/web/src/app/(workspace)/questions/page.tsx`; removed
+      `POST /questions/extract-from-material` and its `ExtractQuestionsDto`
+      import (`question-extraction.controller.ts`), the `requestExtraction`
+      method and `assertMaterial` guard (`question-extraction.service.ts`), and
+      `ExtractQuestionsDto` (`dto/question-extraction.dto.ts`). The legacy
+      `QUESTION_EXTRACT` sweep + whole REVIEW surface (`list/update/accept/
+      import/discard`, status poll) are intentionally kept, so any
+      already-queued material job still drains and the mode-wiring test can
+      assert the handler is gone.
+- [x] **"Extract from Source" contract fixed.** `requestTextExtraction` /
+      `requestFileExtraction` now take an explicit `intoPaper` flag (default
+      `false`) instead of an ignored-in-practice `paperId?: string`. The
+      question-papers controllers pass `true` (paper mode → a Question Paper is
+      created and linked, so `…/:paperId?extraction=:jobId` resolves); the
+      Question Bank controllers default to bank mode.
+      `ExtractionEnqueueResult.paperId` is now `string | null` and always
+      emitted (`null` in bank mode), matching
+      `ExtractQuestionPaperResponseSchema`.
+- [x] **Regression test**
+      `apps/api/src/question-extraction/question-extraction-mode.integration.ts`
+      (`test:question-extraction-mode`, run via `tsx` because controllers use
+      TS parameter properties; no DB): asserts the retired handler is absent,
+      bank controllers call in bank mode, and both question-papers controllers
+      call in paper mode. Updated `question-paper-authz.integration.ts` route
+      matrix (65 → 64 audited routes; dropped `extract`).
+- [x] **Validation:** `pnpm typecheck` 10/10; `pnpm lint` green (web has no lint
+      script); API unit suite 238/238; new mode test 5/5. DB-backed integration
+      suites skip here (`TEST_DATABASE_URL` unset, no host-reachable Postgres).
+- [x] Commit + push the feature branch (`0b9e9f7`, pushed to
+      `origin/feature/b2-question-bank-extraction-cleanup`), then this docs
+      checkpoint (`project-status.md` + `question-lifecycle.md` §8a).
+- [x] **Integrated into `dev`** as merge `ebcecaf` (`--no-ff`, parents
+      `17dc44c` + `0cd7c38`); feature tree and merged tree identical.
+      `origin/dev` was verified **not** divergent (it is an ancestor of local
+      `dev`; local `dev` = `origin/dev` + B1), so the push is a fast-forward.
+      Merged-tree validation (clean worktree + fresh scratch `catlium_test_b2`
+      DB, migrations applied): typecheck 10/10, lint 9/9, API unit 238/238,
+      `test:question-paper-authz` (64-route matrix) green, mode test 5/5,
+      resilience 5/5, answer-generation 12/12, bank-sets 4/4.
+
+## B1 — Syllabus Chapter/Topic Extraction Reliability (2026-10-15, IMPLEMENTED + VALIDATED, UNCOMMITTED)
+
+> Audit follow-up. F4 (`feature/fix-syllabus-topics`, merged `7805814`) put the
+> ≥1-topic-per-chapter invariant in the worker source, but the live `worker-ai`
+> image was stale (in-container schema still `default_factory=list`, prompt
+> without the topic rule), so syllabi analyzed through it carried topic-less
+> chapters into confirm; the audit also flagged two `applyStructure`
+> reconciliation defects. Scope: rebuild + live verification, the two
+> reconciliation fixes, a confirm-persists-topics regression test, and the
+> syllabus E2E extension. **No B2/B3; no data mutation.** Branch
+> `feature/b1-syllabus-topic-extraction-reliability` (off
+> `feature/f5-9-academic-console-graceful-degradation` `72dfd2a`, unrelated
+> working-tree changes preserved; `stash@{0} bacf0ca` untouched); prepared for
+> review — **not committed, not pushed, not merged**.
+
+- [x] **Live worker rebuilt + verified.** In-container check proved the running
+      `worker-ai` pre-rebuild carried the pre-F4 schema/prompt; rebuilt `api` +
+      `worker-ai` from current source
+      (`docker-compose.yml` + `docker-compose.dev.yml`), then re-verified inside
+      the containers: `SyllabusChapter.topics` is `Field(min_length=1)`, the
+      prompt contains the "at least one topic … empty topics list is invalid"
+      rule, and the API dist carries the fixes below.
+- [x] **`applyStructure` fix 1 — `usedChapterIds` consumption**
+      (`apps/api/src/syllabus/syllabus.service.ts`): the set was created and
+      consulted by `matchChapter`/`removedChapters` but never populated, so
+      every confirm archived **all** existing chapters (even reused ones) and
+      one existing chapter could be matched by two structure chapters. Fix: one
+      `usedChapterIds.add(chapterId)` on the reuse branch.
+- [x] **`applyStructure` fix 2 — archive topics of removed chapters**: topics
+      under a chapter archived by reconciliation stayed `active` (orphaned live
+      rows under a hidden parent). Fix: the removed-chapters block now archives
+      their active topics too, recorded in `report.removedTopics`. Status flips
+      only — no deletes, no destructive cleanup.
+- [x] **Regression test** `apps/api/src/syllabus/syllabus-confirm.integration.ts`
+      (`test:syllabus-confirm`, TEST_DATABASE_URL-gated, repo integration
+      convention): confirm persists chapter+topic rows; re-confirm reuses the
+      matched chapter (identity + active preserved); removed chapter and its
+      topics are archived. Verified to **fail** on the pre-fix service and pass
+      with it.
+- [x] **E2E** `scripts/e2e/syllabus_e2e.sh`: SYL-06 now fetches
+      `GET /academic/chapters/:id/topics` after confirm and asserts topic rows
+      exist. Harness fixes required to run at all against the current API:
+      pass the `csrf_token` cookie as `x-csrf-token` on state-changing calls
+      (global `CsrfGuard` since `c40e0dc`; the suite last ran against the
+      month-old API image), and two stale expectations corrected to the
+      intentional current contracts (title patch while locked → 200; subject-
+      scope read outside the student's scope → 404 existence non-leak). Full
+      suite **PASS=64 FAIL=0** on the rebuilt stack with real OmniRoute AI.
+- [x] **Topic-less data identified (read-only; repair pending approval).**
+      Demo institute: `993786df-…` "test 1" v2 CONFIRMED+locked (subject Maths
+      `18407940-…`, 9 topic-less chapters in the hierarchy) and `109abd37-…`
+      "Computer science" v2 PROPOSED (subject English, 7/8 chapters topic-less).
+      Repair procedure recorded in the session report — new-version re-analyze+
+      confirm for the confirmed row, structure PATCH or re-analysis for the
+      proposed one. **Not executed.**
+- [x] **Validation.** Worker `pytest tests/test_syllabus.py
+      tests/test_aggregation.py` 15/15; API `syllabus-validator.test.ts` 4/4;
+      new integration suite green (and red pre-fix); `tsc --noEmit` + eslint
+      clean on the changed files; `bash -n` on the E2E; E2E 64/0; running
+      containers verified, not merely image builds. Graphify graph updated.
+- [ ] Commit this checkpoint (pending reviewer approval of the diff),
+      then `docs` checkpoint + optional data repair under separate
+      authorization.
+
+
+## Phase F1 — Institute Student Placement Bulk Multiselect (2026-09-25, IMPLEMENTED + VALIDATED)
+
+> Atomic multi-student placement from the institute console. An institute admin
+> checks off any subset of the visible placeable STUDENT roster and submits ONE
+> bulk request; the batch is deduplicated, revalidated, and committed in a
+> single all-or-nothing transaction. Full report: `docs/project-status.md`
+> (Phase F1 entry). Branch `feature/fix-student-placement-multiselect`,
+> pushed and **since merged into `dev`** (`git branch --contains` confirms
+> `dev`; corrected 2026-09-26 during F5.0 doc reconciliation — the entry
+> previously said "no merge / unmerged session work").
+
+- [x] **Backend — bulk route + service + authz (`apps/api/src/academic-
+      structure/`):**
+  - DTO `CreateStudentPlacementsBulkDto {membershipIds: UUID[] (IsArray +
+    ArrayNotEmpty + IsUUID each), divisionId}`.
+  - `POST /academic/student-placements/bulk` (201, `assignments.create`,
+    declared before `@Get(':placementId')` so the literal `bulk` segment wins).
+  - Service `createStudentPlacementsBulk(instituteId, {membershipIds,
+    divisionId})`: empty guard 400; institute-scoped division lookup; server-
+    side dedup (`new Set`); ONE `db.transaction`: every membership revalidated
+    via `requireActiveStudentMembership` (active same-institute STUDENT, else
+    400) and all rows inserted together — any partial-unique/`requireActive`
+    violation throws, the whole batch rolls back (`throwIfUniqueViolation`
+    inside the tx → ConflictException). Single-create invariants unchanged.
+  - Authz: bulk gated exactly like single create (`assignments.create`).
+- [x] **Integration coverage (both REAL-guard suites, TEST_DATABASE_URL-gated):**
+  - `student-placements-bulk.integration.ts` (`test:student-placements-bulk`):
+    happy path N ACTIVE rows with derived year/division, duplicate-ID dedup,
+    atomic rollback (conflict ⇒ siblings absent), inactive/teacher/foreign/
+    cross-institute member rejection, institute isolation, empty batch 400.
+  - `student-placements-authz.integration.ts` extended to drive the REAL bulk
+    controller handler: admin passes, delete-only delegate DENIED, create-only
+    delegate CAN bulk (mirrors single create), conflict ⇒ full rollback.
+  - `package.json` adds `test:student-placements-bulk`.
+- [x] **Web — console multiselect (`apps/web/`):**
+  - Helpers in `src/lib/academic.ts`: `togglePlacementSelection`,
+    `togglePlacementSelectAll` (visible-subset select/clear, preserves
+    out-of-visible selection), `bulkPlacementPayload`, `canSubmitBulkPlacement`
+    (requires division + ≥1 selected). `academic.ts` adds tests → 24/24 →
+    28/28 (existing `test:academic` script reloads the same suite).
+  - `placements-section.tsx`: the Place dialog gains a placeable-student
+    multiselect — checkbox roster with Select-all / Select-all-then-clear /
+    live "N selected" count / Clear; submit fires ONE `/bulk` POST with
+    `{membershipIds, divisionId}`; loading/error/success toast feedback +
+    refresh-on-success. Single-student flow (single create) untouched --
+    both paths shown via the same dialog defaulting to the visible roster.
+- [x] **Docs:** this tracker Phase F1 entry.
+- [x] **Final F1 audit (2026-09-25, PASS):** full checklist re-validated on a
+  fresh scratch PG17 — backend bulk 1/1, authz 8/8, single 1/1, carry-forward
+  1/1, web academic 28/28, repo typecheck (8 workspaces), api lint, web build.
+  No HIGH/MEDIUM findings; only LOW/INFO items (cosmetic, no code change).
+  Full report in `docs/project-status.md` (Final F1 audit).
+
+## F2 — React Hook Form + Zod v4 resolver incompatibility (2026-09-24, IMPLEMENTED)
+
+> Issued task. Fix the `@hookform/resolvers` + Zod v4 incompatibility that made
+> Add User and other forms silently reject invalid submissions. Root cause
+> confirmed: `@hookform/resolvers` 3.10.0 (and the declared `^3.9.1` range)
+> only recognizes the Zod v3 error shape (`.errors`); Zod 4.4.x errors use
+> `.issues`, so the resolver's catch predicate failed and it REJECTED with the
+> raw ZodError — `form.handleSubmit` never fired and invalid input produced no
+> network request (and no visible validation). Branch
+> `feature/fix-form-validation`, from `dev`. Backend user creation untouched.
+
+- [x] Bumped `apps/web` `@hookform/resolvers` `^3.9.1 → ^5.9.1`
+      (standard-schema based; native Zod 4 detection via `_zod`; peer RHF
+      `^7.55.0` satisfied by the lockfile's react-hook-form 7.87.0). Lockfile
+      updated. The installed 5.9.1 zod resolver maps Zod v4 issues → RHF
+      `FieldErrors` (resolves), on the exact path every form (`login`, `users`,
+      `subjects/new`, `materials`, `academic` sections, `questions`,
+      `assessments`, `create-institute-dialog`) uses: `zodResolver(schema)`.
+- [x] Regression test `apps/web/src/lib/form-resolver.test.ts` (new) +
+      `test:form-resolver` script — drives the REAL resolver against the REAL
+      Zod v4 `CreateInstituteUserRequestSchema`: invalid input must RESOLVE to
+      field errors (under 3.10.0 it rejected instead) and valid input must
+      resolve clean. 2/2. The pre-fix failure mode was confirmed in the
+      installed 3.10.0 dist (`Array.isArray(error.errors)` predicate) — the
+      test is a true regression guard.
+- [x] Validation: web `node --test src/lib/*.test.ts` **67/67** (65 existing +
+      2 new); web `tsc --noEmit` clean; repo `pnpm typecheck` **10/10**; repo
+      `pnpm lint` 9/9 + `eslint` over `apps/web/src` clean; `next build` clean
+      (`/users` emitted); web container rebuilt → running image carries
+      `@hookform/resolvers@5.9.1` + the `_zod` resolver marker in the bundle.
+- [x] Live browser verification (real Chrome against the rebuilt dev stack):
+      Add user — empty submit shows validation messages AND sends no POST;
+      valid input sends `POST /users` → **201** + "Account created" toast +
+      dialog closes + row appears in the table; duplicate email → **409** +
+      "already a member" error toast. Existing forms not regressed: login form
+      works (signed in, resolver path exercised) and the academic-year create
+      form blocks empty (validation shown, no POST) then creates (POST **201**,
+      success toast).
+- [x] Docs: this tracker + project-status.md (Phase F2 entry).
+- [x] Commit `fix(web): upgrade @hookform/resolvers for Zod v4 form validation`
+      on `feature/fix-form-validation` (+ push, no merge).
+
+## F4 — Enforce the syllabus Chapter → Topic invariant (2026-09-24, IMPLEMENTED)
+
+> Issued task. Every syllabus chapter must contain at least one topic because
+> downstream derived-content generation is topic-based
+> (`GenerateQuestionsDto` requires `topicId`; starter-material generation
+> rejects chapter-only sources). Branch `feature/fix-syllabus-topics`, from
+> `dev`; commit `fix(syllabus): require at least one topic per chapter` (+
+> push, no merge). No migration; no silent mutation of already-confirmed
+> syllabi.
+
+- [x] **Worker prompt** (`worker/ai/generation/syllabus.py`): replaces "0 or
+      more topics" with "must contain at least one topic"; when the document
+      has no explicit subtopic headings the model derives meaningful
+      first-level topics from the chapter's own content and never invents
+      topics the document does not support. Docstring updated to the same rule.
+- [x] **Worker schema** (`worker/ai/schemas.py`): `SyllabusChapter.topics` is
+      now `Field(min_length=1, max_length=200)` (the list is required; an
+      empty/absent topics list fails Pydantic validation).
+- [x] **Shared contract** (`packages/contracts/src/index.ts`):
+      `SyllabusChapterSchema.topics` now `z.array(SyllabusTopicSchema)
+      .min(1).max(200)`.
+- [x] **API validation** (`apps/api/src/syllabus/syllabus.validation.ts`):
+      `SyllabusValidator` extracted to a pure module (existing
+      `paper-patterns.validation.ts` precedent) so confirm/update's exact gate
+      is unit-testable; `syllabus.service.ts` delegates unchanged.
+      confirm(→ `parseStructure` of the analyzed structure) and
+      PATCH-update structure now reject chapter-only shapes with the existing
+      400 `Invalid syllabus structure` via `SyllabusValidator` — no duplicated
+      validation logic.
+- [x] **Retry behaviour** — no code change: a chapter-only model response now
+      fails `SyllabusAnalysisPayload` validation inside the existing
+      `_complete_validated` loop (retries `ai_validation_retries` times);
+      after exhaustion the job honestly fails (`fail_syllabus_analysis` +
+      `job:failed`), nothing is persisted to the teacher-confirm path.
+- [x] **Tests**:
+      - `test_syllabus.py`: new `test_chapter_only_output_fails_validation_and_never_confirms`
+        — chapter-only provider output drives the REAL `_complete_validated`
+        retry loop (3 provider calls with `ai_validation_retries=2`), then
+        fails honestly; `complete_syllabus_analysis` never called.
+      - New `apps/api/src/syllabus/syllabus-validator.test.ts` (4 cases):
+        valid Chapter → Topic parses; `topics: []` → 400-style
+        `BadRequestException` through `SyllabusValidator` (the exact
+        confirm/update gate); `SyllabusStructureSchema.safeParse` rejects
+        `topics: []`; accepts a chapter with ≥1 topic.
+      - `test_aggregation.py`: aggregation fixture chapter previously
+        `topics: []` now carries a topic (valid chapter shape).
+      - `scripts/e2e/mock_ai_provider.py`: canned syllabus "Geometry" chapter
+        `topics: []` → one topic, keeping the e2e/demo mock valid under the
+        new schema.
+- [x] **Legacy data** — documented, not mutated: already-CONFIRMED syllabi are
+      left untouched and read paths never parse structure (no regression); a
+      legacy chapter-only PROPOSED row cannot be confirmed as-is (400) and
+      requires explicit re-analysis/backfill through a fresh analysis + confirm.
+      No migration added.
+- [x] **Validation**: worker `pytest` 84/84 (incl. the new honest-failure
+      case); api unit `node --test` **232/232** (228 + 4 new validator);
+      repo `pnpm typecheck` 10/10; repo `pnpm lint` 9/9; repo `pnpm build` 7/7;
+      raw `ruff` + source `mypy` clean (test-file mypy noise pre-existing);
+      api/worker-ai/worker-material images rebuilt; running containers verified
+      to carry the change (worker schema `MinLen(min_length=1)` +
+      new prompt text; api contracts dist has
+      `topics:z.array(...).min(1).max(200)`).
+- [x] Docs: this tracker + project-status.md (Phase F4 entry). Graphify graph
+      re-run (`graphify update .`).
+- [x] Commit `fix(syllabus): require at least one topic per chapter` on
+      `feature/fix-syllabus-topics` (+ push, no merge).
+
+## Phase Q.4.0 — Student Placement, Transfer & Carry-Forward Design (2026-09-24, DESIGN COMPLETE)
+
+> Issued task. Design/audit the authorization model + workflow for student
+> placement, transfer, and academic-year carry-forward (promotion). DESIGN ONLY
+> — no code, migrations, catalogue/guard/endpoint/frontend change. Canonical
+> design: `docs/architecture/academic-student-placement.md`. Reconciles audit
+> §11/§14.3/§14.4, D5 §13/§17, Phase G placement impl, Phase H enrollments +
+> academic scope, and Q.3's `assignments.*` precedent. Docs: project-status.md +
+> this tracker. Commit on `feature/student-placement`; do NOT merge into
+> dev/main.
+
+- [x] Created branch `feature/student-placement` from
+      `feature/teacher-assignment` (unrelated working-tree changes preserved
+      untouched).
+- [x] Traced current authorization: `student-placements.controller.ts`
+      (role-only `@RequiredRoles(...PLACEMENT_ADMIN)`, no PermissionGuard, no
+      keys), service invariants (`student-placements.service.ts` L81-146
+      create/transfer/deactivate + L179-195 active-STUDENT check), schema
+      partial-unique index, `permission-catalogue.ts:25-31` Q.4 reservation.
+- [x] Decision register (§11, all tagged IMPLEMENTED/PLANNED/DEFERRED/MISSING):
+      D-Q4.1 reuse `assignments` family (no new key); D-Q4.2 exact per-endpoint
+      keys incl. AND combinator for transfer + carry-forward commit; D-Q4.3
+      institute-scope (not academic-scope); D-Q4.4 default grants + custom-role
+      delegation; D-Q4.5 bulk preview/commit + single promotion via existing
+      transfer; D-Q4.6 no core migration, optional `divisions.capacity`; D-Q4.7
+      history reuses list; D-Q4.8 all-or-nothing commit, strict-forward;
+      D-Q4.9 derived occupancy; D-Q4.10 enrollment overrides DEFERRED;
+      D-Q4.11 console design.
+- [x] Docs updated: `docs/architecture/academic-student-placement.md` (new
+      canonical doc, §1-§15); project-status.md (Phase Q.4.0 entry); this
+      tracker.
+- [x] Commit `docs(authz): design student placement, transfer and carry-forward
+      surface` (+ push, no merge).
+- [x] (PLANNED) Phase Q.4.1 — guard migration: AND-capable `@RequiredPermissions`
+      decorator/rules + catalogued student-placements controller (drop
+      `PLACEMENT_ADMIN`) + `student-placements-authz.integration.ts`.
+      **IMPLEMENTED 2026-09-24** (commit `feat(authz): migrate student
+      placements to permission guard`, pushed, no merge):
+      - `permissions.decorator.ts` adds `@RequiredPermissions` (AND group
+        `PERMISSIONS_ALL_KEY`); `permissions.guard.ts` enforces it via
+        `required.every` alongside the existing OR `RequiredPermission` group —
+        single-key routes untouched.
+      - `student-placements.controller.ts` drops `PLACEMENT_ADMIN` +
+        `@RequiredRoles`, runs `AccessTokenGuard → TenantGuard → RolesGuard →
+        PermissionGuard`: list/get=`assignments.read`, create=`.create`,
+        deactivate=`.delete`, transfer=`assignments.create` AND `assignments.
+        delete` (`@RequiredPermissions`). Service invariants unchanged
+        (institute-scope, STUDENT/active check, partial-unique 409).
+      - `permission-catalogue.test.ts` adds the AND-combinator pure premise
+        test (create+delete both required; manage implies both).
+      - New `student-placements-authz.integration.ts` (`test:student-
+        placements-authz`): REAL controller handlers + REAL guards — ADMIN via
+        manage (all 5 routes), TEACHER/STUDENT/zero deny, custom-role exact
+        read/create/delete, AND-rule on transfer (create-only and delete-only
+        delegates DENIED; create+delete and manage pass), cross-institute
+        isolation. 5/5 on a fresh scratch PG17.
+      - Validation: repo typecheck 10/10, lint 9/9, api unit 228/228, nest
+        build, integration suites (student-placements, teacher-assignments-
+        authz, student-placements-authz) green, api container rebuilt.
+- [x] Phase Q.4.2 (this session's scope) — placement/transfer/deactivate
+      backend contract completion + end-to-end authorization coverage.
+      **IMPLEMENTED 2026-09-24** (commit `feat(student-placements): complete
+      placement backend contract and end-to-end coverage`, pushed, no merge):
+      - Verified the API contracts + service invariants match the design
+        (§1/§7): DTOs (`CreateStudentPlacementDto`, `TransferStudentPlacementDto`),
+        routes (list/get=`read`, place=`create`, deactivate=`delete`, transfer=
+        `create`+`delete` AND), institute-scope, derived year from division,
+        active same-institute STUDENT check (else 400), partial-unique 409,
+        single-tx archive+insert transfer, soft deactivate with history
+        retention. No contract or schema gap → no migration.
+      - Extended `student-placements-authz.integration.ts` (5/5 → 6/6) to now
+        also drive the REAL controller handlers through the REAL guard chain
+        against real DB rows: successful placement/deactivation/transfer,
+        duplicate 409, inactive-student 400, insufficient-permission 403
+        (default-deny; delete-only create; create-only transfer), cross-institute
+        403, transfer rollback on an occupied destination year, and history
+        retention (exactly one ACTIVE per student+year, nothing deleted).
+      - Validation: typecheck 10/10, api lint clean, api unit 228/228, nest
+        build, focused integration suites green, api container rebuilt.
+- [x] Phase Q.4.2 carry-forward backend — preview + commit endpoints,
+      all-or-nothing tx, service + authz integration suites.
+      **IMPLEMENTED 2026-09-24** (commit `feat(student-placements): implement
+      carry-forward preview and atomic commit`, pushed, no merge):
+      - DTOs: `CarryForwardPreviewDto {sourceAcademicYearId,
+        destinationAcademicYearId, classId?}`, `CarryForwardItemDto`,
+        `CarryForwardCommitDto {destinationAcademicYearId, items[],
+        skipPlacementIds?}` (ValidateNested + @Type).
+      - Routes: `POST /carry-forward/preview` (`assignments.read`, non-mutating:
+        per-placement proposals auto-matched by same class + same division name,
+        flags membership-not-active / already-active-in-destination-year /
+        no-destination / class-name-changed, per-destination occupancy current +
+        projected) and `POST /carry-forward/commit` (`assignments.create` AND
+        `assignments.delete`; single tx, per-item revalidation → archive + insert
+        fresh ACTIVE, first-failure-wins full rollback, 23505 caught, skipped
+        sources stay ACTIVE and returned).
+      - Service additions in `student-placements.service.ts`: `previewCarryForward`,
+        `commitCarryForward`, `assertStrictForward` (source sort < destination
+        sort), empty preview, `requireActiveStudentMembership` gained a
+        transaction-capable `q?: Pick<Database,'select'>` param.
+      - Coverage: `student-placements-carry-forward.integration.ts` (1 suite;
+        strict-forward reject, institute isolation, non-mutating preview, flags,
+        occupancy projected, valid commit, skip, history retention, exactly-one-
+        active, atomic rollback, cross-class, inactive source, non-STUDENT /
+        deactivated, duplicate/overlap, FY→TY multi-year jump) +
+        `student-placements-authz.integration.ts` (7/7, now covers the real
+        controller preview/commit through the guard chain incl. AND-rule 403s
+        and conflict rollback). New pkg script
+        `test:student-placements-carry-forward`.
+      - Validation: repo typecheck 10/10, lint 9/9, api unit 228/228, nest build,
+        all four placement/assignment integration suites 14/14 green on the
+        scratch PG17, api image rebuilt + container healthy with new routes
+        verified in the running dist.
+- [-] Phase Q.4.3 — optional additive `divisions.capacity` migration.
+      **DEFERRED** (2026-09-26 reconciliation): an optional capacity/occupancy
+      stretch that was never scheduled. The occupancy data the placement
+      console needs today is already computed on the fly in
+      `carry-forward-wizard.tsx`; the migration only becomes worth it if a
+      hard capacity limit is ever enforced. Do not pick this up incidentally.
+- [x] Phase Q.4.4 — Student Placement console section + carry-forward wizard +
+      pure-helper tests. **IMPLEMENTED 2026-09-24** (commit
+      `feat(student-placements): add institute student placement console`,
+      pushed, no merge):
+      - Frontend helpers in `apps/web/src/lib/academic.ts`: `StudentPlacement`,
+        `CarryForwardProposal`/`Occupancy`/`Summary`/`Preview`,
+        `CarriedPlacement`/`CommitResult`, `CARRY_FORWARD_FLAGS`,
+        `proposalFlagInfo`, `canAutoCarry`, `destinationDivisionsFor` (same-class
+        dest-year), `canTransfer` (create AND delete), `CarryForwardDecision`,
+        `defaultCarryForwardDecisions`, `carryForwardSummary`,
+        `carryForwardCommitPayload` (omits empty skips), `filterPlacements`,
+        `placementHistory`, `placeableStudents`, `filterDivisions`.
+      - Console: `placements-section.tsx` — roster table (year + class filters,
+        per-student expandable history from within the already-loaded list),
+        place / transfer / deactivate dialogs, degraded student-roster picker
+        (GET /users, INSTITUTE_ADMIN-role-gated), read-gated Carry forward entry.
+      - Wizard: `carry-forward-wizard.tsx` — select (source/dest year +
+        optional class; dest restricted to strictly-later sort order) →
+        preview (POST carry-forward/preview, per-row same-class division selects
+        + flag badges + skip toggles with blocked force-skip + occupancy panel)
+        → confirm (summary tally, commit disabled until ≥1 promoted / without
+        create+delete grants) → commit (POST carry-forward/commit, all-or-
+        nothing backend, onCommitted reloads).
+      - Page: `academic/page.tsx` gains a Student Placements tab
+        (assignments.read-gated) + canRead/canCreate/canDelete/canTransfer
+        computed from grants via `canAssign`/`canTransfer`.
+      - Coverage: `academic.test.ts` +6 tests (canTransfer AND rule, flag
+        mapping, auto-carry, dest filtering, defaults, summary, commit payload,
+        roster filter, history, placeable) — 19/19 green via
+        `node --test src/lib/academic.test.ts`.
+      - Validation: repo typecheck 10/10, `next build` clean with the
+        `/institute/academic` route compiled, web image rebuilt, container
+        healthy + new bundle verified in the running `.next`.
+- [x] Phase Q.4/E.1 — Student enrollment-override permission-guard migration
+      (D-Q4.10 / G6). **IMPLEMENTED 2026-09-24** (commit
+      `feat(authz): migrate student enrollment overrides to permissions`,
+      pushed, no merge):
+      - `student-enrollments.controller.ts` drops `ENROLLMENT_ADMIN` +
+        `@RequiredRoles`, runs `AccessTokenGuard → TenantGuard → RolesGuard →
+        PermissionGuard` (the Q.3/Q.4.1 pattern): list=`assignments.read`,
+        create=`assignments.create`, remove=`assignments.delete`. No new
+        catalogue keys — reuses the `assignments.*` family. Service
+        (`student-enrollments.service.ts`) untouched — invariants preserved
+        (active placement required, same-institute subject, ENROLLED/EXCLUDED
+        class-offering validation, duplicate → 409, remove = row deletion /
+        revert to class default).
+      - New `student-enrollments-authz.integration.ts` (`test:student-
+        enrollments-authz`): REAL controller handlers + REAL guard chain —
+        INSTITUTE_ADMIN via manage (all 3 routes), TEACHER/STUDENT/zero deny,
+        custom-role exact read/create/delete, cross-institute isolation, plus
+        an end-to-end behavior phase (create ENROLLED/EXCLUDED, duplicate 409,
+        ENROLLED/EXCLUDED validation, inactive placement 400, cross-institute
+        subject 404, remove deletes the row, STUDENT 403). 6/6 green on a fresh
+        scratch PG17 (49/49 migrations).
+      - Validation: lint 9/9, api unit 228/228, nest build, api typecheck, and
+      the relevant authorization suites green (student-enrollments-authz 6/6,
+        student-placements-authz 7/7, academic-scope, teacher-assignments-authz
+        5/5, authz-regression 8/8, resource-scope, student-placements &
+        teacher-assignments integrations). E.2 (frontend gating on the
+        academic console) remains for the web slice.
+- [x] Phase Q.4/E.2 — Student enrollment-override console (frontend). **IMPLEMENTED 2026-09-24** (commit `feat(student-enrollments): add enrollment override console`, pushed, no merge):
+      - Web helpers (`apps/web/src/lib/academic.ts`): `EnrollmentKind`, `StudentSubjectEnrollment`, `EnrollmentState`, `canEnroll`, `offeredSubjectIdsForDivision`, `enrollmentState`, `canCreateEnrollmentOverride` (EXCLUDED only if offered, ENROLLED only if not offered), `canRemoveEnrollmentOverride` (only when overridden).
+      - UI: `apps/web/src/app/(workspace)/institute/academic/enrollments-dialog.tsx` — per-placement dialog listing all institute subjects with current state (ENROLLED/EXCLUDED/DEFAULT), actions gated by `assignments.create`/`delete` via `canEnroll`; elective picker to create ENROLLED for non-offered subjects (filtered to active); revert removes the override. 403 from GET mapped to "Enrollments unavailable" state. Mutations toast on success/error and reload overrides + parent list.
+      - Wiring: `placements-section.tsx` adds `BookOpenCheck` action per active placement, `overrideTarget` state, passes `canCreate/canDelete` (from `canEnroll` permissions in page), always shows Actions column; `page.tsx` passes `subjects` and `offeredByClass` into placements. Reuses existing shadcn/ui (Dialog/Table/Select/Badge/SkeletonRows/EmptyState/ErrorState).
+      - Tests: `academic.test.ts` +5 tests (24/24 total) for the new helpers. Validation: web `tsc --noEmit` clean, web `node --test src/lib/academic.test.ts` 24/24, root `pnpm lint` 9/9, root `pnpm typecheck` 10/10, `next build` clean.
+- [x] Phase Q.4/E — **final E-track audit (2026-09-24, CLEAN).** Reviewed E.1
+      backend migration, E.2 console, architecture docs, live behavior and API
+      contracts, `assignments.*` consistency with Q3/Q4, tenant isolation,
+      placement/institute invariants, ENROLLED/EXCLUDED/DEFAULT semantics,
+      duplicate/revert behavior, frontend gating and 403 handling, and
+      regression risk to placements/teacher assignments. **No defects.**
+      Validation re-run on a fresh scratch PG17 (49/49 migrations):
+      student-enrollments-authz 6/6, student-placements-authz 7/7,
+      teacher-assignments-authz 5/5, authz-regression 8/8, academic-scope 1/1,
+      resource-scope 1/1, student-placements 1/1, carry-forward 1/1,
+      teacher-assignments 1/1 (31/31); api unit 228/228; web academic 24/24;
+      typecheck 10/10; lint 9/9. Live smoke 54 PASS / 0 FAIL; running
+      api/web containers verified to carry the E-track code; live probes
+      healthy 200 / enrollment route 401 unauth. Docs: project-status.md Phase
+      E entry + this tracker. E-track COMPLETE.
+
+## Phase Q.3.0 — Academic/Teacher Permission Catalogue (2026-09-23, IMPLEMENTED)
+
+> Issued task. Design/audit the authorization model for teacher → class-subject
+> assignment (Q.3 prerequisite). DESIGN ONLY — no code, migrations, catalogue
+> change, endpoint change, or frontend change. Canonical design:
+> `docs/architecture/academic-teacher-permissions.md`. Reconciles the
+> institute-operations audit (§7/§11/§14.2/§17), D1 §13 + D5 §17, the Q.2
+> console precedent, and `permission-catalogue.ts`. Docs: project-status.md +
+> this tracker + a surgical `authorization.md` §13 reconcile. Commit on
+> `feature/teacher-assignment`; do NOT merge into dev/main.
+>
+> **IMPLEMENTED 2026-09-23** — the design phase shipped on
+> `feature/academic-teacher-permissions`; the catalogue + guard migration +
+> console + tests shipped on `feature/teacher-assignment` (see Q.3.0 tasks
+> below).
+
+- [x] Created branch `feature/academic-teacher-permissions` from
+      `feature/institute-admin-academic` (unrelated working-tree changes
+      preserved untouched).
+- [x] Traced current authorization: `teacher-assignments.controller.ts` (role-
+      only `@RequiredRoles('INSTITUTE_ADMIN')`, no PermissionGuard, no keys),
+      service invariants, D5/§17 admin-only reads + soft-unassign contract,
+      `roles` (permission-key delegation) vs `users` (role-bound) precedents.
+- [x] Decision register (§11, all tagged IMPLEMENTED/PLANNED/DEFERRED):
+      D-Q3.1 resource `assignments` (D5 family name, not a new key); D-Q3.2
+      actions `read, create, delete, manage` (update uncatalogued — no endpoint;
+      reassign = delete+create); D-Q3.3 manage implication; D-Q3.4 default
+      grants (ADMIN=manage auto, TEACHER/STUDENT=none); D-Q3.5 INSTITUTE_ADMIN
+      stays the effective authority; D-Q3.6 custom-role delegation safe; D-Q3.7
+      institute-scope (not academic-scope), teacher self "my assignments"
+      DEFERRED; D-Q3.8 guard migration (add PermissionGuard, drop
+      `@RequiredRoles`, per-route keys); D-Q3.9 service invariants unchanged;
+      D-Q3.10 no existing-permission conflicts; D-Q3.11 gaps G1–G7 tagged.
+- [x] Gaps: G1 role-only/uncatalogued surface → PLANNED Q.3 resolution; G2
+      stale `permission-catalogue.ts:25-27` comment → PLANNED refresh; G3
+      additive `assignments.*` widening to Q.4 → decided; G4 un-joined `get`
+      row → PLANNED; G5/G6 pre-existing (audit events, delete cascade) →
+      DEFERRED; G7 none.
+- [x] Exact Q.3 API/guard change checklist (§8): `assignments` into
+      `INSTITUTE_RESOURCES`, PermissionGuard + per-route
+      `@RequiredPermission`, ASSIGNMENT_ADMIN removal, catalogue-test update,
+      stale-comment refresh, integration-test extension; web `can()` already
+      resolves granted keys (no plumbing change).
+- [x] Docs updated: `docs/architecture/academic-teacher-permissions.md` (new
+      canonical doc); project-status.md (Phase Q.3.0 entry + Q.2 next-task
+      pointer); this tracker; `authorization.md` §13 `assignments` row refined.
+- [x] Commit `docs(authz): design teacher assignment permission catalogue`
+      (+ push, no merge).
+
+## Phase Q.3.0 — implementation (2026-09-23, COMPLETE)
+
+> Implementation of the designed Q.3.0 permission surface. Backend = catalogue
+> resource + guard migration; frontend = teacher-assignment console gated by
+> `assignments.read`/`.create`/`.delete`. Branch `feature/teacher-assignment`,
+> no merge into dev/main.
+
+- [x] `permission-catalogue.ts`: `assignments: { actions: ['read','create',
+      'delete','manage'] }` added to `INSTITUTE_RESOURCES`; stale header
+      comment refreshed (G2).
+- [x] `teacher-assignments.controller.ts`: guard stack
+      `AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard` with
+      `@RequiredPermission('assignments.read')` (GET list/get),
+      `'assignments.create'` (POST), `'assignments.delete'` (DELETE);
+      `ASSIGNMENT_ADMIN` constant removed (G1/G4). Service/service
+      invariants unchanged.
+- [x] `permission-catalogue.test.ts`: resource-set + key assertions updated;
+      new Q.3 test covers the action set, `update` invalid, manage
+      implication, built-in role grants, custom-role resolution. 35/35.
+- [x] Contract: `packages/contracts` `InstituteUserSchema` + api local
+      `InstituteUser` (users.service.ts) now expose `membershipId`; `GET
+      /users` returns it (assign-dialog roster).
+- [x] Contract: `listClassSubjects` (`GET /academic/classes/:classId/subjects`)
+      returns each offering's `classSubjectId` (additive, read-only).
+- [x] New `teacher-assignments-authz.integration.ts` (guard-matrix, REAL
+      controller handlers + REAL guards) + `test:teacher-assignments-authz`
+      script: ADMIN via manage, TEACHER/STUDENT/zero deny, custom-role exact
+      sub-actions, cross-institute isolation. 5/5 on `catlium_q3_test`.
+- [x] Frontend: `lib/academic.ts` pure helpers `Offering` type, `canAssign`,
+      `assignableTeachers`, `byClassSubjectName` + `academic.test.ts` (9/9).
+- [x] Frontend: `assignments-section.tsx` (assign/unassign dialogs, roster
+      degrade on `/users` 403, per-action gating) + assignment tab in
+      `academic/page.tsx` gated by `assignments.read`.
+- [x] Docs: academic-teacher-permissions.md → IMPLEMENTED; authorization.md
+      §13 row updated; project-status.md; this tracker.
+- [x] Validation: typecheck (10 pkgs), eslint, api unit 227/227,
+      teacher-assignments + authz integration, web `test:academic`,
+      `next build`, graphify update.
+- [x] Commit + push on `feature/teacher-assignment` (no merge).
+
+- [ ] (DEFERRED) Phase Q.3 follow-up: teacher-facing "my assignments"
+      self-scoped read surface.
+
+## Phase Q.2 — Academic-Structure Console (2026-09-23, COMPLETE)
+
+> Issued task: frontend-only implementation of the institute-plan
+> academic-structure console at `/institute/academic` (academic years, classes,
+> class-subject offerings, divisions), reusing the audited backend
+> (academic-structure module, `INSTITUTE_ADMIN` role-only writes). NO backend/
+> contract changes, NO teacher/student placement UI (Q.3/Q.4), NO roles
+> console (Q.5), NO new permission-catalogue keys (UI mirrors the existing
+> `INSTITUTE_ADMIN` role gate + `users.read` route key). Docs: project-status.md
+> + this tracker. Commit on a feature branch; do NOT merge into dev/main.
+
+- [x] Branch `feature/institute-admin-academic` created from
+      `feature/institute-admin-operations-audit` (unrelated working-tree changes
+      preserved untouched).
+- [x] `lib/academic.ts` — local row types (no contracts schemas exist for
+      years/classes/divisions), `canWriteAcademicStructure` (INSTITUTE_ADMIN
+      role mirror), `classDeleteWarning`/`divisionDeleteWarning` (exact cascade
+      impact wording), `bySortOrder`, `filterDivisions`.
+- [x] `lib/academic.test.ts` — 6 node:test cases (gating, delete-warning
+      wording + singulars, sort, division filtering).
+- [x] `app/(workspace)/institute/academic/page.tsx` — tabs console, 4 parallel
+      entity fetches (+ per-class offering counts), loading/error/empty states,
+      admin write gating.
+- [x] Academic-years section — list/create/edit (no delete: backend has none).
+- [x] Classes section — list/create/edit, Manage Subjects dialog (add/remove
+      offerings), destructive delete with live offering/division counts stated
+      in the confirm.
+- [x] Divisions section — list/create/edit/delete + year/class filters.
+- [x] Sidebar nav entry, breadcrumb, and workspace layout route gate
+      (`/institute/academic` → `users.read`, placed before `/institute`).
+- [x] Validation: `tsc --noEmit` clean, 6/6 tests pass, `next build` clean,
+      web container rebuilt + route served (HTTP 200, not 404).
+- [x] Docs updated: project-status.md (Phase Q.2 entry + next task), this
+      tracker.
+- [x] Commit `feat(web): add institute academic-structure console` on
+      `feature/institute-admin-academic`, pushed.
+
+### Deferred / backend gaps (unchanged, by design)
+
+- Class/division hard DELETE still cascades placement history — delete
+  hardening is a backend change and remains unscheduled; the UI surfaces the
+  exact cascade impact before confirming.
+- No aggregate offering-count endpoint — the console fetches per-class
+  offerings (N reads) to show the subject column and confirm text.
+- `/roles*` and `PUT /users/:userId/roles` still have no consumer (Q.5).
+- TEXT/essay auto-grading, FORM/OMR/OSM, practice scoring, question-set
+  delete/merge, academic-export redesign — all untouched (out of scope).
+
+## Phase Q.1 — Institute Admin Operations Audit (2026-09-23, AUDIT COMPLETE)
+
+> Issued task. Audit the Institute Admin / institute-plane experience and
+> produce a factual inventory of what is already implemented (frontend routes/
+> pages, institute-plane APIs, academic year/class/division/offering CRUD,
+> teacher assignments, student placements, syllabus, user management,
+> permission gates, backend-without-UI, incomplete UI, backend gaps). Trace
+> each workflow frontend → API client → controller → service → authz → DB.
+> AUDIT ONLY — no implementation, no migrations, no new endpoints, no
+> redesign, no unrelated code. Docs: new architecture audit doc +
+> project-status.md + this tracker. Commit on a feature branch; do NOT merge
+> into dev/main.
+
+- [x] Branch `feature/institute-admin-operations-audit` created from `main`
+      (unrelated working-tree changes preserved untouched).
+- [x] Backend trace (parallel research): academic/academic-structure/
+      teacher-assignments/student-placements/student-enrollments/syllabus/
+      users/memberships/roles controllers — routes, guards, role/permission
+      gates, service scope checks, models, permission-catalogue resources.
+- [x] Frontend inventory: workspace sidebar gates, layout `ADMIN_RESOURCE_ROUTES`,
+      api client, per-page consumed endpoints, grep cross-check for
+      structure/placement/assignment/enrollment/roles consumers.
+- [x] Relevant architecture doc `docs/architecture/institute-operations-audit.md`
+      — 17 sections: inventory, per-area IMPLEMENTED/PARTIAL/MISSING/DEFERRED,
+      gate matrix, APIs-with-no-UI, incomplete UI, backend gaps, workflow trace
+      matrix, findings summary, dependency-ordered recommended phases.
+- [x] Docs updated: project-status.md (Phase Q.1 entry + next task), this
+      tracker.
+- [x] Validation: all claims verified by direct grep + schema FK inspection
+      (class/division DELETE cascade → placements). No code changed.
+
+### Key findings (detail in the audit doc)
+
+- 7 admin workflows are backend-only with zero frontend UI: academic years,
+  classes, class-subject offerings, divisions, teacher assignments, student
+  placements/transfers, student enrollments. Plus `/roles*` (role management)
+  and `PUT /users/:userId/roles` have no consumer.
+- PARTIAL UI: `/institute` (read-only stats), `/users` (no role edit / no
+  INSTITUTE_ADMIN grant / no password reset).
+- Authz: only users + roles routes are permission-keyed; structure/staffing/
+  placement routes are `INSTITUTE_ADMIN` role-only and uncatalogued.
+- Class/division hard DELETE cascades placement history (FK cascade) — gap.
+
+### Recommended next (status refreshed 2026-09-26)
+
+- [x] Q.2 — Academic-structure console (years/classes/offerings/divisions)
+      — COMPLETE 2026-09-23 (see Phase Q.2 below). Delete hardening deferred
+      (backend unchanged by design; UI states the exact cascade in the
+      destructive confirm).
+- [x] Q.3 — Teacher → class-subject assignment UI — **COMPLETE**. Design
+      prerequisite (permission catalogue) done 2026-09-23 (Phase Q.3.0 above,
+      `assignments` = read/create/delete/manage) and the console shipped in the
+      `/institute/academic` → `assignments-section.tsx` surface.
+- [x] Q.4 — Student placement/transfer UI — **COMPLETE**. Phase Q.4.0–Q.4.4
+      (backend + carry-forward + console) and the E-track enrollment override
+      all shipped; console is `/institute/academic` → `placements-section.tsx`
+      with `carry-forward-wizard.tsx` + `enrollments-dialog.tsx`. Only the
+      optional `divisions.capacity` stretch remains, DEFERRED (Q.4.3 above).
+- [ ] Q.5 — User-management completeness + roles console. Backend is DONE
+      (`PUT /users/:userId/roles`, full `/roles` CRUD + `PUT
+      /roles/:roleId/permissions`); **what is left is web UI only** — a role
+      editor on `/users` and a Roles management page. The design-gated
+      catalogue expansion is no longer open: it was DECIDED and implemented for
+      the staffing slice (`assignments.*`, D-Q3.1/D-Q3.8), and academic
+      structure deliberately keeps mapping to `users.*`/`roles.*` (no
+      speculative keys). Password reset stays deferred elsewhere.
+- [x] `docs(audit): inventory institute admin operations` — committed; the
+      audit lives at `docs/architecture/institute-operations-audit.md` and its
+      §16/§17 statuses were refreshed on 2026-09-26.
 
 > Issued task (backend only — user-confirmed; console deferred). Implement the
 > Phase P.1 design: platform-user role grant/revoke + suspend/reactivate service
@@ -264,6 +1677,21 @@
       sized `height=0.86\textheight,keepaspectratio`, placed on its own page.
 - [x] Validated final build: `latexmk -xelatex` exit 0; 72 pages; 0 Float-too-
       large; 0 Overfull; no number-only/stranded pages; 8 genuine blank forcing
+- [x] Screenshot deliverable: 8 colour app captures
+      (`app-assessments/content/dashboard/materials/paper-patterns/
+      question-papers/questions/subjects.png`) assembled as two 4-per-page
+      colour plates (`plate-1.png`, `plate-2.png`, each 4 tiles); registered
+      appendix `appendices/appendix-screenshots.tex` (references the two
+      plates) in `main.tex` after the permissions appendix.
+- [x] Colour diagram renderer `diagrams/render-colour.py`: idempotent,
+      convergence-safe, restart-safe (skips any `*-colour.pdf` already newer
+      than its `-bw.mmd` source); renders to the real
+      `docs/blackbook/figures/` dir so output survives restart mid-batch.
+      25/33 colour pdfs on disk at checkpoint; renderer re-runs to finish.
+- [x] The tex figure refs are guarded: every `figures/*-bw.pdf` reference is
+      swapped to `-colour.pdf` only when that colour pdf exists on disk
+      (no broken-build risk; swap converges to 33/33 as the renderer
+      completes). 28 refs swappable at checkpoint.
       pages; Figure 7.2 caption present in body (page 38) and in the LoF.
 
 ### Layout round 2 — centering + front-matter page numbers (2026-09-22, COMPLETE)
@@ -1711,6 +3139,237 @@ implementation step when scheduled. Roadmap phases below remain not-started.
       discard, and full demo-data cleanup. Mid-sentence "Choose the correct
       answer." stem bug + per-candidate issue pollution (runIssues spread to
       every candidate) both fixed and regression-tested.
+
+## Phase F3.2 — Autonomous Answer Generation (2026-09-25, branch `feature/question-answer-generation`, COMPLETE + INTEGRATED INTO dev)
+
+> Auto-fills the missing expected answer for extraction REVIEW candidates that
+> the extractor flagged `ANSWER_MISSING`, using the existing jobs/RabbitMQ/AI-
+> worker architecture (AI_GENERATE_ANSWER → `ai_generation` queue → worker).
+> Integrated into `dev` as merge `fe202e9`; F3.3 intentionally remains
+> unstarted. Tests require `TEST_DATABASE_URL` (fresh scratch PG17, migrations
+> applied).
+
+- [x] **API trigger + queueing** (`question-extraction.service.ts`): new
+      `POST /questions/extraction/:jobId/candidates/:questionId/generate-answer`
+      (ACCEPTED, INSTITUTE_ADMIN/TEACHER) → `requestAnswerGeneration` gates the
+      run (`gateCandidateJob` + REVIEW/EXTRACTED candidate) then enqueues
+      `AI_GENERATE_ANSWER` with
+      payload `{operation, source:{type:'QUESTION',id}, requestedBy}`. Reuse
+      rule: an existing job for the same (institute, question) in
+      queued/processing/completed is returned as-is (resp `{reused:true,
+      status:'QUEUED'|'COMPLETED'}`); a FAILED job is never reused → the
+      endpoint doubles as the manual retry path.
+- [x] **Autonomous sweep** (`processJob` in `question-extraction.service.ts`):
+      after a successful QUESTION_EXTRACT run, every persisted candidate whose
+      `provenance.issues` contains `ANSWER_MISSING` gets the answer job
+      auto-enqueued (`result.answerJobsEnqueued`). Per-candidate try/catch — a
+      failed enqueue never fails extraction; the candidate stays REVIEW and
+      any teacher can retry the manual trigger. Extraction-only: QP_EXTRACT
+      candidates keep manual-only triggers. `JOB_QUEUE_BY_TYPE` gains
+      `AI_GENERATE_ANSWER: 'ai_generation'`; `ALLOWED_JOB_TYPES` unchanged, so
+      generic `POST /jobs` still rejects the type (LOW-1 intact).
+- [x] **Worker** (`apps/workers`): `schemas.GeneratedAnswer` + per-format
+      subset models (`McqAnswerPayload{correctChoiceId}`,
+      `MatchingAnswerPayload{matches}`, plus full-payload reuse for
+      TRUE_FALSE/FILL_IN_BLANK/TEXT/NUMERICAL) with a model_validator that
+      validates/normalizes the payload against the DECLARED format; new
+      `generation/answer.py` (teacher-answer prompt that ONLY fills missing
+      answers, never regenerates choices/ids, optional bounded material
+      context); `service.py` registers the operation (QUESTION content type,
+      no aggregator, dispatch before `_resolve_materials`), validates the
+      merged payload against the candidate's FULL format shape and reference-
+      checks MCQ `correctChoiceId` / MATCHING `matches` ids, and writes back
+      via `db.write_generated_answer` (REVIEW + EXTRACTED guarded; a
+      superseded candidate completes the job with `superseded:true` instead of
+      failing — nothing to do is not an error). Candidate stays REVIEW for
+      teacher approval.
+- [x] **Tests:** worker `tests/test_answer_generation.py` (15 cases: real
+      provider + monkeypatched writes — merge-preserves-choices, unknown-id
+      choice ref fails without write, missing candidate fails before provider,
+      declared-format mismatch fails, bounded material context, superseded
+      completes, DB SQL guards REVIEW/EXTRACTED, registration/config/model);
+      api `question-answer-generation.integration.ts`
+      (`test:question-answer-generation`, 5 subtests: auto-enqueue exactly one
+      for the ANSWER_MISSING candidate + queued payload/ownership, manual
+      reuse of active job, reuse of a completed job reported COMPLETED,
+      cross-institute rejected).
+- [x] **Validation:** worker focused `test_answer_generation.py` 15/15; full
+      worker pytest 98/98, worker ruff + mypy clean; API typecheck + lint clean;
+      extractor tests 28/28; API integration green on scratch loopback PG17:
+      answer-generation 5/5, RC-2 resilience 5/5, LOW-1 job-ownership 14/14.
+      Two-level `await t.test()` nesting deadlocks under tsx on Node 24 —
+      integration suites keep subtests to ONE nesting level.
+- [x] **Integration:** merged into `dev` as `fe202e9`; API and worker images
+      rebuilt; API health 200; running worker registry contains
+      `AI_GENERATE_ANSWER`; existing extraction route remains registered.
+      F3.3 remains intentionally unstarted.
+- [x] **Docs:** project-status.md F3.2 entry.
+
+## Phase F3.3 — Generate Answer UX (2026-09-25, branch `feature/question-answer-generation-ux`, COMPLETE + INTEGRATED INTO dev)
+
+> Add the teacher-facing trigger and lifecycle states for the existing
+> `AI_GENERATE_ANSWER` endpoint. Reuse the current candidate review editors,
+> job poll, Accept, and Import All flow; no new job system or migration.
+
+- [x] **Review UX:** show Generate answer only while the candidate answer is
+  invalid; show Answer ready after a valid payload is persisted; support
+  queued/processing, completed, failed/retry, and non-retryable 401/403/404
+  states. A missing extraction now renders the existing error state instead of
+  polling forever. A redundant valid-answer 400 reloads the candidate and clears
+  stale generation state.
+- [x] **Generation flow:** POST the existing candidate endpoint, poll its job at
+      the established 3s interval, refresh the candidate on completion, and
+      preserve the requirement to save manual edits before Accept/Import All.
+- [x] **API hardening:** await authoritative payload validation during Accept;
+      reuse completed jobs only while their answer remains valid; retry failed
+      jobs and invalid edits with a fresh job; re-authorize candidate actions
+      against current scope; filter subject-anchored candidates by the actor's
+      current academic scope; and preserve unscoped question-paper candidate
+      edits while deriving complete scope chains from topic-only patches.
+- [x] **Worker concurrency guard:** pass the candidate `updated_at` revision to
+      the conditional generated-answer write so concurrent edits or acceptance
+      supersede the job instead of being overwritten; fail on a missing revision.
+- [x] **Validation:** focused API/web tests, typecheck, lint/build, live browser
+      QA, and targeted service rebuild/verification. API answer-generation suite
+      12/12; worker answer-generation suite 16/16; web answer helper 1/1; API
+      typecheck/lint clean; web typecheck/test/build clean; contracts typecheck/
+      build/lint clean; worker `ruff`/`mypy` clean; root typecheck 10/10; and
+      `git diff --check` clean. Earlier live Chrome checks passed; the final
+      `api`, `web`, `worker-ai`, and `worker-material` rebuild is healthy, API
+      health returns 200, and the live worker contains the revision guard.
+- [x] **Checkpoint:** committed the F3.3 files plus the required worker
+      concurrency guard as `df72962` and pushed
+      `feature/question-answer-generation-ux` without merging it.
+- [x] **Integration into `dev`:** `dev` was updated from `origin/dev`
+      (`bd3d495`) and merged `--no-ff` (no rebase) as `c96bf33`; the unrelated
+      working tree, `stash@{0}`, and `main`/`origin/main` (`ef4de7e`) were left
+      untouched. Re-validated on `dev`: API answer-generation 12/12, F3.1 RC-2
+      resilience 5/5, worker answer-generation 16/16, full worker pytest 99/99,
+      web answer helper 1/1 and other web suites 44/44, `pnpm typecheck --force`
+      10/10, `pnpm lint` 9/9, `pnpm build` 7/7, worker `ruff`/`mypy` clean.
+      Containers rebuilt, all 11 services up, API health 200, and a live browser
+      run exercised the whole Generate → generate → Answer ready → manual edit →
+      save → Accept-unlock flow plus the missing-extraction error state.
+- [!] **Pre-existing, out of scope (found during integration verification):**
+      `GET /questions/bank/sets` 500s because
+      `apps/api/src/questions/question-generation.service.ts:433` groups the
+      `SELECT payload -> 'batchId'` projection by `payload ->> 'batchId'`; the
+      jsonb and text operators are different expressions. Untouched by F3.3
+      (`git diff bd3d495 HEAD` empty for that file, last changed by `d8f0a44`).
+      One-line fix, deliberately not bundled into the F3.3 integration commit.
+
+## Phase F3.4 — Extraction Answer Pipeline Final Audit (2026-09-26, branch `feature/question-extraction-final-hardening`, IMPLEMENTED + VALIDATED)
+
+> Final audit of the F3.1→F3.3 pipeline (extraction → answer generation →
+> review → accept/import → question bank). Audited the whole lifecycle for
+> correctness, concurrency, authorization, and browser-visible failure
+> handling; fixed the one genuine defect found; added a regression for it.
+> Branch only — not merged into `dev`, not pushed to `main`.
+
+- [x] **Audit — no defect found (verified by reading source and existing
+      tests):** candidate persistence and batch isolation; tenant/subject/owner
+      gating on `requestAnswerGeneration`; valid-candidate rejection and
+      active/completed job reuse; per-candidate try/catch so one bad candidate
+      never fails a batch; merged-payload and reference validation against the
+      candidate's full declared format; authoritative payload validation on
+      Accept; the worker `updated_at` CAS that makes a concurrent teacher edit
+      or Accept supersede an in-flight generation; Import All skipping invalid
+      candidates with per-candidate reasons; and the F3.3a `payload->>'batchId'`
+      bank-set aggregation (which correctly reports `AI_GENERATE_QUESTIONS`
+      batches only — extracted answers land in the ordinary question bank).
+- [x] **Audit — `failed` jobs are never reused:** confirmed by the existing
+      `question-answer-generation.integration.ts` case "a failed generation is
+      retried with a fresh job" (`reused:false`, fresh `jobId`), and re-exercised
+      live in the browser (forced failure → `Retry answer` → recovered).
+- [x] **Fix — malformed extraction id polled forever (genuine defect).**
+      `apps/web/src/app/(workspace)/questions/extractions/[jobId]/page.tsx`
+      stopped the 3s status poll only on 401/403/404. A non-UUID `jobId` is
+      rejected by the API's `ParseUUIDPipe` with **400**, which was not terminal,
+      so `/questions/extractions/not-a-uuid` re-requested every 3s indefinitely
+      and rendered a permanently blank "Reviewing extraction" page with no error
+      and no way out. A 400 from a UUID path param can never become valid on a
+      later tick, so it belongs in the existing terminal set next to
+      401/403/404. Fix: `isTerminalPollError(err)` in `apps/web/src/lib/api.ts`
+      (a `TERMINAL_POLL_ERRORS` set beside its sibling `jobDone`) used by the
+      page's poll catch. 5xx and transport errors stay retryable on purpose.
+- [x] **Regression test:** `apps/web/src/lib/api.test.ts` gains
+      `isTerminalPollError treats 400/401/403/404 as permanent` and
+      `...keeps 5xx and transport errors retryable`. `apps/web/package.json`
+      gains the missing `test:api` script (the suite existed but was not wired to
+      a script). Web `test:api` 12/12.
+- [x] **Validation:** F3 answer-generation 12/12, F3.1 extraction resilience
+      5/5, F3.3a bank sets 4/4, job-ownership 14/14, full API suite 228/228;
+      worker answer-generation 16/16 and full worker pytest 99/99 with
+      `ruff check .` and `mypy worker` clean; web 57/57 across all five suites;
+      `pnpm typecheck` 10/10, `pnpm lint` 9/9, `pnpm build` 7/7; the four
+      changed files Prettier-clean and `git diff --check` clean. DB-backed suites
+      ran in-network against `catlium_dev` (host has no published PG port
+      outside the dev override) and self-clean their fixtures.
+- [x] **Live browser QA (dev+demo stack, `http://127.0.0.1:8080`):** full
+      teacher flow verified — 3 candidates extracted, `ANSWER_MISSING` cleared
+      after generation with `correctChoiceId` matching an existing choice, a
+      forced job failure surfacing `Retry answer` plus the provider message and
+      recovering on retry, a teacher edit correctly blocking Accept and
+      Accept-all until saved, single Accept, Import All importing the valid
+      candidate while skipping the invalid one with an explicit reason, a repeat
+      Import All returning `{"imported":0,"skipped":[]}` (no duplicates), the bank
+      count moving 811→814 with the imported questions `ACTIVE`/`APPROVED`, and
+      `GET /questions/bank/sets` returning 200 with populated sets. The fix was
+      then confirmed on the rebuilt container: the malformed-id page issued
+      exactly **1** request (was 11+ and climbing) and rendered "Something went
+      wrong — Validation failed (uuid is expected) — Retry", with a clean
+      404 counterpart ("Job not found"). All E2E fixtures were deleted
+      afterwards; the bank is back to 811 and no F3.4 rows remain.
+- [-] **Pre-existing, deliberately out of scope (reported, not fixed):**
+      the repo-wide `pnpm format:check` fails on 220 files and
+      `apps/workers/ocr-worker/build/` (a gitignored build artifact) makes
+      `mypy .` fail on a duplicate `ocr_worker` module — both reproduce without
+      F3.4 and neither is touched by these changes. Two generic concerns noted
+      while auditing and left alone as out-of-scope redesigns: `GET /jobs/:id` is
+      institute-scoped rather than creator-scoped (pre-dates F3.4 and the review
+      page only ever polls jobs it created), and worker candidate reads omit
+      `deleted_at IS NULL` (no current soft-delete trigger).
+- [x] **Checkpoint:** committed and pushed
+      `feature/question-extraction-final-hardening`, then **merged into `dev`
+      as `77b6e05`** (`main`/`origin/main` `ef4de7e` and `stash@{0}` untouched).
+      *Corrected 2026-09-26 during F5.0 reconciliation: this item previously
+      read "commit and push without merging it into `dev`" — the merge has
+      since happened, so the "without merging" wording was stale.*
+
+## Phase F3.1 — Question-Extraction Unblock (2026-09-25, branch `feature/fix-question-extraction`, COMPLETE)
+
+> Two correctness fixes on top of the question-extraction work above. Kept off
+> `dev` until merged by the coordinator. Tests require `TEST_DATABASE_URL`
+> (fresh scratch PG17, 49/49 migrations applied).
+
+- [x] **RC-1 — QP_EXTRACT teacher review authorization.** A teacher-owned
+      `QP_EXTRACT` job has no `subjectId` in its payload, so the coordinator
+      gate in `QuestionExtractionService.gateCandidateJob` treated the owner
+      as being outside every subject scope and returned 403. Fix: read
+      `subjectId` from the job payload; when present keep the
+      `requireWritableSubject` check (QUESTION_EXTRACT stays subject-scoped),
+      when absent fall through to the owner-or-institute-admin gate. Job
+      ownership (`jobs.createdBy`) is still server-stamped; non-owner
+      teachers get NotFound; cross-tenant stays denied.
+- [x] **RC-2 — extraction batch resilience.** Both extraction paths
+      (`QUESTION_EXTRACT` in `question-extraction.service.ts`, `QP_EXTRACT`
+      in `question-paper-extraction.service.ts`) looped candidates with one
+      throw aborting the run and discarding already-detected candidates. Now
+      each candidate is processed independently in a try/catch; failures are
+      recorded in a compact
+      `result.unresolvedQuestions` = `[{ ref, format, error }]` entry
+      (`ref` = original number or first stem line, max 60 chars). Unexpected
+      wiring errors outside the per-candidate loop still fail the job
+      normally. All-valid runs keep the exact legacy result shape
+      (no `unresolvedQuestions` key).
+- [x] **Tests:** `test:job-ownership` (14 subtests incl. RC-1: owning teacher
+      can review, non-owner denied, admin allowed, QUESTION_EXTRACT
+      out-of-scope still 403, cross-tenant denied); new
+      `test:question-extraction-resilience` (RC-2: mixed + all-valid batches
+      for both paths — global TRUE_FALSE template removed from the scratch DB
+      to force the unresolvable format, restored on exit).
+- [x] **Validation:** api typecheck + lint clean; RC-1 14/14, RC-2 5/5,
+      `question-extractor.test.ts` 12/12, `pattern-extractor.test.ts` 16/16.
 
 ## Phase 46 — Paper-pattern extraction from materials (Phase B, 2026-09-18)
 

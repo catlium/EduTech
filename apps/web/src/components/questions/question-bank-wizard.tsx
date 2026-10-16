@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -14,7 +15,14 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { api, ApiError, downloadFile } from '@/lib/api';
+import {
+  canCancelBatch,
+  canRetryBatch,
+  isTerminalBatchPhase,
+  questionBankBatchPhase,
+} from '@/lib/question-bank-batch';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/app/empty-state';
 import { ScopeCascade as ScopeCascadeFields } from '@/components/app/scope-cascade';
@@ -167,6 +175,15 @@ export function QuestionBankWizard({
   topics,
   onChanged,
 }: WizardProps) {
+  const { institute } = useTenant();
+  // F5.6: every write this wizard performs is a question-bank generate
+  // (POST /questions/bank/generate, /questions/generate-more) = `questions.create`.
+  const canCreate = hasPermission(institute, 'questions.create');
+  // Batch cancel/retry are gated by `questions.update` on the API.
+  const canManage = hasPermission(institute, 'questions.update');
+  // B3: synchronous latch so a double click cannot queue two generations before
+  // React applies the disabled state.
+  const writeInFlight = useRef(false);
   const [step, setStep] = useState(0);
   const [cascade, setCascade] = useState<ScopeCascade>({
     subjectId: '',
@@ -193,6 +210,7 @@ export function QuestionBankWizard({
   } | null>(null);
   const [checking, setChecking] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [busyBatch, setBusyBatch] = useState<'retry' | 'cancel' | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -209,12 +227,18 @@ export function QuestionBankWizard({
     return () => ctrl.abort();
   }, [open]);
 
+  // B3: poll only until the batch settles. Once every child job reaches a
+  // terminal phase the interval is cleared instead of polling forever.
+  const pollActive = batch
+    ? !batch.status || !isTerminalBatchPhase(questionBankBatchPhase(batch.status))
+    : false;
   useEffect(() => {
-    if (!batch) return;
+    if (!batch || !pollActive) return;
+    const batchId = batch.id;
     let cancelled = false;
     const tick = async () => {
       try {
-        const resp = await api<QuestionBankBatchResponse>(`/questions/bank/batches/${batch.id}`);
+        const resp = await api<QuestionBankBatchResponse>(`/questions/bank/batches/${batchId}`);
         if (!cancelled) setBatch((prev) => (prev ? { ...prev, status: resp } : prev));
       } catch {
         /* ignore transient poll errors */
@@ -226,7 +250,7 @@ export function QuestionBankWizard({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [batch?.id]);
+  }, [batch?.id, pollActive]);
 
   const availablePatterns = useMemo(
     () =>
@@ -324,7 +348,8 @@ export function QuestionBankWizard({
     setCounts({ MCQ: 10 });
     setInclude('paper');
     setDeficit(null);
-    setBatch(null);
+    // B3: keep the tracked batch so closing and re-opening the wizard (or
+    // navigating back to the page) still shows the live generation status.
   }, []);
 
   const canLeaveScope = !!cascade.subjectId;
@@ -336,10 +361,12 @@ export function QuestionBankWizard({
 
   /* ── actions ── */
   async function checkBank() {
+    if (writeInFlight.current) return;
     if (buckets.length === 0) {
       toast.error('Add at least one question target');
       return;
     }
+    writeInFlight.current = true;
     setChecking(true);
     setDeficit(null);
     try {
@@ -352,11 +379,13 @@ export function QuestionBankWizard({
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to check the bank');
     } finally {
+      writeInFlight.current = false;
       setChecking(false);
     }
   }
 
   async function generateMissing() {
+    if (writeInFlight.current) return;
     if (!deficit) {
       toast.error('Check the bank first to see what is missing');
       return;
@@ -376,19 +405,66 @@ export function QuestionBankWizard({
       toast.info('Nothing to generate — the bank covers these targets');
       return;
     }
+    writeInFlight.current = true;
     setGenerating(true);
     try {
       const resp = await api<GenerateMoreQuestionsResponse>('/questions/generate-more', {
         method: 'POST',
         body: { ...scopePayload, buckets: target },
       });
-      if (resp.batchId) setBatch({ id: resp.batchId, status: null });
-      toast.success('Generation queued — questions arrive as PENDING approval');
-      onChanged();
+      // The API recomputes the deficit and may report NO_ACTION (batchId null)
+      // if a concurrent request filled the bank — never claim success then.
+      if (resp.batchId) {
+        setBatch({ id: resp.batchId, status: null });
+        toast.success('Generation queued — progress shown below');
+        onChanged();
+      } else {
+        setDeficit(resp);
+        toast.info('Nothing generated — the bank already covers these targets');
+      }
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to start generation');
     } finally {
+      writeInFlight.current = false;
       setGenerating(false);
+    }
+  }
+
+  /** Re-enqueue the failed/cancelled children of the tracked batch. */
+  async function retryBatch() {
+    if (!batch || busyBatch !== null) return;
+    setBusyBatch('retry');
+    try {
+      const resp = await api<QuestionBankBatchResponse>(
+        `/questions/bank/batches/${batch.id}/retry-failed`,
+        { method: 'POST' },
+      );
+      setBatch((prev) => (prev ? { ...prev, status: resp } : prev));
+      toast.success('Retrying failed questions');
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to retry generation');
+    } finally {
+      setBusyBatch(null);
+    }
+  }
+
+  /** Cancel the active children of the tracked batch. */
+  async function cancelBatch() {
+    if (!batch || busyBatch !== null) return;
+    setBusyBatch('cancel');
+    try {
+      const resp = await api<QuestionBankBatchResponse>(
+        `/questions/bank/batches/${batch.id}/cancel`,
+        { method: 'POST' },
+      );
+      setBatch((prev) => (prev ? { ...prev, status: resp } : prev));
+      toast.success('Cancelling generation');
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to cancel generation');
+    } finally {
+      setBusyBatch(null);
     }
   }
 
@@ -415,7 +491,10 @@ export function QuestionBankWizard({
   }
 
   const batchStatus = batch?.status;
-  const batchDone = batchStatus ? batchStatus.active === 0 : false;
+  const batchPhase = batchStatus ? questionBankBatchPhase(batchStatus) : null;
+  const batchDone = batchPhase ? isTerminalBatchPhase(batchPhase) : false;
+
+  if (!canCreate) return null;
 
   return (
     <>
@@ -669,24 +748,71 @@ export function QuestionBankWizard({
                 {batch && (
                   <div className="rounded-md border p-3 text-xs">
                     <div className="flex items-center gap-2 font-medium">
-                      {batchDone ? (
+                      {batchDone && batchPhase === 'completed' ? (
                         <CheckCircle2 className="size-4 text-emerald-600" />
+                      ) : batchDone ? (
+                        <AlertTriangle className="size-4 text-destructive" />
                       ) : (
                         <Loader2 className="size-4 animate-spin" />
                       )}
-                      Generation {batchDone ? 'complete' : 'running'}
+                      {batchDone
+                        ? batchPhase === 'completed'
+                          ? 'Generation complete'
+                          : batchPhase === 'cancelled'
+                            ? 'Generation cancelled'
+                            : 'Generation finished with failures'
+                        : batchPhase === 'pending'
+                          ? 'Generation queued'
+                          : 'Generation running'}
                     </div>
                     {batchStatus && (
                       <p className="mt-1 text-muted-foreground">
-                        {batchStatus.completed} done · {batchStatus.failed} failed ·{' '}
-                        {batchStatus.active} running
+                        {batchStatus.completed} done · {batchStatus.failed} failed
+                        {batchStatus.cancelled > 0
+                          ? ` · ${batchStatus.cancelled} cancelled`
+                          : ''} · {batchStatus.active} running
                       </p>
                     )}
-                    {batchDone && (
-                      <p className="mt-1 text-muted-foreground">
-                        New questions are PENDING approval — approve them to include them in the
-                        export.
-                      </p>
+                    {batchStatus && batchDone && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {canManage && canRetryBatch(batchStatus) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyBatch !== null}
+                            onClick={() => void retryBatch()}
+                          >
+                            {busyBatch === 'retry' ? 'Retrying…' : 'Retry failed'}
+                          </Button>
+                        )}
+                        {canManage && canCancelBatch(batchStatus) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyBatch !== null}
+                            onClick={() => void cancelBatch()}
+                          >
+                            {busyBatch === 'cancel' ? 'Cancelling…' : 'Cancel'}
+                          </Button>
+                        )}
+                        {batchPhase === 'completed' && (
+                          <span className="text-muted-foreground">
+                            Approve the new questions to include them in the export.
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {batchStatus && !batchDone && canManage && canCancelBatch(batchStatus) && (
+                      <div className="mt-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busyBatch !== null}
+                          onClick={() => void cancelBatch()}
+                        >
+                          {busyBatch === 'cancel' ? 'Cancelling…' : 'Cancel'}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}

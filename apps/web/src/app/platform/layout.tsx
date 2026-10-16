@@ -6,6 +6,11 @@ import { AlertTriangle } from 'lucide-react';
 
 import { useAuth } from '@/lib/auth';
 import { usePlatform } from '@/lib/platform';
+import {
+  FORBIDDEN_EVENT,
+  isPrimaryForbiddenPath,
+  type ForbiddenDetail,
+} from '@/lib/api';
 import { PlatformSidebar, platformCrumb } from '@/components/app/platform-sidebar';
 import { AppBreadcrumbs } from '@/components/app/app-breadcrumbs';
 import { PageLoader } from '@/components/app/loading';
@@ -53,21 +58,31 @@ function PlatformGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// F5.6/L-1: the console's whole surface is `/platform/*`, so only a 403 on the
+// page's own plane is a genuine page authorization failure. Anything else
+// (institute-plane reads, a background fetch) surfaces locally instead of
+// replacing the console with an access-denied view. PlatformGate already
+// denies a caller without `institutes.read` before this ever renders.
 function ForbiddenGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [forbidden, setForbidden] = useState(false);
+  const [forbiddenPath, setForbiddenPath] = useState<string | null>(null);
 
   useEffect(() => {
-    setForbidden(false);
+    setForbiddenPath(null);
   }, [pathname]);
 
   useEffect(() => {
-    const onForbidden = () => setForbidden(true);
-    window.addEventListener('catlium:forbidden', onForbidden);
-    return () => window.removeEventListener('catlium:forbidden', onForbidden);
+    const onForbidden = (event: Event) => {
+      const detail = (event as CustomEvent<ForbiddenDetail>).detail;
+      setForbiddenPath((prev) => prev ?? detail?.path ?? '');
+    };
+    window.addEventListener(FORBIDDEN_EVENT, onForbidden);
+    return () => window.removeEventListener(FORBIDDEN_EVENT, onForbidden);
   }, []);
 
-  if (forbidden) return <PlatformForbidden />;
+  if (forbiddenPath !== null && isPrimaryForbiddenPath(forbiddenPath, ['/platform'])) {
+    return <PlatformForbidden />;
+  }
   return <>{children}</>;
 }
 

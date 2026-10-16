@@ -27,7 +27,7 @@ import { api, ApiError, downloadFile, waitForBankBatch } from '@/lib/api';
 import { ExportPreviewDialog } from '@/components/export/export-preview-dialog';
 import type { ExportPreviewValue } from '@/components/export/export-preview-dialog';
 import { formatDate } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { StatusBadge } from '@/components/app/status-badge';
 import { EmptyState } from '@/components/app/empty-state';
@@ -112,7 +112,15 @@ export default function PatternBuilderPage() {
   const { patternId } = useParams<{ patternId: string }>();
   const router = useRouter();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: PATCH /:id plus lock/unlock/analyze/approve are `paper-patterns.update`;
+  // DELETE is `paper-patterns.delete`; POST /:id/validate is `paper-patterns.read`;
+  // POST /:id/assessment is `assessments.create`; the export previews and
+  // downloads are `exports.read`.
+  const canRead = hasPermission(institute, 'paper-patterns.read');
+  const canUpdate = hasPermission(institute, 'paper-patterns.update');
+  const canDelete = hasPermission(institute, 'paper-patterns.delete');
+  const canCreateAssessment = hasPermission(institute, 'assessments.create');
+  const canExport = hasPermission(institute, 'exports.read');
 
   const [pattern, setPattern] = useState<PaperPattern | null>(null);
   const [loading, setLoading] = useState(true);
@@ -706,7 +714,7 @@ export default function PatternBuilderPage() {
           title={pattern.title || 'Untitled pattern'}
           description={pattern.description ?? undefined}
           children={
-            isTeacher &&
+            canUpdate &&
             (titleEditing ? (
               <div className="flex items-center gap-2 pt-1">
                 <Input
@@ -753,69 +761,71 @@ export default function PatternBuilderPage() {
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={pattern.status} />
-              {isTeacher && (
-                <>
-                  {locked && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          onClick={() => void onSetLocked(false)}
-                          disabled={saving || deleting}
-                        >
-                          <Unlock className="mr-1 size-3.5" /> Unlock
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Unlock to edit or delete this pattern. Approving auto-locks it.
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  {!locked && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void onSetLocked(true)}
-                          disabled={saving || deleting}
-                        >
-                          <Lock className="mr-1 size-3.5" /> Lock
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Lock to prevent accidental changes. Save/approve also locks.
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  {canAnalyze && (
-                    <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
-                      Analyze
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={onValidate} disabled={validating}>
-                    {validating && <Loader2 className="mr-1 size-3 animate-spin" />}
-                    Validate
-                  </Button>
-                  {canApprove && (
-                    <Button size="sm" variant="outline" onClick={() => setApproveOpen(true)}>
-                      Approve
-                    </Button>
-                  )}
-                  {pattern.status === 'APPROVED' && (
+              {canUpdate && locked && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button
                       size="sm"
-                      onClick={() => {
-                        setAssessmentTitle(
-                          pattern.title ? `${pattern.title} — Question Paper` : 'Question Paper',
-                        );
-                        setAssessmentSubjectId('');
-                        setAssessmentOpen(true);
-                      }}
+                      onClick={() => void onSetLocked(false)}
+                      disabled={saving || deleting}
                     >
-                      <Dice5 className="mr-1 size-3.5" /> Generate Question Paper
+                      <Unlock className="mr-1 size-3.5" /> Unlock
                     </Button>
-                  )}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Unlock to edit or delete this pattern. Approving auto-locks it.
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {canUpdate && !locked && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void onSetLocked(true)}
+                      disabled={saving || deleting}
+                    >
+                      <Lock className="mr-1 size-3.5" /> Lock
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Lock to prevent accidental changes. Save/approve also locks.
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {canUpdate && canAnalyze && (
+                <Button size="sm" variant="outline" onClick={() => setAnalyzeOpen(true)}>
+                  Analyze
+                </Button>
+              )}
+              {canRead && (
+                <Button size="sm" variant="outline" onClick={onValidate} disabled={validating}>
+                  {validating && <Loader2 className="mr-1 size-3 animate-spin" />}
+                  Validate
+                </Button>
+              )}
+              {canUpdate && canApprove && (
+                <Button size="sm" variant="outline" onClick={() => setApproveOpen(true)}>
+                  Approve
+                </Button>
+              )}
+              {canCreateAssessment && pattern.status === 'APPROVED' && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setAssessmentTitle(
+                      pattern.title ? `${pattern.title} — Question Paper` : 'Question Paper',
+                    );
+                    setAssessmentSubjectId('');
+                    setAssessmentOpen(true);
+                  }}
+                >
+                  <Dice5 className="mr-1 size-3.5" /> Generate Question Paper
+                </Button>
+              )}
+              {canExport && (
+                <>
                   <Button
                     size="sm"
                     variant="outline"
@@ -835,18 +845,22 @@ export default function PatternBuilderPage() {
                       <DropdownMenuItem onClick={() => onExport('docx')}>DOCX</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDeleteOpen(true)}
-                    disabled={locked || deleting}
-                  >
-                    <Trash2 className="mr-1 size-3.5" /> Delete
-                  </Button>
-                  <Button size="sm" onClick={() => setReviewOpen(true)} disabled={locked || saving}>
-                    <Eye className="mr-1 size-3.5" /> Review &amp; Save
-                  </Button>
                 </>
+              )}
+              {canDelete && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDeleteOpen(true)}
+                  disabled={locked || deleting}
+                >
+                  <Trash2 className="mr-1 size-3.5" /> Delete
+                </Button>
+              )}
+              {canUpdate && (
+                <Button size="sm" onClick={() => setReviewOpen(true)} disabled={locked || saving}>
+                  <Eye className="mr-1 size-3.5" /> Review &amp; Save
+                </Button>
               )}
             </div>
           }
@@ -1416,7 +1430,7 @@ export default function PatternBuilderPage() {
               ))}
             </div>
 
-            {isTeacher && (
+            {canUpdate && (
               <Button
                 type="button"
                 variant="outline"

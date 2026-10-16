@@ -1,0 +1,12 @@
+=== A) app-*.png on disk (existing colour captures) ===
+99617 docs/blackbook/figures/app-dashboard.png
+130306 docs/blackbook/figures/app-screens-dashboard.png
+100014 docs/blackbook/figures/app-subjects.png
+
+=== B) montage/convert (ImageMagick) available for building 4-per-page plates from PNGs? ===
+
+=== C) which tex files currently reference app-*.png (the plates) — full line context ===
+
+=== D) is there an '4 per page' pattern already in the tex? e.g. a row of 4 columns or the words 4/per page ===
+docs/blackbook/sections/ch6-database-design.tex:19:four families rendered below: (1) identity, tenancy, authentication, and
+docs/blackbook/sections/ch6-database-design.tex:212:\noindent Four principles recur across all 47 relations:

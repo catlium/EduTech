@@ -6,7 +6,7 @@ import { ClipboardList, Plus } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { formatDate, formatDuration } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { ErrorState } from '@/components/app/error-state';
@@ -33,7 +33,8 @@ function scheduleRange(startsAt?: string | null, endsAt?: string | null): string
 
 export default function AssessmentsListPage() {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: the create dialog POSTs /assessments = `assessments.create`.
+  const canCreate = hasPermission(institute, 'assessments.create');
   const [assessments, setAssessments] = useState<AssessmentListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +67,7 @@ export default function AssessmentsListPage() {
         title="Assessments"
         description={`${assessments.length} assessment${assessments.length !== 1 ? 's' : ''}`}
         actions={
-          isTeacher && (
+          canCreate && (
             <Button size="sm" onClick={() => setDialogOpen(true)}>
               <Plus className="mr-1 size-3.5" /> New Assessment
             </Button>
@@ -92,7 +93,7 @@ export default function AssessmentsListPage() {
           title="No assessments yet"
           description="Create your first assessment to get started."
         >
-          {isTeacher && (
+          {canCreate && (
             <Button size="sm" onClick={() => setDialogOpen(true)}>
               <Plus className="mr-1 size-3.5" /> New Assessment
             </Button>

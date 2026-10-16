@@ -15,8 +15,16 @@ JWT, global cookie-plane CSRF, DB-fresh permissions, platform plane, academic
 scope). Full validation green: `pnpm test` 226 pass, all 8 integration suites
 (auth-session 14, authz-regression 8, ocr-worker 3, academic/resource/teacher/
 student 1 each), `pnpm typecheck` 10/10, `pnpm lint` 9/9. Findings below
-supersede the pre-overhaul sections (H1–H10/F1–F6 below were resolved by
+supersede the pre-overhaul sections (H1–H10/SA-F1–SA-F6 below were resolved by
 Phases K/L). No code was modified.
+
+> **Numbering note (2026-09-26).** The §F decision list below is the
+> *pre-overhaul security-audit* decision set and is cited as **SA-F1 … SA-F6**
+> (SA = security audit). It is **not** the F1–F8 delivery track used by
+> `docs/tasks.md`: in that track F2 = the `@hookform/resolvers`/Zod v4 form
+> validation fix and F4 = the syllabus chapter→topic invariant fix. Where older
+> narrative in this repository says "D7 §19 F3/F5 identity seams" or "§19 F5
+> intent", read `SA-F3`/`SA-F5`.
 
 Sibling endpoints closed since this header audit began at
 `feature/authorization-overhaul`:
@@ -399,7 +407,7 @@ in this phase.**
 
 - **No production code writes `users.status`** — the column is `default 'active'` and
   inert; only the test suites mutate it directly. Login/refresh/access already
-  check `users.status='active'` (F1/F5), so a global flip would take effect on the
+  check `users.status='active'` (SA-F1/SA-F5), so a global flip would take effect on the
   next request, but **no endpoint, UI, or privilege exists to flip it.**
 - A global flip is a **platform-plane action**: `users.status` is user-global
   (affects every institute membership, login, refresh, and the access guard for
@@ -416,7 +424,7 @@ in this phase.**
   the USER (multi-device, other institutes stay live). TenantGuard's live
   `memberships.status='active'` check on each request is exactly sufficient.
 - A future global deactivation SHOULD revoke all auth_sessions when status flips
-  (the documented §19 F5 intent "deactivation revokes all refresh sessions"), but
+  (the documented §19 SA-F5 intent "deactivation revokes all refresh sessions"), but
   live status checks alone already gate login/refresh/access.
 
 ### Edge cases found (do not block this phase)
@@ -754,7 +762,7 @@ Scope: Authentication, Multi-Tenancy, Authorization/Permissions.
 
 ### NEEDS HARDENING
 
-- **H5ten — OCR worker registry is global but gated by ANY `INSTITUTE_ADMIN`.** `OcrWorkersController` applies TenantGuard (passes for any institute) then `RequiredRoles('INSTITUTE_ADMIN')` (`ocr/ocr-workers.controller.ts:27-29`); `OcrWorkersService.list/update` have **no institute scoping at all** (`ocr/ocr-workers.service.ts:24-131`). Any tenant admin can list, disable, or rotate tokens for the entire shared worker fleet — affecting other tenants' OCR and seeing every worker's current chunk. Clear cross-tenant authorization gap under a tenant role boundary.
+- **H5ten — OCR worker registry is global but gated by ANY `INSTITUTE_ADMIN`.** **REMEDIATED (was a dead institute-workspace registration).** The description below records the ORIGINAL pre-overhaul state and no longer matches the code: `OcrWorkersController` is now a **platform-plane** surface guarded by `PlatformGuard` (not `TenantGuard` + `RequiredRoles('INSTITUTE_ADMIN')`) and gated by the `ocr-workers.read/create/update/manage` platform permissions (`ocr/ocr-workers.controller.ts:20-29`). The institute-workspace registration this finding described **no longer exists** — an ordinary `INSTITUTE_ADMIN` holds no platform keys and is denied, which was the point of the finding. Decision recorded under `authorization.md` §8 (the fleet is shared platform infrastructure, i.e. SA-F4 answered "shared"). **No route or code was removed for this reconciliation**; whether the platform-plane `/ocr/workers` admin surface is still needed is deferred to F5.5. Original text: `OcrWorkersService.list/update` had no institute scoping at all, so any tenant admin could list, disable, or rotate tokens for the entire shared fleet — affecting other tenants' OCR and seeing every worker's current chunk.
 - **H8 — Revoked/inactive membership has no graceful frontend path.** Server-side is correct (next request 403), but the web treats only 401 as session-death (`apps/web/src/lib/api.ts:114-133`); a 403 from a revoked membership produces silent `Forbidden`/error screens while the user remains "logged in". No redirect to `/institutes`, no auto-refresh of memberships on 403.
 - **H10 — The picker shows inactive memberships as selectable.** `listMemberships` returns every membership regardless of status (`tenancy.service.ts:71-99`); `TenantProvider` happily selects one (`tenant.tsx:31-44`); the result is a user locked in 403 land with no status indication on the card (`app/institutes/page.tsx:52-83`).
 
@@ -769,7 +777,7 @@ Scope: Authentication, Multi-Tenancy, Authorization/Permissions.
 ### VERIFIED
 
 - **Guard chain** — tenant controllers consistently declare `@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)`; `RolesGuard` default-ALLOWs when no `@RequiredRoles` and 403s without a tenant context. `common/guards/roles.guard.ts:13-36`. This is enforced by a policy test: `paper-patterns/paper-pattern-policy.test.ts:28` greps chunks for the `WRITE_ROLES` pattern.
-- **Role boundaries** — writes across academic/content/materials/questions/exams/paper-patterns/syllabus/question-papers/extractions/jobs/export are `INSTITUTE_ADMIN|TEACHER` (each controller redeclares `WRITE_ROLES`); user management is `INSTITUTE_ADMIN`-only (`users.controller.ts:31-39`); OCR registry admin-only (see H5ten); student surfaces (attempts, practice) require **no** role decorator — open to any active member; `question-types` list is `STUDENT|PARENT|INSTITUTE_ADMIN|TEACHER`. `question-types.controller.ts:22`
+- **Role boundaries** — writes across academic/content/materials/questions/exams/paper-patterns/syllabus/question-papers/extractions/jobs/export are `INSTITUTE_ADMIN|TEACHER` (each controller redeclares `WRITE_ROLES`); user management is `INSTITUTE_ADMIN`-only (`users.controller.ts:31-39`); OCR registry admin-only (see H5ten); student surfaces (attempts, practice) require **no** role decorator — open to any active member; `question-types` list is `STUDENT|PARENT|INSTITUTE_ADMIN|TEACHER`. (OCR registry: since remediated onto the platform plane — see H5ten.) `question-types.controller.ts:22`
 - **Tenant isolation is independent of roles** — TenantGuard always runs and validates membership first; RolesGuard only narrows within an already-validated tenant. A user cannot reach cross-tenant data by holding a role. Roles are per-membership (no global roles; role strings are free-form rows in `membership_roles`, seeded as `INSTITUTE_ADMIN/TEACHER/STUDENT`).
 - **Controller/service consistency** — the guard + institute-scoped service pattern holds across all audited modules; no privilege drift found between the two layers (the one drift is H8: revocation is server-correct but client-ignored).
 
@@ -799,7 +807,7 @@ Scope: Authentication, Multi-Tenancy, Authorization/Permissions.
 
 | Case | Verdict |
 |---|---|
-| Cross-tenant ID/resource access | **VERIFIED prevented** — institute-scoped entry queries + 403 gate (`tenant.guard.ts:36-44`); only gap: global OCR worker registry (H5ten). |
+| Cross-tenant ID/resource access | **VERIFIED prevented** — institute-scoped entry queries + 403 gate (`tenant.guard.ts:36-44`); global OCR worker registry (H5ten) was the only gap and is since remediated onto the platform plane. |
 | Revoked membership + existing session | **Server: VERIFIED** (403 next request). **Frontend: NEEDS HARDENING** (H8) — no logout/redirect, stale role display. |
 | Removed role + existing session | **VERIFIED** — roles re-read from DB per request (`tenancy.service.ts:37-48`). |
 | Refresh-token replay/races | **NEEDS HARDENING** — 60 s grace replay (H1); concurrent rotations mint extra rows. |
@@ -822,7 +830,7 @@ Guard chain `AccessToken → Tenant → Roles` per controller, `@RequiredRoles` 
 
 ## D. Security risks / gaps (ranked)
 1. **H1** refresh-token replay within 60 s mints fresh sessions (and multi-rotation multiplies live sessions).
-2. **H5ten** any institute admin controls the *global* OCR worker fleet (disable/rotate/list across tenants).
+2. **H5ten** any institute admin controls the *global* OCR worker fleet (disable/rotate/list across tenants). — since remediated: platform plane + `ocr-workers.*` keys.
 3. **H5/H3** access tokens survive revocation ≤15 min; all writes hinge on `SameSite=Lax` + custom-header config, not an enforced double-submit.
 4. **H4** cross-tab CSRF-403 → spurious full logout.
 5. **H2/H6/M2/M1** logout needs a valid access token; sessions never GC'd; no change-password/reset; no session revocation surface.
@@ -830,17 +838,17 @@ Guard chain `AccessToken → Tenant → Roles` per controller, `@RequiredRoles` 
 
 ## E. Improvement plan (priority order)
 1. **Kill the refresh race hole** — single-flight rotation (concurrent refresh waits on the in-flight rotation and re-uses its issued token) or token-family/session-chaining; bind access tokens to the session (`sid`/`jti`) and check it in `AccessTokenGuard` so revocation is immediate. Keep the reuse-detection property (token↔hash mismatch revokes).
-2. **Session lifecycle** — purge task for expired/revoked `auth_sessions`; logout that doesn't require a valid access token (revoke by refresh cookie alone); re-check `users.status` on refresh; add "log out all / revoke session" endpoints (M1) — likely a decision (F2) but cheap to build.
+2. **Session lifecycle** — purge task for expired/revoked `auth_sessions`; logout that doesn't require a valid access token (revoke by refresh cookie alone); re-check `users.status` on refresh; add "log out all / revoke session" endpoints (M1) — likely a decision (SA-F2) but cheap to build.
 3. **Frontend session hygiene** — treat refresh-`403` as retryable (refresh the csrf cookie) instead of `unauthorized`; handle API `403` by refreshing memberships and redirecting to `/institutes` when membership is inactive; call `cleanupInstituteStorage()` on logout.
 4. **CSRF defense-in-depth** — apply the double-submit guard (or a global writer guard) on all state-changing routes; never rely solely on SameSite/config; fix login CSRF (H7) with the same guard or a login-only token.
-5. **Worker registry tenancy** — decide the model (F4) and either keep the fleet global but gate on a **platform-level** admin (not a tenant role), or scope per-institute, gating each row's mutation to that institute.
+5. **Worker registry tenancy** — decide the model (SA-F4) and either keep the fleet global but gate on a **platform-level** admin (not a tenant role), or scope per-institute, gating each row's mutation to that institute.
 6. **Centralize authorization vocabulary** — move `WRITE_ROLES`/`ADMIN_ROLES` to one module; consider a DB CHECK on `membership_roles.role` so new roles are deliberate.
 7. **Hardening pass** — `COOKIE_SECURE` gated on `NODE_ENV` (not silent env default), and Redis-backed/distributed throttler when >1 API instance.
 
 ## F. Architectural decisions required before implementation
-- **F1 — Token model.** Keep stateless 15-min access JWTs (and accept ≤15 min revocation lag) vs server-side session-backed access tokens (exact revocation, more DB reads). This decides how H1/H5 are closed.
-- **F2 — Session policy.** Should a login/device be an explicit, visible, user-manageable session ("log out everywhere") or the current implicit per-browser cookie with rotation-only semantics?
-- **F3 — CSRF posture.** Formalize "SameSite=Lax + custom header" as *the* cross-site defense for non-auth writers (document and keep), or enforce cookie+header on every mutation. Currently undocumented for most routes.
-- **F4 — Worker registry tenancy.** Is the OCR fleet **shared platform infrastructure** (=> platform/admin gating, not tenant `INSTITUTE_ADMIN`) or **per-institute** (=> institute-scope every row)? Nothing supports per-institute today.
-- **F5 — Password lifecycle.** Admin-provisioned only, or add change-password (+reset)? Affects whether M2 is a real gap or intended scope.
-- **F6 — Cookie config defaulting.** Pin `COOKIE_SECURE`/domain security from `NODE_ENV` rather than leaving prod security to a hand-maintained `.env`.
+- **SA-F1 — Token model.** Keep stateless 15-min access JWTs (and accept ≤15 min revocation lag) vs server-side session-backed access tokens (exact revocation, more DB reads). This decides how H1/H5 are closed.
+- **SA-F2 — Session policy.** Should a login/device be an explicit, visible, user-manageable session ("log out everywhere") or the current implicit per-browser cookie with rotation-only semantics?
+- **SA-F3 — CSRF posture.** Formalize "SameSite=Lax + custom header" as *the* cross-site defense for non-auth writers (document and keep), or enforce cookie+header on every mutation. Currently undocumented for most routes.
+- **SA-F4 — Worker registry tenancy.** Is the OCR fleet **shared platform infrastructure** (=> platform/admin gating, not tenant `INSTITUTE_ADMIN`) or **per-institute** (=> institute-scope every row)? Nothing supports per-institute today. **DECIDED: shared platform infrastructure** — implemented via `PlatformGuard` + the `ocr-workers.*` platform permissions (`authorization.md` §8).
+- **SA-F5 — Password lifecycle.** Admin-provisioned only, or add change-password (+reset)? Affects whether M2 is a real gap or intended scope.
+- **SA-F6 — Cookie config defaulting.** Pin `COOKIE_SECURE`/domain security from `NODE_ENV` rather than leaving prod security to a hand-maintained `.env`.

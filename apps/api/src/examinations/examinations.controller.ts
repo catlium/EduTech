@@ -20,22 +20,32 @@ import { SetAssessmentScopeDto } from './dto/set-assessment-scope.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
-
+// F5.4 — every route declares exactly one `assessments.*` key by operation
+// (§13: read = list/detail, create = new instance, update = edit/transition,
+// delete = remove from the active surface). The decorator authorizes the
+// OPERATION; it never replaces the service gate below. `ExaminationsService`
+// keeps institute scoping, the academic subject scope
+// (`requireWritableSubject` / `gateAssessment`, O1 staging-by-creator for DRAFT
+// and O2 pure-scope for finalized rows), and blueprint validation — so a fully
+// authorized delegate still gets `NotFound` (never `Forbidden`) for another
+// institute's assessment, an out-of-scope subject, or another teacher's DRAFT.
+// RolesGuard stays in the chain as the architectural slot it has always had, and
+// is now a no-op for every route here (no handler declares @RequiredRoles).
 @Controller('assessments')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class ExaminationsController {
   constructor(private readonly examinationsService: ExaminationsService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.create')
   async create(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -51,7 +61,7 @@ export class ExaminationsController {
   }
 
   @Get()
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.read')
   async list(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser) {
     const assessments = await this.examinationsService.listAssessments(
       tenant.instituteId,
@@ -62,7 +72,7 @@ export class ExaminationsController {
   }
 
   @Get(':assessmentId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.read')
   async get(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -78,7 +88,7 @@ export class ExaminationsController {
   }
 
   @Patch(':assessmentId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.update')
   async update(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -97,7 +107,7 @@ export class ExaminationsController {
 
   @Delete(':assessmentId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.delete')
   async delete(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -112,7 +122,7 @@ export class ExaminationsController {
   }
 
   @Patch(':assessmentId/scope')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.update')
   async setScope(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -130,7 +140,7 @@ export class ExaminationsController {
   }
 
   @Post(':assessmentId/publish')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.update')
   async publish(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -146,7 +156,7 @@ export class ExaminationsController {
   }
 
   @Post(':assessmentId/activate')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.update')
   async activate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -162,7 +172,7 @@ export class ExaminationsController {
   }
 
   @Post(':assessmentId/complete')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.update')
   async complete(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -178,7 +188,7 @@ export class ExaminationsController {
   }
 
   @Post(':assessmentId/unpublish')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.update')
   async unpublish(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -194,7 +204,7 @@ export class ExaminationsController {
   }
 
   @Get(':assessmentId/questions')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.read')
   async listQuestions(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -210,7 +220,7 @@ export class ExaminationsController {
   }
 
   @Post(':assessmentId/questions')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.update')
   async addQuestions(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -233,7 +243,7 @@ export class ExaminationsController {
   // Mode B manual selection). `coverage` is null when the assessment has no
   // blueprint — the client hides the pattern panel in that case.
   @Get(':assessmentId/pattern-coverage')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.read')
   async patternCoverage(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -252,7 +262,7 @@ export class ExaminationsController {
   // pattern section and appends them to this DRAFT assessment. Honest
   // shortages reported per section when the bank cannot satisfy the pattern.
   @Post(':assessmentId/select-from-pattern')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.update')
   async selectFromPattern(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -269,7 +279,7 @@ export class ExaminationsController {
 
   @Delete(':assessmentId/questions/:questionId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.delete')
   async removeQuestion(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,

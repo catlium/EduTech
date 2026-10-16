@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 
 import { api, ApiError, uploadFileWithChunks } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { StatusBadge } from '@/components/app/status-badge';
@@ -40,7 +40,9 @@ import type { ExtractPaperPatternResponse } from '@catlium/contracts';
 
 export default function PaperPatternsListPage() {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: POST /paper-patterns and POST /paper-patterns/extract-* =
+  // `paper-patterns.create`.
+  const canCreate = hasPermission(institute, 'paper-patterns.create');
   const router = useRouter();
   const [patterns, setPatterns] = useState<PaperPattern[]>([]);
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
@@ -154,7 +156,7 @@ export default function PaperPatternsListPage() {
             : undefined
         }
         actions={
-          isTeacher && (
+          canCreate && (
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => setExtractOpen(true)}>
                 <ScanSearch className="mr-1 size-3.5" /> Extract from Source
@@ -251,7 +253,7 @@ export default function PaperPatternsListPage() {
           title="No paper patterns yet"
           description="Create a pattern manually or extract one from an existing paper."
         >
-          {isTeacher && (
+          {canCreate && (
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => setExtractOpen(true)}>
                 <ScanSearch className="mr-1 size-3.5" /> Extract from Source

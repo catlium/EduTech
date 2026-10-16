@@ -1,12 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { FileText, Loader2, RefreshCw, Sparkles, CheckCircle2, Layers } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
+import {
+  canCancelBatch,
+  canRetryBatch,
+  isTerminalBatchPhase,
+  questionBankBatchPhase,
+} from '@/lib/question-bank-batch';
 import { cn } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import type {
   SubjectResponse,
   ChapterResponse,
@@ -116,7 +122,16 @@ export function QuestionBankPanel({
   onChanged: () => void;
 }) {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: the starter seed (POST /questions/bank/starter) and the whole generate
+  // dialog (POST /questions/bank/generate) are `questions.create`; the stats read
+  // is `questions.read`, the route's own key.
+  const canCreate = hasPermission(institute, 'questions.create');
+  // Cancel/retry hit the batch routes gated by `questions.update`.
+  const canManage = hasPermission(institute, 'questions.update');
+  // B3: one synchronous in-flight latch shared by check/generate/create-new-set.
+  // The buttons disable on state, but two clicks can land before React
+  // re-renders — the ref makes the guard immune to that race.
+  const writeInFlight = useRef(false);
 
   const [stats, setStats] = useState<QuestionBankStats | null>(null);
   const [statsSubjectId, setStatsSubjectId] = useState('');
@@ -169,6 +184,7 @@ export function QuestionBankPanel({
   const [batches, setBatches] = useState<{ label: string; batchId: string }[]>([]);
   const [batchProgress, setBatchProgress] = useState<Record<string, QuestionBankBatchResponse>>({});
   const [retryingBatch, setRetryingBatch] = useState<string | null>(null);
+  const [cancellingBatch, setCancellingBatch] = useState<string | null>(null);
 
   const loadTypes = useCallback(() => {
     api<{ types: QuestionTypeDefinition[] }>('/question-types')
@@ -319,11 +335,46 @@ export function QuestionBankPanel({
         : { topicId: scope.id };
   }
 
-  /* Poll every tracked batch while the dialog stays open; pollRef keeps
-   * polling after the dialog is closed so a finishing batch keeps the grid
-   * current until the panel unmounts. */
+  function trackBatch(label: string, batchId: string | null | undefined) {
+    if (!batchId) return;
+    setBatches((prev) =>
+      prev.some((b) => b.batchId === batchId) ? prev : [...prev, { label, batchId }],
+    );
+  }
+
+  /* B3 recovery: on mount, adopt every batch the server still reports active
+   * (GET /questions/bank/sets) so navigating away and back resumes the right
+   * job instead of dropping it. */
   useEffect(() => {
-    if (batches.length === 0) return;
+    if (!institute) return;
+    let cancelled = false;
+    api<{ sets: { batchId: string; active: number }[] }>('/questions/bank/sets')
+      .then(({ sets }) => {
+        if (cancelled) return;
+        for (const s of sets) {
+          if (s.active > 0) trackBatch(`Batch ${s.batchId.slice(0, 8)}`, s.batchId);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // trackBatch is stable enough (pure setState); re-running per render would
+    // re-fetch sets needlessly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [institute]);
+
+  /* Poll tracked batches only while at least one is non-terminal. Progress
+   * survives the dialog closing, so a finishing batch stays current; the loop
+   * stops itself once every tracked batch reaches a terminal phase. */
+  const pollProgress =
+    batches.length > 0 &&
+    batches.some((b) => {
+      const p = batchProgress[b.batchId];
+      return !p || !isTerminalBatchPhase(questionBankBatchPhase(p));
+    });
+  useEffect(() => {
+    if (!pollProgress) return;
     let cancelled = false;
     const tick = async () => {
       if (cancelled) return;
@@ -333,7 +384,13 @@ export function QuestionBankPanel({
           if (cancelled) return;
           setBatchProgress((prev) => {
             const same = prev[b.batchId];
-            if (same && same.active === resp.active && same.failed === resp.failed) {
+            if (
+              same &&
+              same.active === resp.active &&
+              same.completed === resp.completed &&
+              same.failed === resp.failed &&
+              same.cancelled === resp.cancelled
+            ) {
               return prev;
             }
             return { ...prev, [b.batchId]: resp };
@@ -349,14 +406,10 @@ export function QuestionBankPanel({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [batches]);
-
-  function trackBatch(label: string, batchId: string | null | undefined) {
-    if (!batchId) return;
-    setBatches((prev) =>
-      prev.some((b) => b.batchId === batchId) ? prev : [...prev, { label, batchId }],
-    );
-  }
+    // batchProgress is intentionally excluded: it changes every tick and would
+    // restart the interval. pollProgress flips false only at the terminal edge.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batches, pollProgress]);
 
   /** Equal split of `size` across the selected scope; per-scope ≤ 100. */
   const perScopeSize =
@@ -410,6 +463,7 @@ export function QuestionBankPanel({
   }
 
   async function checkDeficits() {
+    if (writeInFlight.current) return;
     if (scopes.length === 0) {
       toast.error('Select a subject, chapters, or topics to check');
       return;
@@ -418,6 +472,7 @@ export function QuestionBankPanel({
       toast.error('Select at least one question type');
       return;
     }
+    writeInFlight.current = true;
     setChecking(true);
     setDeficits([]);
     try {
@@ -442,6 +497,7 @@ export function QuestionBankPanel({
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to check bank');
     } finally {
+      writeInFlight.current = false;
       setChecking(false);
     }
   }
@@ -485,7 +541,7 @@ export function QuestionBankPanel({
 
   /** Create New Set (Goal E): generate the FULL target buckets as a fresh
    * independent set, ignoring how many already exist. */
-  async function createNewSet(scope: ScopeRef) {
+  async function createNewSet(scope: ScopeRef): Promise<{ batchId: string; label: string }> {
     if (blueprintId) {
       const { generation } = await api<{ generation: GenerateBankResponse }>(
         '/questions/bank/generate-blueprint',
@@ -495,7 +551,7 @@ export function QuestionBankPanel({
         },
       );
       trackBatch(scope.label, generation.batchId);
-      return;
+      return { batchId: generation.batchId, label: scope.label };
     }
     const buckets = autoMode ? await bucketsForScope(scope) : manualBuckets();
     const { generation } = await api<{ generation: GenerateBankResponse }>(
@@ -506,9 +562,11 @@ export function QuestionBankPanel({
       },
     );
     trackBatch(scope.label, generation.batchId);
+    return { batchId: generation.batchId, label: scope.label };
   }
 
   async function generateMissing() {
+    if (writeInFlight.current) return;
     if (scopes.length === 0) {
       toast.error('Select a scope first');
       return;
@@ -517,6 +575,7 @@ export function QuestionBankPanel({
       toast.error('Check the bank first to see what is missing');
       return;
     }
+    writeInFlight.current = true;
     setGenerating(true);
     try {
       const results: { label: string; batchId?: string | null }[] = [];
@@ -529,9 +588,10 @@ export function QuestionBankPanel({
         if (!resp || deficitBucketsFor(resp).length === 0) continue;
         results.push(await generate(scope, resp));
       }
-      if (results.some((r) => r.batchId)) {
+      const queued = results.filter((r) => r.batchId);
+      if (queued.length > 0) {
         toast.success(
-          `Generation started for ${results.map((r) => r.label).join(', ')} — progress below`,
+          `Generation started for ${queued.map((r) => r.label).join(', ')} — progress below`,
         );
       } else {
         toast.info('Nothing generated — the bank covers the requested buckets');
@@ -543,12 +603,14 @@ export function QuestionBankPanel({
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to start generation');
     } finally {
+      writeInFlight.current = false;
       setGenerating(false);
     }
   }
 
   /** Create New Set for every selected scope (full count, ignores existing). */
   async function createNewSets() {
+    if (writeInFlight.current) return;
     if (scopes.length === 0) {
       toast.error('Select a scope first');
       return;
@@ -557,12 +619,21 @@ export function QuestionBankPanel({
       toast.error('Select at least one question type');
       return;
     }
+    writeInFlight.current = true;
     setGenerating(true);
     try {
+      // Sequential await, not Promise.all: a partial failure must surface
+      // (the catch) rather than claim success for scopes that never queued.
+      const started = [];
       for (const scope of scopes) {
-        await createNewSet(scope);
+        started.push(await createNewSet(scope));
       }
-      toast.success(`Started new sets for ${scopes.map((s) => s.label).join(', ')}`);
+      const queued = started.filter((r) => r.batchId);
+      if (queued.length > 0) {
+        toast.success(`Started new sets for ${queued.map((r) => r.label).join(', ')}`);
+      } else {
+        toast.info('No new sets were queued');
+      }
       setDeficits([]);
       setBlueprintId('');
       onChanged();
@@ -570,6 +641,7 @@ export function QuestionBankPanel({
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to start generation');
     } finally {
+      writeInFlight.current = false;
       setGenerating(false);
     }
   }
@@ -593,13 +665,33 @@ export function QuestionBankPanel({
     }
   }
 
+  /** Cancel the active children of a batch (settled children are untouched). */
+  async function cancelBatch(batchId: string) {
+    setCancellingBatch(batchId);
+    try {
+      const resp = await api<QuestionBankBatchResponse>(
+        `/questions/bank/batches/${batchId}/cancel`,
+        { method: 'POST' },
+      );
+      setBatchProgress((prev) => ({ ...prev, [batchId]: resp }));
+      toast.success('Cancelling generation');
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to cancel generation');
+    } finally {
+      setCancellingBatch(null);
+    }
+  }
+
   /** Seed the selected subject with a starter set (default types at their
    * per-type min, spread across all difficulties). */
   async function generateStarter() {
+    if (writeInFlight.current) return;
     if (!statsSubjectId) {
       toast.error('Select a subject to seed');
       return;
     }
+    writeInFlight.current = true;
     setStartering(true);
     try {
       const { generation } = await api<{ generation: GenerateBankResponse }>(
@@ -617,6 +709,7 @@ export function QuestionBankPanel({
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to generate starter questions');
     } finally {
+      writeInFlight.current = false;
       setStartering(false);
     }
   }
@@ -685,7 +778,7 @@ export function QuestionBankPanel({
             <p className="mt-3 text-xs text-muted-foreground">Could not load bank stats.</p>
           )}
 
-          {isTeacher && (
+          {canCreate && (
             <div className="mt-3 flex flex-wrap gap-2">
               {statsSubjectId && (
                 <Button
@@ -723,8 +816,8 @@ export function QuestionBankPanel({
             setAutoMode(false);
             setDerivedSources([]);
             setShowCustomType(false);
-            setBatches([]);
-            setBatchProgress({});
+            // B3: tracked batches/progress intentionally survive close, so the
+            // poll keeps a finishing batch current and re-opening shows it.
           }
         }}
       >
@@ -1075,32 +1168,55 @@ export function QuestionBankPanel({
                 </div>
                 {batches.map((b) => {
                   const p = batchProgress[b.batchId];
+                  const phase = p ? questionBankBatchPhase(p) : 'pending';
                   return (
                     <div key={b.batchId} className="rounded border bg-background p-2 text-xs">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold">{b.label}</span>
                         <span className="text-muted-foreground">
                           {p
-                            ? `${p.completed} done · ${p.failed} failed · ${p.active} running`
+                            ? `${p.completed} done · ${p.failed} failed${
+                                p.cancelled > 0 ? ` · ${p.cancelled} cancelled` : ''
+                              } · ${p.active} running`
                             : 'starting…'}
                         </span>
                       </div>
-                      {p && p.failed > 0 && p.active === 0 && (
+                      {p && canCancelBatch(p) && (
                         <div className="mt-1 flex items-center justify-between gap-2">
-                          <span className="text-destructive">
-                            {p.failed} failed — retry regenerates only those buckets
+                          <span className="text-muted-foreground">
+                            {phase === 'pending' ? 'Queued' : 'In progress'}
                           </span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={retryingBatch !== null}
-                            onClick={() => void retryFailed(b.batchId)}
-                          >
-                            {retryingBatch === b.batchId ? 'Retrying…' : 'Retry failed'}
-                          </Button>
+                          {canManage && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={cancellingBatch !== null}
+                              onClick={() => void cancelBatch(b.batchId)}
+                            >
+                              {cancellingBatch === b.batchId ? 'Cancelling…' : 'Cancel'}
+                            </Button>
+                          )}
                         </div>
                       )}
-                      {p && p.failed === 0 && p.active === 0 && (
+                      {p && canRetryBatch(p) && (
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <span className="text-destructive">
+                            {p.failed + p.cancelled} failed/cancelled — retry regenerates only those
+                            buckets
+                          </span>
+                          {canManage && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={retryingBatch !== null}
+                              onClick={() => void retryFailed(b.batchId)}
+                            >
+                              {retryingBatch === b.batchId ? 'Retrying…' : 'Retry failed'}
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                      {p && phase === 'completed' && (
                         <p className="mt-1 text-emerald-600">Complete</p>
                       )}
                     </div>

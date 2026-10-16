@@ -16,3 +16,19 @@ export function canUse(granted: readonly string[], key: string): boolean {
 export function canUseAny(granted: readonly string[], keys: readonly string[]): boolean {
   return keys.some((key) => canUse(granted, key));
 }
+
+/** The two inputs a capability gate needs: the backend-resolved grant set and
+ *  the actor's own institute roles. */
+export interface RolesConsoleGrants {
+  permissions: readonly string[];
+  isInstituteAdmin: boolean;
+}
+
+/** `PUT /users/:userId/roles` is deliberately AND-gated: `users.update` AND the
+ *  INSTITUTE_ADMIN role. Handing out a role hands out a whole permission bundle,
+ *  so a custom role holding `users.update` must not be able to promote itself —
+ *  the API refuses that, and the console must not offer the button. Mirrors
+ *  `UsersController.setMembershipRoles`; never a substitute for it. */
+export function canAssignUserRoles(grants: RolesConsoleGrants): boolean {
+  return grants.isInstituteAdmin && canUse(grants.permissions, 'users.update');
+}

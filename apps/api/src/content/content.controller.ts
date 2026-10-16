@@ -19,22 +19,34 @@ import { CreateContentDto, UpdateContentDto } from './dto/content.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
+/**
+ *  * F5.5 — content item / version guard migration (§13 `content`). One key per
+ * operation: the five reads that carried no role gate take `content.read` (held
+ * by TEACHER and STUDENT, so they stay reachable by every member exactly as
+ * before), the three mutations take `content.update`, and the insert takes
+ * `content.create` — all of which TEACHER holds and STUDENT does not, so the
+ * legacy `INSTITUTE_ADMIN`/`TEACHER` write gate is preserved without widening.
+ *
+ * `ContentService` keeps every gate it already owned: the DRAFT-creator rule
+ * (`gateContent` — 403 on a foreign DRAFT, 404 on an out-of-scope read) and the
+ * institute filter. This layer only answers "may this role perform the action".
 
+ */
 @Controller('content')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class ContentController {
   constructor(private readonly contentService: ContentService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.create')
   async create(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -50,6 +62,7 @@ export class ContentController {
   }
 
   @Get()
+  @RequiredPermission('content.read')
   async list(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -85,6 +98,7 @@ export class ContentController {
   }
 
   @Get(':contentId')
+  @RequiredPermission('content.read')
   async get(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -100,7 +114,7 @@ export class ContentController {
   }
 
   @Patch(':contentId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.update')
   async update(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -118,6 +132,7 @@ export class ContentController {
   }
 
   @Get(':contentId/versions')
+  @RequiredPermission('content.read')
   async listVersions(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -133,6 +148,7 @@ export class ContentController {
   }
 
   @Get(':contentId/versions/:version')
+  @RequiredPermission('content.read')
   async getVersion(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -150,7 +166,7 @@ export class ContentController {
   }
 
   @Post(':contentId/archive')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.update')
   async archive(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -167,7 +183,7 @@ export class ContentController {
   }
 
   @Post(':contentId/activate')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('content.update')
   async activate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,

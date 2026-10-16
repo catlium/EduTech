@@ -16,6 +16,20 @@ progress:
 
 # STATE.md
 
+> **SUPERSEDED (2026-09-26) — do not use this file as the project state.**
+> This GSD planning tree stopped being maintained on 2026-09-11 and its
+> numbers are stale (the front matter below claims 85% / 22 of 26 phases, and
+> `.planning/state.json` claims "Phase 8 of 3 · 0% · executing"). The
+> authoritative, continuously maintained project state is:
+>
+> 1. `AGENTS.md` — architecture rules and conventions
+> 2. `docs/project-status.md` — current phase, work, next task
+> 3. `docs/tasks.md` — the phase/goal/task tracker
+> 4. `docs/architecture/*` — decision records
+>
+> The active track is **F5** (see `docs/tasks.md`). Read this tree only for
+> historical design intent.
+
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-09-01)

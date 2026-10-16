@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -11,39 +10,17 @@ import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import type { Database } from '@catlium/database';
 import { chapters, syllabi, subjects, topics } from '@catlium/database';
-import {
-  SyllabusContextSchema,
-  SyllabusStructureSchema,
-  type SyllabusContext,
-  type SyllabusStructure,
-} from '@catlium/contracts';
+import type { SyllabusContext, SyllabusStructure } from '@catlium/contracts';
 import { DATABASE_TOKEN } from '../database/database.module.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import { STORAGE_PROVIDER } from '../materials/storage/storage-provider.interface.js';
 import type { StorageProvider } from '../materials/storage/storage-provider.interface.js';
 import { AcademicScopeService } from '../authorization/academic-scope.service.js';
+import { SyllabusValidator } from './syllabus.validation.js';
 
 type DbTx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 const OPERATION = 'AI_ANALYZE_SYLLABUS';
-
-export const SyllabusValidator = {
-  parseStructure(structure: unknown): SyllabusStructure {
-    try {
-      return SyllabusStructureSchema.parse(structure);
-    } catch {
-      throw new BadRequestException('Invalid syllabus structure');
-    }
-  },
-
-  parseContext(context: unknown): SyllabusContext {
-    try {
-      return SyllabusContextSchema.parse(context);
-    } catch {
-      throw new BadRequestException('Invalid syllabus context');
-    }
-  },
-};
 
 @Injectable()
 export class SyllabusService {
@@ -509,6 +486,9 @@ export class SyllabusService {
       let chapterId: string;
       if (match?.chapter) {
         chapterId = match.chapter.id;
+        // Consume the match: a later structure chapter must not map onto the
+        // same row, and a reused chapter is NOT "removed" below.
+        usedChapterIds.add(chapterId);
         report.reusedChapters.push(chapterId);
         await tx
           .update(chapters)
@@ -599,16 +579,34 @@ export class SyllabusService {
 
     const removedChapters = existingChapters.filter((c) => !usedChapterIds.has(c.id));
     if (removedChapters.length) {
+      const removedChapterIds = removedChapters.map((c) => c.id);
       await tx
         .update(chapters)
         .set({ status: 'archived', updatedAt: new Date() })
         .where(
           inArray(
             chapters.id,
-            removedChapters.map((c) => c.id),
+            removedChapterIds,
           ),
         );
-      report.removedChapters.push(...removedChapters.map((c) => c.id));
+      report.removedChapters.push(...removedChapterIds);
+      // A topic whose chapter is archived must not stay active — it would be
+      // an orphaned live row under a hidden parent.
+      const orphanTopics = existingTopics.filter(
+        (t) => t.status === 'active' && removedChapterIds.includes(t.chapterId),
+      );
+      if (orphanTopics.length) {
+        await tx
+          .update(topics)
+          .set({ status: 'archived', updatedAt: new Date() })
+          .where(
+            inArray(
+              topics.id,
+              orphanTopics.map((t) => t.id),
+            ),
+          );
+        report.removedTopics.push(...orphanTopics.map((t) => t.id));
+      }
     }
 
     await tx

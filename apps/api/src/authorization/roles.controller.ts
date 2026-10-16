@@ -39,6 +39,15 @@ export class RolesController {
     return { roles };
   }
 
+  // Declared BEFORE `@Get(':roleId')`: Nest matches in declaration order, so a
+  // literal segment registered after the param route would be consumed by
+  // `ParseUUIDPipe` and answer 400 instead of reaching this handler.
+  @Get('catalogue')
+  @RequiredPermission('roles.read')
+  async catalogue() {
+    return { permissions: this.rolesService.listPermissionCatalogue() };
+  }
+
   @Get(':roleId')
   @RequiredPermission('roles.read')
   async get(@Tenant() tenant: TenantContext, @Param('roleId', ParseUUIDPipe) roleId: string) {
@@ -69,7 +78,7 @@ export class RolesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequiredPermission('roles.delete')
   async remove(@Tenant() tenant: TenantContext, @Param('roleId', ParseUUIDPipe) roleId: string) {
-    await this.rolesService.deleteRole(tenant.instituteId, roleId);
+    await this.rolesService.deleteRole(tenant.instituteId, roleId, tenant.roles);
   }
 
   @Put(':roleId/permissions')

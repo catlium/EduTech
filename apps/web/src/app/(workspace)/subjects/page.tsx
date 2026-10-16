@@ -6,7 +6,7 @@ import { BookOpen, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, ApiError } from '@/lib/api';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { SubjectCard } from '@/components/app/subject-card';
 import { EmptyState } from '@/components/app/empty-state';
@@ -18,7 +18,10 @@ import type { SubjectResponse } from '@catlium/contracts';
 
 export default function SubjectsListPage() {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: the exact backend keys, not the teacher role. POST /subjects is
+  // `subjects.create`; POST /subjects/:id/restore is `subjects.update`.
+  const canCreate = hasPermission(institute, 'subjects.create');
+  const canUpdate = hasPermission(institute, 'subjects.update');
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +117,7 @@ export default function SubjectsListPage() {
                 </>
               )}
             </Button>
-            {view === 'active' && isTeacher && (
+            {view === 'active' && canCreate && (
               <Button size="sm" asChild>
                 <Link href="/subjects/new">
                   <Plus className="mr-1 size-3.5" /> New Subject
@@ -145,15 +148,17 @@ export default function SubjectsListPage() {
                       {subject.description ?? subject.slug}
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void restoreSubject(subject.id)}
-                    disabled={restoring !== null}
-                  >
-                    <RotateCcw className="mr-1 size-3.5" />
-                    {restoring === subject.id ? 'Restoring…' : 'Restore'}
-                  </Button>
+                  {canUpdate && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void restoreSubject(subject.id)}
+                      disabled={restoring !== null}
+                    >
+                      <RotateCcw className="mr-1 size-3.5" />
+                      {restoring === subject.id ? 'Restoring…' : 'Restore'}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -169,7 +174,7 @@ export default function SubjectsListPage() {
           title="No subjects yet"
           description="Create your first subject to start organizing your curriculum."
         >
-          {isTeacher && (
+          {canCreate && (
             <Button size="sm" asChild>
               <Link href="/subjects/new">Create Subject</Link>
             </Button>

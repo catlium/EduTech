@@ -116,6 +116,41 @@ Two endpoints share one pipeline (`computeDeficitsAndGenerateMore`,
 > PENDING is legacy-only (explicit reject → archive). See
 > `docs/api/questions.md` for the API contract.
 
+## 4a. Async generation UX — batch monitor, recovery, cancel/retry (B3)
+
+Bank generation is asynchronous (one `batchId` fanning out to many jobs). The
+web surfaces the live state through one shared, tested state machine and three
+endpoints, so a page refresh or navigation cannot lose an in-flight batch:
+
+- **Pure phase helper** — `apps/web/src/lib/question-bank-batch.ts` maps the
+  batch rollup (`active`/`completed`/`failed`/`cancelled`) to one phase
+  (`pending` → `running` → `completed` | `partial` | `failed` | `cancelled`)
+  and exposes `isTerminalBatchPhase` / `canCancelBatch` / `canRetryBatch`.
+  Unit-tested in `question-bank-batch.test.ts` (12 cases).
+- **Recovery** — `QuestionBankPanel` seeds its tracked batches from
+  `GET /questions/bank/sets` on mount and `QuestionBankSets` lists them
+  persistently; both re-poll only while a tracked batch is non-terminal, so an
+  idle page makes no requests and the count never goes stale.
+- **Cancel / retry** — `POST /questions/bank/batches/:batchId/cancel` and
+  `…/retry-failed` (both `questions.update`); retry re-enqueues only
+  failed/cancelled children, so completed work is never duplicated. Controls
+  are gated by `canManage` and the pure helpers.
+- **Honest status** — a `dryRun`/dedup `NO_ACTION` response (no `batchId`)
+  reports "the bank already covers these targets" instead of a false success,
+  and a `writeInFlight` guard blocks duplicate submits while one is queued.
+
+`GET /questions/bank/batches/:batchId` counts `active` as
+`queued + processing + cancelling` (`ACTIVE_JOB_STATUSES`); B3 made
+`GET /questions/bank/sets` use the same definition (it had omitted
+`cancelling`). See `docs/api/questions.md` for the wire contract.
+
+> KNOWN-GAP: `listBankSets` filters `type = AI_GENERATE_QUESTIONS`, so a batch
+> that is *waiting on starter-material generation* (only the STARTER job exists,
+> its children not yet released) is briefly absent from `/questions/bank/sets`.
+> In-session tracking is unaffected (the client holds the `batchId`); recovery
+> after navigating away during that window would miss it. Low impact; not
+> scheduled.
+
 ## 5. Question Paper semantics
 
 - `select-from-pattern` **replaces** the paper's question set (idempotent
@@ -157,6 +192,36 @@ Two endpoints share one pipeline (`computeDeficitsAndGenerateMore`,
 4. Mechanical attempt-N-of-M (schema-level) + auto-replenishment after
    selection.
 5. Cross-batch/question near-duplicate detection (beyond exact-stem + prompt).
+
+## 8a. Extraction surfaces — material-driven surface retired (B2)
+
+The **material-driven** entry point ("Extract", `QuestionExtractionDialog` →
+`question-extraction-dialog.tsx` → `POST /questions/extract-from-material`) was
+**retired in B2 (2026-10-16)**. Its removal was left uncommitted as a stray
+experiment since the 2026-09-26 F5.0 reconciliation; B2 is the directive that
+made it official, and the API route, service method (`requestExtraction`),
+DTO (`ExtractQuestionsDto`) and web caller were removed together — not as
+drive-by cleanup.
+
+Extraction is now **source-driven** only, with one shared extractor and two
+explicit modes:
+
+| Surface | Web entry | API | Mode |
+| ------- | --------- | --- | ---- |
+| Bank source extraction ("Extract from Source") | `QuestionSourceExtractionDialog` (`basePath="/questions"`) | `POST /questions/extract-source-text`, `POST /questions/extract-source-file` | **bank** — candidates → REVIEW tray, no paper |
+| Paper source extraction ("Extract Question Paper") | question-papers page → same dialog (`basePath="/question-papers"`) | `POST /question-papers/extract-text`, `POST /question-papers/extract-file` | **paper** — a Question Paper is created and linked |
+
+Both call `QuestionPaperExtractionService.requestTextExtraction` /
+`requestFileExtraction`; the mode is the explicit `intoPaper` flag. Paper mode
+is always requested by the question-papers controllers, so "Extract from
+Source" from that page creates the paper the UI navigates to
+(`/question-papers/:paperId?extraction=:jobId`). Bank mode is the default
+(`intoPaper = false`) and the result always carries `paperId: string | null`
+(never omitted), matching `ExtractQuestionPaperResponseSchema`.
+
+`QuestionExtractionService` keeps the legacy `QUESTION_EXTRACT` sweep (so any
+already-queued material-driven job still drains) plus the whole REVIEW
+candidate surface (list/update/accept/import/discard, status poll).
 
 ## 9. Related docs
 

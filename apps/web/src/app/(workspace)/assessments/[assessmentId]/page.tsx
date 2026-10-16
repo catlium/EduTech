@@ -27,7 +27,7 @@ import {
   type ExportPreviewValue,
 } from '@/components/export/export-preview-dialog';
 import { formatDate, formatDuration } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission, canManage } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { ErrorState } from '@/components/app/error-state';
@@ -112,7 +112,20 @@ export default function AssessmentDetailPage() {
   const router = useRouter();
   const params = useParams<{ assessmentId: string }>();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: PATCH /:id, the publish/activate/unpublish/complete transitions,
+  // PATCH /:id/scope and the question add/remove/select calls are
+  // `assessments.update`; DELETE /:id is `assessments.delete`; the export
+  // download is `exports.read`. Preview stays ungated for anyone with
+  // `assessments.read`; Results is role-gated below (F5.8/X-6).
+  const canUpdate = hasPermission(institute, 'assessments.update');
+  const canDelete = hasPermission(institute, 'assessments.delete');
+  const canExport = hasPermission(institute, 'exports.read');
+  // F5.8/X-6: the Results surface is `@RequiredRoles('INSTITUTE_ADMIN','TEACHER')`
+  // on the backend (attempts controller `assessments/:id/attempts` +
+  // `/analytics`, and the results export). No catalogue key expresses "may read
+  // another student's attempt", so the frontend mirrors that role gate instead of
+  // inventing one — the API stays the boundary.
+  const canViewResults = canManage(institute);
 
   const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
   const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
@@ -617,81 +630,65 @@ export default function AssessmentDetailPage() {
         title={assessment.title}
         description={assessment.description ?? undefined}
         actions={
-          isTeacher && (
-            <div className="flex items-center gap-2">
-              {editable && (
-                <Button variant="outline" size="sm" onClick={openEdit}>
-                  <Pencil className="mr-1 size-3.5" /> Edit
+          <div className="flex items-center gap-2">
+            {canUpdate && editable && (
+              <Button variant="outline" size="sm" onClick={openEdit}>
+                <Pencil className="mr-1 size-3.5" /> Edit
+              </Button>
+            )}
+            {canUpdate && assessment.status === 'DRAFT' && (
+              <Button
+                size="sm"
+                onClick={() => setConfirmAction('publish')}
+                disabled={working || questions.length === 0 || !hasScope}
+                title={hasScope ? undefined : 'Set a question scope first'}
+              >
+                Publish
+              </Button>
+            )}
+            {canDelete && (assessment.status === 'DRAFT' || assessment.status === 'PUBLISHED') && (
+              <Button variant="outline" size="sm" onClick={() => setConfirmAction('delete')} disabled={working}>
+                <Trash2 className="mr-1 size-3.5" /> Delete
+              </Button>
+            )}
+            {canUpdate && assessment.status === 'PUBLISHED' && (
+              <>
+                <Button size="sm" onClick={() => setConfirmAction('activate')} disabled={working}>
+                  Activate
                 </Button>
-              )}
-              {assessment.status === 'DRAFT' && (
-                <>
-                  <Button
-                    size="sm"
-                    onClick={() => setConfirmAction('publish')}
-                    disabled={working || questions.length === 0 || !hasScope}
-                    title={hasScope ? undefined : 'Set a question scope first'}
-                  >
-                    Publish
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setConfirmAction('delete')}
-                    disabled={working}
-                  >
-                    <Trash2 className="mr-1 size-3.5" /> Delete
-                  </Button>
-                </>
-              )}
-              {assessment.status === 'PUBLISHED' && (
-                <>
-                  <Button size="sm" onClick={() => setConfirmAction('activate')} disabled={working}>
-                    Activate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setConfirmAction('unpublish')}
-                    disabled={working}
-                  >
-                    Unpublish
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setConfirmAction('delete')}
-                    disabled={working}
-                  >
-                    <Trash2 className="mr-1 size-3.5" /> Delete
-                  </Button>
-                </>
-              )}
-              {assessment.status === 'ACTIVE' && (
-                <Button size="sm" onClick={() => setConfirmAction('complete')} disabled={working}>
-                  Complete
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmAction('unpublish')}
+                  disabled={working}
+                >
+                  Unpublish
                 </Button>
-              )}
+              </>
+            )}
+            {canUpdate && assessment.status === 'ACTIVE' && (
+              <Button size="sm" onClick={() => setConfirmAction('complete')} disabled={working}>
+                Complete
+              </Button>
+            )}
+            {canViewResults && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/assessments/${assessment.id}/results`}>
                   <ClipboardList className="mr-1 size-3.5" /> Results
                 </Link>
               </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/assessments/${assessment.id}/preview`}>
-                  <Eye className="mr-1 size-3.5" /> Preview
-                </Link>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setExportOpen(true)}
-                disabled={working}
-              >
+            )}
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/assessments/${assessment.id}/preview`}>
+                <Eye className="mr-1 size-3.5" /> Preview
+              </Link>
+            </Button>
+            {canExport && (
+              <Button variant="outline" size="sm" onClick={() => setExportOpen(true)} disabled={working}>
                 <Download className="mr-1 size-3.5" /> Export
               </Button>
-            </div>
-          )
+            )}
+          </div>
         }
       />
 
@@ -727,7 +724,7 @@ export default function AssessmentDetailPage() {
                 <span className="text-amber-600 dark:text-amber-400">
                   No question scope set — questions cannot be selected or published.
                 </span>
-                {isTeacher && editable && (
+                {canUpdate && editable && (
                   <Button variant="outline" size="sm" onClick={() => void openSetScope()}>
                     Set Question Scope
                   </Button>
@@ -815,7 +812,7 @@ export default function AssessmentDetailPage() {
               {questions.length} question{questions.length !== 1 ? 's' : ''}
             </CardDescription>
           </div>
-          {isTeacher && editable && (
+          {canUpdate && editable && (
             <div className="flex items-center gap-2">
               {isPatternBased && (
                 <Button
@@ -881,7 +878,7 @@ export default function AssessmentDetailPage() {
               title="No questions yet"
               description="Add questions from the Question Bank to build this assessment."
             >
-              {isTeacher && editable && (
+              {canUpdate && editable && (
                 <Button size="sm" onClick={openAddDialog}>
                   <Plus className="mr-1 size-3.5" /> Add Questions
                 </Button>
@@ -903,7 +900,7 @@ export default function AssessmentDetailPage() {
                     </div>
                     <p className="line-clamp-3 text-muted-foreground">{question.stem}</p>
                   </div>
-                  {isTeacher && editable && (
+                  {canUpdate && editable && (
                     <Button
                       variant="ghost"
                       size="sm"

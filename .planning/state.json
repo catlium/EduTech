@@ -4,9 +4,9 @@
   "milestone": null,
   "phases": [],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 8 of 3 · 0% · executing"
+    "command": "read docs/tasks.md",
+    "label": "Consult the authoritative tracker (this GSD tree is superseded)",
+    "reason": "Superseded 2026-09-26: unmaintained since 2026-09-11. Project state lives in AGENTS.md + docs/project-status.md + docs/tasks.md; the active track is F5."
   },
-  "updated_at": "2026-09-07T03:17:05.779Z"
+  "updated_at": "2026-09-26T00:00:00.000Z"
 }

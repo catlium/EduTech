@@ -11,8 +11,12 @@ the document's plaintext ONLY:
   Subject → Chapter → Topic hierarchy (reconciliation-aware).
 
 Nothing is invented: extraction is faithful, and fields the document does not
-state stay empty/null. The response shape is enforced by the Pydantic mirror
-``SyllabusAnalysisPayload`` in :mod:`worker.ai.schemas`.
+state stay empty/null — with one structural exception: every chapter must carry
+at least one topic (downstream derived-content generation is topic-based), so
+when the document lists no explicit subtopic headings the model derives
+first-level topics from the chapter's own content, never unrelated material.
+The response shape is enforced by the Pydantic mirror ``SyllabusAnalysisPayload``
+in :mod:`worker.ai.schemas`.
 """
 
 from __future__ import annotations
@@ -51,11 +55,13 @@ _SYSTEM_TEMPLATE = (
     "  }\n"
     "}\n"
     '"chapters" must contain at least 1 and at most 100 items. Each chapter must '
-    "have a short, descriptive name as stated in the document; a chapter may "
-    "contain 0 or more topics (an empty topics list is valid for a chapter "
-    "without subtopics). Order chapters and topics as the document does. "
-    "Do not include assessment or grading content, only structure and the "
-    "extracted context."
+    "have a short, descriptive name as stated in the document and must contain "
+    "at least one topic (an empty topics list is invalid). When the document "
+    "states explicit subtopic headings under a chapter, list them as its "
+    "topics; when it does not, derive meaningful first-level topics from the "
+    "chapter's own content. Never invent topics the document does not support. "
+    "Order chapters and topics as the document does. Do not include assessment "
+    "or grading content, only structure and the extracted context."
 )
 
 

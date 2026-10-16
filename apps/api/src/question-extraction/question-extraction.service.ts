@@ -1,23 +1,22 @@
 // Question Extraction into Question Bank (Phase 47) — coordinator-owned jobs.
 //
-// Mirrors PaperPatternExtractionService: QUESTION_EXTRACT jobs are inserted by
-// the API (POST /questions/extract-from-material), adopted by a sweep, and
-// never published to RabbitMQ. The extraction itself is deterministic
-// (question-extractor.ts), so it belongs in the API, not a worker.
+// The REVIEW candidates are produced by the source-driven
+// `QuestionPaperExtractionService` (QP_EXTRACT, bank mode) which stores them in
+// the same `questions` table; this service owns the sweep for legacy/queued
+// QUESTION_EXTRACT rows and the whole candidate review surface
+// (list/update/accept/import/discard, status poll). The extraction itself is
+// deterministic (question-extractor.ts), so it belongs in the API, not a worker.
 //
 // Candidates are stored directly in `questions` as status=REVIEW +
 // source=EXTRACTED (provenance->>'jobId' scopes the run — no extra entity).
 // Accepting a candidate validates the payload and flips it to ACTIVE/APPROVED,
 // so imported questions behave like any ordinary bank question.
-//
-// Idempotency: the enqueue reuses an active job for the same material+subject;
-// a completed run for the same (material, revision, subject) returns the
-// existing review (no duplicates). A material revision change frees re-running.
 
 import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   OnApplicationBootstrap,
   OnModuleDestroy,
@@ -32,7 +31,9 @@ import {
   questionPapers,
   questions,
 } from '@catlium/database';
+import { FormatPayloadSchemas } from '@catlium/contracts';
 import type {
+  GenerateQuestionAnswerResponse,
   MaterialEnhancedBlock,
   QuestionExtractionIssue,
   QuestionExtractionProvenance,
@@ -56,6 +57,12 @@ const EXTRACTION_LEASE_MS = 60_000;
 
 const TYPE = 'QUESTION_EXTRACT';
 
+// Autonomous answer generation (F3.2): the worker fills a REVIEW candidate's
+// missing answer (extraction flagged ANSWER_MISSING) without a teacher writing
+// it by hand. AI_GENERATE_ANSWER jobs are genuinely published to the
+// `ai_generation` queue (unlike QUESTION_EXTRACT, which stays coordinator-owned).
+const ANSWER_TYPE = 'AI_GENERATE_ANSWER';
+
 export interface CandidateRow {
   id: string;
   stem: string;
@@ -75,6 +82,7 @@ export interface CandidateRow {
 @Injectable()
 export class QuestionExtractionService implements OnApplicationBootstrap, OnModuleDestroy {
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly logger = new Logger(QuestionExtractionService.name);
 
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: Database,
@@ -94,80 +102,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     if (this.sweepTimer) clearInterval(this.sweepTimer);
   }
 
-  // ── Enqueue ──────────────────────────────────────────────────────
-
-  /** Guard + queue extraction. Idempotent: an active job for the material+
-   *  subject is reused; a completed run for the same (material, revision,
-   *  subject) returns the existing review directly (COMPLETED). */
-  async requestExtraction(
-    instituteId: string,
-    membershipId: string,
-    userId: string,
-    input: { materialId: string; subjectId: string; chapterId?: string; topicId?: string },
-  ): Promise<{ jobId: string; status: 'QUEUED' | 'COMPLETED'; reused: boolean }> {
-    const material = await this.assertMaterial(instituteId, input.materialId);
-    // Extraction only runs inside the actor's writable scope: the material and
-    // the target subject both must be writable (§18.5).
-    await this.scope.requireWritableSubject(instituteId, membershipId, material.subjectId);
-    await this.scope.requireWritableSubject(instituteId, membershipId, input.subjectId);
-    await resolveScopeChain(
-      { db: this.db, instituteId, requireSubject: true },
-      { subjectId: input.subjectId, chapterId: input.chapterId, topicId: input.topicId },
-    );
-
-    // Reuse: a completed run exists for this material+revision+subject.
-    const [existing] = await this.db
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.type, TYPE),
-          eq(jobs.instituteId, instituteId),
-          eq(jobs.status, 'completed'),
-          sql`${jobs.payload}->>'materialId' = ${material.id}`,
-          sql`${jobs.payload}->>'subjectId' = ${input.subjectId}`,
-        ),
-      )
-      .orderBy(desc(jobs.createdAt))
-      .limit(1);
-    if (existing) {
-      const completed = await this.db
-        .select({ revision: sql<number>`${jobs.result}->>'materialRevision'` })
-        .from(jobs)
-        .where(eq(jobs.id, existing.id))
-        .limit(1);
-      const revision = Number(completed[0]?.revision ?? -1);
-      if (revision === material.revision) {
-        return { jobId: existing.id, status: 'COMPLETED', reused: true };
-      }
-    }
-
-    // Reuse: an active job is already draining this material+subject.
-    const [active] = await this.db
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.type, TYPE),
-          eq(jobs.instituteId, instituteId),
-          sql`${jobs.status} IN ('queued', 'processing')`,
-          sql`${jobs.payload}->>'materialId' = ${material.id}`,
-          sql`${jobs.payload}->>'subjectId' = ${input.subjectId}`,
-        ),
-      )
-      .limit(1);
-    if (active) {
-      return { jobId: active.id, status: 'QUEUED', reused: true };
-    }
-
-    const job = await this.jobsService.insertJob(
-      instituteId,
-      TYPE,
-      { materialId: material.id, subjectId: input.subjectId, chapterId: input.chapterId ?? null, topicId: input.topicId ?? null },
-      userId,
-    );
-    return { jobId: job.id, status: 'QUEUED', reused: false };
-  }
+  // ── Status / review ──────────────────────────────────────────────
 
   /** Status read for the polling flow. */
   async getExtraction(
@@ -178,6 +113,102 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
   ): Promise<Job> {
     await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
     return this.jobsService.getJob(jobId, instituteId);
+  }
+
+  /** Guard + queue autonomous answer generation for one REVIEW candidate.
+   *  Reuses an existing active or completed AI_GENERATE_ANSWER job for the same
+   *  (institute, question) so a teacher-initiated trigger never duplicates the
+   *  extraction sweep's automatic enqueue. A failed/cancelled job is never
+   *  reused, so this doubles as the manual retry path. */
+  async requestAnswerGeneration(
+    instituteId: string,
+    membershipId: string,
+    userId: string,
+    jobId: string,
+    questionId: string,
+  ): Promise<GenerateQuestionAnswerResponse['answer']> {
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId, questionId);
+    await this.getCandidate(instituteId, jobId, questionId); // REVIEW + EXTRACTED + run match
+    return this.enqueueAnswerGeneration(instituteId, userId, questionId);
+  }
+
+  /** Insert + publish an AI_GENERATE_ANSWER job for a candidate, reusing an
+   *  existing active or valid completed job for the same (institute, question). */
+  private async enqueueAnswerGeneration(
+    instituteId: string,
+    userId: string,
+    questionId: string,
+  ): Promise<GenerateQuestionAnswerResponse['answer']> {
+    const [candidate] = await this.db
+      .select({
+        questionType: questions.questionType,
+        answerFormat: questions.answerFormat,
+        payload: questions.payload,
+      })
+      .from(questions)
+      .where(
+        and(
+          eq(questions.id, questionId),
+          eq(questions.instituteId, instituteId),
+          eq(questions.status, 'REVIEW'),
+          eq(questions.source, 'EXTRACTED'),
+          isNull(questions.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!candidate || !candidate.answerFormat || !Object.hasOwn(FormatPayloadSchemas, candidate.answerFormat)) {
+      throw new BadRequestException('Answer generation is not supported for this candidate');
+    }
+    const candidatePayload = payloadOf(candidate.payload);
+    if (!candidatePayload) {
+      throw new BadRequestException('Question payload must be an object');
+    }
+    let answerValid = true;
+    try {
+      await this.questionsService.validateQuestionPayload(
+        instituteId,
+        candidate.questionType,
+        candidatePayload,
+      );
+    } catch {
+      answerValid = false;
+    }
+
+    const [existing] = await this.db
+      .select({ id: jobs.id, status: jobs.status })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.type, ANSWER_TYPE),
+          eq(jobs.instituteId, instituteId),
+          sql`${jobs.payload}->'source'->>'type' = 'QUESTION'`,
+          sql`${jobs.payload}->'source'->>'id' = ${questionId}`,
+          inArray(jobs.status, ['queued', 'processing', 'completed']),
+        ),
+      )
+      .orderBy(desc(jobs.createdAt))
+      .limit(1);
+    if (existing) {
+      if (existing.status !== 'completed') {
+        return { jobId: existing.id, status: 'QUEUED', reused: true };
+      }
+      if (answerValid) return { jobId: existing.id, status: 'COMPLETED', reused: true };
+    }
+    if (answerValid) {
+      throw new BadRequestException('Candidate already has a valid answer');
+    }
+
+    const job = await this.jobsService.issueJob(
+      instituteId,
+      ANSWER_TYPE,
+      {
+        operation: ANSWER_TYPE,
+        source: { type: 'QUESTION', id: questionId },
+        requestedBy: userId,
+      },
+      userId,
+    );
+    return { jobId: job.id, status: 'QUEUED', reused: false };
   }
 
   // ── Sweep (adopt queued QUESTION_EXTRACT jobs) ────────────────────
@@ -288,60 +319,100 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       );
 
     const rows = [];
+    const unresolvedQuestions: Array<{ ref: string; format: string; error: string }> = [];
     for (const detectedQuestion of detected) {
-      const { chapterId, topicId, issues: scopeIssues } = assignScope(
-        detectedQuestion.matchText,
-        targets,
-        scopeConstraint,
-      );
-      const type = await this.resolveType(instituteId, detectedQuestion);
-      const issues = [...detectedQuestion.issues, ...scopeIssues];
-      const provenance: QuestionExtractionProvenance = {
-        operation: 'EXTRACT_QUESTIONS',
-        jobId,
-        materialId,
-        materialRevision: material.revision,
-        subjectId: resolvedSubjectId,
-        source,
-        page: detectedQuestion.page,
-        blockIds: detectedQuestion.blockIds,
-        originalNumber: detectedQuestion.originalNumber,
-        originalSection: detectedQuestion.section,
-        originalMarks: detectedQuestion.originalMarks,
-        issues,
-        extractedAt: new Date().toISOString(),
-      };
-      rows.push({
-        subjectId: resolvedSubjectId,
-        chapterId: chapterId ?? null,
-        topicId: topicId ?? null,
-        stem: detectedQuestion.stem,
-        questionType: type.code,
-        answerFormat: type.answerFormat,
-        difficulty: detectedQuestion.difficulty ?? 'MEDIUM',
-        payload: detectedQuestion.payload,
-        source: 'EXTRACTED',
-        provenance,
-        approvalStatus: 'PENDING',
-        status: 'REVIEW',
-        createdBy: createdBy ?? material.createdBy,
-        updatedBy: createdBy ?? material.createdBy,
-      });
+      try {
+        const { chapterId, topicId, issues: scopeIssues } = assignScope(
+          detectedQuestion.matchText,
+          targets,
+          scopeConstraint,
+        );
+        const type = await this.resolveType(instituteId, detectedQuestion);
+        const issues = [...detectedQuestion.issues, ...scopeIssues];
+        const provenance: QuestionExtractionProvenance = {
+          operation: 'EXTRACT_QUESTIONS',
+          jobId,
+          materialId,
+          materialRevision: material.revision,
+          subjectId: resolvedSubjectId,
+          source,
+          page: detectedQuestion.page,
+          blockIds: detectedQuestion.blockIds,
+          originalNumber: detectedQuestion.originalNumber,
+          originalSection: detectedQuestion.section,
+          originalMarks: detectedQuestion.originalMarks,
+          issues,
+          extractedAt: new Date().toISOString(),
+        };
+        rows.push({
+          subjectId: resolvedSubjectId,
+          chapterId: chapterId ?? null,
+          topicId: topicId ?? null,
+          stem: detectedQuestion.stem,
+          questionType: type.code,
+          answerFormat: type.answerFormat,
+          difficulty: detectedQuestion.difficulty ?? 'MEDIUM',
+          payload: detectedQuestion.payload,
+          source: 'EXTRACTED',
+          provenance,
+          approvalStatus: 'PENDING',
+          status: 'REVIEW',
+          createdBy: createdBy ?? material.createdBy,
+          updatedBy: createdBy ?? material.createdBy,
+        });
+      } catch (error) {
+        unresolvedQuestions.push({
+          ref: detectedQuestion.originalNumber ?? stemSnippet(detectedQuestion.stem),
+          format: detectedQuestion.format,
+          error: error instanceof Error ? error.message : 'Extraction failed',
+        });
+      }
     }
 
-    if (rows.length > 0) {
-      await this.db.insert(questions).values(rows.map((r) => ({ instituteId, ...r })));
-    }
+    const inserted: Array<{ id: string }> =
+      rows.length > 0
+        ? await this.db
+            .insert(questions)
+            .values(rows.map((r) => ({ instituteId, ...r })))
+            .returning({ id: questions.id })
+        : [];
 
     const candidateCount = rows.length;
     const reviewRequiredCount = rows.filter((r) => (r.provenance as QuestionExtractionProvenance).issues.length > 0).length;
     const issueCount = rows.reduce((n, r) => n + (r.provenance as QuestionExtractionProvenance).issues.length, 0);
+
+    // Autonomous answer generation: any candidate whose answer was not
+    // extractable (ANSWER_MISSING) gets an AI_GENERATE_ANSWER job enqueued so
+    // the teacher does not have to write every objective answer by hand. A
+    // failed enqueue never fails the extraction — the candidate stays REVIEW and
+    // any teacher can retry via POST .../candidates/:questionId/generate-answer.
+    let answerJobsEnqueued = 0;
+    for (let i = 0; i < inserted.length; i += 1) {
+      const issues = (rows[i]?.provenance as QuestionExtractionProvenance | undefined)?.issues ?? [];
+      if (!issues.some((issue) => issue.code === 'ANSWER_MISSING')) continue;
+      try {
+        await this.enqueueAnswerGeneration(
+          instituteId,
+          rows[i]!.createdBy ?? material.createdBy,
+          inserted[i]!.id,
+        );
+        answerJobsEnqueued += 1;
+      } catch (error) {
+        this.logger.warn(
+          `Answer generation enqueue failed for candidate ${inserted[i]!.id}: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
 
     await this.jobsService.updateJobStatus(jobId, 'completed', {
       status: candidateCount === 0 ? 'no-questions' : 'extracted',
       candidateCount,
       reviewRequiredCount,
       issueCount,
+      answerJobsEnqueued,
+      ...(unresolvedQuestions.length > 0 ? { unresolvedQuestions } : {}),
       source,
       materialRevision: material.revision,
     });
@@ -350,20 +421,31 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
   // ── Review reads ─────────────────────────────────────────────────
 
   /** REVIEW candidates are staged work owned by the requesting teacher — O1:
-   *  owner or institute admin, always inside the subject scope (§18.7). */
+   *  owner or institute admin. Subject-scope applies only when the run is
+   *  subject-anchored (QUESTION_EXTRACT from a material); QP_EXTRACT runs carry
+   *  no subjectId, so they gate on ownership alone (§18.7). */
   private async gateCandidateJob(
     instituteId: string,
     membershipId: string,
     userId: string,
     jobId: string,
+    questionId?: string,
   ): Promise<void> {
     const job = await this.jobsService.getJob(jobId, instituteId);
     const subjectId = String(job.payload?.['subjectId'] ?? '');
-    await this.scope.requireWritableSubject(instituteId, membershipId, subjectId);
+    if (subjectId) {
+      await this.scope.requireWritableSubject(instituteId, membershipId, subjectId);
+    }
     const scope = await this.scope.resolveScope(instituteId, membershipId);
     const owner = job.createdBy ?? undefined;
     if (scope.kind !== 'whole-institute' && owner !== undefined && owner !== userId) {
       throw new NotFoundException('Question extraction run not found');
+    }
+    if (questionId) {
+      const candidate = await this.getCandidate(instituteId, jobId, questionId);
+      if (candidate.subjectId) {
+        await this.scope.requireWritableSubject(instituteId, membershipId, candidate.subjectId);
+      }
     }
   }
 
@@ -424,6 +506,13 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
       )
       .orderBy(asc(questions.createdAt));
 
+    const actorScope = await this.scope.resolveScope(instituteId, membershipId);
+    const visibleRows = rows.filter(
+      (row) =>
+        row.subjectId === null ||
+        actorScope.kind === 'whole-institute' ||
+        actorScope.subjectIds.includes(row.subjectId),
+    );
     const result = payloadOf(job.result) ?? {};
     return {
       meta: {
@@ -445,7 +534,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
         createdAt: job.createdAt,
         completedAt: job.completedAt,
       },
-      candidates: rows.map(toCandidateRow),
+      candidates: visibleRows.map(toCandidateRow),
     };
   }
 
@@ -459,24 +548,33 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     questionId: string,
     patch: ReviewQuestionCandidate,
   ): Promise<CandidateRow> {
-    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId, questionId);
     const candidate = await this.getCandidate(instituteId, jobId, questionId);
 
+    let subjectId = candidate.subjectId;
     let chapterId = candidate.chapterId;
     let topicId = candidate.topicId;
     if (patch.chapterId !== undefined || patch.topicId !== undefined) {
       chapterId = patch.chapterId === null ? null : (patch.chapterId ?? candidate.chapterId);
       topicId = patch.topicId === null ? null : (patch.topicId ?? candidate.topicId);
       const chain = await resolveScopeChain(
-        { db: this.db, instituteId, requireSubject: true },
         {
-          subjectId: candidate.subjectId ?? undefined,
+          db: this.db,
+          instituteId,
+          requireSubject: subjectId !== null || chapterId !== null || topicId !== null,
+        },
+        {
+          subjectId: subjectId ?? undefined,
           chapterId: chapterId ?? undefined,
           topicId: topicId ?? undefined,
         },
       );
+      subjectId = chain.subjectId;
       chapterId = chain.chapterId;
       topicId = chain.topicId;
+      if (subjectId !== null) {
+        await this.scope.requireWritableSubject(instituteId, membershipId, subjectId);
+      }
     }
 
     let answerFormat = candidate.answerFormat;
@@ -493,8 +591,9 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
         ...(patch.difficulty !== undefined ? { difficulty: patch.difficulty } : {}),
         ...(patch.explanation !== undefined ? { explanation: patch.explanation } : {}),
         ...(patch.payload !== undefined ? { payload: patch.payload } : {}),
-        ...(patch.chapterId !== undefined ? { chapterId } : {}),
-        ...(patch.topicId !== undefined ? { topicId } : {}),
+        ...(patch.chapterId !== undefined || patch.topicId !== undefined
+          ? { subjectId, chapterId, topicId }
+          : {}),
         updatedBy: userId,
         updatedAt: new Date(),
       })
@@ -511,11 +610,11 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     jobId: string,
     questionId: string,
   ): Promise<CandidateRow> {
-    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId, questionId);
     const candidate = await this.getCandidate(instituteId, jobId, questionId);
 
     const type = await this.types.findByCode(instituteId, candidate.questionType);
-    this.questionsService.validateQuestionPayload(instituteId, type.code, candidate.payload);
+    await this.questionsService.validateQuestionPayload(instituteId, type.code, candidate.payload);
 
     if (candidate.chapterId !== null || candidate.topicId !== null) {
       await resolveScopeChain(
@@ -572,7 +671,7 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     jobId: string,
     questionId: string,
   ): Promise<void> {
-    await this.gateCandidateJob(instituteId, membershipId, userId, jobId);
+    await this.gateCandidateJob(instituteId, membershipId, userId, jobId, questionId);
     await this.getCandidate(instituteId, jobId, questionId);
     await this.db
       .delete(questions)
@@ -632,27 +731,6 @@ export class QuestionExtractionService implements OnApplicationBootstrap, OnModu
     } catch {
       return fallback(detected.format);
     }
-  }
-
-  async assertMaterial(instituteId: string, materialId: string) {
-    const [material] = await this.db
-      .select()
-      .from(materials)
-      .where(
-        and(
-          eq(materials.id, materialId),
-          eq(materials.instituteId, instituteId),
-          isNull(materials.deletedAt),
-        ),
-      )
-      .limit(1);
-    if (!material) throw new NotFoundException('Material not found');
-    if (material.processingStatus !== 'READY') {
-      throw new BadRequestException(
-        `Material cannot be extracted while ${material.processingStatus}`,
-      );
-    }
-    return material;
   }
 
   /** Extraction input — line-based, so the canonical raw text (real line
@@ -803,4 +881,10 @@ function payloadOf(payload: unknown): Record<string, unknown> | null {
 
 function normalizeMessage(message: string): string {
   return message.replace(/^Bad Request Exception:? ?|^Not Found Exception:? ?/i, '').trim();
+}
+
+/** Compact first-line snippet of a question stem, for unresolved-question refs. */
+function stemSnippet(stem: string): string {
+  const line = stem.split('\n').find((l) => l.trim().length > 0) ?? stem;
+  return line.trim().slice(0, 60);
 }

@@ -427,14 +427,14 @@ test('authz regression matrix', { skip: testDbUrl ? false : 'TEST_DATABASE_URL n
     // Restore the grant, then delete the role — its grants cascade away.
     await svc.setRolePermissions(instA!.id, created.id, ['roles.read'], ['INSTITUTE_ADMIN']);
     await permGuard().canActivate(await ctx(StubController.rolesRead));
-    await svc.deleteRole(instA!.id, created.id);
+    await svc.deleteRole(instA!.id, created.id, ['INSTITUTE_ADMIN']);
     await assert.rejects(permGuard().canActivate(await ctx(StubController.rolesRead)), ForbiddenException);
     await permGuard().canActivate(await ctx(StubController.contentUpdate));
 
     // System roles are immutable through every mutation path.
     const systemRoleId = roleIds.TEACHER!;
     await assert.rejects(svc.updateRole(instA!.id, systemRoleId, { name: 'x' }), BadRequestException);
-    await assert.rejects(svc.deleteRole(instA!.id, systemRoleId), BadRequestException);
+    await assert.rejects(svc.deleteRole(instA!.id, systemRoleId, ['INSTITUTE_ADMIN']), BadRequestException);
     await assert.rejects(svc.setRolePermissions(instA!.id, systemRoleId, ['roles.read'], ['INSTITUTE_ADMIN']), BadRequestException);
 
     // createRole rejects platform keys and reserved built-in keys.

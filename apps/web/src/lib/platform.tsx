@@ -45,6 +45,10 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         if (!active) return;
+        // A failed probe means UNKNOWN grants, so clear them: keeping the
+        // previous set would leave a stale console open after the platform
+        // permission call started failing. Deny-by-default is the safe read.
+        setPermissions([]);
         setLoading(false);
       });
     return () => {

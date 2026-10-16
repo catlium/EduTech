@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { ErrorState } from '@/components/app/error-state';
 import { SkeletonCards } from '@/components/app/loading';
@@ -73,7 +73,10 @@ const typeIcon: Record<string, React.ReactNode> = {
 
 export default function JobsPage() {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: GET /jobs is `jobs.read`; retry + cancel are
+  // POST /jobs/:jobId/{retry,cancel} = `jobs.update`.
+  const canRead = hasPermission(institute, 'jobs.read');
+  const canUpdate = hasPermission(institute, 'jobs.update');
   const searchParams = useSearchParams();
 
   const initialStatus = searchParams.get('status') ?? '';
@@ -92,7 +95,7 @@ export default function JobsPage() {
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!isTeacher) return;
+      if (!canRead) return;
       if (showSpinner) setLoading(true);
       setError(null);
       try {
@@ -112,7 +115,7 @@ export default function JobsPage() {
         setLoading(false);
       }
     },
-    [isTeacher, status],
+    [canRead, status],
   );
 
   useEffect(() => {
@@ -176,7 +179,7 @@ export default function JobsPage() {
       <PageHeader
         title="Job Monitor"
         actions={
-          isTeacher && (
+          canRead && (
             <Button size="sm" variant="outline" onClick={() => void refresh()}>
               <RefreshCw className="mr-1 size-3.5" /> Refresh
             </Button>
@@ -239,7 +242,7 @@ export default function JobsPage() {
                     {job.error}
                   </span>
                 )}
-                {(job.status === 'failed' || job.status === 'cancelled') && (
+                {canUpdate && (job.status === 'failed' || job.status === 'cancelled') && (
                   <button
                     onClick={() => void retryJob(job.id)}
                     disabled={retrying === job.id}
@@ -252,7 +255,7 @@ export default function JobsPage() {
                     )}
                   </button>
                 )}
-                {(job.status === 'queued' || job.status === 'processing') && (
+                {canUpdate && (job.status === 'queued' || job.status === 'processing') && (
                   <button
                     onClick={() => void cancelJob(job.id)}
                     disabled={cancelling === job.id}

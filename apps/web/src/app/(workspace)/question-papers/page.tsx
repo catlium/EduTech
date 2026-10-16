@@ -7,7 +7,7 @@ import { FileSearch, FileText, Plus } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { EmptyState } from '@/components/app/empty-state';
 import { ErrorState } from '@/components/app/error-state';
@@ -20,7 +20,9 @@ import type { QuestionPaperListItem } from '@catlium/contracts';
 
 export default function QuestionPapersListPage() {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: POST /question-papers and POST /question-papers/extract-* =
+  // `question-papers.create`.
+  const canCreate = hasPermission(institute, 'question-papers.create');
   const router = useRouter();
   const [papers, setPapers] = useState<QuestionPaperListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +57,7 @@ export default function QuestionPapersListPage() {
         title="Question Papers"
         description={`${papers.length} paper${papers.length !== 1 ? 's' : ''}`}
         actions={
-          isTeacher && (
+          canCreate && (
             <>
               <Button size="sm" variant="outline" onClick={() => setSourceExtractionOpen(true)}>
                 <FileSearch className="mr-1 size-3.5" /> Extract from Source
@@ -91,7 +93,7 @@ export default function QuestionPapersListPage() {
           title="No question papers yet"
           description="Generate a question paper from an approved Paper Pattern to get started."
         >
-          {isTeacher && (
+          {canCreate && (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="mr-1 size-3.5" /> New Question Paper
             </Button>

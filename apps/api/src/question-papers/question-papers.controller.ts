@@ -29,16 +29,25 @@ import { UploadChunksService } from '../materials/upload-chunks.service.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
-
+// Question-paper surface. F5.3: the catalogue's `question-papers` resource, per
+// §13 — CRUD by operation, source extraction→create, select-from-pattern/
+// generate-missing/scope→update, list-questions/pattern-coverage→read. F5.4
+// resolved the deferred `/:paperId/assessment` bridge: it creates an
+// `assessments` row, so it declares `assessments.create` — the same key
+// `POST /assessments` requires, not `question-papers.create` (which would let a
+// paper author mint examinations they have no authority to create). The service's
+// `gatePaper` academic-scope and unscoped-paper creator checks, plus
+// `requireWritableSubject` and `createAssessment`'s own scope gate, are
+// untouched and still run behind the permission check.
 @Controller('question-papers')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class QuestionPapersController {
   constructor(
     private readonly questionPapersService: QuestionPapersService,
@@ -48,7 +57,7 @@ export class QuestionPapersController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.create')
   async create(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -74,7 +83,7 @@ export class QuestionPapersController {
    *  returned paperId shows progress in place. */
   @Post('extract-text')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.create')
   async extractText(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -85,6 +94,7 @@ export class QuestionPapersController {
         tenant.instituteId,
         dto.text,
         user.userId,
+        true,
       ),
     };
   }
@@ -93,7 +103,7 @@ export class QuestionPapersController {
    *  (OCR'd via the OCR service before the same deterministic extraction). */
   @Post('extract-file')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.create')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
   async extractFile(
     @Tenant() tenant: TenantContext,
@@ -123,12 +133,13 @@ export class QuestionPapersController {
         tenant.instituteId,
         { buffer, originalname: file.originalname, mimetype: file.mimetype },
         user.userId,
+        true,
       ),
     };
   }
 
   @Get('extraction/:jobId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.read')
   async extractionStatus(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -154,7 +165,7 @@ export class QuestionPapersController {
   }
 
   @Get()
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.read')
   async list(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser) {
     const papers = await this.questionPapersService.listPapers(
       tenant.instituteId,
@@ -165,7 +176,7 @@ export class QuestionPapersController {
   }
 
   @Get(':paperId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.read')
   async get(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -181,7 +192,7 @@ export class QuestionPapersController {
   }
 
   @Patch(':paperId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.update')
   async rename(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -200,7 +211,7 @@ export class QuestionPapersController {
 
   @Delete(':paperId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.delete')
   async delete(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -215,7 +226,7 @@ export class QuestionPapersController {
   }
 
   @Get(':paperId/questions')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.read')
   async listQuestions(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -231,7 +242,7 @@ export class QuestionPapersController {
   }
 
   @Post(':paperId/select-from-pattern')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.update')
   async selectFromPattern(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -247,7 +258,7 @@ export class QuestionPapersController {
   }
 
   @Get(':paperId/pattern-coverage')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.read')
   async patternCoverage(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -263,7 +274,7 @@ export class QuestionPapersController {
   }
 
   @Patch(':paperId/scope')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.update')
   async setScope(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -281,7 +292,7 @@ export class QuestionPapersController {
   }
 
   @Post(':paperId/generate-missing')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('question-papers.update')
   async generateMissing(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -300,7 +311,7 @@ export class QuestionPapersController {
 
   @Post(':paperId/assessment')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.create')
   async createAssessment(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,

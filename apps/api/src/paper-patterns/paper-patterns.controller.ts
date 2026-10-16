@@ -29,16 +29,26 @@ import { UploadChunksService } from '../materials/upload-chunks.service.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
-
+// Paper-pattern surface. F5.3: the catalogue's `paper-patterns` resource, per
+// §13 — CRUD by operation, source extraction→create, analyze/lock/unlock/
+// approve→update, validate→read (it gates with the service's read policy).
+// F5.4 resolved the deferred `/:patternId/assessment` bridge: it creates an
+// `assessments` row, so it declares `assessments.create` — the same key
+// `POST /assessments` requires, not `paper-patterns.create` (which would let a
+// pattern author mint examinations they have no authority to create). The
+// service's `gatePatternAccess` subject-set, staging-ownership and admin-only
+// subject-less checks, plus `ensurePatternCoverage` and
+// `createAssessment`'s own `requireWritableSubject`, are untouched and still run
+// behind the permission check.
 @Controller('paper-patterns')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class PaperPatternsController {
   constructor(
     private readonly paperPatternsService: PaperPatternsService,
@@ -48,7 +58,7 @@ export class PaperPatternsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.create')
   async create(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -66,7 +76,7 @@ export class PaperPatternsController {
   /** Extract a paper pattern from pasted source text. */
   @Post('extract-text')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.create')
   async extractText(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -87,7 +97,7 @@ export class PaperPatternsController {
    *  extraction. */
   @Post('extract-file')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.create')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
   async extractFile(
     @Tenant() tenant: TenantContext,
@@ -123,7 +133,7 @@ export class PaperPatternsController {
   }
 
   @Get('extraction/:jobId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.read')
   async extractionStatus(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -149,21 +159,34 @@ export class PaperPatternsController {
   }
 
   @Get()
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.read')
   async list(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser) {
-    const patterns = await this.paperPatternsService.listPatterns(tenant.instituteId, tenant.membershipId, user.userId);
+    const patterns = await this.paperPatternsService.listPatterns(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+    );
     return { patterns };
   }
 
   @Get(':patternId')
-  @RequiredRoles(...WRITE_ROLES)
-  async get(@Tenant() tenant: TenantContext, @CurrentUser() user: AuthenticatedUser, @Param('patternId', ParseUUIDPipe) patternId: string) {
-    const pattern = await this.paperPatternsService.getPattern(tenant.instituteId, tenant.membershipId, user.userId, patternId);
+  @RequiredPermission('paper-patterns.read')
+  async get(
+    @Tenant() tenant: TenantContext,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('patternId', ParseUUIDPipe) patternId: string,
+  ) {
+    const pattern = await this.paperPatternsService.getPattern(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      patternId,
+    );
     return { pattern };
   }
 
   @Patch(':patternId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.update')
   async update(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -182,18 +205,23 @@ export class PaperPatternsController {
 
   @Delete(':patternId')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.delete')
   async remove(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
     @Param('patternId', ParseUUIDPipe) patternId: string,
   ) {
-    return this.paperPatternsService.deletePattern(tenant.instituteId, tenant.membershipId, user.userId, patternId);
+    return this.paperPatternsService.deletePattern(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      patternId,
+    );
   }
 
   @Post(':patternId/analyze')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.update')
   async analyze(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -211,7 +239,7 @@ export class PaperPatternsController {
   }
 
   @Get(':patternId/analyze/:jobId')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.read')
   async getAnalysis(
     @Tenant() tenant: TenantContext,
     @Param('patternId', ParseUUIDPipe) patternId: string,
@@ -237,18 +265,23 @@ export class PaperPatternsController {
 
   @Post(':patternId/validate')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.read')
   async validate(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
     @Param('patternId', ParseUUIDPipe) patternId: string,
   ) {
-    return this.paperPatternsService.validate(tenant.instituteId, tenant.membershipId, user.userId, patternId);
+    return this.paperPatternsService.validate(
+      tenant.instituteId,
+      tenant.membershipId,
+      user.userId,
+      patternId,
+    );
   }
 
   @Post(':patternId/approve')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.update')
   async approve(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -265,7 +298,7 @@ export class PaperPatternsController {
 
   @Post(':patternId/unlock')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.update')
   async unlock(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -283,7 +316,7 @@ export class PaperPatternsController {
 
   @Post(':patternId/lock')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('paper-patterns.update')
   async lock(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -301,7 +334,7 @@ export class PaperPatternsController {
 
   @Post(':patternId/assessment')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('assessments.create')
   async createAssessment(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,

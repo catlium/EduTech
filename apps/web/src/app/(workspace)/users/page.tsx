@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Search, Users as UsersIcon } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
+import { useTenant, hasPermission, isInstituteAdmin } from '@/lib/tenant';
 import {
   CreateInstituteUserRequestSchema,
   type CreateInstituteUserRequest,
@@ -49,15 +50,28 @@ import {
 } from '@/components/ui/table';
 import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/utils';
+import { canAssignRolesToTarget, roleLabel, type AssignableRole } from '@/lib/roles-console';
+import { canAssignUserRoles, type RolesConsoleGrants } from '@/lib/permissions';
 
-const ROLE_LABELS: Record<string, string> = {
-  INSTITUTE_ADMIN: 'Institute admin',
-  TEACHER: 'Teacher',
-  STUDENT: 'Student',
-};
+import { RoleAssignmentDialog } from './role-assignment-dialog';
+
+// Stable identity so a missing membership cannot re-trigger the roles loader.
+const NO_GRANTS: readonly string[] = [];
 
 export default function UsersPage() {
   const { user } = useAuth();
+  const { institute } = useTenant();
+  // F5.6: POST /users = `users.create`; PATCH /users/:id/status = `users.update`.
+  // F5.7: PUT /users/:id/roles is BOTH `users.update` AND the INSTITUTE_ADMIN
+  // role gate, so it mirrors the API rather than reusing the `users.update`
+  // gate above — a custom role holding `users.update` must not see the button.
+  const canCreate = hasPermission(institute, 'users.create');
+  const canUpdate = hasPermission(institute, 'users.update');
+  const grants: RolesConsoleGrants = {
+    permissions: institute?.permissions ?? NO_GRANTS,
+    isInstituteAdmin: isInstituteAdmin(institute),
+  };
+  const canAssign = canAssignUserRoles(grants);
   const searchParams = useSearchParams();
   const [members, setMembers] = useState<InstituteUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,10 +81,14 @@ export default function UsersPage() {
   const [creating, setCreating] = useState(false);
   const [target, setTarget] = useState<InstituteUser | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [roles, setRoles] = useState<AssignableRole[]>([]);
+  const [rolesError, setRolesError] = useState(false);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [roleTarget, setRoleTarget] = useState<InstituteUser | null>(null);
 
   useEffect(() => {
-    if (searchParams.get('create') === '1') setCreateOpen(true);
-  }, [searchParams]);
+    if (canCreate && searchParams.get('create') === '1') setCreateOpen(true);
+  }, [canCreate, searchParams]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -91,6 +109,36 @@ export default function UsersPage() {
     void load(ctrl.signal);
     return () => ctrl.abort();
   }, [load]);
+
+  /** The institute's assignable roles. Fetched only for an actor who may assign:
+   *  the role list is a second read that must not block the roster, and
+   *  `GET /roles` needs `roles.read` which a non-assigning viewer may not hold.
+   *  The permission catalogue is never needed here, so it is not requested. */
+  const loadRoles = useCallback(async (signal?: AbortSignal) => {
+    setRolesError(false);
+    setRolesLoading(true);
+    try {
+      const data = await api<{ roles: AssignableRole[] }>('/roles', { signal });
+      setRoles(data.roles ?? []);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setRoles([]);
+      setRolesError(true);
+    } finally {
+      setRolesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Role metadata is institute-scoped, so it is keyed on the active institute
+    // and cleared on every change: a tenant switch must never leave the previous
+    // institute's role names — or its dialog options — on screen.
+    setRoles([]);
+    if (!canAssign) return;
+    const ctrl = new AbortController();
+    void loadRoles(ctrl.signal);
+    return () => ctrl.abort();
+  }, [canAssign, institute?.instituteId, loadRoles]);
 
   const form = useForm<CreateInstituteUserRequest>({
     resolver: zodResolver(CreateInstituteUserRequestSchema),
@@ -143,11 +191,21 @@ export default function UsersPage() {
         title="Users"
         description="Manage the teacher and student accounts for this institute. Administrators provision accounts — there is no public self-registration."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1.5 size-4" /> Add user
-          </Button>
+          canCreate && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1.5 size-4" /> Add user
+            </Button>
+          )
         }
       />
+
+      {canAssign && rolesError && (
+        <ErrorState
+          title="Roles could not be loaded"
+          description="Member roles cannot be edited until the institute's role list loads. The user roster below is unaffected."
+          onRetry={() => void loadRoles()}
+        />
+      )}
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -169,9 +227,11 @@ export default function UsersPage() {
           title="No users yet"
           description="Create the first teacher or student account for your institute."
         >
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1.5 size-4" /> Add user
-          </Button>
+          {canCreate && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1.5 size-4" /> Add user
+            </Button>
+          )}
         </EmptyState>
       ) : (
         <div className="rounded-xl border bg-card">
@@ -203,7 +263,7 @@ export default function UsersPage() {
                         ) : (
                           member.roles.map((role) => (
                             <Badge key={role} variant="secondary" className="font-medium">
-                              {ROLE_LABELS[role] ?? role}
+                              {roleLabel(roles, role)}
                             </Badge>
                           ))
                         )}
@@ -216,16 +276,28 @@ export default function UsersPage() {
                       {formatDate(member.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {!self && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={updating}
-                          onClick={() => setTarget(member)}
-                        >
-                          {member.status === 'active' ? 'Deactivate' : 'Activate'}
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {canAssignRolesToTarget(grants, member, user?.id) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={rolesError || rolesLoading}
+                            onClick={() => setRoleTarget(member)}
+                          >
+                            Edit roles
+                          </Button>
+                        )}
+                        {!self && canUpdate && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={updating}
+                            onClick={() => setTarget(member)}
+                          >
+                            {member.status === 'active' ? 'Deactivate' : 'Activate'}
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -242,7 +314,18 @@ export default function UsersPage() {
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={(o) => setCreateOpen(o)}>
+      <RoleAssignmentDialog
+        member={roleTarget}
+        roles={roles}
+        onClose={() => setRoleTarget(null)}
+        onSaved={(updated) => {
+          setMembers((current) => current.map((m) => (m.id === updated.id ? updated : m)));
+          setRoleTarget(null);
+          toast.success(`Roles updated for ${updated.name}`);
+        }}
+      />
+
+      <Dialog open={createOpen && canCreate} onOpenChange={(o) => setCreateOpen(o)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add user</DialogTitle>

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 import { api, ApiError, waitForJob } from '@/lib/api';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { AppBreadcrumbs } from '@/components/app/app-breadcrumbs';
 import { StatusBadge } from '@/components/app/status-badge';
 import { SectionHeader } from '@/components/app/section-header';
@@ -49,7 +49,13 @@ export default function TopicPage() {
   }>();
   const router = useRouter();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: exact backend keys. POST /content/generate-batch and
+  // POST /content/starter-material are `content.create`;
+  // POST /content/:id/regenerate is `content.update`; cancelling a batch is
+  // `jobs.update`.
+  const canCreate = hasPermission(institute, 'content.create');
+  const canUpdate = hasPermission(institute, 'content.update');
+  const canCancelBatch = hasPermission(institute, 'jobs.update');
   const [subject, setSubject] = useState<SubjectResponse | null>(null);
   const [chapter, setChapter] = useState<ChapterResponse | null>(null);
   const [topic, setTopic] = useState<TopicResponse | null>(null);
@@ -282,17 +288,19 @@ export default function TopicPage() {
                 ? 'Waiting for starter material → generating resources…'
                 : `Generating… ${batch.status.completed + batch.status.failed}/${batch.status.total} jobs done`}
             </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                void api(`/content/generation-batches/${batch.batchId}/cancel`, {
-                  method: 'POST',
-                }).then(() => setBatch(null));
-              }}
-            >
-              Cancel
-            </Button>
+            {canCancelBatch && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  void api(`/content/generation-batches/${batch.batchId}/cancel`, {
+                    method: 'POST',
+                  }).then(() => setBatch(null));
+                }}
+              >
+                Cancel
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -302,7 +310,7 @@ export default function TopicPage() {
           title="Learning Resources"
           description="Notes, summaries, flashcards and more — generated from this topic's materials"
           actions={
-            isTeacher ? (
+            canCreate ? (
               <Button
                 size="sm"
                 onClick={() => setDialogOpen(true)}
@@ -318,12 +326,12 @@ export default function TopicPage() {
             icon={<BookOpen className="size-8" />}
             title="No learning resources yet"
             description={
-              isTeacher
+              canCreate
                 ? "Generate notes, a summary, flashcards, concepts and Cornell notes from this topic's materials."
                 : 'The teacher has not generated learning resources for this topic yet.'
             }
           >
-            {isTeacher && (
+            {canCreate && (
               <Button size="sm" onClick={() => setDialogOpen(true)}>
                 <Sparkles className="mr-1 size-3.5" /> Generate resources
               </Button>
@@ -362,7 +370,7 @@ export default function TopicPage() {
                       >
                         <Eye className="mr-1 size-3.5" /> Open
                       </Button>
-                      {isTeacher && (
+                      {canUpdate && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -450,7 +458,7 @@ export default function TopicPage() {
             }
           >
             <div className="flex flex-wrap justify-center gap-2">
-              {isTeacher && (
+              {canCreate && (
                 <Button
                   size="sm"
                   disabled={starter === 'running'}

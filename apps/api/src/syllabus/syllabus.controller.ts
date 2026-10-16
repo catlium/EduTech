@@ -23,22 +23,35 @@ import { MAX_FILE_SIZE, ALLOWED_FILE_TYPES } from '../materials/materials.consta
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
-const WRITE_ROLES = ['INSTITUTE_ADMIN', 'TEACHER'] as const;
+/**
+ *  * F5.5 — syllabus guard migration (§13 `syllabus`). The three ungated reads
+ * take `syllabus.read` (TEACHER + STUDENT, so they stay open to every member);
+ * the two creates take `syllabus.create`; the eight lifecycle mutations — update,
+ * process, retry, analyze, confirm, lock, unlock, archive — take
+ * `syllabus.update`; and the one hard delete takes `syllabus.delete`. TEACHER
+ * holds all four and STUDENT only `read`, so the legacy write gate is preserved
+ * exactly.
+ *
+ * `SyllabusService` keeps `requireWritableSubject` on all fourteen routes plus
+ * its `assertUnlocked`/status guards; this layer only answers "may this role
+ * perform the action".
 
+ */
 @Controller('syllabus')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class SyllabusController {
   constructor(private readonly syllabusService: SyllabusService) {}
 
   @Post('text')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.create')
   async createText(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -55,7 +68,6 @@ export class SyllabusController {
 
   @Post('upload')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: MAX_FILE_SIZE },
@@ -68,6 +80,7 @@ export class SyllabusController {
       },
     }),
   )
+  @RequiredPermission('syllabus.create')
   async upload(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -89,6 +102,7 @@ export class SyllabusController {
   }
 
   @Get()
+  @RequiredPermission('syllabus.read')
   async list(
     @Tenant() tenant: TenantContext,
     @Query('subjectId', new ParseUUIDPipe({ optional: true })) subjectId?: string,
@@ -102,6 +116,7 @@ export class SyllabusController {
   }
 
   @Get(':id')
+  @RequiredPermission('syllabus.read')
   async get(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     const syllabus = await this.syllabusService.getSyllabus(
       tenant.instituteId,
@@ -112,6 +127,7 @@ export class SyllabusController {
   }
 
   @Get(':id/versions')
+  @RequiredPermission('syllabus.read')
   async versions(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     const versions = await this.syllabusService.getVersions(
       tenant.instituteId,
@@ -122,7 +138,7 @@ export class SyllabusController {
   }
 
   @Patch(':id')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.update')
   async update(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -141,21 +157,21 @@ export class SyllabusController {
 
   @Post(':id/process')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.update')
   async process(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.syllabusService.processSyllabus(tenant.instituteId, tenant.membershipId, id);
   }
 
   @Post(':id/retry')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.update')
   async retry(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.syllabusService.retryProcessing(tenant.instituteId, tenant.membershipId, id);
   }
 
   @Post(':id/analyze')
   @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.update')
   async analyze(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -171,7 +187,7 @@ export class SyllabusController {
 
   @Post(':id/confirm')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.update')
   async confirm(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -187,7 +203,7 @@ export class SyllabusController {
 
   @Post(':id/unlock')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.update')
   async unlock(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -205,7 +221,7 @@ export class SyllabusController {
 
   @Post(':id/lock')
   @HttpCode(HttpStatus.OK)
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.update')
   async lock(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -222,7 +238,7 @@ export class SyllabusController {
   }
 
   @Post(':id/archive')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.update')
   async archive(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -238,7 +254,7 @@ export class SyllabusController {
   }
 
   @Delete(':id')
-  @RequiredRoles(...WRITE_ROLES)
+  @RequiredPermission('syllabus.delete')
   async remove(@Tenant() tenant: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.syllabusService.deleteSyllabus(tenant.instituteId, tenant.membershipId, id);
   }

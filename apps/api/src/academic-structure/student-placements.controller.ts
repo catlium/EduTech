@@ -13,29 +13,40 @@ import {
 } from '@nestjs/common';
 
 import { StudentPlacementsService } from './student-placements.service.js';
-import { CreateStudentPlacementDto, TransferStudentPlacementDto } from './dto/student-placements.dto.js';
+import {
+  CreateStudentPlacementDto,
+  CreateStudentPlacementsBulkDto,
+  TransferStudentPlacementDto,
+  CarryForwardPreviewDto,
+  CarryForwardCommitDto,
+} from './dto/student-placements.dto.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
-import { RequiredRoles } from '../common/decorators/roles.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission, RequiredPermissions } from '../authorization/permissions.decorator.js';
 
-// Student placements (Phase G): INSTITUTE_ADMIN-only management of which
-// STUDENT memberships are placed into which division of an academic year.
-// Students cannot assign themselves; teachers cannot modify placements — every
-// route (reads included, so placement data never leaks to students) requires
-// the admin role, and the service additionally requires the target membership
-// to actually hold STUDENT and be active.
-const PLACEMENT_ADMIN = ['INSTITUTE_ADMIN'] as const;
+// Student placements (Phase G, Q.4.1): management of which STUDENT memberships
+// are placed into which division of an academic year. Authorization is
+// permission-based on the `assignments` resource (Q.4.0 design) — INSTITUTE_
+// ADMIN holds assignments.manage through the built-in mapping; custom
+// institute roles may be granted assignments.read/create/delete for delegated
+// placement authority. Students cannot assign themselves; teachers cannot
+// modify placements — every route (reads included, so placement data never
+// leaks to students) requires a grant, and the service additionally requires
+// the target membership to actually hold STUDENT and be active. Transfer
+// archives the current placement AND creates a fresh one in a single call, so
+// it requires BOTH assignments.create AND assignments.delete (AND rule).
 
 @Controller('academic/student-placements')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class StudentPlacementsController {
   constructor(private readonly studentPlacementsService: StudentPlacementsService) {}
 
   @Get()
-  @RequiredRoles(...PLACEMENT_ADMIN)
+  @RequiredPermission('assignments.read')
   async listStudentPlacements(
     @Tenant() tenant: TenantContext,
     @Query('academicYearId', new ParseUUIDPipe({ optional: true })) academicYearId?: string,
@@ -51,7 +62,7 @@ export class StudentPlacementsController {
   }
 
   @Get(':placementId')
-  @RequiredRoles(...PLACEMENT_ADMIN)
+  @RequiredPermission('assignments.read')
   async getStudentPlacement(
     @Tenant() tenant: TenantContext,
     @Param('placementId', ParseUUIDPipe) placementId: string,
@@ -65,7 +76,7 @@ export class StudentPlacementsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...PLACEMENT_ADMIN)
+  @RequiredPermission('assignments.create')
   async createStudentPlacement(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateStudentPlacementDto,
@@ -77,9 +88,28 @@ export class StudentPlacementsController {
     return { placement };
   }
 
+  // F.1 — bulk place many students into one division in a single atomic
+  // request. Same authorization model as single create (assignments.create),
+  // same service invariants, one transaction — any conflict rolls back the
+  // whole batch. Declared before @Get(':placementId')'s sibling POSTs so the
+  // literal segment wins over any param route.
+  @Post('bulk')
+  @HttpCode(HttpStatus.CREATED)
+  @RequiredPermission('assignments.create')
+  async createStudentPlacementsBulk(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: CreateStudentPlacementsBulkDto,
+  ) {
+    const placements = await this.studentPlacementsService.createStudentPlacementsBulk(
+      tenant.instituteId,
+      dto,
+    );
+    return { placements };
+  }
+
   @Post(':placementId/transfer')
   @HttpCode(HttpStatus.CREATED)
-  @RequiredRoles(...PLACEMENT_ADMIN)
+  @RequiredPermissions('assignments.create', 'assignments.delete')
   async transferStudentPlacement(
     @Tenant() tenant: TenantContext,
     @Param('placementId', ParseUUIDPipe) placementId: string,
@@ -93,9 +123,29 @@ export class StudentPlacementsController {
     return { placement };
   }
 
+  @Post('carry-forward/preview')
+  @RequiredPermission('assignments.read')
+  async previewCarryForward(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: CarryForwardPreviewDto,
+  ) {
+    const preview = await this.studentPlacementsService.previewCarryForward(tenant.instituteId, dto);
+    return { preview };
+  }
+
+  @Post('carry-forward/commit')
+  @RequiredPermissions('assignments.create', 'assignments.delete')
+  async commitCarryForward(
+    @Tenant() tenant: TenantContext,
+    @Body() dto: CarryForwardCommitDto,
+  ) {
+    const result = await this.studentPlacementsService.commitCarryForward(tenant.instituteId, dto);
+    return { result };
+  }
+
   @Delete(':placementId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequiredRoles(...PLACEMENT_ADMIN)
+  @RequiredPermission('assignments.delete')
   async deactivateStudentPlacement(
     @Tenant() tenant: TenantContext,
     @Param('placementId', ParseUUIDPipe) placementId: string,

@@ -82,6 +82,48 @@ def get_paper_pattern(pattern_id: str, institute_id: str) -> dict[str, Any] | No
         ).fetchone()
 
 
+def get_question_candidate(question_id: str, institute_id: str) -> dict[str, Any] | None:
+    """The extracted REVIEW candidate an answer generation should fill (F3.2).
+
+    Restricted to REVIEW + EXTRACTED rows so the worker never acts on an
+    accepted/ACTIVE question (or any non-extraction row). The pipeline guards
+    the write identically in :func:`write_generated_answer`.
+    """
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        return conn.execute(
+            "SELECT * FROM questions WHERE id = %s AND institute_id = %s"
+            " AND status = 'REVIEW' AND source = 'EXTRACTED'",
+            (question_id, institute_id),
+        ).fetchone()
+
+
+def write_generated_answer(
+    question_id: str,
+    institute_id: str,
+    payload: dict[str, Any],
+    expected_updated_at: datetime | None = None,
+) -> bool:
+    """Persist a generated answer onto a REVIEW candidate (merged payload).
+
+    A candidate that is no longer writable (accepted, re-swept away, other
+    institute) is a no-op — returns False so the caller reports the job as
+    superseded instead of failing it: nothing to do is not an error.
+    """
+    with psycopg.connect(settings.database_url) as conn:
+        where_extra = " AND updated_at = %s" if expected_updated_at is not None else ""
+        params: list[Any] = [Jsonb(payload), _now(), question_id, institute_id]
+        if expected_updated_at is not None:
+            params.append(expected_updated_at)
+        cur = conn.execute(
+            "UPDATE questions SET payload = %s, updated_at = %s"
+            " WHERE id = %s AND institute_id = %s AND status = 'REVIEW'"
+            "   AND source = 'EXTRACTED'"
+            f"{where_extra} RETURNING id",
+            tuple(params),
+        )
+        return cur.fetchone() is not None
+
+
 def save_blueprint_analysis(
     pattern_id: str,
     *,

@@ -9,6 +9,8 @@ import { renderDocumentBodyHtml } from './render-html.js';
 import { AccessTokenGuard } from '../common/guards/access-token.guard.js';
 import { TenantGuard } from '../common/guards/tenant.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
+import { PermissionGuard } from '../authorization/permissions.guard.js';
+import { RequiredPermission } from '../authorization/permissions.decorator.js';
 import { RequiredRoles } from '../common/decorators/roles.decorator.js';
 import { Tenant } from '../common/decorators/tenant.decorator.js';
 import type { TenantContext } from '../common/decorators/tenant.decorator.js';
@@ -56,8 +58,31 @@ const withHtml = (raw: ReturnType<typeof buildPreview>): PreviewPayload['preview
 /* Every export sends directly. The preview endpoints stay — they render the
  * exact same document the file contains (one shared renderer) — but a preview
  * is a convenience preview, never a prerequisite for exporting. */
+/**
+ *  * F5.5 — export guard migration (§13 `exports`). Every route here is a GET, so
+ * they all take the single `exports.read` action, which TEACHER holds and
+ * STUDENT does not — the same reachable set the legacy
+ * `INSTITUTE_ADMIN`/`TEACHER` role gate gave on all twelve routes.
+ *
+ * TWO ROUTES STAY ROLE-GATED. `assessment/:assessmentId/results` and its
+ * `preview` sibling build the attempts LEDGER plus aggregate analytics: other
+ * students' marks across the whole cohort. No catalogued key can express that.
+ * `exports.read` is a document-format capability, and `attempts.read` is held by
+ * STUDENT too, so mapping either here would hand students the cohort ledger.
+ * This is the same boundary F5.4 preserved on
+ * `GET /assessments/:id/attempts` and `GET /assessments/:id/analytics`, and it
+ * is protected by the identical regression test in
+ * `remaining-surface-authz.integration.ts`. Do not migrate them to raise a
+ * migration percentage.
+ *
+ * `ExportService` keeps every read gate it delegates to `ContentService`,
+ * `ExaminationsService`, `PaperPatternsService` and `QuestionPapersService` —
+ * the DRAFT-creator rule and the academic-scope 404s. This layer only says
+ * "may this role request an export at all".
+
+ */
 @Controller('export')
-@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class ExportController {
   constructor(private readonly exportService: ExportService) {}
 
@@ -79,7 +104,7 @@ export class ExportController {
   }
 
   @Get('content/:contentId')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async exportContent(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -98,7 +123,7 @@ export class ExportController {
   }
 
   @Get('content/:contentId/preview')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async previewContent(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -114,7 +139,7 @@ export class ExportController {
   }
 
   @Get('questions')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async exportQuestions(
     @Tenant() tenant: TenantContext,
     @Res() res: Response,
@@ -139,7 +164,7 @@ export class ExportController {
   }
 
   @Get('questions/preview')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async previewQuestions(
     @Tenant() tenant: TenantContext,
     @Query('subjectId') subjectId?: string,
@@ -161,7 +186,7 @@ export class ExportController {
   }
 
   @Get('assessment/:assessmentId')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async exportAssessment(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -191,7 +216,7 @@ export class ExportController {
   }
 
   @Get('assessment/:assessmentId/preview')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async previewAssessment(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -247,7 +272,7 @@ export class ExportController {
   }
 
   @Get('paper-pattern/:patternId')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async exportPaperPattern(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -266,7 +291,7 @@ export class ExportController {
   }
 
   @Get('paper-pattern/:patternId/preview')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async previewPaperPattern(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -282,7 +307,7 @@ export class ExportController {
   }
 
   @Get('question-paper/:paperId')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async exportQuestionPaper(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,
@@ -305,7 +330,7 @@ export class ExportController {
   }
 
   @Get('question-paper/:paperId/preview')
-  @RequiredRoles('INSTITUTE_ADMIN', 'TEACHER')
+  @RequiredPermission('exports.read')
   async previewQuestionPaper(
     @Tenant() tenant: TenantContext,
     @CurrentUser() user: AuthenticatedUser,

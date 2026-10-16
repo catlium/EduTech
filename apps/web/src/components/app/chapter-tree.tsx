@@ -17,22 +17,24 @@ import {
 } from './generate-resources-dialog';
 import type { ChapterResponse, TopicResponse, GenerateBatchJobIds } from '@catlium/contracts';
 
+// F5.6: the per-action backend keys replace the old role-shaped `isTeacher`.
+// `canAddTopic` mirrors POST /academic/chapters/:id/topics (`topics.create`) and
+// `canGenerate` mirrors POST /content/generate-batch (`content.create`).
 export function ChapterTree({
   subjectId,
-  isTeacher,
+  canAddTopic,
+  canGenerate,
   chapters: initialChapters,
 }: {
   subjectId: string;
-  isTeacher: boolean;
+  canAddTopic: boolean;
+  canGenerate: boolean;
   chapters: ChapterResponse[];
 }) {
   return (
     <div className="space-y-1">
       {initialChapters.length === 0 && (
-        <p className="py-4 text-center text-sm text-muted-foreground">
-          No chapters yet.
-          {isTeacher && ' Add chapters to organize topics.'}
-        </p>
+        <p className="py-4 text-center text-sm text-muted-foreground">No chapters yet.</p>
       )}
       {initialChapters
         .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -41,7 +43,8 @@ export function ChapterTree({
             key={chapter.id}
             subjectId={subjectId}
             chapter={chapter}
-            isTeacher={isTeacher}
+            canAddTopic={canAddTopic}
+            canGenerate={canGenerate}
           />
         ))}
     </div>
@@ -51,11 +54,13 @@ export function ChapterTree({
 function ChapterItem({
   subjectId,
   chapter,
-  isTeacher,
+  canAddTopic,
+  canGenerate,
 }: {
   subjectId: string;
   chapter: ChapterResponse;
-  isTeacher: boolean;
+  canAddTopic: boolean;
+  canGenerate: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [topics, setTopics] = useState<TopicResponse[]>([]);
@@ -163,7 +168,7 @@ function ChapterItem({
             </div>
           ) : topics.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">
-              No topics. {isTeacher ? 'Add topics to this chapter.' : ''}
+              No topics. {canAddTopic ? 'Add topics to this chapter.' : ''}
             </p>
           ) : (
             <ul className="space-y-0.5">
@@ -188,42 +193,48 @@ function ChapterItem({
                 ))}
             </ul>
           )}
-          {isTeacher && (
+          {(canAddTopic || canGenerate) && (
             <div className="flex gap-2 pt-1">
-              <Input
-                value={newTopicName}
-                onChange={(e) => setNewTopicName(e.target.value)}
-                placeholder="New topic name..."
-                className="h-8 text-xs"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void addTopic();
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                className="h-8"
-                disabled={adding || !newTopicName.trim()}
-                onClick={() => void addTopic()}
-              >
-                <Plus className="mr-1 size-3" /> Add
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8"
-                onClick={() => setDialogOpen(true)}
-                disabled={starting}
-              >
-                {starting ? (
-                  <Loader2 className="mr-1 size-3 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-1 size-3" />
-                )}
-                Generate resources
-              </Button>
+              {canAddTopic && (
+                <>
+                  <Input
+                    value={newTopicName}
+                    onChange={(e) => setNewTopicName(e.target.value)}
+                    placeholder="New topic name..."
+                    className="h-8 text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void addTopic();
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    className="h-8"
+                    disabled={adding || !newTopicName.trim()}
+                    onClick={() => void addTopic()}
+                  >
+                    <Plus className="mr-1 size-3" /> Add
+                  </Button>
+                </>
+              )}
+              {canGenerate && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  onClick={() => setDialogOpen(true)}
+                  disabled={starting}
+                >
+                  {starting ? (
+                    <Loader2 className="mr-1 size-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-1 size-3" />
+                  )}
+                  Generate resources
+                </Button>
+              )}
             </div>
           )}
           <GenerateResourcesDialog

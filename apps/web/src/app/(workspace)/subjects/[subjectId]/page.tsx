@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Plus, BookMarked, BookOpen, Hash, Loader2, Sparkles, Trash2 } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { PageHeader } from '@/components/app/page-header';
 import { ChapterTree } from '@/components/app/chapter-tree';
 import { StatusBadge } from '@/components/app/status-badge';
@@ -41,7 +41,13 @@ export default function SubjectDetailPage() {
   const { subjectId } = useParams<{ subjectId: string }>();
   const router = useRouter();
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: exact backend keys per action. POST /content/generate-batch is
+  // `content.create`; DELETE /academic/subjects/:id is `subjects.delete`;
+  // POST /academic/subjects/:id/chapters is `chapters.create`.
+  const canGenerate = hasPermission(institute, 'content.create');
+  const canReadSyllabus = hasPermission(institute, 'syllabus.read');
+  const canDelete = hasPermission(institute, 'subjects.delete');
+  const canCreateChapter = hasPermission(institute, 'chapters.create');
   const [subject, setSubject] = useState<SubjectResponse | null>(null);
   const [chapters, setChapters] = useState<ChapterResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,28 +218,30 @@ export default function SubjectDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             <StatusBadge status={subject.status} />
-            {isTeacher && (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDialogOpen(true)}
-                  disabled={Boolean(batch?.status?.active)}
-                >
-                  <Sparkles className="mr-1 size-3.5" /> Generate resources
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => router.push(`/syllabus`)}>
-                  <BookMarked className="mr-1 size-3.5" /> Syllabus
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => void openDelete()}
-                  disabled={Boolean(batch?.status?.active)}
-                >
-                  <Trash2 className="mr-1 size-3.5" /> Delete
-                </Button>
-              </>
+            {canGenerate && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDialogOpen(true)}
+                disabled={Boolean(batch?.status?.active)}
+              >
+                <Sparkles className="mr-1 size-3.5" /> Generate resources
+              </Button>
+            )}
+            {canReadSyllabus && (
+              <Button size="sm" variant="outline" onClick={() => router.push(`/syllabus`)}>
+                <BookMarked className="mr-1 size-3.5" /> Syllabus
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => void openDelete()}
+                disabled={Boolean(batch?.status?.active)}
+              >
+                <Trash2 className="mr-1 size-3.5" /> Delete
+              </Button>
             )}
           </div>
         }
@@ -249,7 +257,7 @@ export default function SubjectDetailPage() {
           title="Chapters"
           description={`${chapters.length} chapter${chapters.length !== 1 ? 's' : ''}`}
           actions={
-            isTeacher && (
+            canCreateChapter && (
               <Button size="sm" variant="outline" onClick={() => setShowChapterDialog(true)}>
                 <Plus className="mr-1 size-3.5" /> Add Chapter
               </Button>
@@ -267,7 +275,8 @@ export default function SubjectDetailPage() {
         )}
         <ChapterTree
           subjectId={subjectId}
-          isTeacher={isTeacher}
+          canAddTopic={hasPermission(institute, 'topics.create')}
+          canGenerate={canGenerate}
           chapters={chapters.sort((a, b) => a.sortOrder - b.sortOrder)}
         />
       </section>

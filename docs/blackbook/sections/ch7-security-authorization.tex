@@ -24,7 +24,7 @@ nothing user-facing depends on a publicly reachable internal service.
 \noindent Authentication is cookie-based, following the OWASP guidance for
 session management~\cite{owaspsession}. The login and refresh flow is shown in
 Figure~\ref{fig:auth-sequence}; the per-request guard chain is shown in
-Figure~\ref{fig:auth-request} and Figure~\ref{fig:auth-request-part2}.
+Figure~\ref{fig:auth-request}.
 
 \begin{sidewaysfigure}[p]
 \centering
@@ -113,22 +113,17 @@ decision chain is rendered in Figure~\ref{fig:permission-model} and
 Figure~\ref{fig:permission-model-part2};
 the academic-scope engine is detailed in Figures~\ref{fig:academic-scope-resolution}
 and~\ref{fig:academic-scope-enforcement}. The per-request guard chain is shown
-in Figure~\ref{fig:auth-request} and Figure~\ref{fig:auth-request-part2}.
+in Figure~\ref{fig:auth-request}.
 
 \begin{sidewaysfigure}[p]
 \centering
-\includegraphics[width=711.5pt]{figures/authentication-guardchain-sequence-bw.pdf}
-\caption{Tenant-scoped request flow, part 1: the access-token, tenant, and
-roles guards.}
+\includegraphics[width=500pt]{figures/authentication-guardchain-sequence-bw.pdf}
+\par\vspace{1.5ex}
+\includegraphics[width=500pt]{figures/authentication-authorization-sequence-bw.pdf}
+\caption{Tenant-scoped request flow: (left) the access-token, tenant, and roles
+guards; (right) permission-guard evaluation and academic-scope enforcement in
+the feature service.}
 \label{fig:auth-request}
-\end{sidewaysfigure}
-
-\begin{sidewaysfigure}[p]
-\centering
-\includegraphics[width=711.5pt]{figures/authentication-authorization-sequence-bw.pdf}
-\caption{Tenant-scoped request flow, part 2: permission-guard evaluation and
-academic-scope enforcement in the feature service.}
-\label{fig:auth-request-part2}
 \end{sidewaysfigure}
 
 \begin{figure}[p]

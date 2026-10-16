@@ -30,6 +30,9 @@ import {
 import { AccessTokenGuard } from '../common/guards/access-token.guard.ts';
 import { TenantGuard } from '../common/guards/tenant.guard.ts';
 import { RolesGuard } from '../common/guards/roles.guard.ts';
+import { PermissionGuard } from './permissions.guard.ts';
+import { PermissionCheckService } from './permission-check.service.ts';
+import { PermissionSyncService } from './permission-sync.service.ts';
 import { TenancyService } from '../tenancy/tenancy.service.ts';
 import { AcademicScopeService } from './academic-scope.service.ts';
 import { ExaminationsService } from '../examinations/examinations.service.ts';
@@ -89,6 +92,9 @@ test('Phase M: export role gate + academic scope; job tenant isolation', {
   skip: testDbUrl ? false : 'TEST_DATABASE_URL not set',
 }, async () => {
   const svc = db as unknown as Database;
+  // Idempotent; keeps the suite self-contained now that the export gate is
+  // permission-based rather than role-based.
+  await new PermissionSyncService(svc).sync();
   const scope = new AcademicScopeService(svc);
   const examsSvc = new ExaminationsService(svc, scope);
   const puppetStub = { pdf: async () => Buffer.alloc(0) } as unknown as PuppeteerService;
@@ -164,7 +170,13 @@ test('Phase M: export role gate + academic scope; job tenant isolation', {
         cookies: { access_token: await sign(teacher.id, teacherSid) },
       });
 
-    const roles = new RolesGuard(new Reflector());
+    // F5.5 moved the document exports onto `exports.read` (STUDENT holds no
+    // `exports.*` grant) while the results routes STAY role-gated, so the
+    // production chain runs in order and one assertion covers both.
+    const chain = async (ctx: ExecutionContext) => {
+      new RolesGuard(new Reflector()).canActivate(ctx);
+      await new PermissionGuard(new Reflector(), new PermissionCheckService(db as unknown as Database)).canActivate(ctx);
+    };
     const exportRoutes: AnyHandler[] = [
       ExportController.prototype.exportQuestions as AnyHandler,
       ExportController.prototype.previewQuestions as AnyHandler,
@@ -172,16 +184,13 @@ test('Phase M: export role gate + academic scope; job tenant isolation', {
       ExportController.prototype.previewAssessment as AnyHandler,
     ];
     for (const handler of exportRoutes) {
-      const studentCtx = await asStudent(handler);
-      assert.throws(() => roles.canActivate(studentCtx), ForbiddenException, `${handler.name} refused to student`);
-      const teacherCtx = await asTeacher(handler);
-      assert.equal(roles.canActivate(teacherCtx), true, `${handler.name} allowed for teacher`);
+      await assert.rejects(chain(await asStudent(handler)), ForbiddenException, `${handler.name} refused to student`);
+      await chain(await asTeacher(handler));
     }
-    // Control: the results routes were already gated pre-Phase M.
-    const resultsTeacher = await asTeacher(ExportController.prototype.exportAssessmentResults as AnyHandler);
-    assert.equal(roles.canActivate(resultsTeacher), true);
-    const resultsStudent = await asStudent(ExportController.prototype.exportAssessmentResults as AnyHandler);
-    assert.throws(() => roles.canActivate(resultsStudent), ForbiddenException);
+    // Control: the results routes were already gated pre-Phase M and stayed
+    // role-gated through F5.5 — the ledger is cohort-wide.
+    await chain(await asTeacher(ExportController.prototype.exportAssessmentResults as AnyHandler));
+    await assert.rejects(chain(await asStudent(ExportController.prototype.exportAssessmentResults as AnyHandler)), ForbiddenException);
 
     // ── Test 2 (HIGH-1 · scope enforcement): teacher exports only within
     //    assigned academic scope; assessments gate through ExaminationsService.

@@ -19,21 +19,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const drizzleDir = join(__dirname, '../../../../packages/database/drizzle');
 const controllerSource = readFileSync(join(__dirname, 'paper-patterns.controller.ts'), 'utf8');
 
-// Authorization is enforced by @RequiredRoles at the controller layer. The
-// controller imports cannot be loaded under node strip-only mode (NestJS
-// parameter properties), so we assert the route source carries the guard.
-function routeHasWriteRoles(routeDecl: string): boolean {
+// F5.3: authorization moved from @RequiredRoles to catalogue permissions at the
+// controller layer. The controller imports cannot be loaded under node strip-only
+// mode (NestJS parameter properties), so we assert the route source carries the
+// permission metadata — the real behaviour is covered by
+// questions/question-paper-authz.integration.ts against the live guard chain.
+function routeHasPermission(routeDecl: string, permission: string): boolean {
   const idx = controllerSource.indexOf(routeDecl);
   const chunk = controllerSource.slice(Math.max(0, idx - 120), idx);
-  return chunk.includes('@RequiredRoles(...WRITE_ROLES)');
+  return chunk.includes(`@RequiredPermission('${permission}')`);
 }
 
-test('update endpoint requires an authorized write role', () => {
-  assert.ok(routeHasWriteRoles('async update('), 'PATCH must carry @RequiredRoles');
+test('update endpoint requires an authorized permission', () => {
+  assert.ok(routeHasPermission('async update(', 'paper-patterns.update'), 'PATCH must carry @RequiredPermission');
 });
 
-test('delete endpoint requires an authorized write role', () => {
-  assert.ok(routeHasWriteRoles('async remove('), 'DELETE must carry @RequiredRoles');
+test('delete endpoint requires an authorized permission', () => {
+  assert.ok(routeHasPermission('async remove(', 'paper-patterns.delete'), 'DELETE must carry @RequiredPermission');
 });
 
 test('DRAFT is editable', () => {

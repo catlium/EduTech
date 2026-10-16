@@ -14,7 +14,7 @@ import type {
   QuestionDifficulty,
 } from '@catlium/contracts';
 import { PaperPatternStructureSchema, flattenPatternRules } from '@catlium/contracts';
-import { useTenant, canManage } from '@/lib/tenant';
+import { useTenant, hasPermission } from '@/lib/tenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -53,7 +53,9 @@ export function QuestionPaperBuilder({
   onGenerated?: () => void;
 }) {
   const { institute } = useTenant();
-  const isTeacher = canManage(institute);
+  // F5.6: this card's capability is building a paper from a pattern —
+  // POST /question-papers is `question-papers.create`.
+  const canCreatePaper = hasPermission(institute, 'question-papers.create');
 
   const [patterns, setPatterns] = useState<PaperPattern[]>([]);
   const [patternId, setPatternId] = useState('');
@@ -237,7 +239,7 @@ export function QuestionPaperBuilder({
     }
   };
 
-  if (!isTeacher) return null;
+  if (!canCreatePaper) return null;
 
   return (
     <Card>
