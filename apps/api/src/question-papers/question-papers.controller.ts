@@ -94,6 +94,7 @@ export class QuestionPapersController {
         tenant.instituteId,
         dto.text,
         user.userId,
+        true,
       ),
     };
   }
@@ -132,6 +133,7 @@ export class QuestionPapersController {
         tenant.instituteId,
         { buffer, originalname: file.originalname, mimetype: file.mimetype },
         user.userId,
+        true,
       ),
     };
   }

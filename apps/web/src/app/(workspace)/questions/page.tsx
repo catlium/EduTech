@@ -32,7 +32,6 @@ import { useTenant, hasPermission } from '@/lib/tenant';
 import { QuestionBankPanel } from '@/components/questions/question-bank-panel';
 import { AnswerText } from '@/components/export/answer-text';
 import { QuestionBankWizard } from '@/components/questions/question-bank-wizard';
-import { QuestionExtractionDialog } from '@/components/questions/question-extraction-dialog';
 import { QuestionSourceExtractionDialog } from '@/components/questions/question-source-extraction-dialog';
 import { QuestionBankSets } from '@/components/questions/question-bank-sets';
 import { PageHeader } from '@/components/app/page-header';
@@ -433,7 +432,6 @@ export default function QuestionsListPage() {
 
   const [createCascade, setCreateCascade] = useState<Cascade>(DEFAULT_CASCADE);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [extractionOpen, setExtractionOpen] = useState(false);
   const [sourceExtractionOpen, setSourceExtractionOpen] = useState(false);
   const router = useRouter();
 
@@ -889,9 +887,6 @@ export default function QuestionsListPage() {
         actions={
           canCreate && (
             <>
-              <Button size="sm" onClick={() => setExtractionOpen(true)}>
-                <FileSearch className="mr-1 size-3.5" /> Extract
-              </Button>
               <Button size="sm" variant="outline" onClick={() => setSourceExtractionOpen(true)}>
                 <FileSearch className="mr-1 size-3.5" /> Extract from Source
               </Button>
@@ -929,15 +924,6 @@ export default function QuestionsListPage() {
         onOpenChange={setSourceExtractionOpen}
         basePath="/questions"
         onStarted={({ jobId }) => router.push(`/questions/extractions/${jobId}`)}
-      />
-
-      <QuestionExtractionDialog
-        open={extractionOpen}
-        onOpenChange={setExtractionOpen}
-        subjects={subjects}
-        chapters={chapters}
-        topics={topics}
-        onCreated={(jobId) => router.push(`/questions/extractions/${jobId}`)}
       />
 
       <div className="mb-4">

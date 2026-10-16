@@ -7,23 +7,6 @@ import {
   MaxLength,
 } from 'class-validator';
 
-export class ExtractQuestionsDto {
-  @IsUUID()
-  materialId!: string;
-
-  @IsUUID()
-  subjectId!: string;
-
-  /* Optional scope acts as constraints/context, never a forced assignment. */
-  @IsOptional()
-  @IsUUID()
-  chapterId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  topicId?: string;
-}
-
 export class ReviewQuestionCandidateDto {
   @IsOptional()
   @IsString()

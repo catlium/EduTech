@@ -17,7 +17,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { QuestionExtractionService } from './question-extraction.service.js';
-import { ExtractQuestionsDto, ReviewQuestionCandidateDto } from './dto/question-extraction.dto.js';
+import { ReviewQuestionCandidateDto } from './dto/question-extraction.dto.js';
 import { QuestionPaperExtractionService } from '../question-papers/question-paper-extraction.service.js';
 import { ExtractQuestionPaperTextDto } from '../question-papers/dto/question-papers.dto.js';
 import { UploadChunksService } from '../materials/upload-chunks.service.js';
@@ -57,10 +57,10 @@ function toStatus(job: {
 
 // Extraction/review sub-surface of the Question Bank. F5.3: the catalogue's
 // `questions` vocabulary, per §13 — enqueue→create, candidate review/accept/
-// import→update, discard→delete, status poll→read. The four extraction-source
+// import→update, discard→delete, status poll→read. The extraction-source
 // routes fill the Bank with REVIEW candidates (no question paper is created:
-// `requestTextExtraction`/`requestFileExtraction` are called without `paperId`),
-// so they are `questions.create` like every other enqueue.
+// `requestTextExtraction`/`requestFileExtraction` are called in bank mode), so
+// they are `questions.create` like every other enqueue.
 // The F3 subject-scope + run-ownership gates in `QuestionExtractionService`
 // (`gateCandidateJob`, `requireWritableSubject`) are untouched and still run
 // behind the permission check.
@@ -72,23 +72,6 @@ export class QuestionExtractionController {
     private readonly sourceExtraction: QuestionPaperExtractionService,
     private readonly chunks: UploadChunksService,
   ) {}
-
-  @Post('extract-from-material')
-  @HttpCode(HttpStatus.ACCEPTED)
-  @RequiredPermission('questions.create')
-  async extract(
-    @Tenant() tenant: TenantContext,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: ExtractQuestionsDto,
-  ) {
-    const extraction = await this.extractionService.requestExtraction(
-      tenant.instituteId,
-      tenant.membershipId,
-      user.userId,
-      dto,
-    );
-    return { extraction };
-  }
 
   /** Independent Question Bank extraction from pasted exam-paper text — the
    *  same deterministic extractor, but candidates land in the Bank REVIEW tray
